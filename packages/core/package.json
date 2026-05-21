@@ -1,0 +1,22 @@
+{
+  "name": "@repo/core",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.tsx"
+  },
+  "devDependencies": {
+    "@repo/ai": "workspace:*",
+    "@repo/typescript-config": "workspace:*",
+    "@tanstack/react-query": "^5.100.10",
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "react": "^19.2.6",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "convex": "^1.38.0"
+  }
+}

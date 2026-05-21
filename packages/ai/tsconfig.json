@@ -1,0 +1,12 @@
+{
+    "extends": "@repo/typescript-config/base.json",
+    "compilerOptions": {
+      "rootDir": "src",
+      "baseUrl": ".",
+      "module": "Preserve",
+      "moduleResolution": "bundler"
+    },
+    "include": ["src"],
+    "exclude": ["node_modules", "dist"]
+  }
+  

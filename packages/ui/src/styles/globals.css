@@ -1,0 +1,3 @@
+@import "@repo/tailwind-config";
+
+@source "../../**/*.tsx";

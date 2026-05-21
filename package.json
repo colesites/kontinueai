@@ -1,14 +1,7 @@
 {
   "name": "kontinueai",
-  "private": true,
-  "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "lint": "turbo run lint",
-    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "check-types": "turbo run check-types"
-  },
   "devDependencies": {
+    "@biomejs/biome": "2.4.14",
     "prettier": "^3.7.4",
     "turbo": "^2.9.9",
     "typescript": "5.9.2"
@@ -17,8 +10,40 @@
     "node": ">=18"
   },
   "packageManager": "bun@1.3.5",
+  "private": true,
+  "scripts": {
+    "dev": "bun run dev:web && bun run dev:mobile && bun run dev:convex",
+    "dev:web": "bun run --cwd apps/web dev",
+    "dev:mobile": "bun run --cwd apps/mobile-app dev",
+    "dev:convex": "bun run --cwd packages/backend/convex dev",
+    "build": "bun run build:web && bun run build:mobile && bun run build:convex",
+    "build:web": "bun run --cwd apps/web build",
+    "build:mobile": "bun run --cwd apps/mobile-app build",
+    "build:convex": "bun run --cwd packages/backend/convex build",
+    "convex:codegen": "bun run --cwd packages/backend/convex codegen",
+    "convex:deploy": "bun run --cwd packages/backend/convex deploy",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "lint": "bun run lint:web && bun run lint:mobile",
+    "lint:mobile": "bun run --cwd apps/mobile-app lint",
+    "lint:web": "bun run --cwd apps/web lint",
+    "test": "bun run test:convex && bun run test:web",
+    "test:convex": "bun test packages/backend/convex/convex",
+    "test:web": "bun run --cwd apps/web test",
+    "typecheck": "bun run typecheck:web && bun run typecheck:mobile && bun run typecheck:convex",
+    "typecheck:convex": "tsc -p packages/backend/convex/tsconfig.json --noEmit",
+    "typecheck:mobile": "bun run --cwd apps/mobile-app typecheck",
+    "typecheck:web": "bun run --cwd apps/web typecheck"
+  },
   "workspaces": [
     "apps/*",
-    "packages/*"
-  ]
+    "packages/*",
+    "packages/*/*"
+  ],
+  "overrides": {
+    "@types/react": "19.2.2",
+    "@types/react-dom": "19.2.2"
+  },
+  "dependencies": {
+    "@tailwindcss/typography": "^0.5.19"
+  }
 }

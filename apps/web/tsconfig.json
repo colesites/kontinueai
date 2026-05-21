@@ -1,6 +1,21 @@
 {
   "extends": "@repo/typescript-config/nextjs.json",
   "compilerOptions": {
+    "lib": ["es2023", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "paths": {
+      "@repo/ai/*": ["../../packages/ai/src/*"],
+      "@repo/ui/*": ["../../packages/ui/src/*"],
+      "@repo/utils/*": ["../../packages/utils/src/*"],
+      "@repo/core/*": ["../../packages/core/src/*"],
+      "@repo/convex/*": ["../../packages/backend/convex/*"],
+      "@/lib/*": ["../../packages/ui/src/lib/*"],
+      "@web/*": ["./src/*"],
+      "@/components/*": ["../../packages/ui/src/components/*"],
+      "@/styles/*": ["../../packages/ui/src/styles/*"],
+      "@/hooks/*": ["../../packages/ui/src/hooks/*"]
+    },
     "plugins": [
       {
         "name": "next"
@@ -12,7 +27,7 @@
     "**/*.ts",
     "**/*.tsx",
     "next-env.d.ts",
-    "next.config.js",
+    "next.config.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": ["node_modules"]

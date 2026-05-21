@@ -1,0 +1,22 @@
+{
+    "name": "@repo/ai",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "exports": {
+        ".": "./src/index.ts",
+        "./lib/*": "./src/lib/*",
+        "./models": "./src/lib/models.ts"
+    },
+    "scripts": {
+        "check-types": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@repo/typescript-config": "workspace:*",
+        "typescript": "5.9.2"
+    },
+    "dependencies": {
+        "@ai-sdk/gateway": "^3.0.112",
+        "ai": "^6.0.177"
+    }
+}
