@@ -5,7 +5,6 @@
    */
   "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
-    "rootDir": "./convex",
     "baseUrl": ".",
     "module": "Preserve",
     "moduleResolution": "bundler",
