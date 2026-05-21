@@ -31,7 +31,7 @@ async function generateShortTitle(firstMessage: string): Promise<string> {
   } catch (error) {
     console.error("Failed to generate title:", error);
     // Fallback to simple extraction
-    const firstLine = firstMessage.split("\n")[0].trim();
+    const firstLine = (firstMessage.split("\n")[0] ?? firstMessage).trim();
     return firstLine.length > 50 ? firstLine.slice(0, 50) + "..." : firstLine;
   }
 }
