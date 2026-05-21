@@ -284,6 +284,7 @@ function repairLikelyRoleDrift(messages: ParsedMessage[]): ParsedMessage[] {
     const current = repaired[index];
     const next = repaired[index + 1];
 
+    if (!current) continue;
     if (current.role !== "user" || previous?.role !== "assistant") {
       continue;
     }
@@ -324,6 +325,7 @@ async function normalizeTranscriptWithLLM(
 
   for (let index = 0; index < chunks.length; index += 1) {
     const chunk = chunks[index];
+    if (!chunk) continue;
     const normalizedChunk = await normalizeTranscriptChunkWithContext(
       chunk,
       continuationRole,
@@ -331,23 +333,25 @@ async function normalizeTranscriptWithLLM(
     normalizedChunks.push(normalizedChunk);
 
     const parsedChunk = parseNormalizedTranscript(normalizedChunk).messages;
-    if (parsedChunk.length > 0) {
+    const firstParsed = parsedChunk[0];
+    if (firstParsed) {
       const shouldForceContinuationRole =
         continuationRole !== null &&
-        parsedChunk[0].role !== continuationRole &&
+        firstParsed.role !== continuationRole &&
         !chunkStartsWithExplicitSpeaker(chunk);
 
       if (shouldForceContinuationRole) {
         const forcedRole = continuationRole as "user" | "assistant";
         parsedChunk[0] = {
-          ...parsedChunk[0],
+          ...firstParsed,
           role: forcedRole,
         };
       }
 
       parsedMessages.push(...parsedChunk);
       const merged = mergeAdjacentSameRoleMessages(parsedMessages);
-      continuationRole = merged.length > 0 ? merged[merged.length - 1].role : continuationRole;
+      const last = merged[merged.length - 1];
+      continuationRole = last ? last.role : continuationRole;
     }
 
     if (onChunkProgress) {
@@ -444,7 +448,10 @@ type FirecrawlScrapeApiResponse = {
   };
 };
 
-function normalizeRoleLabel(label: string): "user" | "assistant" | null {
+function normalizeRoleLabel(
+  label: string | undefined,
+): "user" | "assistant" | null {
+  if (!label) return null;
   const normalized = label
     .toLowerCase()
     .replace(/\*\*/g, "")
@@ -633,7 +640,8 @@ function tokenizeSpeakerLabel(label: string): string[] {
     .filter(Boolean);
 }
 
-function isLikelyColonSpeakerLabel(rawLabel: string): boolean {
+function isLikelyColonSpeakerLabel(rawLabel: string | undefined): boolean {
+  if (!rawLabel) return false;
   const normalized = canonicalizeSpeakerLabel(rawLabel);
   if (!normalized || normalized.length > 40) {
     return false;
@@ -725,6 +733,7 @@ function mapSpeakerLabelsToRoles(
     for (let j = i + 1; j < labelKeys.length; j += 1) {
       const first = labelKeys[i];
       const second = labelKeys[j];
+      if (!first || !second) continue;
       const pairSegments = segments.filter(
         (segment) => segment.labelKey === first || segment.labelKey === second,
       );
@@ -744,10 +753,9 @@ function mapSpeakerLabelsToRoles(
 
       const switches = pairSegments.reduce((count, segment, index) => {
         if (index === 0) return 0;
-        return (
-          count +
-          (segment.labelKey !== pairSegments[index - 1].labelKey ? 1 : 0)
-        );
+        const prev = pairSegments[index - 1];
+        if (!prev) return count;
+        return count + (segment.labelKey !== prev.labelKey ? 1 : 0);
       }, 0);
 
       const switchRatio = switches / Math.max(1, pairSegments.length - 1);
@@ -870,7 +878,7 @@ function parseGenericSpeakerTranscript(markdown: string): {
       const roleMatch = line.match(ROLE_HEADER_REGEX);
       if (roleMatch && isLikelyColonSpeakerLabel(roleMatch[1])) {
         flush();
-        currentLabelRaw = roleMatch[1].trim();
+        currentLabelRaw = (roleMatch[1] ?? "").trim();
         currentLabelKey = canonicalizeSpeakerLabel(currentLabelRaw);
         currentParts = [];
         const inlineContent = roleMatch[2]?.trim();
@@ -959,7 +967,7 @@ export function parseNormalizedTranscript(normalizedText: string): {
       const markerMatch = trimmed.match(/^\[(user|assistant)\]:\s*(.*)$/i);
       if (markerMatch) {
         flush();
-        currentRole = markerMatch[1].toLowerCase() === "user" ? "user" : "assistant";
+        currentRole = (markerMatch[1] ?? "").toLowerCase() === "user" ? "user" : "assistant";
         currentParts = [];
         const inlineContent = markerMatch[2]?.trim();
         if (inlineContent) {
@@ -1101,9 +1109,11 @@ async function scrapeAndExtract(
     throw new Error("Could not resolve speaker roles in this transcript.");
   }
 
-  let finalTitle = result.data?.metadata?.title?.trim() || "";
-  if (!finalTitle && messages.length > 0 && messages[0].role === "user") {
-    const firstLine = messages[0].content.split("\n")[0].trim();
+  const rawTitle = result.data?.metadata?.title;
+  let finalTitle = typeof rawTitle === "string" ? rawTitle.trim() : "";
+  const firstMessage = messages[0];
+  if (!finalTitle && firstMessage && firstMessage.role === "user") {
+    const firstLine = firstMessage.content.split("\n")[0]?.trim() ?? "";
     finalTitle = firstLine.length > 50 ? `${firstLine.slice(0, 50)}...` : firstLine;
   }
   if (!finalTitle) {
