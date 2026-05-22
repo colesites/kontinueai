@@ -6,6 +6,7 @@ import { HomeIntroSection } from "../../features/home/components/HomeIntroSectio
 import { useHomePageActions } from "../../features/home/hooks/useHomePageActions";
 import { ChatInput } from "../../features/chat/components/ChatInput";
 import { useSidebar } from "@repo/ui/components/ui/sidebar";
+import { cn } from "@repo/ui/lib/utils";
 
 export default function HomePage() {
   const { state: sidebarState, isMobile: isSidebarMobile } = useSidebar();
@@ -37,7 +38,7 @@ export default function HomePage() {
       <HowToModal />
 
       <div className="relative flex h-full flex-col">
-        <div className="flex-1 overflow-y-auto pb-56">
+        <div className="flex-1 overflow-y-auto pb-32 lg:pb-0 flex flex-col justify-center items-center">
           <HomeIntroSection
             firstName={firstName}
             importModalOpen={importModalOpen}
@@ -48,36 +49,32 @@ export default function HomePage() {
             isImporting={isImporting}
             onImport={handleImport}
           />
-        </div>
 
-        <div
-          data-sidebar-state={sidebarState}
-          className="pointer-events-none fixed bottom-0 z-40 px-4 pb-5 transition-[left,width] duration-300"
-          style={{
-            left:
-              !isSidebarMobile && sidebarState === "expanded"
-                ? "var(--sidebar-width)"
-                : 0,
-            width:
-              !isSidebarMobile && sidebarState === "expanded"
-                ? "calc(100vw - var(--sidebar-width))"
-                : "100vw",
-          }}
-        >
-          <div className="pointer-events-auto relative mx-auto w-full max-w-3xl">
-            <ChatInput
-              onSend={startChatFromPrompt}
-              isLoading={isCreatingChat}
-              disabled={false}
-              model={selectedModel}
-              onModelChange={setSelectedModel}
-              webSearchEnabled={webSearchEnabled}
-              onWebSearchToggle={() => setWebSearchEnabled((prev) => !prev)}
-              imageAspectRatio={imageAspectRatio}
-              imageSize={imageSize}
-              onImageAspectRatioChange={setImageAspectRatio}
-              onImageSizeChange={setImageSize}
-            />
+          <div
+            className={cn(
+              "w-full transition-all duration-300 z-40",
+              "fixed bottom-0 left-0 px-4 pb-5 pointer-events-none",
+              "lg:static lg:mt-8 lg:w-full lg:max-w-3xl lg:px-4 lg:pb-0 lg:pointer-events-auto"
+            )}
+          >
+            <div className="pointer-events-auto relative mx-auto w-full max-w-3xl">
+              {/* Massive Glow Effect */}
+              <div className="pointer-events-none absolute -z-10 bg-primary/25 blur-[80px] transition-all duration-500 max-lg:-bottom-4 max-lg:left-0 max-lg:h-[200px] max-lg:w-full lg:left-1/2 lg:top-1/2 lg:h-[250px] lg:w-[120%] lg:-translate-x-1/2 lg:-translate-y-1/2 lg:rounded-[100%] lg:blur-[120px]" />
+              
+              <ChatInput
+                onSend={startChatFromPrompt}
+                isLoading={isCreatingChat}
+                disabled={false}
+                model={selectedModel}
+                onModelChange={setSelectedModel}
+                webSearchEnabled={webSearchEnabled}
+                onWebSearchToggle={() => setWebSearchEnabled((prev) => !prev)}
+                imageAspectRatio={imageAspectRatio}
+                imageSize={imageSize}
+                onImageAspectRatioChange={setImageAspectRatio}
+                onImageSizeChange={setImageSize}
+              />
+            </div>
           </div>
         </div>
       </div>
