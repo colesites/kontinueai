@@ -98,7 +98,7 @@ export function ChatInput({
   };
 
   return (
-    <div className="glass rounded-3xl p-3 focus-within:ring-soft transition-shadow duration-200">
+    <div className="glass max-lg:bg-background/40 max-lg:backdrop-blur-3xl rounded-3xl p-3 focus-within:ring-soft transition-shadow duration-200">
       <PromptInputProvider>
         <PromptInput
           onSubmit={handleSubmit}

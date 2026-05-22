@@ -61,7 +61,7 @@ function ShellLayout({ children }: { children: ReactNode }) {
   const isChatRoute = pathname.startsWith("/chat/");
 
   const floatingPillClasses =
-    "pointer-events-auto glass rounded-2xl p-1 text-foreground transition-all duration-300";
+    "pointer-events-auto glass max-lg:bg-background/40 max-lg:backdrop-blur-3xl rounded-2xl p-1 text-foreground transition-all duration-300";
 
   const toolbarButtonClasses =
     "inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-all duration-150 hover:bg-foreground/8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";

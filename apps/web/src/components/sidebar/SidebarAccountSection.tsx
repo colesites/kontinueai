@@ -84,7 +84,7 @@ export function SidebarAccountSection({
           side="top"
           sideOffset={8}
           className={cn(
-            "glass rounded-2xl p-2 border-foreground/10",
+            "glass bg-background/40 backdrop-blur-3xl rounded-2xl p-2 border-foreground/10",
             "w-(--radix-dropdown-menu-trigger-width) min-w-(--radix-dropdown-menu-trigger-width)",
             "**:data-[slot=dropdown-menu-item]:rounded-lg **:data-[slot=dropdown-menu-item]:px-2.5 **:data-[slot=dropdown-menu-item]:py-2 **:data-[slot=dropdown-menu-item]:cursor-pointer",
             "**:data-[slot=dropdown-menu-item]:focus:bg-foreground/6 **:data-[slot=dropdown-menu-item]:focus:text-foreground"

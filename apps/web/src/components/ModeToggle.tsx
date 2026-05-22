@@ -61,7 +61,7 @@ export function ModeToggle({ className }: { className?: string }) {
         align="end"
         sideOffset={8}
         className={cn(
-          "glass rounded-2xl p-2 min-w-56 border-foreground/10",
+          "glass bg-background/40 backdrop-blur-3xl rounded-2xl p-2 min-w-56 border-foreground/10",
           // Strip default DropdownMenuItem styling that fights ours
           "**:data-[slot=dropdown-menu-item]:rounded-lg **:data-[slot=dropdown-menu-item]:px-2.5 **:data-[slot=dropdown-menu-item]:py-2",
           "**:data-[slot=dropdown-menu-item]:focus:bg-foreground/6 **:data-[slot=dropdown-menu-item]:focus:text-foreground",
