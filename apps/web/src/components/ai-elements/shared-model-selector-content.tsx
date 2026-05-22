@@ -102,27 +102,26 @@ export function SharedModelSelectorContent({
       {/* Models pane */}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <ModelSelectorInput placeholder="Search models..." />
-        <ModelSelectorList className="flex-1 min-h-0 px-3 pb-3 h-full max-h-none overflow-y-auto touch-pan-y scroll-smooth">
+        <ModelSelectorList className="flex-1 min-h-0 px-4 pb-4 h-full max-h-none overflow-y-auto touch-pan-y scroll-smooth">
           <ModelSelectorEmpty className="py-16 text-sm text-muted-foreground text-center">
             No models found.
           </ModelSelectorEmpty>
           {(activeProvider ? [activeProvider] : providers).map((provider) => (
             <ModelSelectorGroup key={provider}>
               {!activeProvider && (
-                <div className="px-1 pt-4 pb-2.5 flex items-center gap-2">
+                <div className="px-1 pt-5 pb-3 flex items-center gap-2.5">
                   <ModelSelectorLogo
                     provider={provider}
-                    className="size-3 opacity-60"
+                    className="size-4 opacity-70"
                   />
                   <span className="eyebrow">{provider}</span>
                 </div>
               )}
-              <div className="flex flex-col pb-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5 pb-2">
                 {(groupedModels[provider] ?? []).map((m, idx, arr) => {
                   const proModel = isProModel(m.id);
                   const disabledByPlan = !isPro && proModel;
                   const isSelected = selectedModelId === m.id;
-                  const isLast = idx === arr.length - 1;
 
                   return (
                     <ModelSelectorItem
@@ -134,35 +133,54 @@ export function SharedModelSelectorContent({
                       }}
                       value={m.name}
                       className={cn(
-                        "group relative flex items-center gap-3 px-3 py-2.5 cursor-pointer transition-colors duration-150",
-                        // hover only — cmdk's sticky data-selected gets no bg unless cursor is on the row
-                        "hover:bg-foreground/5",
-                        // hairline separator (skip last in group)
-                        !isLast && "border-b border-foreground/6",
-                        // selected state — left accent bar via box-shadow inset
+                        "group relative flex flex-col items-start text-left gap-3 px-4 py-4 cursor-pointer transition-all duration-200 rounded-2xl",
+                        "bg-transparent backdrop-blur-2xl border border-foreground/10 shadow-[0_0_15px_-5px_color-mix(in_oklch,var(--foreground)_20%,transparent)]",
+                        "hover:border-foreground/20 hover:shadow-[0_0_25px_-5px_color-mix(in_oklch,var(--foreground)_30%,transparent)] hover:-translate-y-[2px]",
                         isSelected &&
-                          "bg-primary/6 hover:bg-primary/10 shadow-[inset_3px_0_0_0_var(--primary)]",
-                        disabledByPlan && "opacity-45 cursor-not-allowed hover:bg-transparent",
+                          "bg-primary/5 border-primary/40 shadow-[0_0_30px_-5px_var(--primary)] hover:bg-primary/10 hover:border-primary/50",
+                        disabledByPlan && "opacity-45 cursor-not-allowed hover:bg-transparent hover:border-foreground/10 hover:shadow-[0_0_15px_-5px_color-mix(in_oklch,var(--foreground)_20%,transparent)] hover:translate-y-0",
                       )}
                     >
-                      {/* Logo chip */}
-                      <span
-                        className={cn(
-                          "flex items-center justify-center size-8 rounded-lg shrink-0 transition-colors",
-                          isSelected
-                            ? "bg-primary/12 border border-primary/20"
-                            : "bg-foreground/5 border border-foreground/8 shadow-[inset_0_1px_0_color-mix(in_oklch,var(--foreground)_5%,transparent)]",
-                        )}
-                      >
-                        <ModelSelectorLogo provider={m.provider} className="size-3.5" />
-                      </span>
+                      {/* Top row: Logo + Selection status */}
+                      <div className="flex w-full items-start justify-between">
+                        <span
+                          className={cn(
+                            "flex items-center justify-center size-10 rounded-xl shrink-0 transition-colors shadow-[inset_0_1px_0_color-mix(in_oklch,var(--foreground)_10%,transparent)]",
+                            isSelected
+                              ? "bg-primary/20 border border-primary/30"
+                              : "bg-foreground/5 border border-foreground/10",
+                          )}
+                        >
+                          <ModelSelectorLogo provider={m.provider} className="size-5" />
+                        </span>
 
-                      {/* Name + description */}
-                      <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+                        <div className="flex items-center gap-2 shrink-0">
+                          <ModelCapabilityIcons
+                            className={cn(
+                              "hidden md:flex transition-opacity duration-150",
+                              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-90",
+                            )}
+                            capabilities={getCapabilities(m.id)}
+                          />
+                          <span
+                            className={cn(
+                              "flex items-center justify-center size-5 rounded-full transition-all duration-200",
+                              isSelected
+                                ? "bg-primary text-primary-foreground shadow-[0_2px_6px_-2px_color-mix(in_oklch,var(--primary)_60%,transparent)] scale-100"
+                                : "scale-75 opacity-0",
+                            )}
+                          >
+                            <CheckIcon className="size-3" strokeWidth={3} />
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Bottom row: Name + description */}
+                      <div className="flex flex-col min-w-0 w-full gap-1 mt-1">
                         <div className="flex items-center gap-1.5">
                           <ModelSelectorName
                             className={cn(
-                              "text-[13.5px] truncate",
+                              "text-[14.5px] truncate",
                               isSelected ? "text-foreground font-semibold" : "text-foreground font-medium",
                             )}
                           >
@@ -170,30 +188,9 @@ export function SharedModelSelectorContent({
                           </ModelSelectorName>
                           {proModel && <PremiumModelBadge className="shrink-0" />}
                         </div>
-                        <p className="text-[12px] text-muted-foreground/75 truncate leading-tight">
+                        <p className="text-[12.5px] text-muted-foreground/80 line-clamp-2 leading-relaxed">
                           {m.description || "A powerful AI model."}
                         </p>
-                      </div>
-
-                      {/* Right side: capabilities + selection indicator */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        <ModelCapabilityIcons
-                          className={cn(
-                            "hidden lg:flex transition-opacity duration-150",
-                            isSelected ? "opacity-100" : "opacity-55 group-hover:opacity-90",
-                          )}
-                          capabilities={getCapabilities(m.id)}
-                        />
-                        <span
-                          className={cn(
-                            "flex items-center justify-center size-5 rounded-full transition-all duration-200",
-                            isSelected
-                              ? "bg-primary text-primary-foreground shadow-[0_2px_6px_-2px_color-mix(in_oklch,var(--primary)_60%,transparent)] scale-100"
-                              : "scale-75 opacity-0",
-                          )}
-                        >
-                          <CheckIcon className="size-3" strokeWidth={3} />
-                        </span>
                       </div>
                     </ModelSelectorItem>
                   );
