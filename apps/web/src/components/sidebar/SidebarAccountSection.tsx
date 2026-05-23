@@ -45,7 +45,7 @@ export function SidebarAccountSection({
           <button
             type="button"
             className={cn(
-              "group flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors duration-150",
+              "group flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left transition-colors duration-150 outline-none focus:outline-none focus-visible:outline-none focus-visible:ring-0",
               "hover:bg-foreground/5",
               "data-[state=open]:bg-foreground/6"
             )}

@@ -151,7 +151,7 @@ export const PromptInputTextarea = React.forwardRef<
       disabled={disabled || isLoading}
       rows={1}
       className={cn(
-        "min-h-[24px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent px-0 py-0 text-base shadow-none outline-none focus-visible:ring-0 placeholder:text-muted-foreground/60 dark:placeholder:text-muted-foreground",
+        "min-h-[24px] max-h-[200px] w-full resize-none border-0 bg-transparent dark:bg-transparent disabled:bg-transparent dark:disabled:bg-transparent px-0 py-0 text-base shadow-none outline-none focus-visible:ring-0 placeholder:text-muted-foreground/60 dark:placeholder:text-muted-foreground",
         className,
       )}
       placeholder="Ask anything..."

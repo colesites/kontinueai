@@ -6,11 +6,38 @@ import { ThemeProvider } from "../components/theme-provider";
 import "./globals.css";
 import LoadingFallback from "../components/LoadingFallback";
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://kontinueai.com";
+const siteTitle = "Kontinue AI";
+const siteDescription = "Continue your AI conversations from any platform";
+const ogImage = "/kontinueai-3d.png";
+
 export const metadata: Metadata = {
-  title: "Kontinue AI",
-  description: "Continue your AI conversations from any platform",
+  metadataBase: new URL(siteUrl),
+  title: siteTitle,
+  description: siteDescription,
   icons: {
     icon: "/favicon.ico",
+  },
+  openGraph: {
+    type: "website",
+    url: siteUrl,
+    siteName: siteTitle,
+    title: siteTitle,
+    description: siteDescription,
+    images: [
+      {
+        url: ogImage,
+        width: 1200,
+        height: 630,
+        alt: siteTitle,
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+    images: [ogImage],
   },
 };
 
