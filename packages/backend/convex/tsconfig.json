@@ -5,7 +5,6 @@
    */
   "extends": "@repo/typescript-config/base.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "module": "Preserve",
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,

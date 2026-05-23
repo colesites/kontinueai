@@ -101,6 +101,17 @@ export function isPaidTier(tier: PlanTier): boolean {
   return tier !== "free";
 }
 
+// Per-plan max bytes for a single import upload.
+export const IMPORT_UPLOAD_LIMIT_BYTES: Record<PlanTier, number> = {
+  free: 500 * 1024 * 1024,
+  starter: 1024 * 1024 * 1024,
+  pro: 2 * 1024 * 1024 * 1024,
+};
+
+export function getImportUploadLimitBytes(tier: PlanTier): number {
+  return IMPORT_UPLOAD_LIMIT_BYTES[tier];
+}
+
 export function planLabel(tier: PlanTier): string {
   if (tier === "starter") return "Starter";
   if (tier === "pro") return "Pro";

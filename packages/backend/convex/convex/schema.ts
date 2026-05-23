@@ -157,6 +157,94 @@ export default defineSchema({
     .index("by_owner", ["ownerId"])
     .index("by_status", ["status"]),
 
+  importJobs: defineTable({
+    ownerId: v.id("users"),
+    provider: v.string(), // "chatgpt" | "claude" | "kontinue"
+    // R2 object key for the uploaded raw export (set during upload),
+    // later swapped to the parsed-list key once parsing completes.
+    sourceObjectKey: v.optional(v.string()),
+    sourceFilename: v.optional(v.string()),
+    sourceContentType: v.optional(v.string()),
+    uploadByteSize: v.optional(v.number()),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("canceled"),
+    ),
+    currentStage: v.optional(v.string()), // "parsing" | "phase1" | "phase2" | "done"
+    totalConversations: v.number(),
+    processedConversations: v.number(),
+    importedMessages: v.number(),
+    totalChunks: v.number(),
+    completedChunks: v.number(),
+    progress: v.number(), // 0..1
+    phase1CompletedAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_owner_created", ["ownerId", "createdAt"])
+    .index("by_status", ["status"]),
+
+  importChunks: defineTable({
+    jobId: v.id("importJobs"),
+    ownerId: v.id("users"),
+    priority: v.number(), // 1 = oldest, 2 = newest, 3 = middle
+    chunkType: v.union(
+      v.literal("oldest"),
+      v.literal("newest"),
+      v.literal("middle"),
+    ),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("done"),
+      v.literal("failed"),
+    ),
+    // Indices into the parsed conversation list stored in storage.
+    rangeStart: v.number(),
+    rangeEnd: v.number(),
+    conversationCount: v.number(),
+    retryCount: v.number(),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_job", ["jobId"])
+    .index("by_job_priority_status", ["jobId", "priority", "status"])
+    .index("by_status", ["status"]),
+
+  dataExports: defineTable({
+    ownerId: v.id("users"),
+    format: v.union(
+      v.literal("json"),
+      v.literal("markdown"),
+      v.literal("zip"),
+    ),
+    status: v.union(
+      v.literal("processing"),
+      v.literal("ready"),
+      v.literal("failed"),
+    ),
+    // R2 object key of the finished archive.
+    objectKey: v.optional(v.string()),
+    byteSize: v.optional(v.number()),
+    conversationCount: v.optional(v.number()),
+    memoryCount: v.optional(v.number()),
+    summaryCount: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+    // Soft expiry; UI hints user to download soon.
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_owner_created", ["ownerId", "createdAt"]),
+
   usage: defineTable({
     ownerId: v.id("users"),
     bucketType: v.union(

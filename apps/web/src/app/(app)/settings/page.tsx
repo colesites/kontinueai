@@ -16,8 +16,9 @@ import { SettingsProfileSidebar } from "../../../features/settings/components/Se
 import { SettingsContactCards } from "../../../features/settings/components/SettingsContactCards";
 import { SettingsAccountPanel } from "../../../features/settings/components/SettingsAccountPanel";
 import { SettingsMemoryPanel } from "../../../features/settings/components/SettingsMemoryPanel";
+import { SettingsDataPanel } from "../../../features/settings/components/SettingsDataPanel";
 
-type SettingsTab = "account" | "memory" | "contact";
+type SettingsTab = "account" | "memory" | "data" | "contact";
 
 export default function SettingsPage() {
   const { back } = useRouter();
@@ -104,6 +105,17 @@ export default function SettingsPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setActiveTab("data")}
+                  className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                    activeTab === "data"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Data
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActiveTab("contact")}
                   className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
                     activeTab === "contact"
@@ -127,6 +139,8 @@ export default function SettingsPage() {
               />
             ) : activeTab === "memory" ? (
               <SettingsMemoryPanel />
+            ) : activeTab === "data" ? (
+              <SettingsDataPanel />
             ) : (
               <div className="space-y-6">
                 <div>
