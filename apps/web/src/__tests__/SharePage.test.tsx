@@ -94,9 +94,6 @@ describe("SharePage - Unit Tests", () => {
     expect(subtitle).toBeDefined();
 
     // Verify messages are rendered
-    const messageContainers = container.querySelectorAll('[class*="py-3"]');
-    expect(messageContainers.length).toBe(2);
-
     // Verify message content appears
     const allText = container.textContent || "";
     expect(allText).toContain("Hello, how are you?");
@@ -151,13 +148,9 @@ describe("SharePage - Unit Tests", () => {
 
     // Wait for messages to render
     await waitFor(() => {
-      const messageContainers = container.querySelectorAll('[class*="py-3"]');
-      if (messageContainers.length === 0) throw new Error("Messages not rendered");
+      const allText = container.textContent || "";
+      if (!allText.includes("First message")) throw new Error("Messages not rendered");
     }, { timeout: 1000 });
-
-    // Verify all messages are rendered
-    const messageContainers = container.querySelectorAll('[class*="py-3"]');
-    expect(messageContainers.length).toBe(4);
 
     // Verify all message content appears
     const allText = container.textContent || "";

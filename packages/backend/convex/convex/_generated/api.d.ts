@@ -13,6 +13,8 @@ import type * as chats from "../chats.js";
 import type * as feedback from "../feedback.js";
 import type * as files from "../files.js";
 import type * as firecrawl from "../firecrawl.js";
+import type * as memories from "../memories.js";
+import type * as memoryWorkers from "../memoryWorkers.js";
 import type * as messages from "../messages.js";
 import type * as titleGenerator from "../titleGenerator.js";
 import type * as users from "../users.js";
@@ -30,6 +32,8 @@ declare const fullApi: ApiFromModules<{
   feedback: typeof feedback;
   files: typeof files;
   firecrawl: typeof firecrawl;
+  memories: typeof memories;
+  memoryWorkers: typeof memoryWorkers;
   messages: typeof messages;
   titleGenerator: typeof titleGenerator;
   users: typeof users;

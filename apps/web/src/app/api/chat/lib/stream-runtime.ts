@@ -1,6 +1,4 @@
 import {
-  smoothStream,
-  stepCountIs,
   type LanguageModel,
   type ModelMessage,
   type StopCondition,
@@ -26,6 +24,12 @@ export type ToolRuntime = {
   maxSteps: number;
   stopWhen: StopCondition<ToolSet>[];
 };
+
+function stopWhenStepCountReached(
+  maxSteps: number,
+): StopCondition<ToolSet> {
+  return ({ steps }) => steps.length >= maxSteps;
+}
 
 export function resolveToolRuntime(options: ToolRuntimeOptions): ToolRuntime {
   const {
@@ -69,7 +73,7 @@ export function resolveToolRuntime(options: ToolRuntimeOptions): ToolRuntime {
   const stopWhen: StopCondition<ToolSet>[] =
     hasTools && !shouldDisableTools
       ? [
-          stepCountIs(maxSteps),
+          stopWhenStepCountReached(maxSteps),
           stopWhenOutputBudgetReached(maxOutputTokens),
           shouldStopAfterAnswer,
         ]
@@ -129,7 +133,6 @@ export function buildStreamOptions(options: BuildStreamOptionsInput) {
     messages: modelMessages,
     maxTokens: maxOutputTokens,
     tools: shouldDisableTools ? undefined : hasTools ? tools : undefined,
-    experimental_transform: smoothStream(),
     ...(forceImageTool
       ? {
           toolChoice: { type: "tool" as const, toolName: "image_generation" },

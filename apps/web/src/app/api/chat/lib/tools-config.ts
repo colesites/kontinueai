@@ -67,6 +67,7 @@ function makeGetCurrentTimeTool(userTimezone: string | null) {
   });
 }
 import {
+  buildMemoryContext,
   buildResponseBudgetContext,
   buildImageGenerationContext,
   buildWebSearchContext,
@@ -101,6 +102,7 @@ export function buildToolsAndPrompt(options: {
   apiKey: string;
   gatewayOpenAIBaseUrl: string;
   userTimezone?: string | null;
+  memoryContextText?: string | null;
 }): ToolsConfigResult {
   const {
     requestedModel,
@@ -113,6 +115,7 @@ export function buildToolsAndPrompt(options: {
     apiKey,
     gatewayOpenAIBaseUrl,
     userTimezone,
+    memoryContextText,
   } = options;
 
   const capabilities = deriveCapabilities(requestedModel);
@@ -192,7 +195,8 @@ export function buildToolsAndPrompt(options: {
     CHAT_SYSTEM_PROMPT +
     responseBudgetContext +
     webSearchContext +
-    imageGenContext;
+    imageGenContext +
+    buildMemoryContext(memoryContextText ?? null);
 
   const forceImageTool =
     hasImageGen &&

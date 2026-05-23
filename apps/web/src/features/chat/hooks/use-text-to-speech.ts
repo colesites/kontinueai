@@ -18,7 +18,7 @@ export function useTextToSpeech(content: string) {
   useEffect(() => {
     return () => {
       if (typeof window === "undefined") return;
-      window.speechSynthesis.cancel();
+      window.speechSynthesis?.cancel?.();
     };
   }, []);
 

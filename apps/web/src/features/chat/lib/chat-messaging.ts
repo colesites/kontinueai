@@ -103,7 +103,11 @@ function getClientTimezone(): string | null {
   }
 }
 
-export function toChatRequestBody(state: ChatRequestBodyState): {
+export function toChatRequestBody(
+  state: ChatRequestBodyState,
+  chatId: string,
+): {
+  chatId: string;
   model: string;
   webSearchEnabled: boolean;
   imageAspectRatio: string;
@@ -111,6 +115,7 @@ export function toChatRequestBody(state: ChatRequestBodyState): {
   userTimezone: string | null;
 } {
   return {
+    chatId,
     model: state.selectedModel,
     webSearchEnabled: state.webSearchEnabled,
     imageAspectRatio: state.imageAspectRatio,

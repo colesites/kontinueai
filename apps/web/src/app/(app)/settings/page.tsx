@@ -15,11 +15,12 @@ import {
 import { SettingsProfileSidebar } from "../../../features/settings/components/SettingsProfileSidebar";
 import { SettingsContactCards } from "../../../features/settings/components/SettingsContactCards";
 import { SettingsAccountPanel } from "../../../features/settings/components/SettingsAccountPanel";
+import { SettingsMemoryPanel } from "../../../features/settings/components/SettingsMemoryPanel";
 
-type SettingsTab = "account" | "contact";
+type SettingsTab = "account" | "memory" | "contact";
 
 export default function SettingsPage() {
-  const router = useRouter();
+  const { back } = useRouter();
   const { user } = useUser();
   const usage = useQuery(api.messages.getMonthlyUsage, {});
   const currentPlanTier = usePlanTier();
@@ -50,10 +51,10 @@ export default function SettingsPage() {
         <div className="mb-6 flex items-center justify-between">
           <button
             type="button"
-            onClick={() => router.back()}
+            onClick={() => back()}
             className="inline-flex items-center gap-2 rounded-lg border border-border/70 bg-card/60 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="size-4" />
             Back to Chat
           </button>
           <SignOutButton>
@@ -61,7 +62,7 @@ export default function SettingsPage() {
               type="button"
               className="inline-flex items-center gap-2 rounded-lg border border-border/70 bg-card/60 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
             >
-              <LogOut className="h-4 w-4" />
+              <LogOut className="size-4" />
               Sign out
             </button>
           </SignOutButton>
@@ -92,6 +93,17 @@ export default function SettingsPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setActiveTab("memory")}
+                  className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                    activeTab === "memory"
+                      ? "bg-card text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  Memory
+                </button>
+                <button
+                  type="button"
                   onClick={() => setActiveTab("contact")}
                   className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
                     activeTab === "contact"
@@ -113,6 +125,8 @@ export default function SettingsPage() {
                 }}
                 usage={usage}
               />
+            ) : activeTab === "memory" ? (
+              <SettingsMemoryPanel />
             ) : (
               <div className="space-y-6">
                 <div>

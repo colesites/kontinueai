@@ -51,7 +51,10 @@ async function getOrCreateAuthenticatedUser(ctx: MutationCtx) {
     imageUrl: identity.pictureUrl ?? undefined,
     subscriptionStatus: "inactive",
     plan: "free",
+    memoryUsedBytes: 0,
+    memoryLimitBytes: 512 * 1024,
     createdAt: now,
+    updatedAt: now,
   });
 
   const inserted = await ctx.db.get(userId);

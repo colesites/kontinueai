@@ -16,6 +16,9 @@ import {
   logDetailedError,
 } from "./lib/request-utils";
 import { getAuthContext, parseChatRouteInput } from "./lib/route-input";
+import { fetchAction } from "convex/nextjs";
+import { api as convexApi } from "@repo/convex/convex/_generated/api";
+import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import {
   buildStreamOptions,
   resolveToolRuntime,
@@ -27,12 +30,13 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const { userId, hasPlan } = await getAuthContext();
+    const { userId, hasPlan, getToken } = await getAuthContext();
     if (!userId) {
       return new Response("Unauthorized", { status: 401 });
     }
 
     const {
+      chatId,
       messages,
       modelId,
       webSearchEnabled: requestedWebSearchEnabled,
@@ -87,6 +91,26 @@ export async function POST(req: Request) {
       });
     }
 
+    let memoryContextText: string | null = null;
+    if (chatId && lastUserContent.trim()) {
+      try {
+        const convexToken = await getToken?.({ template: "convex" });
+        if (convexToken) {
+          const memoryContext = await fetchAction(
+            convexApi.memoryWorkers.getChatMemoryContext,
+            {
+              chatId: chatId as Id<"chats">,
+              userMessage: lastUserContent,
+            },
+            { token: convexToken },
+          );
+          memoryContextText = memoryContext?.contextText ?? null;
+        }
+      } catch (error) {
+        logDetailedError("Memory context fetch failed", error);
+      }
+    }
+
     const modelInstance = gateway(modelId) as unknown as LanguageModel;
     const toolsConfig = buildToolsAndPrompt({
       requestedModel,
@@ -99,6 +123,7 @@ export async function POST(req: Request) {
       apiKey: gatewayRuntime.apiKey,
       gatewayOpenAIBaseUrl: gatewayRuntime.gatewayOpenAIBaseUrl,
       userTimezone,
+      memoryContextText,
     });
 
     const toolRuntime = resolveToolRuntime({

@@ -114,6 +114,17 @@ export function buildImageGenerationContext(options: {
   return "";
 }
 
+export function buildMemoryContext(memoryContextText: string | null): string {
+  if (!memoryContextText) return "";
+  return [
+    "\n\nMemory context:",
+    "Use this retrieved user context when it is relevant.",
+    "Treat it as durable background memory, not a verbatim answer template.",
+    "Do not mention 'memory retrieval' unless the user explicitly asks about it.",
+    memoryContextText,
+  ].join(" ");
+}
+
 export function looksLikeSportsPlayerQuery(input: string): boolean {
   return /\b(chelsea|premier league|football|soccer|player|best|top scorer|assists?)\b/i.test(
     input,

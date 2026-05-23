@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { getMemoryLimitBytesForPlan } from "@repo/core/memory";
 
 export const getOrCreateUser = mutation({
   args: {
@@ -11,6 +12,8 @@ export const getOrCreateUser = mutation({
     plan: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const now = Date.now();
+    const memoryLimitBytes = getMemoryLimitBytesForPlan(args.plan);
     const existing = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", args.clerkUserId))
@@ -21,7 +24,12 @@ export const getOrCreateUser = mutation({
       const patches: Partial<
         Pick<
           typeof existing,
-          "name" | "imageUrl" | "subscriptionStatus" | "plan"
+          | "name"
+          | "imageUrl"
+          | "subscriptionStatus"
+          | "plan"
+          | "memoryLimitBytes"
+          | "updatedAt"
         >
       > = {};
       if (existing.name !== args.name) patches.name = args.name;
@@ -29,6 +37,10 @@ export const getOrCreateUser = mutation({
       if (existing.subscriptionStatus !== args.subscriptionStatus)
         patches.subscriptionStatus = args.subscriptionStatus;
       if (existing.plan !== args.plan) patches.plan = args.plan;
+      if (existing.memoryLimitBytes !== memoryLimitBytes) {
+        patches.memoryLimitBytes = memoryLimitBytes;
+      }
+      patches.updatedAt = now;
 
       if (Object.keys(patches).length > 0) {
         await ctx.db.patch(existing._id, patches);
@@ -43,7 +55,10 @@ export const getOrCreateUser = mutation({
       imageUrl: args.imageUrl,
       subscriptionStatus: args.subscriptionStatus,
       plan: args.plan,
-      createdAt: Date.now(),
+      memoryUsedBytes: 0,
+      memoryLimitBytes,
+      createdAt: now,
+      updatedAt: now,
     });
   },
 });

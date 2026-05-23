@@ -91,7 +91,7 @@ export function useChatMessaging({
           content,
           isPremiumModel: isPremium(state.selectedModel),
         });
-        const requestBody = toChatRequestBody(state);
+        const requestBody = toChatRequestBody(state, chatId);
         const imageFileParts = await toImageFileUIParts(files);
         const nonImageFiles = nonImageAttachments(files);
         const contentWithFiles = withAttachmentSummary(content, nonImageFiles);
@@ -126,12 +126,12 @@ export function useChatMessaging({
 
       regenerate({
         body: {
-          ...toChatRequestBody(state),
+          ...toChatRequestBody(state, chatId),
           model: modelOverride ?? state.selectedModel,
         },
       });
     },
-    [regenerate, setMessages, getState],
+    [chatId, regenerate, setMessages, getState],
   );
 
   const handleEdit = useCallback(
@@ -183,10 +183,11 @@ export function useChatMessaging({
       });
 
       const state = getState();
-      regenerate({ body: toChatRequestBody(state) });
+      regenerate({ body: toChatRequestBody(state, chatId) });
     },
     [
       aiMessages,
+      chatId,
       dbMessages,
       updateMessageContent,
       deleteMessagesAfter,

@@ -22,7 +22,7 @@ export const MessageContent = memo(function MessageContent({
         rehypePlugins={[rehypeHighlight]}
         components={{
           p: ({ children, ...props }) => (
-            <p className="wrap-anywhere" {...props}>
+            <p className="wrap-anywhere" data-testid="message-content-paragraph" {...props}>
               {children}
             </p>
           ),

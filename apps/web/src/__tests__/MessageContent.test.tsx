@@ -27,7 +27,7 @@ describe("MessageContent", () => {
       <MessageContent content="https://example.com/this-is-a-very-long-link-with-no-natural-break-points-at-all" />,
     );
 
-    const paragraph = container.querySelector("p");
-    expect(paragraph?.className).toContain("[overflow-wrap:anywhere]");
+    const paragraph = screen.getByTestId("message-content-paragraph");
+    expect(paragraph.className).toContain("wrap-anywhere");
   });
 });

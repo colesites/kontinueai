@@ -9,7 +9,10 @@ export default defineSchema({
     imageUrl: v.optional(v.string()),
     subscriptionStatus: v.optional(v.string()), // 'active', 'canceled'
     plan: v.optional(v.string()), // 'free', 'starter_plan', 'pro_plan'
+    memoryUsedBytes: v.optional(v.number()),
+    memoryLimitBytes: v.optional(v.number()),
     createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
   })
     .index("by_clerk_id", ["clerkUserId"])
     .index("by_email", ["email"]),
@@ -17,6 +20,9 @@ export default defineSchema({
   chats: defineTable({
     ownerId: v.id("users"),
     title: v.string(),
+    summary: v.optional(v.string()),
+    archived: v.optional(v.boolean()),
+    lastMessageAt: v.optional(v.number()),
     pinnedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -43,6 +49,8 @@ export default defineSchema({
       v.literal("assistant"),
     ),
     content: v.string(),
+    tokenCount: v.optional(v.number()),
+    embedding: v.optional(v.array(v.float64())),
     createdAt: v.number(),
     order: v.number(),
     metadata: v.optional(
@@ -59,6 +67,75 @@ export default defineSchema({
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["ownerId", "role"],
+    }),
+
+  memories: defineTable({
+    userId: v.id("users"),
+    type: v.union(
+      v.literal("preference"),
+      v.literal("personal_fact"),
+      v.literal("project"),
+      v.literal("long_term"),
+      v.literal("summary"),
+      v.literal("workflow"),
+      v.literal("relationship"),
+      v.literal("context"),
+    ),
+    content: v.string(),
+    normalizedContent: v.string(),
+    compressedContent: v.optional(v.string()),
+    keywords: v.array(v.string()),
+    embedding: v.array(v.float64()),
+    importanceScore: v.number(),
+    pinned: v.boolean(),
+    manuallySaved: v.boolean(),
+    archived: v.boolean(),
+    sourceChatId: v.optional(v.id("chats")),
+    sourceMessageIds: v.array(v.id("messages")),
+    byteSize: v.number(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastAccessedAt: v.number(),
+  })
+    .index("by_user_updated", ["userId", "updatedAt"])
+    .index("by_user_last_accessed", ["userId", "lastAccessedAt"])
+    .index("by_user_type", ["userId", "type"])
+    .searchIndex("search_content", {
+      searchField: "content",
+      filterFields: ["userId", "type", "pinned", "archived"],
+    })
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["userId", "type", "pinned", "archived"],
+    }),
+
+  memorySummaries: defineTable({
+    userId: v.id("users"),
+    periodType: v.union(
+      v.literal("conversation"),
+      v.literal("daily"),
+      v.literal("weekly"),
+    ),
+    periodStart: v.number(),
+    periodEnd: v.number(),
+    summary: v.string(),
+    embedding: v.array(v.float64()),
+    byteSize: v.number(),
+    sourceChatId: v.optional(v.id("chats")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user_period", ["userId", "periodType", "periodStart"])
+    .index("by_user_updated", ["userId", "updatedAt"])
+    .searchIndex("search_summary", {
+      searchField: "summary",
+      filterFields: ["userId", "periodType"],
+    })
+    .vectorIndex("by_embedding", {
+      vectorField: "embedding",
+      dimensions: 1536,
+      filterFields: ["userId", "periodType"],
     }),
 
   imports: defineTable({

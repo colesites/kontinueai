@@ -13,9 +13,9 @@ describe("ShareButton - Unit Tests", () => {
     expect(button).toBeDefined();
     
     // Check that the button has the correct styling classes
-    expect(button.className).toContain("bg-secondary/80");
-    expect(button.className).toContain("hover:bg-secondary/90");
-    expect(button.className).toContain("backdrop-blur-sm");
+    expect(button.className).toContain("hover:bg-secondary/80");
+    expect(button.className).toContain("rounded-lg");
+    expect(button.className).toContain("focus-visible:ring-2");
   });
 
   test("opens modal on click", async () => {

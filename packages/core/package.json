@@ -5,7 +5,7 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./*": "./src/*.tsx"
+    "./*": "./src/*.ts"
   },
   "devDependencies": {
     "@repo/ai": "workspace:*",

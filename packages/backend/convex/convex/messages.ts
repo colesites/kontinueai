@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, internalMutation } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { getPersistedPlanTier, isPersistedPaidPlan } from "../lib/plan";
 import {
   getMonthlyAutomaticImportLimit,
@@ -59,6 +59,15 @@ export const getMessages = query({
       .query("messages")
       .withIndex("by_chat_order", (q) => q.eq("chatId", args.chatId))
       .collect();
+  },
+});
+
+export const getMessageByIdInternal = internalQuery({
+  args: {
+    messageId: v.id("messages"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.messageId);
   },
 });
 
@@ -297,17 +306,28 @@ export const addMessage = mutation({
       ownerId: user._id,
       role: args.role,
       content: args.content,
+      tokenCount: Math.ceil(args.content.length / 4),
       createdAt: now,
       order,
       metadata: {
         model: args.model,
+        tokenCount: Math.ceil(args.content.length / 4),
         isImported: false,
       },
     });
 
     // Update chat's updatedAt
     await ctx.db.patch(args.chatId, {
+      lastMessageAt: now,
       updatedAt: now,
+    });
+
+    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageForMemory, {
+      chatId: args.chatId,
+      messageId,
+    });
+    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
+      messageId,
     });
 
     return messageId;
@@ -346,6 +366,19 @@ export const updateMessageContent = mutation({
 
     await ctx.db.patch(args.messageId, {
       content: args.content,
+      tokenCount: Math.ceil(args.content.length / 4),
+      metadata: {
+        ...message.metadata,
+        tokenCount: Math.ceil(args.content.length / 4),
+      },
+    });
+
+    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageForMemory, {
+      chatId: message.chatId,
+      messageId: args.messageId,
+    });
+    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
+      messageId: args.messageId,
     });
   },
 });
@@ -401,6 +434,10 @@ export const deleteMessagesAfter = mutation({
       .collect();
 
     await Promise.all(laterMessages.map((m) => ctx.db.delete(m._id)));
+
+    await ctx.scheduler.runAfter(0, internal.memoryWorkers.refreshSummaries, {
+      chatId: target.chatId,
+    });
   },
 });
 
@@ -414,6 +451,26 @@ export const updateChatTitleInternal = internalMutation({
     await ctx.db.patch(args.chatId, {
       title: args.title,
       updatedAt: Date.now(),
+    });
+  },
+});
+
+export const updateMessageEmbeddingInternal = internalMutation({
+  args: {
+    messageId: v.id("messages"),
+    embedding: v.array(v.number()),
+    tokenCount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message) return;
+    await ctx.db.patch(args.messageId, {
+      embedding: args.embedding,
+      tokenCount: args.tokenCount,
+      metadata: {
+        ...message.metadata,
+        tokenCount: args.tokenCount,
+      },
     });
   },
 });

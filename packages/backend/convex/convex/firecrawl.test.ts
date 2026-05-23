@@ -16,16 +16,16 @@ Write me a poem.`;
 
     expect(messages).toHaveLength(3);
 
-    expect(messages[0].role).toBe("user");
-    expect(messages[0].content).toBe("Hello, how are you?");
+    expect(messages[0]?.role).toBe("user");
+    expect(messages[0]?.content).toBe("Hello, how are you?");
 
-    expect(messages[1].role).toBe("assistant");
-    expect(messages[1].content).toBe(
+    expect(messages[1]?.role).toBe("assistant");
+    expect(messages[1]?.content).toBe(
       "I am doing well! How can I help you today?",
     );
 
-    expect(messages[2].role).toBe("user");
-    expect(messages[2].content).toBe("Write me a poem.");
+    expect(messages[2]?.role).toBe("user");
+    expect(messages[2]?.content).toBe("Write me a poem.");
   });
 
   test("handles code blocks inside messages", () => {
@@ -42,9 +42,9 @@ Hope it helps!`;
     const { messages } = parseNormalizedTranscript(input);
 
     expect(messages).toHaveLength(2);
-    expect(messages[1].role).toBe("assistant");
-    expect(messages[1].content).toContain("\`\`\`javascript");
-    expect(messages[1].content).toContain('console.log("Hello");');
+    expect(messages[1]?.role).toBe("assistant");
+    expect(messages[1]?.content).toContain("\`\`\`javascript");
+    expect(messages[1]?.content).toContain('console.log("Hello");');
   });
 
   test("does not split on [USER]/[ASSISTANT] markers inside code blocks", () => {
@@ -62,9 +62,9 @@ Done.`;
     const { messages } = parseNormalizedTranscript(input);
 
     expect(messages).toHaveLength(2);
-    expect(messages[1].role).toBe("assistant");
-    expect(messages[1].content).toContain("[USER]:");
-    expect(messages[1].content).toContain("not a new turn");
+    expect(messages[1]?.role).toBe("assistant");
+    expect(messages[1]?.content).toContain("[USER]:");
+    expect(messages[1]?.content).toContain("not a new turn");
   });
 
   test("handles robustness: spacing and newlines", () => {
@@ -77,8 +77,8 @@ Okay!
 `;
     const { messages } = parseNormalizedTranscript(input);
     expect(messages).toHaveLength(2);
-    expect(messages[0].content).toBe("Trim me please");
-    expect(messages[1].content).toBe("Okay!");
+    expect(messages[0]?.content).toBe("Trim me please");
+    expect(messages[1]?.content).toBe("Okay!");
   });
 
   test("ignores broken or empty markers", () => {
@@ -93,6 +93,6 @@ Ignored
     // If there is extra text at the top, it should be ignored if it's before the first marker.
     const { messages } = parseNormalizedTranscript(input);
     expect(messages).toHaveLength(1);
-    expect(messages[0].content).toBe("Valid content\n[BROKEN]:\nIgnored");
+    expect(messages[0]?.content).toBe("Valid content\n[BROKEN]:\nIgnored");
   });
 });

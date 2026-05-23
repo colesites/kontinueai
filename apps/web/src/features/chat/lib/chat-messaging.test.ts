@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getChatErrorToast } from "./chat-messaging";
+import { getChatErrorToast, toChatRequestBody } from "./chat-messaging";
 
 describe("getChatErrorToast", () => {
   test("maps input-too-long errors to a friendly toast", () => {
@@ -29,5 +29,21 @@ describe("getChatErrorToast", () => {
       title: "You're not signed in.",
       description: "Please refresh and sign in again.",
     });
+  });
+
+  test("includes chatId in chat request payload", () => {
+    const body = toChatRequestBody(
+      {
+        selectedModel: "openai/gpt-5.5",
+        webSearchEnabled: true,
+        imageAspectRatio: "1:1",
+        imageSize: "1024x1024",
+      },
+      "chat_123",
+    );
+
+    expect(body.chatId).toBe("chat_123");
+    expect(body.model).toBe("openai/gpt-5.5");
+    expect(body.webSearchEnabled).toBe(true);
   });
 });

@@ -8,6 +8,7 @@ import {
   getUtcMonthRange,
 } from "../lib/import_limits";
 import type { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 
 const IMPORT_MESSAGE_MAX_CHARS = 300_000;
 
@@ -167,6 +168,8 @@ export const createChat = mutation({
     const chatId = await ctx.db.insert("chats", {
       ownerId: user._id,
       title: args.title,
+      archived: false,
+      lastMessageAt: now,
       createdAt: now,
       updatedAt: now,
       source: {
@@ -178,18 +181,28 @@ export const createChat = mutation({
     });
 
     // Insert imported messages in parallel while preserving deterministic order values.
-    await Promise.all(
+    const insertedMessageIds = await Promise.all(
       messagesForStorage.map((msg, index) =>
         ctx.db.insert("messages", {
           chatId,
           ownerId: user._id,
           role: msg.role,
           content: msg.content,
+          tokenCount: Math.ceil(msg.content.length / 4),
           createdAt: now,
           order: index,
           metadata: {
+            tokenCount: Math.ceil(msg.content.length / 4),
             isImported: true,
           },
+        }),
+      ),
+    );
+
+    await Promise.all(
+      insertedMessageIds.map((messageId) =>
+        ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
+          messageId,
         }),
       ),
     );
@@ -250,18 +263,28 @@ export const appendImportedMessagesToChat = mutation({
     const now = Date.now();
     const messagesForStorage = expandMessagesForStorage(args.messages);
 
-    await Promise.all(
+    const insertedMessageIds = await Promise.all(
       messagesForStorage.map((message, index) =>
         ctx.db.insert("messages", {
           chatId: args.chatId,
           ownerId: user._id,
           role: message.role,
           content: message.content,
+          tokenCount: Math.ceil(message.content.length / 4),
           createdAt: now,
           order: nextOrderStart + index,
           metadata: {
+            tokenCount: Math.ceil(message.content.length / 4),
             isImported: true,
           },
+        }),
+      ),
+    );
+
+    await Promise.all(
+      insertedMessageIds.map((messageId) =>
+        ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
+          messageId,
         }),
       ),
     );
@@ -328,9 +351,11 @@ export const appendImportFailureMessageToChat = mutation({
       ownerId: user._id,
       role: "assistant",
       content: `Import failed: ${sanitizedError}`,
+      tokenCount: Math.ceil(`Import failed: ${sanitizedError}`.length / 4),
       createdAt: now,
       order: nextOrder,
       metadata: {
+        tokenCount: Math.ceil(`Import failed: ${sanitizedError}`.length / 4),
         isImported: true,
       },
     });

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { useSidebar } from "@repo/ui/components/ui/sidebar";
+import { Alert, AlertDescription, AlertTitle } from "@repo/ui/components/ui/alert";
 import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 import { useChatContext } from "../../../providers/ChatProvider";
 import {
@@ -31,6 +32,14 @@ import { ChatStatusView } from "./ChatStatusView";
 import { ChatImportStatusBanner } from "./ChatImportStatusBanner";
 
 export function ChatClient() {
+  return (
+    <Suspense fallback={<ChatStatusView chat={undefined} dbMessages={undefined} />}>
+      <ChatClientContent />
+    </Suspense>
+  );
+}
+
+function ChatClientContent() {
   const { setChatInfo, clearChatInfo } = useChatContext();
   const { getCapabilities, isProModel } = useModelCapabilities();
   const { state: sidebarState, isMobile: isSidebarMobile } = useSidebar();
@@ -49,6 +58,7 @@ export function ChatClient() {
     api.files.listByChat,
     chatId ? { chatId } : "skip",
   );
+  const memoryStatus = useQuery(api.memories.getMemoryStatus, {});
   const addMessage = useMutation(api.messages.addMessage);
   const updateMessageContent = useMutation(api.messages.updateMessageContent);
   const deleteMessagesAfter = useMutation(api.messages.deleteMessagesAfter);
@@ -153,6 +163,14 @@ export function ChatClient() {
         importFailureMessage={importFailureMessage}
         importProgress={importProgress}
       />
+      {memoryStatus?.warning ? (
+        <div className="px-4 pt-4 sm:px-6">
+          <Alert>
+            <AlertTitle>Memory limit reached</AlertTitle>
+            <AlertDescription>{memoryStatus.warning}</AlertDescription>
+          </Alert>
+        </div>
+      ) : null}
       <div className="flex-1">
         <ChatMessageList
           messages={displayMessages}

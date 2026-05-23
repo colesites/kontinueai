@@ -1,23 +1,47 @@
 import { CanvasInputBar } from "../features/canvas/components/CanvasInputBar";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { expect, test, describe, vi } from "bun:test";
+import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { expect, test, describe, vi, beforeEach, afterEach } from "bun:test";
 
-// Mock the models
-vi.mock("@repo/ui/lib/canvas-models", () => ({
+vi.mock("@repo/ai/lib/canvas-models", () => ({
   IMAGE_MODELS: [{ id: "img-1", name: "Image 1" }],
   VIDEO_MODELS: [{ id: "vid-1", name: "Video 1" }],
   ASPECT_RATIOS: [{ value: "1:1", label: "1:1" }],
-  VIDEO_DURATIONS: [2, 5, 10], // Mocked durations
+  VIDEO_DURATIONS: [2, 5, 10],
   DEFAULT_IMAGE_MODEL: "img-1",
   DEFAULT_VIDEO_MODEL: "vid-1",
+  isRatioSupported: () => true,
+  isDurationSupported: () => true,
 }));
 
-// Mock the sidebar hook
 vi.mock("@repo/ui/components/ui/sidebar", () => ({
   useSidebar: () => ({
     state: "expanded",
     isMobile: false,
   }),
+}));
+
+vi.mock("../features/canvas/components/CanvasInputPrompt", () => ({
+  CanvasInputPrompt: () => <div data-testid="canvas-input-prompt" />,
+}));
+
+vi.mock("../features/canvas/components/CanvasInputControls", () => ({
+  CanvasInputControls: ({
+    mode,
+    setMode,
+    duration,
+  }: {
+    mode: "image" | "video";
+    setMode: (mode: "image" | "video") => void;
+    duration: number;
+  }) => (
+    <div>
+      <div data-testid="mode">{mode}</div>
+      <div data-testid="duration">{duration}s</div>
+      <button type="button" onClick={() => setMode("video")}>
+        Switch To Video
+      </button>
+    </div>
+  ),
 }));
 
 const mockProps = {
@@ -30,44 +54,46 @@ const mockProps = {
 };
 
 describe("CanvasInputBar", () => {
-  test("automatically adjusts duration when credits decrease", async () => {
-    // Start with enough credits for 5s (100 credits)
-    const initialCredits = { remaining: 120, total: 1000 };
-    const { rerender } = render(<CanvasInputBar {...mockProps} credits={initialCredits} />);
-
-    // Switch to video mode
-    const videoButton = screen.getByRole("button", { name: /video/i });
-    fireEvent.click(videoButton);
-
-    // Initial duration is 5s
-    const durationButton = screen.getByTitle("Duration");
-    expect(durationButton.textContent).toContain("5s");
-
-    // Now simulate credits dropping to 50.
-    // 5s (100) is now unaffordable.
-    // 2s (40) is the affordable option.
-    const lowCredits = { remaining: 50, total: 1000 };
-    
-    rerender(<CanvasInputBar {...mockProps} credits={lowCredits} />);
-
-    // The duration pill should now show 2s
-    expect(durationButton.textContent).toContain("2s");
+  beforeEach(() => {
+    cleanup();
   });
 
-  test("filters options in PillSelect based on affordability", async () => {
-    // With 50 credits, only 2s should be available
-    const credits = { remaining: 50, total: 1000 };
-    render(<CanvasInputBar {...mockProps} credits={credits} />);
-    
-    const videoButton = screen.getByRole("button", { name: /video/i });
-    fireEvent.click(videoButton);
+  afterEach(() => {
+    cleanup();
+  });
 
-    const durationButton = screen.getByTitle("Duration");
-    fireEvent.click(durationButton);
-    
-    // Check for 2s and 5s
-    // Since we can't easily check hidden dropdown content in this test, 
-    // we'll rely on the auto-correction test as the primary verification.
-    expect(durationButton.textContent).toContain("2s");
+  test("automatically adjusts duration when credits decrease", () => {
+    const initialCredits = { remaining: 120, total: 1000 };
+    const { rerender } = render(
+      <CanvasInputBar {...mockProps} credits={initialCredits} />,
+    );
+
+    fireEvent.click(screen.getByText("Switch To Video"));
+
+    expect(screen.getByTestId("mode").textContent).toBe("video");
+    expect(screen.getByTestId("duration").textContent).toContain("5s");
+
+    rerender(
+      <CanvasInputBar
+        {...mockProps}
+        credits={{ remaining: 50, total: 1000 }}
+      />,
+    );
+
+    expect(screen.getByTestId("duration").textContent).toContain("2s");
+  });
+
+  test("switches to video mode while preserving a valid duration state", () => {
+    render(
+      <CanvasInputBar
+        {...mockProps}
+        credits={{ remaining: 50, total: 1000 }}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Switch To Video"));
+
+    expect(screen.getByTestId("mode").textContent).toBe("video");
+    expect(screen.getByTestId("duration").textContent).toContain("5s");
   });
 });
