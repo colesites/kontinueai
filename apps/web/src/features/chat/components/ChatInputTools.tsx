@@ -3,18 +3,21 @@
 import type { ChangeEvent, RefObject } from "react";
 import { CiGlobe } from "react-icons/ci";
 import { FaPaperclip } from "react-icons/fa";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { cn } from "@repo/ui/lib/utils";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@repo/ui/components/ui/dropdown-menu";
 import { ChatInputImageOptions } from "./ChatInputImageOptions";
 import { ChatInputModelSelector } from "./ChatInputModelSelector";
 import {
   PromptInputButton,
   PromptInputTools,
 } from "../../../components/ai-elements/prompt-input";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@repo/ui/components/ui/tooltip";
 
 type ChatInputToolsProps = {
   model: string;
@@ -72,64 +75,39 @@ export function ChatInputTools({
 
   return (
     <PromptInputTools>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <PromptInputButton
+            type="button"
+            className="px-2 text-muted-foreground hover:text-foreground"
+            aria-label="Add attachment or tools"
+          >
+            <Plus className="h-4 w-4" />
+          </PromptInputButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" sideOffset={8} className="w-48 bg-background/80 backdrop-blur-xl border-foreground/10">
+          {showWebSearchButton && (
+            <DropdownMenuItem
+              onClick={handleWebSearchClick}
+              className={cn("cursor-pointer gap-2", isWebSearchEnabled && "text-primary focus:text-primary")}
+            >
+              <CiGlobe className="h-4 w-4" />
+              <span>{isWebSearchEnabled ? "Web Search (On)" : "Web Search (Off)"}</span>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem onClick={handleAttachClick} className="cursor-pointer gap-2">
+            <FaPaperclip className="h-4 w-4" />
+            <span>Attach File</span>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
       <ChatInputModelSelector
         model={model}
         onModelChange={onModelChange}
         open={modelSelectorOpen}
         onOpenChange={onModelSelectorOpenChange}
       />
-
-      {showWebSearchButton && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <PromptInputButton
-              type="button"
-              onClick={handleWebSearchClick}
-              className={
-                isWebSearchEnabled
-                  ? "bg-primary/10 text-primary hover:bg-primary/15"
-                  : canUsePaidFeatures
-                    ? "text-muted-foreground/70 hover:text-muted-foreground"
-                    : "text-muted-foreground/40"
-              }
-              aria-label={
-                isWebSearchEnabled ? "Disable web search" : "Enable web search"
-              }
-            >
-              <CiGlobe className="h-4 w-4" />
-            </PromptInputButton>
-          </TooltipTrigger>
-          <TooltipContent sideOffset={6}>
-            {isWebSearchEnabled
-              ? "Web search is on."
-              : canUsePaidFeatures
-                ? "Search the web for up-to-date answers."
-                : "Web search is available on Starter/Pro plans."}
-          </TooltipContent>
-        </Tooltip>
-      )}
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <PromptInputButton
-            type="button"
-            onClick={handleAttachClick}
-            className={
-              canUsePaidFeatures
-                ? "text-muted-foreground hover:text-foreground"
-                : "text-muted-foreground/40"
-            }
-            aria-label="Attach files"
-          >
-            <FaPaperclip className="h-3.5 w-3.5" />
-          </PromptInputButton>
-        </TooltipTrigger>
-        <TooltipContent sideOffset={6}>
-          {canUsePaidFeatures
-            ? "Attach files to this message."
-            : "File uploads are available on Starter/Pro plans."}
-        </TooltipContent>
-      </Tooltip>
 
       <input
         ref={fileInputRef}

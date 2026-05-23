@@ -134,7 +134,7 @@ export function SharedModelSelectorContent({
                       value={m.name}
                       className={cn(
                         "group relative flex flex-col items-start text-left gap-3 px-4 py-4 cursor-pointer transition-all duration-200 rounded-2xl",
-                        "bg-transparent backdrop-blur-2xl border border-foreground/10 shadow-[0_0_15px_-5px_color-mix(in_oklch,var(--foreground)_20%,transparent)]",
+                        "bg-background/60 sm:bg-transparent backdrop-blur-2xl border border-foreground/10 shadow-[0_0_15px_-5px_color-mix(in_oklch,var(--foreground)_20%,transparent)]",
                         "hover:border-foreground/20 hover:shadow-[0_0_25px_-5px_color-mix(in_oklch,var(--foreground)_30%,transparent)] hover:-translate-y-[2px]",
                         isSelected &&
                           "bg-primary/5 border-primary/40 shadow-[0_0_30px_-5px_var(--primary)] hover:bg-primary/10 hover:border-primary/50",

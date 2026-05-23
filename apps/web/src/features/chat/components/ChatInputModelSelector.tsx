@@ -36,23 +36,23 @@ export function ChatInputModelSelector({
         <PromptInputButton className="px-2 group">
           {selectedModelData && (
             <>
-              <span className="flex items-center justify-center size-5 rounded-md bg-foreground/5 border border-foreground/4 mr-0.5">
+              <span className="flex items-center justify-center size-5 rounded-md bg-foreground/5 border border-foreground/4 mr-0.5 shrink-0">
                 <ModelSelectorLogo
                   provider={selectedModelData.provider}
                   className="size-3"
                 />
               </span>
-              <ModelSelectorName className="text-foreground font-medium">
+              <ModelSelectorName className="text-foreground font-medium truncate">
                 {selectedModelData.name}
               </ModelSelectorName>
               {isProModel(selectedModelData.id) && (
-                <PremiumModelBadge className="ml-0.5" />
+                <PremiumModelBadge className="ml-0.5 shrink-0" />
               )}
               <ModelCapabilityIcons
-                className="ml-0.5 hidden md:flex opacity-70"
+                className="ml-0.5 hidden md:flex opacity-70 shrink-0"
                 capabilities={getCapabilities(selectedModelData.id)}
               />
-              <ChevronDown className="size-3.5 opacity-50 transition-transform group-data-[state=open]:rotate-180" />
+              <ChevronDown className="size-3.5 opacity-50 transition-transform group-data-[state=open]:rotate-180 shrink-0" />
             </>
           )}
         </PromptInputButton>

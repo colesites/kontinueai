@@ -137,7 +137,7 @@ export function ChatInput({
               onImageAspectRatioChange={onImageAspectRatioChange}
               onImageSizeChange={onImageSizeChange}
             />
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 shrink-0">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <PromptInputButton
