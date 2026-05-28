@@ -2,6 +2,12 @@ import type { ModelOption } from "./models";
 
 export const ALIBABA_MODELS: ModelOption[] = [
   {
+    id: "alibaba/qwen3.7-max",
+    name: "Qwen 3.7 Max",
+    provider: "alibaba",
+    description: "Latest and most advanced Qwen model",
+  },
+  {
     id: "alibaba/qwen-3.6-max-preview",
     name: "Qwen 3.6 Max Preview",
     provider: "alibaba",

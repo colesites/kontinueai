@@ -2,6 +2,12 @@ import type { ModelOption } from "./models";
 
 export const ANTHROPIC_MODELS: ModelOption[] = [
   {
+    id: "anthropic/claude-opus-4.8",
+    name: "Claude Opus 4.8",
+    provider: "anthropic",
+    description: "Builds on Opus 4.7 with sharper judgment",
+  },
+  {
     id: "anthropic/claude-opus-4.7",
     name: "Claude Opus 4.7",
     provider: "anthropic",
