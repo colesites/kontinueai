@@ -229,8 +229,14 @@ export const ModelSelectorLogo = ({
   <Image
     {...props}
     alt={`${provider} logo`}
-    // The kontinue icon is already full-color; don't invert it in dark mode.
-    className={cn("size-3", provider !== "kontinue" && "dark:invert", className)}
+    // Kontinue icon: force monochrome — black in light mode (brightness-0),
+    // white in dark mode (invert the black). Other logos keep their color and
+    // only invert in dark mode.
+    className={cn(
+      "size-3",
+      provider === "kontinue" ? "brightness-0 dark:invert" : "dark:invert",
+      className,
+    )}
     height={12}
     // K-AI is our own layer — models.dev has no logo for it; use the square
     // brand icon (the wordmark .svg is for wider/rectangular placements).

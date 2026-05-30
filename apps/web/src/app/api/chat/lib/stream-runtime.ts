@@ -69,7 +69,14 @@ export function resolveToolRuntime(options: ToolRuntimeOptions): ToolRuntime {
 
   console.log("[chat-debug] tools enabled", hasTools && !shouldDisableTools);
 
-  const maxSteps = shouldAttachWebSearchTool ? 6 : 3;
+  // Tool flows often need several round-trips before the model can answer:
+  // e.g. Notion = search → create_page → final text, or web search = search →
+  // (optional follow-up) → answer. With too few steps the model gets cut off
+  // *after* a tool call but *before* it writes the user-facing summary, which
+  // surfaces as an empty "No response was returned" message. Give generous
+  // headroom; `shouldStopAfterAnswer` ends the run as soon as a text answer
+  // (with no new tool calls) is produced, so we rarely hit the ceiling.
+  const maxSteps = shouldAttachWebSearchTool ? 8 : 6;
   const stopWhen: StopCondition<ToolSet>[] =
     hasTools && !shouldDisableTools
       ? [

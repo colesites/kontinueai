@@ -48,9 +48,16 @@ export function useModelCapabilities() {
   return useMemo(
     () => ({
       getCapabilities: (modelId: string) => {
-        // K-AI is not a gateway model; advertise tool use (it orchestrates
-        // memory, tasks, connectors, etc.) without claiming "thinking".
-        if (modelId === K_AI_MODEL_ID) return ["text"] as ModelCapability[];
+        // K-AI is not a gateway model. Its underlying open-source models
+        // (Gemma, GPT-OSS) support reasoning, tool calling and web search, so
+        // advertise the full capability set.
+        if (modelId === K_AI_MODEL_ID) {
+          // Gemma / GPT-OSS support reasoning and tool calling (tool calling is
+          // not a displayed capability — it's wired in the chat route). Web
+          // search is intentionally omitted: it relies on the Vercel-gateway
+          // Perplexity tool, which is incompatible with OpenRouter routing.
+          return ["text", "thinking"] as ModelCapability[];
+        }
         return capabilitiesById[modelId] ?? [];
       },
       // K-AI is free for everyone — never gate it as a premium/pro model.

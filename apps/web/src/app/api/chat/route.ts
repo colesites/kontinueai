@@ -80,8 +80,10 @@ export async function POST(req: Request) {
     }
 
     const planTier = await getUserPlanTier(userId, hasPlan);
+    // K-AI routes through OpenRouter, which can't use the Vercel-gateway
+    // Perplexity web-search tool, so web search is disabled for it.
     const webSearchEnabled =
-      isPaidTier(planTier) && requestedWebSearchEnabled;
+      !usingKai && isPaidTier(planTier) && requestedWebSearchEnabled;
     if (!isPaidTier(planTier) && hasUserFileAttachments(messages)) {
       return new Response("Starter or Pro plan required for file attachments", {
         status: 403,
