@@ -44,7 +44,7 @@ const KONTINUE_MODELS: ModelOption[] = [
     name: K_AI_DISPLAY_NAME,
     provider: K_AI_PROVIDER,
     description:
-      "Kontinue's proprietary intelligence layer — memory, retrieval, projects, tasks, connectors and agents working together.",
+      "Kontinue's best AI model",
     isDefault: true,
   },
 ];
