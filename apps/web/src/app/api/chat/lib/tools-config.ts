@@ -311,17 +311,18 @@ function makeNotionTool(convexToken: string) {
       "",
       "Actions:",
       "- search: find pages by title (empty query returns recent pages).",
+      "- read: read the full text content of a page (needs pageId). Use this to answer questions about what a page contains.",
       "- create_page: create a new page under a parent page (needs parentPageId).",
       "- append: add paragraph text to the end of an existing page (needs pageId).",
       "",
-      "To create or append you usually need an id first — call search to find the",
-      "parent page, then create_page with its id. Paragraphs come from the `content`",
-      "field (split on newlines into blocks). If Notion is not connected, tell the",
-      "user to connect it in Settings → Connectors.",
+      "To read or act on a page you usually need its id first — call search to find",
+      "it, then read/append with its id. Paragraphs come from the `content` field",
+      "(split on newlines into blocks). If Notion is not connected, tell the user to",
+      "connect it in Settings → Connectors.",
     ].join("\n"),
     inputSchema: z.object({
       action: z
-        .enum(["search", "create_page", "append"])
+        .enum(["search", "read", "create_page", "append"])
         .describe("The Notion operation to perform."),
       query: z
         .string()
@@ -382,6 +383,62 @@ function makeNotionTool(convexToken: string) {
           };
         }
 
+        if (action === "read") {
+          if (!pageId)
+            return { connected: true, error: "pageId is required to read a page." };
+          // Page title (best-effort).
+          let pageTitle: string | undefined;
+          try {
+            const pageRes = await fetch(
+              `https://api.notion.com/v1/pages/${pageId}`,
+              { headers },
+            );
+            if (pageRes.ok) {
+              const page = (await pageRes.json()) as {
+                properties?: Record<string, unknown>;
+              };
+              pageTitle = extractNotionTitle(page.properties);
+            }
+          } catch {
+            /* title is cosmetic */
+          }
+
+          // Walk the block children (paginated) and pull out readable text.
+          const lines: string[] = [];
+          let cursor: string | undefined;
+          let guard = 0;
+          do {
+            const url = new URL(
+              `https://api.notion.com/v1/blocks/${pageId}/children`,
+            );
+            url.searchParams.set("page_size", "100");
+            if (cursor) url.searchParams.set("start_cursor", cursor);
+            const res = await fetch(url, { headers });
+            if (!res.ok)
+              return {
+                connected: true,
+                error: `Notion API error ${res.status}: ${await res.text()}`,
+              };
+            const data = (await res.json()) as {
+              results: Array<Record<string, unknown>>;
+              has_more?: boolean;
+              next_cursor?: string | null;
+            };
+            for (const block of data.results) {
+              const text = extractNotionBlockText(block);
+              if (text) lines.push(text);
+            }
+            cursor = data.has_more ? data.next_cursor ?? undefined : undefined;
+          } while (cursor && ++guard < 10);
+
+          return {
+            connected: true,
+            pageId,
+            title: pageTitle,
+            content: lines.join("\n").slice(0, 12000),
+          };
+        }
+
         const toParagraphs = (text: string) =>
           text.split("\n").map((line) => ({
             object: "block",
@@ -429,6 +486,42 @@ function makeNotionTool(convexToken: string) {
       }
     },
   });
+}
+
+// Pull readable plain text out of a Notion block. Handles the common text-
+// bearing block types; prefixes list items / headings / todos so the rendered
+// text stays legible. Unknown block types contribute nothing.
+function extractNotionBlockText(block: Record<string, unknown>): string {
+  const type = block.type as string | undefined;
+  if (!type) return "";
+  const body = block[type] as
+    | { rich_text?: Array<{ plain_text?: string }>; checked?: boolean }
+    | undefined;
+  const rich = body?.rich_text;
+  const text = Array.isArray(rich)
+    ? rich.map((t) => t.plain_text ?? "").join("")
+    : "";
+  if (!text) return "";
+  switch (type) {
+    case "heading_1":
+      return `# ${text}`;
+    case "heading_2":
+      return `## ${text}`;
+    case "heading_3":
+      return `### ${text}`;
+    case "bulleted_list_item":
+      return `- ${text}`;
+    case "numbered_list_item":
+      return `1. ${text}`;
+    case "to_do":
+      return `- [${body?.checked ? "x" : " "}] ${text}`;
+    case "quote":
+      return `> ${text}`;
+    case "code":
+      return `\`\`\`\n${text}\n\`\`\``;
+    default:
+      return text;
+  }
 }
 
 // Notion page titles live in a title-typed property; dig the plain text out.
@@ -661,6 +754,37 @@ async function getGoogleAccessToken(
   return { accessToken: json.access_token };
 }
 
+// Turn a failed Google API response into a readable, actionable error string.
+// Google returns { error: { code, message, status, errors:[{reason}] } }.
+async function googleApiError(res: Response, label: string): Promise<string> {
+  let message = `${label} API error ${res.status}`;
+  try {
+    const data = (await res.json()) as {
+      error?: {
+        message?: string;
+        status?: string;
+        errors?: Array<{ reason?: string }>;
+      };
+    };
+    const reason = data.error?.errors?.[0]?.reason;
+    if (data.error?.message) message = `${label}: ${data.error.message}`;
+    // Common, fixable causes — make the remedy explicit for the model to relay.
+    if (res.status === 403 && reason === "accessNotConfigured") {
+      message +=
+        " (Enable this Google API in your Google Cloud project, then retry.)";
+    } else if (
+      res.status === 403 &&
+      (reason === "insufficientPermissions" || reason === "forbidden")
+    ) {
+      message +=
+        " (The connection is missing the required scope — disconnect and reconnect this connector in Settings → Connectors to re-grant access.)";
+    }
+  } catch {
+    /* keep the status-only message */
+  }
+  return message;
+}
+
 function makeGmailTool(convexToken: string) {
   return tool({
     description: [
@@ -698,7 +822,7 @@ function makeGmailTool(convexToken: string) {
           if (query) url.searchParams.set("q", query);
           const res = await fetch(url, { headers: auth });
           if (!res.ok)
-            return { connected: true, error: `Gmail API error ${res.status}` };
+            return { connected: true, error: await googleApiError(res, "Gmail") };
           const data = (await res.json()) as {
             messages?: Array<{ id: string }>;
           };
@@ -739,7 +863,7 @@ function makeGmailTool(convexToken: string) {
           { headers: auth },
         );
         if (!res.ok)
-          return { connected: true, error: `Gmail API error ${res.status}` };
+          return { connected: true, error: await googleApiError(res, "Gmail") };
         const data = (await res.json()) as {
           snippet?: string;
           payload?: {
@@ -839,7 +963,7 @@ function makeGoogleCalendarTool(convexToken: string) {
           );
           const res = await fetch(url, { headers: auth });
           if (!res.ok)
-            return { connected: true, error: `Calendar API error ${res.status}` };
+            return { connected: true, error: await googleApiError(res, "Calendar") };
           const data = (await res.json()) as {
             items?: Array<{
               id: string;
@@ -885,10 +1009,7 @@ function makeGoogleCalendarTool(convexToken: string) {
           },
         );
         if (!res.ok)
-          return {
-            connected: true,
-            error: `Calendar API error ${res.status}: ${await res.text()}`,
-          };
+          return { connected: true, error: await googleApiError(res, "Calendar") };
         const ev = (await res.json()) as { id: string; htmlLink?: string };
         return { connected: true, created: true, id: ev.id, link: ev.htmlLink };
       } catch (error) {
@@ -944,7 +1065,7 @@ function makeGoogleDriveTool(convexToken: string) {
           }
           const res = await fetch(url, { headers: auth });
           if (!res.ok)
-            return { connected: true, error: `Drive API error ${res.status}` };
+            return { connected: true, error: await googleApiError(res, "Drive") };
           const data = (await res.json()) as {
             files?: Array<{
               id: string;
@@ -966,7 +1087,7 @@ function makeGoogleDriveTool(convexToken: string) {
           { headers: auth },
         );
         if (!meta.ok)
-          return { connected: true, error: `Drive API error ${meta.status}` };
+          return { connected: true, error: await googleApiError(meta, "Drive") };
         const { name, mimeType } = (await meta.json()) as {
           name: string;
           mimeType: string;
@@ -979,7 +1100,7 @@ function makeGoogleDriveTool(convexToken: string) {
         if (!res.ok)
           return {
             connected: true,
-            error: `Drive could not read this file (${res.status}).`,
+            error: await googleApiError(res, "Drive"),
           };
         const text = (await res.text()).slice(0, 10000);
         return { connected: true, name, mimeType, content: text };
