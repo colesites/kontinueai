@@ -28,6 +28,18 @@ async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
   return user;
 }
 
+// Read-only lookup that tolerates being signed out (sign-out briefly drops the
+// auth token while subscribed queries are still mounted). Return null instead of
+// throwing so list/read queries degrade to empty rather than crashing the app.
+async function getUserOrNull(ctx: QueryCtx): Promise<Doc<"users"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+    .unique();
+}
+
 // Fetch a project and assert it belongs to the given user.
 async function requireOwnedProject(
   ctx: QueryCtx | MutationCtx,
@@ -58,7 +70,8 @@ function normalizeName(name: string): string {
 export const listProjects = query({
   args: { includeArchived: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await getUserOrNull(ctx);
+    if (!user) return [];
     const projects = await ctx.db
       .query("projects")
       .withIndex("by_owner_updated", (q) => q.eq("ownerId", user._id))
