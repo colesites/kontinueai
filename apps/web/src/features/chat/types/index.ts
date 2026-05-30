@@ -11,6 +11,8 @@ interface ChatInputProps {
   imageSize?: string | null;
   onImageAspectRatioChange?: (value: string) => void;
   onImageSizeChange?: (value: string | null) => void;
+  agentId?: string | null;
+  onAgentChange?: (value: string | null) => void;
 }
 
 interface ChatMessageProps {

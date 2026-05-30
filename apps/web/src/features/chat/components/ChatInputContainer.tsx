@@ -20,6 +20,8 @@ type ChatInputContainerProps = {
   imageSize: string | null;
   onImageAspectRatioChange: (val: string) => void;
   onImageSizeChange: (val: string | null) => void;
+  agentId: string | null;
+  onAgentChange: (val: string | null) => void;
 };
 
 export function ChatInputContainer({
@@ -41,6 +43,8 @@ export function ChatInputContainer({
   imageSize,
   onImageAspectRatioChange,
   onImageSizeChange,
+  agentId,
+  onAgentChange,
 }: ChatInputContainerProps) {
   const scrollButtonClasses =
     "group flex h-8 w-8 items-center justify-center rounded-full border border-white/30 bg-black/10 text-white shadow-xl backdrop-blur-sm transition-all hover:bg-white/10 hover:scale-110 active:scale-95 animate-in fade-in zoom-in duration-200";
@@ -102,6 +106,8 @@ export function ChatInputContainer({
           imageSize={imageSize}
           onImageAspectRatioChange={onImageAspectRatioChange}
           onImageSizeChange={onImageSizeChange}
+          agentId={agentId}
+          onAgentChange={onAgentChange}
         />
       </div>
     </div>

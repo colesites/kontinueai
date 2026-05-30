@@ -18,6 +18,7 @@ import { ShareButton } from "../../components/ShareButton";
 import { ChatProvider, useChatContext } from "../../providers/ChatProvider";
 import LoadingFallback from "../../components/LoadingFallback";
 import { UserSync } from "../../components/UserSync";
+import { PushNotificationsProvider } from "../../features/tasks/hooks/usePushNotifications";
 
 export function AppShell({
   children,
@@ -35,9 +36,11 @@ export function AppShell({
   return (
     <ChatProvider>
       <UserSync />
-      <SidebarProvider defaultOpen={defaultOpen}>
-        <ShellLayout>{children}</ShellLayout>
-      </SidebarProvider>
+      <PushNotificationsProvider>
+        <SidebarProvider defaultOpen={defaultOpen}>
+          <ShellLayout>{children}</ShellLayout>
+        </SidebarProvider>
+      </PushNotificationsProvider>
     </ChatProvider>
   );
 }

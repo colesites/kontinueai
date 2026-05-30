@@ -229,9 +229,16 @@ export const ModelSelectorLogo = ({
   <Image
     {...props}
     alt={`${provider} logo`}
-    className={cn("size-3 dark:invert", className)}
+    // The kontinue icon is already full-color; don't invert it in dark mode.
+    className={cn("size-3", provider !== "kontinue" && "dark:invert", className)}
     height={12}
-    src={`https://models.dev/logos/${provider}.svg`}
+    // K-AI is our own layer — models.dev has no logo for it; use the square
+    // brand icon (the wordmark .svg is for wider/rectangular placements).
+    src={
+      provider === "kontinue"
+        ? "/kontinueai-icon.png"
+        : `https://models.dev/logos/${provider}.svg`
+    }
     width={12}
   />
 );

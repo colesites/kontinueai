@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@repo/ui/lib/utils";
 import { IoMicOutline } from "react-icons/io5";
 
@@ -10,7 +10,6 @@ import {
   PromptInputButton,
   PromptInputFooter,
   PromptInputSubmit,
-  PromptInputTextarea,
   PromptInputProvider,
 } from "../../../components/ai-elements/prompt-input";
 import {
@@ -21,6 +20,12 @@ import {
 
 import { ChatInputBodyExtras } from "./ChatInputBodyExtras";
 import { ChatInputTools } from "./ChatInputTools";
+import { MentionMenu } from "./MentionMenu";
+import { MentionInput, type MentionInputHandle } from "./MentionInput";
+import {
+  useConnectorMentions,
+  type MentionItem,
+} from "../hooks/use-connector-mentions";
 
 import { useSpeechInput } from "../hooks/use-speech-input";
 import { useFileAttachments } from "../hooks/use-file-attachments";
@@ -42,6 +47,8 @@ export function ChatInput({
   imageSize = null,
   onImageAspectRatioChange,
   onImageSizeChange,
+  agentId = null,
+  onAgentChange,
 }: ChatInputProps & {
   webSearchEnabled?: boolean;
   onWebSearchToggle?: () => void;
@@ -49,10 +56,63 @@ export function ChatInput({
   imageSize?: string | null;
   onImageAspectRatioChange?: (value: string) => void;
   onImageSizeChange?: (value: string | null) => void;
+  agentId?: string | null;
+  onAgentChange?: (value: string | null) => void;
 }) {
   const [inputValue, setInputValue] = useState("");
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const canUsePaidFeatures = useIsProPlan();
+
+  // -- @-mention autocomplete for connected connectors --
+  const inputRef = useRef<MentionInputHandle>(null);
+  const allMentions = useConnectorMentions();
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+
+  const mentionItems =
+    mentionQuery !== null
+      ? allMentions.filter(
+          (m) =>
+            m.provider.toLowerCase().startsWith(mentionQuery.toLowerCase()) ||
+            m.name.toLowerCase().startsWith(mentionQuery.toLowerCase()),
+        )
+      : [];
+  const mentionOpen = mentionQuery !== null && mentionItems.length > 0;
+
+  const handleMentionQueryChange = (query: string | null) => {
+    // Only reset the highlighted item when the query text actually changes —
+    // otherwise arrow-key navigation (which fires keyup with the same query)
+    // would snap the selection back to the first item.
+    if (query !== mentionQuery) setMentionIndex(0);
+    setMentionQuery(query);
+  };
+
+  const insertMention = (item: MentionItem) => {
+    inputRef.current?.insertMention(item);
+    setMentionQuery(null);
+    setMentionIndex(0);
+  };
+
+  const handleMentionKeyDown = (e: React.KeyboardEvent) => {
+    if (!mentionOpen) return;
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      e.stopPropagation();
+      setMentionIndex((i) => (i + 1) % mentionItems.length);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      e.stopPropagation();
+      setMentionIndex((i) => (i - 1 + mentionItems.length) % mentionItems.length);
+    } else if (e.key === "Enter" || e.key === "Tab") {
+      e.preventDefault();
+      e.stopPropagation();
+      insertMention(mentionItems[mentionIndex] ?? mentionItems[0]!);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      setMentionQuery(null);
+    }
+  };
 
   const { getCapabilities } = useModelCapabilities();
   const selectedModelData = AVAILABLE_MODELS.find((m) => m.id === model);
@@ -93,12 +153,24 @@ export function ChatInput({
       canUsePaidFeatures && attachedFiles.length > 0 ? attachedFiles : undefined,
     );
     setInputValue("");
+    inputRef.current?.clear();
     clearFiles();
     if (isListening) stopListening();
   };
 
   return (
-    <div className="glass bg-background/40 backdrop-blur-3xl rounded-3xl p-3 focus-within:ring-soft transition-shadow duration-200">
+    <div
+      className="glass relative bg-background/40 backdrop-blur-3xl rounded-3xl p-3 focus-within:ring-soft transition-shadow duration-200"
+      onKeyDownCapture={handleMentionKeyDown}
+    >
+      {mentionOpen && (
+        <MentionMenu
+          items={mentionItems}
+          activeIndex={mentionIndex}
+          onSelect={insertMention}
+          onHover={setMentionIndex}
+        />
+      )}
       <PromptInputProvider>
         <PromptInput
           onSubmit={handleSubmit}
@@ -109,7 +181,15 @@ export function ChatInput({
         >
           <PromptInputBody>
             <div className="px-2 pt-1.5">
-              <PromptInputTextarea />
+              <MentionInput
+                ref={inputRef}
+                value={inputValue}
+                onChange={setInputValue}
+                onSubmit={handleSubmit}
+                onMentionQueryChange={handleMentionQueryChange}
+                placeholder="Ask anything..."
+                disabled={disabled}
+              />
             </div>
             <ChatInputBodyExtras
               isListening={isListening}
@@ -136,6 +216,8 @@ export function ChatInput({
               imageSize={imageSize}
               onImageAspectRatioChange={onImageAspectRatioChange}
               onImageSizeChange={onImageSizeChange}
+              agentId={agentId}
+              onAgentChange={onAgentChange}
             />
             <div className="flex items-center gap-1.5 shrink-0">
               <Tooltip>

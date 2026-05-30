@@ -5,35 +5,59 @@ export type ChatRequestBodyState = {
   webSearchEnabled: boolean;
   imageAspectRatio: string;
   imageSize: string | null;
+  agentId?: string | null;
 };
 
 const PAID_PLAN_REQUIRED_PATTERN =
   /starter or pro plan required|starter plan required|pro plan required|requires pro|paid plan required/i;
 
-const UNAUTHORIZED_PATTERN = /unauthorized|status\s*401/i;
+const UNAUTHORIZED_PATTERN = /unauthorized|not signed in|status\s*401/i;
 const INPUT_TOO_LONG_PATTERN =
-  /input_too_long|message is too long|input tokens|too many tokens|max input tokens/i;
+  /input_too_long|message is too long|too long for this model|input tokens|too many tokens|max input tokens/i;
+const AI_UNAVAILABLE_PATTERN =
+  /temporarily unavailable|service is unavailable|try again in a little while/i;
+const MODEL_UNAVAILABLE_PATTERN =
+  /model isn.?t available|switch to a different model|no_providers_available|do not have access to this model/i;
+const RATE_LIMITED_PATTERN = /too many requests|rate.?limit|model is busy/i;
+const MESSAGE_LIMIT_PATTERN = /message limit|usage limit/i;
+const SERVER_ERROR_PATTERN = /something went wrong on our end/i;
 
-export type ChatErrorToast =
-  | {
-    title: "This model requires a paid plan.";
-    description: "Choose a free model or upgrade to Starter/Pro.";
-  }
-  | {
-    title: "You're not signed in.";
-    description: "Please refresh and sign in again.";
-  }
-  | {
-    title: "Message too long.";
-    description: "Shorten your message and try again.";
-  }
-  | { title: "AI didn’t respond."; description: string };
+export type ChatErrorToast = { title: string; description: string };
 
 export function getChatErrorToast(message: string): ChatErrorToast {
   if (PAID_PLAN_REQUIRED_PATTERN.test(message)) {
     return {
       title: "This model requires a paid plan.",
       description: "Choose a free model or upgrade to Starter/Pro.",
+    };
+  }
+
+  if (MESSAGE_LIMIT_PATTERN.test(message)) {
+    return {
+      title: "Message limit reached.",
+      description: "Upgrade your plan or try again later.",
+    };
+  }
+
+  if (MODEL_UNAVAILABLE_PATTERN.test(message)) {
+    return {
+      title: "Model unavailable.",
+      description: "Switch to a different model and try again.",
+    };
+  }
+
+  if (RATE_LIMITED_PATTERN.test(message)) {
+    return {
+      title: "This model is busy.",
+      description:
+        "It's rate limited right now — wait a few seconds, or switch to another model.",
+    };
+  }
+
+  if (AI_UNAVAILABLE_PATTERN.test(message)) {
+    return {
+      title: "AI temporarily unavailable.",
+      description: "We couldn't reach the AI service. Please try again shortly.",
     };
   }
 
@@ -48,6 +72,13 @@ export function getChatErrorToast(message: string): ChatErrorToast {
     return {
       title: "Message too long.",
       description: "Shorten your message and try again.",
+    };
+  }
+
+  if (SERVER_ERROR_PATTERN.test(message)) {
+    return {
+      title: "Something went wrong.",
+      description: "An unexpected error occurred. Please try again.",
     };
   }
 
@@ -113,6 +144,7 @@ export function toChatRequestBody(
   imageAspectRatio: string;
   imageSize: string | null;
   userTimezone: string | null;
+  agentId: string | null;
 } {
   return {
     chatId,
@@ -121,6 +153,7 @@ export function toChatRequestBody(
     imageAspectRatio: state.imageAspectRatio,
     imageSize: state.imageSize,
     userTimezone: getClientTimezone(),
+    agentId: state.agentId ?? null,
   };
 }
 

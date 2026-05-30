@@ -36,3 +36,9 @@ yarn-error.log*
 # Misc
 .DS_Store
 *.pem
+
+# MD
+web_scraper_research.md
+memory-feature.md
+CLAUDE.md
+chatgpt-scraper-research.md

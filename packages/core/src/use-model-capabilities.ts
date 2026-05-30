@@ -8,6 +8,9 @@ import {
 } from "./model-capabilities";
 import { isProModel } from "./model-pricing";
 
+// Kept in sync with @repo/ai/lib/kai (avoids a core→ai package dependency).
+const K_AI_MODEL_ID = "kontinue/k-ai-1.0";
+
 export function useModelCapabilities() {
   const [capabilitiesById, setCapabilitiesById] = useState<
     Record<string, ModelCapability[]>
@@ -44,8 +47,15 @@ export function useModelCapabilities() {
 
   return useMemo(
     () => ({
-      getCapabilities: (modelId: string) => capabilitiesById[modelId] ?? [],
-      isProModel: (modelId: string) => proModelById[modelId] ?? true,
+      getCapabilities: (modelId: string) => {
+        // K-AI is not a gateway model; advertise tool use (it orchestrates
+        // memory, tasks, connectors, etc.) without claiming "thinking".
+        if (modelId === K_AI_MODEL_ID) return ["text"] as ModelCapability[];
+        return capabilitiesById[modelId] ?? [];
+      },
+      // K-AI is free for everyone — never gate it as a premium/pro model.
+      isProModel: (modelId: string) =>
+        modelId === K_AI_MODEL_ID ? false : (proModelById[modelId] ?? true),
       capabilitiesById,
       proModelById,
     }),

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { api } from "@repo/convex/convex/_generated/api";
 import { SidebarAccountSection } from "./sidebar/SidebarAccountSection";
 import { SidebarChatsSection } from "./sidebar/SidebarChatsSection";
+import { SidebarProjectsSection } from "./sidebar/SidebarProjectsSection";
 import { SidebarHeaderSection } from "./sidebar/SidebarHeaderSection";
 import { Sidebar as SidebarPrimitive, SidebarContent, useSidebar } from "@repo/ui/components/ui/sidebar";
 import { usePlanTier } from "../lib/use-plan-tier";
@@ -85,6 +86,12 @@ export function Sidebar() {
       />
 
       <SidebarContent className="px-2 py-3">
+        {!isSearching && (
+          <SidebarProjectsSection
+            pathname={pathname}
+            onNavigate={handleNavigate}
+          />
+        )}
         <SidebarChatsSection
           chats={chats}
           isLoading={isLoading}

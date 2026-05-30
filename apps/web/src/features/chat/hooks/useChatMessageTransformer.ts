@@ -57,9 +57,11 @@ function mapAiMessageToDisplayMessage(params: {
   }
 
   const imageParts = collectImageUrlsFromParts(msg.parts);
-  if (msg.role === "assistant" && !content.trim() && imageParts.length === 0) {
-    content = "_No text was returned for this step. Please retry or switch models._";
-  }
+  // NOTE: deliberately do NOT substitute a "no text returned" placeholder here.
+  // While streaming, an assistant message is momentarily empty (before the
+  // first token, or while only reasoning tokens have arrived), which made the
+  // placeholder flash on screen. The empty-state fallback is now decided at
+  // render time (ChatMessage), where streaming status is known.
 
   const persisted = persistedImageUrlsByMessageId[msg.id] ?? [];
   const stored = storedGeneratedImageUrlsByMessageId[msg.id] ?? [];

@@ -89,6 +89,7 @@ export function useChatMessaging({
           chatId,
           role: "user",
           content,
+          model: state.selectedModel,
           isPremiumModel: isPremium(state.selectedModel),
         });
         const requestBody = toChatRequestBody(state, chatId);

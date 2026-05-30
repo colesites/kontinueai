@@ -91,6 +91,20 @@ export const MessageContent = memo(function MessageContent({
           a: ({ href, children }) => (
             <PillLink href={href}>{children}</PillLink>
           ),
+          // Imported images (e.g. Gemini's lh3.googleusercontent.com URLs) use
+          // referrer-based hotlink protection — omit the Referer header so they
+          // load instead of returning 429/403.
+          img: ({ src, alt }) =>
+            typeof src === "string" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={src}
+                alt={alt ?? ""}
+                referrerPolicy="no-referrer"
+                loading="lazy"
+                className="my-2 max-h-96 max-w-full rounded-lg border border-border/60"
+              />
+            ) : null,
         }}
       >
         {content}

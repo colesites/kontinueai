@@ -7,6 +7,8 @@ import { planLabel, type PlanTier } from "@repo/core/plan-tier";
 type MonthlyUsage = {
   planTier: PlanTier;
   isPaid: boolean;
+  kaiUsed: number;
+  kaiLimit: number | null;
   freeMonthlyUsed: number;
   freeMonthlyLimit: number;
   paidPremiumUsed: number;
@@ -25,6 +27,31 @@ type SettingsUsagePanelProps = {
 
 function toProgress(used: number, limit: number): number {
   return limit > 0 ? (used / limit) * 100 : 0;
+}
+
+function KaiUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
+  const kaiUsed = usage.kaiUsed ?? 0;
+  const isUnlimited = usage.kaiLimit === null;
+  const kaiLimit = typeof usage.kaiLimit === "number" ? usage.kaiLimit : 0;
+
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between text-sm">
+        <span className="font-medium">K-AI 1.0 Requests</span>
+        <span className="text-muted-foreground">
+          {kaiUsed} / {isUnlimited ? "Unlimited" : kaiLimit}
+        </span>
+      </div>
+      {!isUnlimited && (
+        <Progress value={toProgress(kaiUsed, kaiLimit)} className="h-2" />
+      )}
+      <p className="text-[10px] text-muted-foreground">
+        {isUnlimited
+          ? "Pro plan includes unlimited K-AI 1.0 requests per month."
+          : "K-AI 1.0 has its own monthly request budget, separate from other models. Resets at the start of each UTC month."}
+      </p>
+    </div>
+  );
 }
 
 function ImportUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
@@ -68,6 +95,7 @@ export function SettingsUsagePanel({ usage }: SettingsUsagePanelProps): React.JS
   if (!usage.isPaid) {
     return (
       <div className="space-y-6">
+        <KaiUsageSection usage={usage} />
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="font-medium">Free Model Messages</span>
@@ -90,6 +118,7 @@ export function SettingsUsagePanel({ usage }: SettingsUsagePanelProps): React.JS
 
   return (
     <div className="space-y-6">
+      <KaiUsageSection usage={usage} />
       <div className="space-y-2">
         <div className="flex justify-between text-sm">
           <span className="font-medium">Total Messages</span>

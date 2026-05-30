@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+import type { NextRequest, NextFetchEvent } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
 
 const BACKENDS = [
@@ -12,7 +12,7 @@ const BACKENDS = [
 // 1. We define the clerk middleware handler
 const clerk = clerkMiddleware();
 
-export async function proxy(request: NextRequest) {
+export async function proxy(request: NextRequest, event: NextFetchEvent) {
   const { pathname, search } = request.nextUrl;
 
   // 2. Handle the AWS Failover Logic first
@@ -38,8 +38,11 @@ export async function proxy(request: NextRequest) {
     return NextResponse.json({ error: "Backend Unreachable" }, { status: 503 });
   }
 
-  // 3. For all other routes, run Clerk authentication
-  return clerk(request, {} as any);
+  // 3. For all other routes, run Clerk authentication.
+  // IMPORTANT: forward the REAL NextFetchEvent. Passing a fake `{}` here breaks
+  // Clerk's auth-context propagation, so `auth()` in route handlers (e.g.
+  // /api/chat) returns no userId and the request 401s ("You're not signed in").
+  return clerk(request as any, event as any);
 }
 
 export const config = {

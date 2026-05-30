@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAction, useMutation, useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@repo/convex/convex/_generated/api";
 import { detectProvider } from "@repo/utils/url-safety";
@@ -20,7 +20,12 @@ export function useHomePageActions() {
   const isPaidPlan = useIsProPlan();
   const persistedDefaultModel = useQuery(api.users.getDefaultModel, {});
   const createChat = useMutation(api.chats.createChat);
-  const importIntoChat = useAction(api.firecrawl.importIntoChat);
+  const appendImportedMessagesToChat = useMutation(
+    api.chats.appendImportedMessagesToChat,
+  );
+  const appendImportFailureMessageToChat = useMutation(
+    api.chats.appendImportFailureMessageToChat,
+  );
   const saveDefaultModel = useMutation(api.users.setDefaultModel);
 
   const fallbackModel = useMemo(
@@ -157,13 +162,11 @@ export function useHomePageActions() {
       setImportUrl("");
       setImportModalOpen(false);
 
-      void importIntoChat({
+      void scrapeAndAppendImport({
         chatId,
         url: sourceUrl,
-      }).then((result) => {
-        if (!result?.success) {
-          toast.error(result?.error || "Failed to import chat");
-        }
+        appendImportedMessagesToChat,
+        appendImportFailureMessageToChat,
       });
 
       router.push(`/chat/${chatId}?imported=true&importing=1`);
@@ -176,7 +179,14 @@ export function useHomePageActions() {
     } finally {
       setIsImporting(false);
     }
-  }, [createChat, importIntoChat, importProvider, importUrl, router]);
+  }, [
+    appendImportFailureMessageToChat,
+    appendImportedMessagesToChat,
+    createChat,
+    importProvider,
+    importUrl,
+    router,
+  ]);
 
   return {
     selectedModel,
@@ -197,4 +207,47 @@ export function useHomePageActions() {
     isImporting,
     handleImport,
   };
+}
+
+async function scrapeAndAppendImport({
+  chatId,
+  url,
+  appendImportedMessagesToChat,
+  appendImportFailureMessageToChat,
+}: {
+  chatId: string;
+  url: string;
+  appendImportedMessagesToChat: (args: {
+    chatId: any;
+    title: string;
+    messages: Array<{ role: "user" | "assistant"; content: string }>;
+  }) => Promise<unknown>;
+  appendImportFailureMessageToChat: (args: {
+    chatId: any;
+    errorMessage: string;
+  }) => Promise<unknown>;
+}) {
+  try {
+    const response = await fetch("/api/import/scrape", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || data.error || "Failed to import chat");
+    }
+
+    await appendImportedMessagesToChat({
+      chatId,
+      title: data.title || "Imported Chat",
+      messages: data.messages,
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Failed to import chat";
+    await appendImportFailureMessageToChat({ chatId, errorMessage: message });
+    toast.error(message);
+  }
 }

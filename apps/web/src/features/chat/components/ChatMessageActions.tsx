@@ -60,7 +60,10 @@ export function ChatMessageActions({
     <div
       className={cn(
         "mt-1.5 flex items-center gap-0.5 transition-opacity duration-150",
-        "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+        // Touch devices (no mouse) always show the actions; only hover-capable
+        // devices (desktop) hide them until hover/focus.
+        "opacity-100",
+        "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:focus-within:opacity-100",
         isUser && "justify-end",
       )}
     >

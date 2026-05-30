@@ -159,6 +159,10 @@ export function ChatMessage({
             >
               {content ? (
                 <MessageContent content={content} isStreaming={isStreaming} />
+              ) : !isUser && !isStreaming && imageParts.length === 0 && !clockData ? (
+                <p className="italic text-muted-foreground">
+                  No response was returned. Please retry or switch models.
+                </p>
               ) : null}
               <ChatMessageImages imageParts={imageParts} />
               {!isUser && clockData && (

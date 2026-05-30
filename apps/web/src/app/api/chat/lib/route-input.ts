@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import type { UIMessage } from "ai";
 import { FREE_DEFAULT_MODEL_ID } from "@repo/ai/lib/models";
+import { isAgentId, type AgentId } from "@repo/ai/lib/agents";
 
 export type ChatRouteInput = {
   chatId: string | null;
@@ -10,6 +11,7 @@ export type ChatRouteInput = {
   imageAspectRatio: string | null;
   imageSize: string | null;
   userTimezone: string | null;
+  agentId: AgentId | null;
 };
 
 type AuthResultWithOptionalHas = Awaited<ReturnType<typeof auth>> & {
@@ -40,6 +42,7 @@ export async function parseChatRouteInput(req: Request): Promise<ChatRouteInput>
     imageAspectRatio?: string | null;
     imageSize?: string | null;
     userTimezone?: string | null;
+    agentId?: string | null;
   };
 
   return {
@@ -53,5 +56,6 @@ export async function parseChatRouteInput(req: Request): Promise<ChatRouteInput>
       typeof body.userTimezone === "string" && body.userTimezone.length > 0
         ? body.userTimezone
         : null,
+    agentId: isAgentId(body.agentId) ? body.agentId : null,
   };
 }

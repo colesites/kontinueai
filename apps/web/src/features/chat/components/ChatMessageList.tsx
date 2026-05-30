@@ -1,8 +1,11 @@
+"use client";
+
 import { ChatMessage } from "./ChatMessage";
 import { ImageGenerationLoader } from "./ImageGenerationLoader";
 import { ChatTurnNavigator } from "./ChatTurnNavigator";
 import { getChatTurnAnchorId } from "../lib/chat-turns";
 import { Loader2 } from "lucide-react";
+import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 import { DisplayMessage } from "../hooks/useChatMessageTransformer";
 
 interface ModelOption {
@@ -53,6 +56,9 @@ export function ChatMessageList({
   onScrollToBottom,
   messagesEndRef,
 }: ChatMessageListProps) {
+  const { getCapabilities } = useModelCapabilities();
+  const isThinkingModel = getCapabilities(currentModelId).includes("thinking");
+
   const turns = messages
     .filter((message) => message.role === "user")
     .map((message, index) => {
@@ -116,13 +122,15 @@ export function ChatMessageList({
             {isGeneratingImage ? (
               <ImageGenerationLoader />
             ) : (
-              <div className="flex gap-4 px-4 py-6">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <div className="flex items-center gap-4 px-4 py-6">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
                   <Loader2 size={16} className="animate-spin" />
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Thinking</span>
-                  <span className="flex gap-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-muted-foreground">
+                    {isThinkingModel ? "Thinking" : "Generating"}
+                  </span>
+                  <span className="flex items-center gap-0.5">
                     <span className="typing-dot h-1 w-1 rounded-full bg-muted-foreground" />
                     <span className="typing-dot h-1 w-1 rounded-full bg-muted-foreground" />
                     <span className="typing-dot h-1 w-1 rounded-full bg-muted-foreground" />

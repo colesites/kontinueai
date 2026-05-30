@@ -66,6 +66,13 @@ function ChatClientContent() {
   // 2. State Management
   const chatState = useChatState({ chatId });
 
+  // Active agent persona for this chat (e.g. arrived from /agents → ?agent=coding).
+  // Captured once so it persists for the whole chat session even after the query
+  // param is cleaned from the URL.
+  const [agentId, setAgentId] = useState<string | null>(
+    () => searchParams.get("agent"),
+  );
+
   // 3. Messaging Logic
   const messaging = useChatMessaging({
     chatId,
@@ -79,6 +86,7 @@ function ChatClientContent() {
       webSearchEnabled: chatState.webSearchEnabled,
       imageAspectRatio: chatState.imageAspectRatio,
       imageSize: chatState.imageSize,
+      agentId,
     }),
   });
 
@@ -214,6 +222,8 @@ function ChatClientContent() {
         imageSize={chatState.imageSize}
         onImageAspectRatioChange={chatState.setImageAspectRatio}
         onImageSizeChange={chatState.setImageSize}
+        agentId={agentId}
+        onAgentChange={setAgentId}
       />
     </div>
   );

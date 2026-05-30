@@ -22,6 +22,8 @@ type SettingsAccountPanelProps = {
   | {
     planTier: PlanTier;
     isPaid: boolean;
+    kaiUsed: number;
+    kaiLimit: number | null;
     freeMonthlyUsed: number;
     freeMonthlyLimit: number;
     paidPremiumUsed: number;

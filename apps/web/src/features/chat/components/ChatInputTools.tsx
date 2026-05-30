@@ -1,15 +1,21 @@
 "use client";
 
 import type { ChangeEvent, RefObject } from "react";
+import { useRouter } from "next/navigation";
 import { CiGlobe } from "react-icons/ci";
 import { FaPaperclip } from "react-icons/fa";
-import { Plus } from "lucide-react";
+import { Bot, Check, Plug, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@repo/ui/lib/utils";
+import { AGENTS } from "@repo/ai/lib/agents";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@repo/ui/components/ui/dropdown-menu";
 import { ChatInputImageOptions } from "./ChatInputImageOptions";
@@ -36,6 +42,8 @@ type ChatInputToolsProps = {
   imageSize: string | null;
   onImageAspectRatioChange?: (value: string) => void;
   onImageSizeChange?: (value: string | null) => void;
+  agentId?: string | null;
+  onAgentChange?: (value: string | null) => void;
 };
 
 export function ChatInputTools({
@@ -55,7 +63,10 @@ export function ChatInputTools({
   imageSize,
   onImageAspectRatioChange,
   onImageSizeChange,
+  agentId = null,
+  onAgentChange,
 }: ChatInputToolsProps) {
+  const router = useRouter();
   const isWebSearchEnabled = canUsePaidFeatures && webSearchEnabled;
   const showWebSearchButton = canSearch;
   const handleWebSearchClick = () => {
@@ -99,6 +110,66 @@ export function ChatInputTools({
             <FaPaperclip className="h-4 w-4" />
             <span>Attach File</span>
           </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => {
+              // Remember where to return after the (possibly OAuth-redirecting)
+              // connectors flow, since browser history gets clobbered.
+              try {
+                sessionStorage.setItem(
+                  "connectors:returnTo",
+                  window.location.pathname + window.location.search,
+                );
+              } catch {
+                // ignore storage failures
+              }
+              router.push("/settings/connectors");
+            }}
+            className="cursor-pointer gap-2"
+          >
+            <Plug className="h-4 w-4" />
+            <span>Connectors</span>
+          </DropdownMenuItem>
+
+          {onAgentChange && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
+                <Bot className="h-4 w-4" />
+                <span>Agents</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuPortal>
+                <DropdownMenuSubContent
+                  sideOffset={8}
+                  className="w-44 bg-background/80 backdrop-blur-xl border-foreground/10"
+                >
+                  <DropdownMenuItem
+                    onClick={() => onAgentChange(null)}
+                    className="cursor-pointer gap-2"
+                  >
+                    <Check className={cn("h-4 w-4", agentId ? "opacity-0" : "opacity-100")} />
+                    <span>None</span>
+                  </DropdownMenuItem>
+                  {AGENTS.map((agent) => (
+                    <DropdownMenuItem
+                      key={agent.id}
+                      onClick={() => onAgentChange(agent.id)}
+                      className={cn(
+                        "cursor-pointer gap-2",
+                        agentId === agent.id && "text-primary focus:text-primary",
+                      )}
+                    >
+                      <Check
+                        className={cn(
+                          "h-4 w-4",
+                          agentId === agent.id ? "opacity-100" : "opacity-0",
+                        )}
+                      />
+                      <span>{agent.name}</span>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuPortal>
+            </DropdownMenuSub>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
