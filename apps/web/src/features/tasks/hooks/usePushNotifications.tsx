@@ -150,17 +150,12 @@ export function PushNotificationsProvider({
   );
 }
 
-// A benign no-op value for consumers rendered outside the provider. Returning
-// this (instead of throwing) means a missing provider degrades gracefully —
-// the bell/toggle just look "unsupported" rather than crashing the whole app.
-const NOOP_PUSH: PushNotificationsValue = {
-  supported: false,
-  state: "unsupported",
-  busy: false,
-  subscribe: async () => {},
-  unsubscribe: async () => {},
-};
-
 export function usePushNotifications(): PushNotificationsValue {
-  return useContext(PushNotificationsContext) ?? NOOP_PUSH;
+  const ctx = useContext(PushNotificationsContext);
+  if (!ctx) {
+    throw new Error(
+      "usePushNotifications must be used within a PushNotificationsProvider",
+    );
+  }
+  return ctx;
 }
