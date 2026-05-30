@@ -12,7 +12,15 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { decryptToken, encryptToken } from "./lib/encryption";
 
 // Providers we know how to connect. Keep in sync with the UI catalog.
-const KNOWN_PROVIDERS = ["github", "notion", "vercel"] as const;
+const KNOWN_PROVIDERS = [
+  "github",
+  "notion",
+  "vercel",
+  "todoist",
+  "gmail",
+  "google_calendar",
+  "google_drive",
+] as const;
 type Provider = (typeof KNOWN_PROVIDERS)[number];
 
 async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
@@ -136,7 +144,36 @@ export const getEncryptedToken = internalQuery({
       )
       .unique();
     if (!row || !row.connected) return null;
-    return { accessTokenEncrypted: row.accessTokenEncrypted };
+    return {
+      accessTokenEncrypted: row.accessTokenEncrypted,
+      refreshTokenEncrypted: row.refreshTokenEncrypted ?? null,
+      tokenExpiresAt: row.tokenExpiresAt ?? null,
+    };
+  },
+});
+
+// Persist a refreshed access token (e.g. after a Google token refresh). Patches
+// only the access token + expiry; the refresh token is left untouched.
+export const updateAccessToken = internalMutation({
+  args: {
+    ownerId: v.id("users"),
+    provider: v.string(),
+    accessTokenEncrypted: v.string(),
+    tokenExpiresAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("connectors")
+      .withIndex("by_owner_provider", (q) =>
+        q.eq("ownerId", args.ownerId).eq("provider", args.provider),
+      )
+      .unique();
+    if (!row) return;
+    await ctx.db.patch(row._id, {
+      accessTokenEncrypted: args.accessTokenEncrypted,
+      tokenExpiresAt: args.tokenExpiresAt,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -209,5 +246,70 @@ export const getAccessToken = action({
 
     const accessToken = await decryptToken(row.accessTokenEncrypted);
     return { accessToken };
+  },
+});
+
+// ── Action: return the full (decrypted) token set for refresh-capable providers
+// (Google). Used by server-side chat tools that must refresh an expired access
+// token before calling the provider API. Same trust boundary as the OAuth
+// callback — only ever returned to the authenticated owner, server-side.
+export const getRefreshableToken = action({
+  args: { provider: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    tokenExpiresAt: number | null;
+  } | null> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const ownerId: Id<"users"> | null = await ctx.runQuery(
+      internal.connectors.getUserIdForIdentity,
+      { clerkUserId: identity.subject },
+    );
+    if (!ownerId) return null;
+
+    const row = await ctx.runQuery(internal.connectors.getEncryptedToken, {
+      ownerId,
+      provider: args.provider,
+    });
+    if (!row) return null;
+
+    const accessToken = await decryptToken(row.accessTokenEncrypted);
+    const refreshToken = row.refreshTokenEncrypted
+      ? await decryptToken(row.refreshTokenEncrypted)
+      : null;
+    return { accessToken, refreshToken, tokenExpiresAt: row.tokenExpiresAt };
+  },
+});
+
+// ── Action: persist a freshly-refreshed access token (encrypts at rest) ───────
+export const persistRefreshedToken = action({
+  args: {
+    provider: v.string(),
+    accessToken: v.string(),
+    tokenExpiresAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<{ ok: true } | null> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const ownerId: Id<"users"> | null = await ctx.runQuery(
+      internal.connectors.getUserIdForIdentity,
+      { clerkUserId: identity.subject },
+    );
+    if (!ownerId) return null;
+
+    const accessTokenEncrypted = await encryptToken(args.accessToken);
+    await ctx.runMutation(internal.connectors.updateAccessToken, {
+      ownerId,
+      provider: args.provider,
+      accessTokenEncrypted,
+      tokenExpiresAt: args.tokenExpiresAt,
+    });
+    return { ok: true };
   },
 });

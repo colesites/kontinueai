@@ -18,11 +18,8 @@ export interface ModelOption {
   isDefault?: boolean;
 }
 
-import {
-  K_AI_MODEL_ID,
-  K_AI_DISPLAY_NAME,
-  K_AI_PROVIDER,
-} from "./kai";
+import { K_AI_MODEL_ID } from "./kai";
+import { KONTINUE_MODELS } from "./kontinue";
 import { OPENAI_MODELS } from "./openai";
 import { ANTHROPIC_MODELS } from "./anthropic";
 import { GOOGLE_MODELS } from "./google";
@@ -34,20 +31,6 @@ import { ZAI_MODELS } from "./zai";
 import { ALIBABA_MODELS } from "./alibaba";
 import { MOONSHOTAI_MODELS } from "./moonshotai";
 import { MISTRAL_MODELS } from "./mistral";
-
-// K-AI 1.0 — Kontinue's own intelligence layer. Listed first so it's the
-// headline option. It does not route through the AI Gateway (it uses OpenRouter
-// with failover); the chat route special-cases it.
-const KONTINUE_MODELS: ModelOption[] = [
-  {
-    id: K_AI_MODEL_ID,
-    name: K_AI_DISPLAY_NAME,
-    provider: K_AI_PROVIDER,
-    description:
-      "Kontinue's best AI model",
-    isDefault: true,
-  },
-];
 
 // Using Vercel AI Gateway format: "provider/model"
 // All accessible with a single AI_GATEWAY_API_KEY (or AI_GATEWAY_TOKEN) via AI Gateway

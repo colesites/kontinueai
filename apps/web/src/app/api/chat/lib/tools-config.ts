@@ -576,6 +576,423 @@ function isValidTimezone(tz: string): boolean {
  * — but if it doesn't, we use the client-reported zone instead of letting the
  * model guess (which usually goes badly: many models default to Asia/Kolkata or UTC).
  */
+// ── Google connectors (Gmail / Calendar / Drive) ─────────────────────────────
+// Google access tokens expire after ~1h. This helper returns a guaranteed-fresh
+// access token: it reads the stored token set, and if the access token is
+// missing/expired, exchanges the refresh token for a new one (and persists it).
+async function getGoogleAccessToken(
+  convexToken: string,
+  provider: "gmail" | "google_calendar" | "google_drive",
+): Promise<{ accessToken: string } | { error: string }> {
+  const tokenSet = await fetchAction(
+    convexApi.connectors.getRefreshableToken,
+    { provider },
+    { token: convexToken },
+  );
+  if (!tokenSet) {
+    return { error: `${provider} is not connected.` };
+  }
+
+  // Treat as valid if it has >60s of life left.
+  const stillValid =
+    tokenSet.tokenExpiresAt != null &&
+    tokenSet.tokenExpiresAt - Date.now() > 60_000;
+  if (stillValid && tokenSet.accessToken) {
+    return { accessToken: tokenSet.accessToken };
+  }
+
+  if (!tokenSet.refreshToken) {
+    // No refresh token and the access token is stale — ask the user to reconnect.
+    if (tokenSet.accessToken && tokenSet.tokenExpiresAt == null) {
+      return { accessToken: tokenSet.accessToken };
+    }
+    return {
+      error: `${provider} access expired. Please reconnect it in Settings → Connectors.`,
+    };
+  }
+
+  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return { error: "Google connector is not configured." };
+  }
+
+  const res = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: tokenSet.refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  if (!res.ok) {
+    console.error(`[oauth ${provider}] refresh failed`, {
+      status: res.status,
+      body: await res.text().catch(() => "<unreadable>"),
+    });
+    return {
+      error: `${provider} access expired. Please reconnect it in Settings → Connectors.`,
+    };
+  }
+  const json = (await res.json()) as {
+    access_token?: string;
+    expires_in?: number;
+  };
+  if (!json.access_token) {
+    return { error: `${provider} token refresh returned no token.` };
+  }
+
+  const tokenExpiresAt = json.expires_in
+    ? Date.now() + json.expires_in * 1000
+    : undefined;
+  // Persist the refreshed token (best-effort — don't block the call on it).
+  try {
+    await fetchAction(
+      convexApi.connectors.persistRefreshedToken,
+      { provider, accessToken: json.access_token, tokenExpiresAt },
+      { token: convexToken },
+    );
+  } catch (error) {
+    console.error(`[oauth ${provider}] failed to persist refreshed token`, error);
+  }
+
+  return { accessToken: json.access_token };
+}
+
+function makeGmailTool(convexToken: string) {
+  return tool({
+    description: [
+      "Search and read the user's connected Gmail (read-only).",
+      "",
+      "Actions:",
+      "- search: find messages with a Gmail search query (e.g. 'from:boss newer_than:7d', 'is:unread invoice'). Returns matching message summaries.",
+      "- read: fetch the full body of one message by id (get the id from search first).",
+      "",
+      "Use search to find relevant mail, then summarize or answer from the results.",
+      "If Gmail is not connected, tell the user to connect it in Settings → Connectors.",
+    ].join("\n"),
+    inputSchema: z.object({
+      action: z.enum(["search", "read"]).describe("The Gmail operation."),
+      query: z
+        .string()
+        .optional()
+        .describe("For search: a Gmail search query. See Gmail search operators."),
+      messageId: z
+        .string()
+        .optional()
+        .describe("For read: the id of the message to fetch (from a prior search)."),
+    }),
+    execute: async ({ action, query, messageId }) => {
+      try {
+        const token = await getGoogleAccessToken(convexToken, "gmail");
+        if ("error" in token) return { connected: false, error: token.error };
+        const auth = { Authorization: `Bearer ${token.accessToken}` };
+
+        if (action === "search") {
+          const url = new URL(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+          );
+          url.searchParams.set("maxResults", "10");
+          if (query) url.searchParams.set("q", query);
+          const res = await fetch(url, { headers: auth });
+          if (!res.ok)
+            return { connected: true, error: `Gmail API error ${res.status}` };
+          const data = (await res.json()) as {
+            messages?: Array<{ id: string }>;
+          };
+          const ids = (data.messages ?? []).slice(0, 10);
+          // Fetch lightweight metadata for each match.
+          const messages = await Promise.all(
+            ids.map(async ({ id }) => {
+              const m = await fetch(
+                `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date`,
+                { headers: auth },
+              );
+              if (!m.ok) return { id };
+              const md = (await m.json()) as {
+                snippet?: string;
+                payload?: { headers?: Array<{ name: string; value: string }> };
+              };
+              const h = (name: string) =>
+                md.payload?.headers?.find(
+                  (x) => x.name.toLowerCase() === name,
+                )?.value;
+              return {
+                id,
+                from: h("from"),
+                subject: h("subject"),
+                date: h("date"),
+                snippet: md.snippet,
+              };
+            }),
+          );
+          return { connected: true, messages };
+        }
+
+        // read
+        if (!messageId)
+          return { connected: true, error: "messageId is required to read." };
+        const res = await fetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
+          { headers: auth },
+        );
+        if (!res.ok)
+          return { connected: true, error: `Gmail API error ${res.status}` };
+        const data = (await res.json()) as {
+          snippet?: string;
+          payload?: {
+            headers?: Array<{ name: string; value: string }>;
+            parts?: Array<{ mimeType?: string; body?: { data?: string } }>;
+            body?: { data?: string };
+          };
+        };
+        const decode = (b64?: string) =>
+          b64
+            ? Buffer.from(b64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString(
+                "utf8",
+              )
+            : "";
+        const plain =
+          data.payload?.parts?.find((p) => p.mimeType === "text/plain")?.body
+            ?.data ?? data.payload?.body?.data;
+        const body = decode(plain).slice(0, 8000) || data.snippet || "";
+        const h = (name: string) =>
+          data.payload?.headers?.find((x) => x.name.toLowerCase() === name)
+            ?.value;
+        return {
+          connected: true,
+          from: h("from"),
+          subject: h("subject"),
+          date: h("date"),
+          body,
+        };
+      } catch (error) {
+        return {
+          connected: false,
+          error: error instanceof Error ? error.message : "Gmail request failed",
+        };
+      }
+    },
+  });
+}
+
+function makeGoogleCalendarTool(convexToken: string) {
+  return tool({
+    description: [
+      "Read and create events on the user's connected Google Calendar.",
+      "",
+      "Actions:",
+      "- list: list upcoming events between timeMin and timeMax (ISO 8601). Defaults to the next 7 days.",
+      "- create: create an event (needs summary, start, end as ISO 8601 datetimes).",
+      "",
+      "Always confirm the created event back to the user (title + time).",
+      "If Calendar is not connected, tell the user to connect it in Settings → Connectors.",
+    ].join("\n"),
+    inputSchema: z.object({
+      action: z.enum(["list", "create"]).describe("The Calendar operation."),
+      timeMin: z.string().optional().describe("For list: ISO start of range."),
+      timeMax: z.string().optional().describe("For list: ISO end of range."),
+      summary: z.string().optional().describe("For create: event title."),
+      description: z.string().optional().describe("For create: event details."),
+      start: z
+        .string()
+        .optional()
+        .describe("For create: ISO 8601 start datetime (e.g. 2026-06-01T15:00:00Z)."),
+      end: z
+        .string()
+        .optional()
+        .describe("For create: ISO 8601 end datetime."),
+      location: z.string().optional().describe("For create: optional location."),
+    }),
+    execute: async ({
+      action,
+      timeMin,
+      timeMax,
+      summary,
+      description,
+      start,
+      end,
+      location,
+    }) => {
+      try {
+        const token = await getGoogleAccessToken(convexToken, "google_calendar");
+        if ("error" in token) return { connected: false, error: token.error };
+        const auth = {
+          Authorization: `Bearer ${token.accessToken}`,
+          "Content-Type": "application/json",
+        };
+
+        if (action === "list") {
+          const url = new URL(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+          );
+          url.searchParams.set("singleEvents", "true");
+          url.searchParams.set("orderBy", "startTime");
+          url.searchParams.set("maxResults", "15");
+          url.searchParams.set("timeMin", timeMin ?? new Date().toISOString());
+          url.searchParams.set(
+            "timeMax",
+            timeMax ??
+              new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          );
+          const res = await fetch(url, { headers: auth });
+          if (!res.ok)
+            return { connected: true, error: `Calendar API error ${res.status}` };
+          const data = (await res.json()) as {
+            items?: Array<{
+              id: string;
+              summary?: string;
+              start?: { dateTime?: string; date?: string };
+              end?: { dateTime?: string; date?: string };
+              location?: string;
+              htmlLink?: string;
+            }>;
+          };
+          return {
+            connected: true,
+            events: (data.items ?? []).map((e) => ({
+              id: e.id,
+              summary: e.summary,
+              start: e.start?.dateTime ?? e.start?.date,
+              end: e.end?.dateTime ?? e.end?.date,
+              location: e.location,
+              link: e.htmlLink,
+            })),
+          };
+        }
+
+        // create
+        if (!summary || !start || !end) {
+          return {
+            connected: true,
+            error: "summary, start and end are required to create an event.",
+          };
+        }
+        const res = await fetch(
+          "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+          {
+            method: "POST",
+            headers: auth,
+            body: JSON.stringify({
+              summary,
+              description,
+              location,
+              start: { dateTime: start },
+              end: { dateTime: end },
+            }),
+          },
+        );
+        if (!res.ok)
+          return {
+            connected: true,
+            error: `Calendar API error ${res.status}: ${await res.text()}`,
+          };
+        const ev = (await res.json()) as { id: string; htmlLink?: string };
+        return { connected: true, created: true, id: ev.id, link: ev.htmlLink };
+      } catch (error) {
+        return {
+          connected: false,
+          error:
+            error instanceof Error ? error.message : "Calendar request failed",
+        };
+      }
+    },
+  });
+}
+
+function makeGoogleDriveTool(convexToken: string) {
+  return tool({
+    description: [
+      "Search and read files from the user's connected Google Drive (read-only).",
+      "",
+      "Actions:",
+      "- search: find files by name/content (query optional; empty returns recent files).",
+      "- read: fetch the text content of a file by id (Google Docs are exported as text).",
+      "",
+      "Use search to find a file, then read it to answer questions about its contents.",
+      "If Drive is not connected, tell the user to connect it in Settings → Connectors.",
+    ].join("\n"),
+    inputSchema: z.object({
+      action: z.enum(["search", "read"]).describe("The Drive operation."),
+      query: z
+        .string()
+        .optional()
+        .describe("For search: text to match in file names/content."),
+      fileId: z
+        .string()
+        .optional()
+        .describe("For read: the id of the file to read (from a prior search)."),
+    }),
+    execute: async ({ action, query, fileId }) => {
+      try {
+        const token = await getGoogleAccessToken(convexToken, "google_drive");
+        if ("error" in token) return { connected: false, error: token.error };
+        const auth = { Authorization: `Bearer ${token.accessToken}` };
+
+        if (action === "search") {
+          const url = new URL("https://www.googleapis.com/drive/v3/files");
+          url.searchParams.set("pageSize", "10");
+          url.searchParams.set("fields", "files(id,name,mimeType,modifiedTime,webViewLink)");
+          if (query) {
+            const escaped = query.replace(/'/g, "\\'");
+            url.searchParams.set(
+              "q",
+              `name contains '${escaped}' or fullText contains '${escaped}'`,
+            );
+          }
+          const res = await fetch(url, { headers: auth });
+          if (!res.ok)
+            return { connected: true, error: `Drive API error ${res.status}` };
+          const data = (await res.json()) as {
+            files?: Array<{
+              id: string;
+              name: string;
+              mimeType: string;
+              modifiedTime?: string;
+              webViewLink?: string;
+            }>;
+          };
+          return { connected: true, files: data.files ?? [] };
+        }
+
+        // read
+        if (!fileId)
+          return { connected: true, error: "fileId is required to read." };
+        // Look up mime type to decide export vs download.
+        const meta = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,mimeType`,
+          { headers: auth },
+        );
+        if (!meta.ok)
+          return { connected: true, error: `Drive API error ${meta.status}` };
+        const { name, mimeType } = (await meta.json()) as {
+          name: string;
+          mimeType: string;
+        };
+        const isGoogleDoc = mimeType.startsWith("application/vnd.google-apps");
+        const contentUrl = isGoogleDoc
+          ? `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=text/plain`
+          : `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+        const res = await fetch(contentUrl, { headers: auth });
+        if (!res.ok)
+          return {
+            connected: true,
+            error: `Drive could not read this file (${res.status}).`,
+          };
+        const text = (await res.text()).slice(0, 10000);
+        return { connected: true, name, mimeType, content: text };
+      } catch (error) {
+        return {
+          connected: false,
+          error: error instanceof Error ? error.message : "Drive request failed",
+        };
+      }
+    },
+  });
+}
+
 function makeGetCurrentTimeTool(userTimezone: string | null) {
   const fallbackZone =
     userTimezone && isValidTimezone(userTimezone) ? userTimezone : null;
@@ -699,6 +1116,9 @@ export function buildToolsAndPrompt(options: {
     tools.github = makeGithubTool(convexToken);
     tools.notion = makeNotionTool(convexToken);
     tools.vercel = makeVercelTool(convexToken);
+    tools.gmail = makeGmailTool(convexToken);
+    tools.google_calendar = makeGoogleCalendarTool(convexToken);
+    tools.google_drive = makeGoogleDriveTool(convexToken);
   }
 
   if (webSearchEnabled && !hasWebSearch) {
@@ -760,7 +1180,7 @@ export function buildToolsAndPrompt(options: {
     ? "\n\nTASKS: You can create tasks/reminders with the create_task tool. When the user clearly states something to do or be reminded of, create it and confirm briefly. If the intent or timing is unclear, ask one short clarifying question before creating."
     : "";
   const connectorToolContext = tools.github
-    ? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list repos/issues, create/comment/close issues), notion (search, create pages, append content), and vercel (list deployments, redeploy). These tools are NOT read-only: when the user asks you to create, edit, comment, close, or redeploy, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@vercel'); when they do, prefer that tool. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors."
+    ? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list repos/issues, create/comment/close issues), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email), google_calendar (list and create events), and google_drive (search and read files). These tools are NOT read-only where actions exist: when the user asks you to create an event, create a page, comment, close, or redeploy, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@gmail', '@google_calendar', '@google_drive') or naturally ('my calendar', 'my email', 'my drive'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'You have 3 unread emails: …'). Never end your turn with only a tool call and no text."
     : "";
 
   // When the user explicitly @-mentions a connected connector, force the model to
@@ -768,14 +1188,16 @@ export function buildToolsAndPrompt(options: {
   const mentionedProviders = tools.github
     ? Array.from(
         new Set(
-          (lastUserContent.match(/@(github|notion|vercel)\b/gi) ?? []).map((s) =>
-            s.slice(1).toLowerCase(),
-          ),
+          (
+            lastUserContent.match(
+              /@(github|notion|vercel|gmail|google_calendar|google_drive)\b/gi,
+            ) ?? []
+          ).map((s) => s.slice(1).toLowerCase()),
         ),
       )
     : [];
   const mentionDirective = mentionedProviders.length
-    ? `\n\nIMPORTANT — CONNECTOR MENTION: The user attached these connectors to their message: ${mentionedProviders.join(", ")}. You MUST call the matching tool (${mentionedProviders.join(", ")}) to fulfill this request before answering. Treat the @mention as an explicit instruction to use that tool. Never claim the connector is disabled or unavailable unless the tool result itself reports it is not connected.`
+    ? `\n\nIMPORTANT — CONNECTOR MENTION: The user attached these connectors to their message: ${mentionedProviders.join(", ")}. You MUST call the matching tool (${mentionedProviders.join(", ")}) to fulfill this request, then reply with a natural-language summary of the result. Treat the @mention as an explicit instruction to use that tool. Never claim the connector is disabled or unavailable unless the tool result itself reports it is not connected.`
     : "";
 
   // Active agent persona: prepend its directive so the model adopts the agent's

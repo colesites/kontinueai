@@ -18,10 +18,23 @@ async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
   return user;
 }
 
+// Read-only lookup that tolerates being signed out. During sign-out the auth
+// token briefly drops while subscribed queries are still mounted; throwing here
+// surfaces as an unhandled Convex error and crashes the app. Return null instead.
+async function getUserOrNull(ctx: QueryCtx): Promise<Doc<"users"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+    .unique();
+}
+
 export const listNotifications = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await getUserOrNull(ctx);
+    if (!user) return [];
     return await ctx.db
       .query("notifications")
       .withIndex("by_owner_created", (q) => q.eq("ownerId", user._id))
@@ -33,7 +46,8 @@ export const listNotifications = query({
 export const unreadCount = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await getUserOrNull(ctx);
+    if (!user) return 0;
     const unread = await ctx.db
       .query("notifications")
       .withIndex("by_owner_read", (q) =>

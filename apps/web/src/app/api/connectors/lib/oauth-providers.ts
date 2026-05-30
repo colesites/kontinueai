@@ -255,11 +255,115 @@ const TODOIST: OAuthProvider = {
   },
 };
 
+// ── Google ───────────────────────────────────────────────────────────────────
+// Gmail, Calendar and Drive are separate connectors but share ONE Google Cloud
+// OAuth app (GOOGLE_CLIENT_ID/SECRET). Each requests only the scopes it needs.
+// `access_type=offline` + `prompt=consent` are required to receive a refresh
+// token (Google access tokens expire after ~1h); the chat tools refresh on the
+// fly. openid/email scopes are added for a friendly account label.
+const GOOGLE_USERINFO_SCOPES = [
+  "openid",
+  "https://www.googleapis.com/auth/userinfo.email",
+];
+
+function makeGoogleProvider(
+  provider: string,
+  serviceScopes: string[],
+): OAuthProvider {
+  const scopes = [...GOOGLE_USERINFO_SCOPES, ...serviceScopes];
+  return {
+    provider,
+    clientIdEnv: "GOOGLE_CLIENT_ID",
+    clientSecretEnv: "GOOGLE_CLIENT_SECRET",
+    scopes,
+    buildAuthorizeUrl({ clientId, redirectUri, state }) {
+      const u = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+      u.searchParams.set("client_id", clientId);
+      u.searchParams.set("redirect_uri", redirectUri);
+      u.searchParams.set("response_type", "code");
+      u.searchParams.set("scope", scopes.join(" "));
+      u.searchParams.set("access_type", "offline");
+      u.searchParams.set("prompt", "consent");
+      u.searchParams.set("include_granted_scopes", "true");
+      u.searchParams.set("state", state);
+      return u.toString();
+    },
+    async exchangeToken({ clientId, clientSecret, code, redirectUri }) {
+      const res = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "<unreadable>");
+        console.error(`[oauth ${provider}] token exchange failed`, {
+          status: res.status,
+          body,
+        });
+        return null;
+      }
+      const json = (await res.json()) as {
+        access_token?: string;
+        refresh_token?: string;
+        expires_in?: number;
+        scope?: string;
+      };
+      if (!json.access_token) {
+        console.error(`[oauth ${provider}] token response missing access_token`);
+        return null;
+      }
+
+      // Friendly label via the OpenID userinfo endpoint.
+      let accountLabel: string | undefined;
+      try {
+        const u = await fetch("https://openidconnect.googleapis.com/v1/userinfo", {
+          headers: { Authorization: `Bearer ${json.access_token}` },
+        });
+        if (u.ok) {
+          accountLabel = ((await u.json()) as { email?: string }).email;
+        }
+      } catch {
+        /* label is cosmetic */
+      }
+
+      return {
+        accessToken: json.access_token,
+        refreshToken: json.refresh_token,
+        scopes: json.scope ? json.scope.split(" ").filter(Boolean) : scopes,
+        accountLabel,
+        tokenExpiresAt: json.expires_in
+          ? Date.now() + json.expires_in * 1000
+          : undefined,
+      };
+    },
+  };
+}
+
+const GMAIL = makeGoogleProvider("gmail", [
+  "https://www.googleapis.com/auth/gmail.readonly",
+]);
+const GOOGLE_CALENDAR = makeGoogleProvider("google_calendar", [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/calendar.readonly",
+]);
+const GOOGLE_DRIVE = makeGoogleProvider("google_drive", [
+  "https://www.googleapis.com/auth/drive.readonly",
+]);
+
 const REGISTRY: Record<string, OAuthProvider> = {
   github: GITHUB,
   notion: NOTION,
   vercel: VERCEL,
   todoist: TODOIST,
+  gmail: GMAIL,
+  google_calendar: GOOGLE_CALENDAR,
+  google_drive: GOOGLE_DRIVE,
 };
 
 export function getOAuthProvider(provider: string): OAuthProvider | null {
