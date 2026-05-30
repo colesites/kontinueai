@@ -164,7 +164,15 @@ async function tryFreeSpace(ctx: any, userId: Id<"users">, requiredBytes: number
 export const getMemoryStatus = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireCurrentUser(ctx);
+    // Tolerate sign-out: the auth token briefly drops while this query (mounted
+    // on every chat page) is still subscribed. Return null instead of throwing.
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+      .unique();
+    if (!user) return null;
     const quota = computeMemoryQuotaState({
       usedBytes: getUserMemoryUsedBytes(user),
       limitBytes: getUserMemoryLimitBytes(user),

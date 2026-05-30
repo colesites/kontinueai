@@ -52,13 +52,24 @@ const GITHUB: OAuthProvider = {
         redirect_uri: redirectUri,
       }),
     });
+    // GitHub returns HTTP 200 even on failure, with { error, error_description }
+    // (e.g. incorrect_client_credentials, redirect_uri_mismatch). Surface it.
     const json = (await res.json()) as {
       access_token?: string;
       refresh_token?: string;
       scope?: string;
       expires_in?: number;
+      error?: string;
+      error_description?: string;
     };
-    if (!json.access_token) return null;
+    if (!json.access_token) {
+      console.error("[oauth github] token exchange returned no access_token", {
+        httpStatus: res.status,
+        error: json.error,
+        description: json.error_description,
+      });
+      return null;
+    }
 
     let accountLabel: string | undefined;
     try {

@@ -34,11 +34,24 @@ async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
   return user;
 }
 
+// Read-only lookup that tolerates being signed out (sign-out briefly drops the
+// auth token while subscribed queries are still mounted). Return null instead of
+// throwing so this query degrades to empty rather than crashing the app.
+async function getUserOrNull(ctx: QueryCtx): Promise<Doc<"users"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+    .unique();
+}
+
 // Public list — NEVER returns token material, only connection metadata.
 export const listConnectors = query({
   args: {},
   handler: async (ctx) => {
-    const user = await requireUser(ctx);
+    const user = await getUserOrNull(ctx);
+    if (!user) return [];
     const rows = await ctx.db
       .query("connectors")
       .withIndex("by_owner", (q) => q.eq("ownerId", user._id))

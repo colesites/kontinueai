@@ -30,6 +30,18 @@ async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
   return user;
 }
 
+// Read-only lookup that tolerates being signed out (sign-out briefly drops the
+// auth token while subscribed queries are still mounted). Return null instead of
+// throwing so list/read queries degrade to empty rather than crashing the app.
+async function getUserOrNull(ctx: QueryCtx): Promise<Doc<"users"> | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) return null;
+  return await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+    .unique();
+}
+
 async function requireOwnedTask(
   ctx: QueryCtx | MutationCtx,
   taskId: Id<"tasks">,
@@ -84,7 +96,8 @@ export const listTasks = query({
     projectId: v.optional(v.id("projects")),
   },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await getUserOrNull(ctx);
+    if (!user) return [];
 
     let tasks: Doc<"tasks">[];
     if (args.status) {
@@ -121,7 +134,8 @@ export const listTasks = query({
 export const getTask = query({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
-    const user = await requireUser(ctx);
+    const user = await getUserOrNull(ctx);
+    if (!user) return null;
     return await requireOwnedTask(ctx, args.taskId, user._id);
   },
 });
