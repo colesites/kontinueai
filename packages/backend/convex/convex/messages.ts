@@ -5,6 +5,7 @@ import {
   getMonthlyAutomaticImportLimit,
   getUtcMonthRange,
 } from "../lib/import_limits";
+import { isKaiModel, getKaiMonthlyLimit } from "../lib/kai";
 import { internal } from "./_generated/api";
 
 const FREE_MONTHLY_LIMIT = 30;
@@ -118,7 +119,79 @@ export const addMessage = mutation({
       const premiumBucketType = "month_premium" as const;
       const standardBucketType = "month_standard" as const;
 
-      if (isPaidPlan) {
+      if (isKaiModel(args.model)) {
+        // ── K-AI 1.0 ──────────────────────────────────────────────────────────
+        // K-AI has its own monthly request budget (free 1000, starter 2000, pro
+        // unlimited), tracked separately from the raw-model quotas. Only the RPM
+        // minute limit is shared.
+        const kaiLimit = getKaiMonthlyLimit(planTier);
+
+        const [minuteUsage, kaiUsage] = await Promise.all([
+          ctx.db
+            .query("usage")
+            .withIndex("by_owner_bucket", (q) =>
+              q
+                .eq("ownerId", user._id)
+                .eq("bucketType", "minute")
+                .eq("bucketStartMs", minuteBucketStartMs),
+            )
+            .unique(),
+          ctx.db
+            .query("usage")
+            .withIndex("by_owner_bucket", (q) =>
+              q
+                .eq("ownerId", user._id)
+                .eq("bucketType", "month_kai")
+                .eq("bucketStartMs", monthBucketStartMs),
+            )
+            .unique(),
+        ]);
+
+        const minuteCount = minuteUsage?.requestCount ?? 0;
+        const kaiCount = kaiUsage?.requestCount ?? 0;
+
+        if (minuteCount >= RPM_LIMIT) {
+          throw new ConvexError({
+            code: "RATE_LIMIT_RPM",
+            message: `Rate limit reached (${RPM_LIMIT} requests/min). Please wait and try again.`,
+          });
+        }
+        if (Number.isFinite(kaiLimit) && kaiCount >= kaiLimit) {
+          throw new ConvexError({
+            code: "RATE_LIMIT_KAI",
+            message: `Monthly K-AI 1.0 limit reached (${kaiLimit} requests/month on the ${planTier} plan). Upgrade for a higher limit or try again next month.`,
+          });
+        }
+
+        if (minuteUsage) {
+          await ctx.db.patch(minuteUsage._id, {
+            requestCount: minuteCount + 1,
+            updatedAt: nowMs,
+          });
+        } else {
+          await ctx.db.insert("usage", {
+            ownerId: user._id,
+            bucketType: "minute",
+            bucketStartMs: minuteBucketStartMs,
+            requestCount: 1,
+            updatedAt: nowMs,
+          });
+        }
+        if (kaiUsage) {
+          await ctx.db.patch(kaiUsage._id, {
+            requestCount: kaiCount + 1,
+            updatedAt: nowMs,
+          });
+        } else {
+          await ctx.db.insert("usage", {
+            ownerId: user._id,
+            bucketType: "month_kai",
+            bucketStartMs: monthBucketStartMs,
+            requestCount: 1,
+            updatedAt: nowMs,
+          });
+        }
+      } else if (isPaidPlan) {
         const paidPlanTier = planTier === "pro" ? "pro" : "starter";
         const limits = getPaidPlanLimits(paidPlanTier);
         const isModelPremium = args.isPremiumModel ?? false;
@@ -497,30 +570,37 @@ export const getMonthlyUsage = query({
     const monthBucketStartMs = monthStartMs;
     const planTier = getPersistedPlanTier(user.plan);
 
-    const [freeMonthly, proPremium, proStandard, chats] = await Promise.all([
-      ctx.db
-        .query("usage")
-        .withIndex("by_owner_bucket", (q) =>
-          q.eq("ownerId", user._id).eq("bucketType", "month").eq("bucketStartMs", monthBucketStartMs),
-        )
-        .unique(),
-      ctx.db
-        .query("usage")
-        .withIndex("by_owner_bucket", (q) =>
-          q.eq("ownerId", user._id).eq("bucketType", "month_premium").eq("bucketStartMs", monthBucketStartMs),
-        )
-        .unique(),
-      ctx.db
-        .query("usage")
-        .withIndex("by_owner_bucket", (q) =>
-          q.eq("ownerId", user._id).eq("bucketType", "month_standard").eq("bucketStartMs", monthBucketStartMs),
-        )
-        .unique(),
-      ctx.db
-        .query("chats")
-        .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
-        .collect(),
-    ]);
+    const [freeMonthly, proPremium, proStandard, kaiMonthly, chats] =
+      await Promise.all([
+        ctx.db
+          .query("usage")
+          .withIndex("by_owner_bucket", (q) =>
+            q.eq("ownerId", user._id).eq("bucketType", "month").eq("bucketStartMs", monthBucketStartMs),
+          )
+          .unique(),
+        ctx.db
+          .query("usage")
+          .withIndex("by_owner_bucket", (q) =>
+            q.eq("ownerId", user._id).eq("bucketType", "month_premium").eq("bucketStartMs", monthBucketStartMs),
+          )
+          .unique(),
+        ctx.db
+          .query("usage")
+          .withIndex("by_owner_bucket", (q) =>
+            q.eq("ownerId", user._id).eq("bucketType", "month_standard").eq("bucketStartMs", monthBucketStartMs),
+          )
+          .unique(),
+        ctx.db
+          .query("usage")
+          .withIndex("by_owner_bucket", (q) =>
+            q.eq("ownerId", user._id).eq("bucketType", "month_kai").eq("bucketStartMs", monthBucketStartMs),
+          )
+          .unique(),
+        ctx.db
+          .query("chats")
+          .withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+          .collect(),
+      ]);
 
     const isPaid = planTier !== "free";
     const paidTier = planTier === "pro" ? "pro" : "starter";
@@ -539,9 +619,17 @@ export const getMonthlyUsage = query({
     ).length;
     const monthlyImportLimit = getMonthlyAutomaticImportLimit(planTier);
 
+    // K-AI 1.0 — its own monthly request budget. Pro is unlimited (null).
+    const kaiUsed = kaiMonthly?.requestCount ?? 0;
+    const kaiLimitRaw = getKaiMonthlyLimit(planTier);
+    const kaiLimit = Number.isFinite(kaiLimitRaw) ? kaiLimitRaw : null;
+
     return {
       planTier,
       isPaid,
+      // K-AI 1.0
+      kaiUsed,
+      kaiLimit,
       // Free tier
       freeMonthlyUsed: freeMonthly?.requestCount ?? 0,
       freeMonthlyLimit: FREE_MONTHLY_LIMIT,

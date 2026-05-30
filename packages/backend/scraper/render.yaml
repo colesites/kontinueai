@@ -1,0 +1,20 @@
+# Render Blueprint for the Kontinue scraper API.
+# Deploy: New > Blueprint, point at this repo. Or create a Web Service manually
+# with Runtime=Docker, Root Directory=packages/backend/scraper.
+services:
+  - type: web
+    name: kontinue-scraper
+    runtime: docker
+    rootDir: packages/backend/scraper
+    dockerfilePath: ./Dockerfile
+    plan: starter # Chromium needs RAM; free tier (512MB) may OOM under load
+    healthCheckPath: /health
+    envVars:
+      - key: API_KEY
+        sync: false # set in dashboard — must match the web app's scraper key
+      - key: ALLOWED_ORIGINS
+        value: https://chat.kontinueai.com
+      - key: HEADLESS
+        value: "true"
+      - key: MAX_CONCURRENT_PAGES
+        value: "2"

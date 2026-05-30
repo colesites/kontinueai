@@ -19,6 +19,8 @@ export default defineSchema({
 
   chats: defineTable({
     ownerId: v.id("users"),
+    // Optional container the chat belongs to. Null/absent = unfiled.
+    projectId: v.optional(v.id("projects")),
     title: v.string(),
     summary: v.optional(v.string()),
     archived: v.optional(v.boolean()),
@@ -35,8 +37,34 @@ export default defineSchema({
   })
     .index("by_owner", ["ownerId"])
     .index("by_updated", ["updatedAt"])
+    .index("by_owner_project", ["ownerId", "projectId"])
     .searchIndex("search_title", {
       searchField: "title",
+      filterFields: ["ownerId"],
+    }),
+
+  // ── Projects ────────────────────────────────────────────
+  // Containers that group chats (and, in later slices, tasks/notes/memories).
+  projects: defineTable({
+    ownerId: v.id("users"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("active"),
+      v.literal("on_hold"),
+      v.literal("completed"),
+    ),
+    icon: v.optional(v.string()), // lucide icon name or emoji
+    color: v.optional(v.string()), // hex / token for the accent dot
+    archived: v.boolean(),
+    chatCount: v.number(), // denormalized counter, kept in sync by mutations
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_owner_updated", ["ownerId", "updatedAt"])
+    .searchIndex("search_name", {
+      searchField: "name",
       filterFields: ["ownerId"],
     }),
 
@@ -253,6 +281,7 @@ export default defineSchema({
       v.literal("month"), // free users: 30/month
       v.literal("month_premium"), // paid users: premium-model quota by tier
       v.literal("month_standard"), // paid users: standard-model quota by tier
+      v.literal("month_kai"), // K-AI 1.0: separate monthly request budget
     ),
     bucketStartMs: v.number(),
     requestCount: v.number(),
@@ -266,6 +295,13 @@ export default defineSchema({
       v.object({
         theme: v.optional(v.string()),
         compactMode: v.optional(v.boolean()),
+      }),
+    ),
+    // Reminder delivery channels. Absent = use defaults (email + push on).
+    reminderChannels: v.optional(
+      v.object({
+        email: v.optional(v.boolean()),
+        push: v.optional(v.boolean()),
       }),
     ),
   }).index("by_owner", ["ownerId"]),
@@ -324,6 +360,99 @@ export default defineSchema({
     ownerId: v.id("users"),
     direction: v.union(v.literal("up"), v.literal("down")),
   }).index("by_post_owner", ["postId", "ownerId"]),
+
+  // ── Tasks ───────────────────────────────────────────────
+  tasks: defineTable({
+    ownerId: v.id("users"),
+    projectId: v.optional(v.id("projects")),
+    title: v.string(),
+    description: v.optional(v.string()),
+    dueDate: v.optional(v.number()), // epoch ms
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent"),
+    ),
+    status: v.union(
+      v.literal("todo"),
+      v.literal("in_progress"),
+      v.literal("done"),
+    ),
+    recurring: v.boolean(),
+    recurrenceRule: v.optional(v.string()), // RRULE-ish string, null when not recurring
+    linkedConversationId: v.optional(v.id("chats")),
+    linkedMemoryIds: v.optional(v.array(v.id("memories"))),
+    createdByAgent: v.optional(v.string()), // agent id if AI-created, else undefined
+    // Reminder offset in minutes before dueDate (null = no reminder).
+    reminderMinutesBefore: v.optional(v.number()),
+    // Set when a reminder has been dispatched, to avoid duplicate sends.
+    reminderSentAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_owner_status", ["ownerId", "status"])
+    .index("by_owner_due", ["ownerId", "dueDate"])
+    .index("by_project", ["projectId"])
+    // Drives the reminder cron: find tasks with a pending reminder by due date.
+    .index("by_reminder", ["reminderSentAt", "dueDate"])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["ownerId", "status"],
+    }),
+
+  // In-app notifications (reminders, task alerts, system messages).
+  notifications: defineTable({
+    ownerId: v.id("users"),
+    type: v.union(
+      v.literal("task_reminder"),
+      v.literal("task_overdue"),
+      v.literal("system"),
+    ),
+    title: v.string(),
+    body: v.optional(v.string()),
+    // Deep-link target so clicking the notification navigates correctly.
+    taskId: v.optional(v.id("tasks")),
+    chatId: v.optional(v.id("chats")),
+    read: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_owner_created", ["ownerId", "createdAt"])
+    .index("by_owner_read", ["ownerId", "read"]),
+
+  // Web Push subscriptions (one row per browser/device the user enabled push on).
+  pushSubscriptions: defineTable({
+    ownerId: v.id("users"),
+    endpoint: v.string(),
+    p256dh: v.string(), // client public key
+    auth: v.string(), // client auth secret
+    userAgent: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_endpoint", ["endpoint"]),
+
+  // ── Connectors ──────────────────────────────────────────
+  // Third-party OAuth integrations (GitHub, Gmail, Notion, …). Access/refresh
+  // tokens are AES-GCM encrypted at rest — NEVER stored in plaintext.
+  connectors: defineTable({
+    ownerId: v.id("users"),
+    provider: v.string(), // "github" | "gmail" | "notion" | "google_calendar" | …
+    accessTokenEncrypted: v.string(), // base64(iv || ciphertext+tag)
+    refreshTokenEncrypted: v.optional(v.string()),
+    scopes: v.array(v.string()),
+    connected: v.boolean(),
+    // Human-readable account label (e.g. GitHub login) for the UI.
+    accountLabel: v.optional(v.string()),
+    tokenExpiresAt: v.optional(v.number()),
+    lastSyncAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_owner_provider", ["ownerId", "provider"]),
 
   // ── Canvas ──────────────────────────────────────────────
   canvasCreations: defineTable({

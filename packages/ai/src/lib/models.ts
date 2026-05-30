@@ -2,6 +2,7 @@ export interface ModelOption {
   id: string; // Format: "provider/model" for Vercel AI Gateway
   name: string;
   provider:
+  | "kontinue"
   | "openai"
   | "anthropic"
   | "google"
@@ -17,6 +18,11 @@ export interface ModelOption {
   isDefault?: boolean;
 }
 
+import {
+  K_AI_MODEL_ID,
+  K_AI_DISPLAY_NAME,
+  K_AI_PROVIDER,
+} from "./kai";
 import { OPENAI_MODELS } from "./openai";
 import { ANTHROPIC_MODELS } from "./anthropic";
 import { GOOGLE_MODELS } from "./google";
@@ -29,9 +35,24 @@ import { ALIBABA_MODELS } from "./alibaba";
 import { MOONSHOTAI_MODELS } from "./moonshotai";
 import { MISTRAL_MODELS } from "./mistral";
 
+// K-AI 1.0 — Kontinue's own intelligence layer. Listed first so it's the
+// headline option. It does not route through the AI Gateway (it uses OpenRouter
+// with failover); the chat route special-cases it.
+const KONTINUE_MODELS: ModelOption[] = [
+  {
+    id: K_AI_MODEL_ID,
+    name: K_AI_DISPLAY_NAME,
+    provider: K_AI_PROVIDER,
+    description:
+      "Kontinue's proprietary intelligence layer — memory, retrieval, projects, tasks, connectors and agents working together.",
+    isDefault: true,
+  },
+];
+
 // Using Vercel AI Gateway format: "provider/model"
 // All accessible with a single AI_GATEWAY_API_KEY (or AI_GATEWAY_TOKEN) via AI Gateway
 export const AVAILABLE_MODELS: ModelOption[] = [
+  ...KONTINUE_MODELS,
   ...OPENAI_MODELS,
   ...ANTHROPIC_MODELS,
   ...GOOGLE_MODELS,
@@ -45,13 +66,14 @@ export const AVAILABLE_MODELS: ModelOption[] = [
   ...MISTRAL_MODELS,
 ];
 
-export const FREE_DEFAULT_MODEL_ID = "openai/gpt-5.4-mini";
+export const FREE_DEFAULT_MODEL_ID = K_AI_MODEL_ID;
 export const PRO_DEFAULT_MODEL_ID = "openai/gpt-5.5-pro";
 
 // Models that should remain usable on the free plan even if the AI Gateway
 // metadata suggests they have "premium" capabilities.
 export const ALWAYS_FREE_MODEL_IDS = new Set<string>([
-  FREE_DEFAULT_MODEL_ID,
+  K_AI_MODEL_ID,
+  "openai/gpt-5.4-mini",
   "alibaba/wan-v2.6-t2v",
   "alibaba/wan-v2.6-i2v",
   "alibaba/wan-v2.6-i2v-flash",
@@ -85,6 +107,7 @@ export function getDefaultModelForPlan(isPro: boolean): ModelOption {
 
 export function getProviderColor(provider: ModelOption["provider"]): string {
   const colors = {
+    kontinue: "#d633a0",
     openai: "#10a37f",
     anthropic: "#cc785c",
     google: "#4285f4",
