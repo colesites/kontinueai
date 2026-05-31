@@ -1,10 +1,10 @@
 "use client";
 
-import type { ChangeEvent, RefObject } from "react";
+import { useState, type ChangeEvent, type RefObject } from "react";
 import { useRouter } from "next/navigation";
 import { CiGlobe } from "react-icons/ci";
 import { FaPaperclip } from "react-icons/fa";
-import { Bot, Check, Plug, Plus } from "lucide-react";
+import { Bot, Check, ChevronLeft, ChevronRight, Plug, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@repo/ui/lib/utils";
 import { AGENTS } from "@repo/ai/lib/agents";
@@ -13,10 +13,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuPortal,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@repo/ui/components/ui/dropdown-menu";
 import { ChatInputImageOptions } from "./ChatInputImageOptions";
@@ -68,6 +65,11 @@ export function ChatInputTools({
   onAgentChange,
 }: ChatInputToolsProps) {
   const router = useRouter();
+  // Drill-in navigation inside the "+" menu: "root" shows the tools, "agents"
+  // swaps the same panel to the agent list with a back arrow (works on mobile
+  // where side-flyout submenus clip off-screen).
+  const [menuView, setMenuView] = useState<"root" | "agents">("root");
+  const activeAgent = AGENTS.find((a) => a.id === agentId) ?? null;
   // K-AI's web search is free for every tier (bounded by a daily quota), so it
   // isn't gated behind paid plans like the gateway models' Perplexity search.
   const isKai = isKaiModel(model);
@@ -91,7 +93,11 @@ export function ChatInputTools({
 
   return (
     <PromptInputTools>
-      <DropdownMenu>
+      <DropdownMenu
+        onOpenChange={(open) => {
+          if (!open) setMenuView("root");
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <PromptInputButton
             type="button"
@@ -101,83 +107,98 @@ export function ChatInputTools({
             <Plus className="h-4 w-4" />
           </PromptInputButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" sideOffset={8} className="w-48 bg-background/80 backdrop-blur-xl border-foreground/10">
-          {showWebSearchButton && (
-            <DropdownMenuItem
-              onClick={handleWebSearchClick}
-              className={cn("cursor-pointer gap-2", isWebSearchEnabled && "text-primary focus:text-primary")}
-            >
-              <CiGlobe className="h-4 w-4" />
-              <span>{isWebSearchEnabled ? "Web Search (On)" : "Web Search (Off)"}</span>
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem onClick={handleAttachClick} className="cursor-pointer gap-2">
-            <FaPaperclip className="h-4 w-4" />
-            <span>Attach File</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() => {
-              // Remember where to return after the (possibly OAuth-redirecting)
-              // connectors flow, since browser history gets clobbered.
-              try {
-                sessionStorage.setItem(
-                  "connectors:returnTo",
-                  window.location.pathname + window.location.search,
-                );
-              } catch {
-                // ignore storage failures
-              }
-              router.push("/settings/connectors");
-            }}
-            className="cursor-pointer gap-2"
-          >
-            <Plug className="h-4 w-4" />
-            <span>Connectors</span>
-          </DropdownMenuItem>
-
-          {onAgentChange && (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger className="cursor-pointer gap-2">
-                <Bot className="h-4 w-4" />
-                <span>Agents</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuPortal>
-                <DropdownMenuSubContent
-                  sideOffset={8}
-                  // Lift the flyout so it sits above/centered relative to the
-                  // "Agents" row instead of dropping down off the bottom of the
-                  // screen (the menu sits just above the chat input).
-                  alignOffset={-160}
-                  className="w-44 bg-background/80 backdrop-blur-xl border-foreground/10"
+        <DropdownMenuContent align="start" sideOffset={8} className="w-56 bg-background/80 backdrop-blur-xl border-foreground/10">
+          {menuView === "root" ? (
+            <>
+              {showWebSearchButton && (
+                <DropdownMenuItem
+                  onClick={handleWebSearchClick}
+                  className={cn("cursor-pointer gap-2", isWebSearchEnabled && "text-primary focus:text-primary")}
                 >
-                  <DropdownMenuItem
-                    onClick={() => onAgentChange(null)}
-                    className="cursor-pointer gap-2"
-                  >
-                    <Check className={cn("h-4 w-4", agentId ? "opacity-0" : "opacity-100")} />
-                    <span>None</span>
-                  </DropdownMenuItem>
-                  {AGENTS.map((agent) => (
-                    <DropdownMenuItem
-                      key={agent.id}
-                      onClick={() => onAgentChange(agent.id)}
-                      className={cn(
-                        "cursor-pointer gap-2",
-                        agentId === agent.id && "text-primary focus:text-primary",
-                      )}
-                    >
-                      <Check
-                        className={cn(
-                          "h-4 w-4",
-                          agentId === agent.id ? "opacity-100" : "opacity-0",
-                        )}
-                      />
-                      <span>{agent.name}</span>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuSubContent>
-              </DropdownMenuPortal>
-            </DropdownMenuSub>
+                  <CiGlobe className="h-4 w-4" />
+                  <span>{isWebSearchEnabled ? "Web Search (On)" : "Web Search (Off)"}</span>
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={handleAttachClick} className="cursor-pointer gap-2">
+                <FaPaperclip className="h-4 w-4" />
+                <span>Attach File</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => {
+                  // Remember where to return after the (possibly OAuth-redirecting)
+                  // connectors flow, since browser history gets clobbered.
+                  try {
+                    sessionStorage.setItem(
+                      "connectors:returnTo",
+                      window.location.pathname + window.location.search,
+                    );
+                  } catch {
+                    // ignore storage failures
+                  }
+                  router.push("/settings/connectors");
+                }}
+                className="cursor-pointer gap-2"
+              >
+                <Plug className="h-4 w-4" />
+                <span>Connectors</span>
+              </DropdownMenuItem>
+
+              {onAgentChange && (
+                <DropdownMenuItem
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    setMenuView("agents");
+                  }}
+                  className="cursor-pointer gap-2"
+                >
+                  <Bot className="h-4 w-4" />
+                  <span>Agents</span>
+                  <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                    {activeAgent ? activeAgent.name : "None"}
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </span>
+                </DropdownMenuItem>
+              )}
+            </>
+          ) : (
+            <>
+              <DropdownMenuItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  setMenuView("root");
+                }}
+                className="cursor-pointer gap-2 text-muted-foreground"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                <span>Agents</span>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => onAgentChange?.(null)}
+                className={cn("cursor-pointer gap-2", !agentId && "text-primary focus:text-primary")}
+              >
+                <Check className={cn("h-4 w-4 shrink-0", agentId ? "opacity-0" : "opacity-100")} />
+                <span>None</span>
+              </DropdownMenuItem>
+              {AGENTS.map((agent) => (
+                <DropdownMenuItem
+                  key={agent.id}
+                  onClick={() => onAgentChange?.(agent.id)}
+                  className={cn(
+                    "cursor-pointer gap-2",
+                    agentId === agent.id && "text-primary focus:text-primary",
+                  )}
+                >
+                  <Check
+                    className={cn(
+                      "h-4 w-4 shrink-0",
+                      agentId === agent.id ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span>{agent.name}</span>
+                </DropdownMenuItem>
+              ))}
+            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>
