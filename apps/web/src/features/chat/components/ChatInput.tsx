@@ -31,6 +31,7 @@ import { useSpeechInput } from "../hooks/use-speech-input";
 import { useFileAttachments } from "../hooks/use-file-attachments";
 import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 import { AVAILABLE_MODELS } from "@repo/ai/lib/models";
+import { isKaiModel } from "@repo/ai/lib/kai";
 import { useIsProPlan } from "../../../lib/use-plan-tier";
 import type { ChatInputProps } from "../types";
 
@@ -116,6 +117,9 @@ export function ChatInput({
 
   const { getCapabilities } = useModelCapabilities();
   const selectedModelData = AVAILABLE_MODELS.find((m) => m.id === model);
+  // K-AI's web search is free for every tier (own daily quota), so it isn't
+  // gated behind paid plans like the gateway models' Perplexity search.
+  const isKaiSearch = isKaiModel(model);
   const canSearch =
     !!selectedModelData &&
     getCapabilities(selectedModelData.id).includes("web-search");
@@ -205,7 +209,7 @@ export function ChatInput({
               onModelSelectorOpenChange={setModelSelectorOpen}
               onModelChange={onModelChange}
               canUsePaidFeatures={canUsePaidFeatures}
-              webSearchEnabled={canUsePaidFeatures ? webSearchEnabled : false}
+              webSearchEnabled={canUsePaidFeatures || isKaiSearch ? webSearchEnabled : false}
               onWebSearchToggle={onWebSearchToggle}
               canSearch={canSearch}
               canGenerateImage={canGenerateImage}
