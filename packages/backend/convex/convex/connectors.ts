@@ -299,6 +299,79 @@ export const getRefreshableToken = action({
   },
 });
 
+// ── Owner-scoped token access for autonomous (session-less) agent runs ────────
+// These are guarded by AGENT_TASK_SECRET (a shared secret only our server-side
+// agent-task runner knows) instead of a user session, so scheduled K-AI tasks
+// can act on the user's connectors when the user isn't present. They are the
+// only way to read tokens without an authenticated identity — keep the secret
+// server-only.
+function assertAgentSecret(secret: string) {
+  const expected = process.env.AGENT_TASK_SECRET;
+  if (!expected || secret !== expected) {
+    throw new ConvexError({ code: "FORBIDDEN", message: "Invalid agent secret." });
+  }
+}
+
+export const getAccessTokenForOwner = action({
+  args: { ownerId: v.id("users"), provider: v.string(), secret: v.string() },
+  handler: async (ctx, args): Promise<{ accessToken: string } | null> => {
+    assertAgentSecret(args.secret);
+    const row = await ctx.runQuery(internal.connectors.getEncryptedToken, {
+      ownerId: args.ownerId,
+      provider: args.provider,
+    });
+    if (!row) return null;
+    return { accessToken: await decryptToken(row.accessTokenEncrypted) };
+  },
+});
+
+export const getRefreshableTokenForOwner = action({
+  args: { ownerId: v.id("users"), provider: v.string(), secret: v.string() },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string | null;
+    tokenExpiresAt: number | null;
+  } | null> => {
+    assertAgentSecret(args.secret);
+    const row = await ctx.runQuery(internal.connectors.getEncryptedToken, {
+      ownerId: args.ownerId,
+      provider: args.provider,
+    });
+    if (!row) return null;
+    return {
+      accessToken: await decryptToken(row.accessTokenEncrypted),
+      refreshToken: row.refreshTokenEncrypted
+        ? await decryptToken(row.refreshTokenEncrypted)
+        : null,
+      tokenExpiresAt: row.tokenExpiresAt,
+    };
+  },
+});
+
+export const persistRefreshedTokenForOwner = action({
+  args: {
+    ownerId: v.id("users"),
+    provider: v.string(),
+    accessToken: v.string(),
+    tokenExpiresAt: v.optional(v.number()),
+    secret: v.string(),
+  },
+  handler: async (ctx, args): Promise<null> => {
+    assertAgentSecret(args.secret);
+    const accessTokenEncrypted = await encryptToken(args.accessToken);
+    await ctx.runMutation(internal.connectors.updateAccessToken, {
+      ownerId: args.ownerId,
+      provider: args.provider,
+      accessTokenEncrypted,
+      tokenExpiresAt: args.tokenExpiresAt,
+    });
+    return null;
+  },
+});
+
 // ── Action: persist a freshly-refreshed access token (encrypts at rest) ───────
 export const persistRefreshedToken = action({
   args: {

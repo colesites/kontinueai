@@ -282,11 +282,31 @@ export default defineSchema({
       v.literal("month_premium"), // paid users: premium-model quota by tier
       v.literal("month_standard"), // paid users: standard-model quota by tier
       v.literal("month_kai"), // K-AI 1.0: separate monthly request budget
+      v.literal("day_kai_search"), // K-AI 1.0: daily web-search budget
     ),
     bucketStartMs: v.number(),
     requestCount: v.number(),
     updatedAt: v.number(),
   }).index("by_owner_bucket", ["ownerId", "bucketType", "bucketStartMs"]),
+
+  // Global cache of web-search results (not per-user) so identical queries reuse
+  // a recent answer instead of re-hitting the search provider. Keyed by a
+  // normalized query hash; rows expire via expiresAt (checked at read time).
+  webSearchCache: defineTable({
+    queryKey: v.string(), // normalized + hashed query
+    query: v.string(), // original (display) query
+    contextText: v.string(), // built context block injected into the prompt
+    sources: v.array(
+      v.object({
+        title: v.string(),
+        url: v.string(),
+        snippet: v.optional(v.string()),
+      }),
+    ),
+    provider: v.string(), // which provider produced this (tavily/brave)
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }).index("by_query_key", ["queryKey"]),
 
   userSettings: defineTable({
     ownerId: v.id("users"),
@@ -381,6 +401,12 @@ export default defineSchema({
     ),
     recurring: v.boolean(),
     recurrenceRule: v.optional(v.string()), // RRULE-ish string, null when not recurring
+    // AI task: when isAgentTask, the scheduler runs K-AI with `aiInstruction`
+    // (under the optional `agentId` persona) at the due time and delivers the
+    // result, instead of just sending a reminder.
+    isAgentTask: v.optional(v.boolean()),
+    aiInstruction: v.optional(v.string()),
+    agentId: v.optional(v.string()),
     linkedConversationId: v.optional(v.id("chats")),
     linkedMemoryIds: v.optional(v.array(v.id("memories"))),
     createdByAgent: v.optional(v.string()), // agent id if AI-created, else undefined

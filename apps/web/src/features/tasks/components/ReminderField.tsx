@@ -1,7 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
-import { format } from "date-fns";
 import { REMINDER_OPTIONS } from "../lib/task-shared";
 import { DateTimePicker } from "./DateTimePicker";
 
@@ -23,8 +23,24 @@ const CUSTOM = "custom";
 export function ReminderField({ dueDate, value, onChange }: ReminderFieldProps) {
   const disabled = dueDate == null;
   const isPreset = value != null && PRESET_MINUTES.includes(value);
+
+  // "Custom" can't be inferred purely from the value: a custom pick of exactly
+  // 60 min collides with the "1 hour before" preset. Track it explicitly so the
+  // dropdown stays on "Custom time…" and the picker shows. Seed it true when an
+  // existing value isn't one of the presets.
+  const [customMode, setCustomMode] = useState(value != null && !isPreset);
+
+  // If the value is reset externally (e.g. due date cleared → null), drop custom.
+  useEffect(() => {
+    if (value == null) setCustomMode(false);
+  }, [value]);
+
   const selectValue =
-    value == null ? "" : isPreset ? String(value) : CUSTOM;
+    customMode || (value != null && !isPreset)
+      ? CUSTOM
+      : value == null
+        ? ""
+        : String(value);
 
   // Exact reminder moment when in custom mode.
   const reminderMs =
@@ -42,12 +58,18 @@ export function ReminderField({ dueDate, value, onChange }: ReminderFieldProps) 
           disabled={disabled}
           onChange={(e) => {
             const v = e.target.value;
-            if (v === "") return onChange(null);
+            if (v === "") {
+              setCustomMode(false);
+              return onChange(null);
+            }
             if (v === CUSTOM) {
-              // Default custom to 1 hour before, clamped to "now-ish".
-              onChange(value ?? 60);
+              setCustomMode(true);
+              // Seed a starting point (1h before) only if nothing is set yet;
+              // the picker lets the user choose the exact moment.
+              if (value == null) onChange(60);
               return;
             }
+            setCustomMode(false);
             onChange(Number(v));
           }}
           aria-label="Reminder"
@@ -65,19 +87,18 @@ export function ReminderField({ dueDate, value, onChange }: ReminderFieldProps) 
       {selectValue === CUSTOM && dueDate != null && (
         <DateTimePicker
           value={reminderMs}
-          placeholder="Pick reminder time"
+          placeholder="Pick exact reminder time"
+          autoOpen
+          className="w-full sm:w-auto"
           onChange={(ms) => {
-            if (ms == null) return onChange(null);
+            if (ms == null) {
+              setCustomMode(false);
+              return onChange(null);
+            }
             const minutes = Math.round((dueDate - ms) / 60_000);
             onChange(minutes > 0 ? minutes : 1);
           }}
         />
-      )}
-
-      {selectValue === CUSTOM && reminderMs != null && (
-        <span className="text-[11px] text-muted-foreground">
-          {format(new Date(reminderMs), "MMM d, h:mm a")}
-        </span>
       )}
     </div>
   );

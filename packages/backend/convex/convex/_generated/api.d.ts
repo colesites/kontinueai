@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as agentTasks from "../agentTasks.js";
 import type * as canvas from "../canvas.js";
 import type * as chats from "../chats.js";
 import type * as connectors from "../connectors.js";
@@ -32,6 +33,7 @@ import type * as reminderDelivery from "../reminderDelivery.js";
 import type * as tasks from "../tasks.js";
 import type * as titleGenerator from "../titleGenerator.js";
 import type * as users from "../users.js";
+import type * as webSearch from "../webSearch.js";
 import type * as whitelist from "../whitelist.js";
 
 import type {
@@ -41,6 +43,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentTasks: typeof agentTasks;
   canvas: typeof canvas;
   chats: typeof chats;
   connectors: typeof connectors;
@@ -65,6 +68,7 @@ declare const fullApi: ApiFromModules<{
   tasks: typeof tasks;
   titleGenerator: typeof titleGenerator;
   users: typeof users;
+  webSearch: typeof webSearch;
   whitelist: typeof whitelist;
 }>;
 

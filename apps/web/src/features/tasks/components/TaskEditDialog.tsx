@@ -17,6 +17,7 @@ import { Button } from "@repo/ui/components/ui/button";
 import { PRIORITY_META, type Task } from "../lib/task-shared";
 import { DateTimePicker } from "./DateTimePicker";
 import { ReminderField } from "./ReminderField";
+import { RecurrenceField } from "./RecurrenceField";
 
 const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 
@@ -36,6 +37,7 @@ export function TaskEditDialog({
   const [dueDate, setDueDate] = useState<number | null>(null);
   const [priority, setPriority] = useState<Task["priority"]>("medium");
   const [reminder, setReminder] = useState<number | null>(null);
+  const [recurrenceRule, setRecurrenceRule] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Hydrate form whenever a new task is opened.
@@ -46,6 +48,7 @@ export function TaskEditDialog({
     setDueDate(task.dueDate ?? null);
     setPriority(task.priority);
     setReminder(task.reminderMinutesBefore ?? null);
+    setRecurrenceRule(task.recurrenceRule ?? null);
   }, [task]);
 
   // Dropping the due date invalidates any reminder.
@@ -70,6 +73,8 @@ export function TaskEditDialog({
         dueDate: dueDate ?? null,
         priority,
         reminderMinutesBefore: dueDate != null ? (reminder ?? null) : null,
+        recurring: recurrenceRule != null,
+        recurrenceRule: recurrenceRule ?? null,
       });
       onOpenChange(false);
     } catch (err) {
@@ -122,11 +127,17 @@ export function TaskEditDialog({
             </div>
           </div>
 
-          <ReminderField
-            dueDate={dueDate}
-            value={reminder}
-            onChange={setReminder}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <ReminderField
+              dueDate={dueDate}
+              value={reminder}
+              onChange={setReminder}
+            />
+            <RecurrenceField
+              value={recurrenceRule}
+              onChange={setRecurrenceRule}
+            />
+          </div>
         </div>
 
         <DialogFooter>

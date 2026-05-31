@@ -8,6 +8,7 @@ import { Bot, Check, Plug, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@repo/ui/lib/utils";
 import { AGENTS } from "@repo/ai/lib/agents";
+import { isKaiModel } from "@repo/ai/lib/kai";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,10 +68,14 @@ export function ChatInputTools({
   onAgentChange,
 }: ChatInputToolsProps) {
   const router = useRouter();
-  const isWebSearchEnabled = canUsePaidFeatures && webSearchEnabled;
+  // K-AI's web search is free for every tier (bounded by a daily quota), so it
+  // isn't gated behind paid plans like the gateway models' Perplexity search.
+  const isKai = isKaiModel(model);
+  const webSearchAllowed = canUsePaidFeatures || isKai;
+  const isWebSearchEnabled = webSearchAllowed && webSearchEnabled;
   const showWebSearchButton = canSearch;
   const handleWebSearchClick = () => {
-    if (!canUsePaidFeatures) {
+    if (!webSearchAllowed) {
       toast.error("Web search is available on Starter/Pro plans.");
       return;
     }
@@ -139,6 +144,10 @@ export function ChatInputTools({
               <DropdownMenuPortal>
                 <DropdownMenuSubContent
                   sideOffset={8}
+                  // Lift the flyout so it sits above/centered relative to the
+                  // "Agents" row instead of dropping down off the bottom of the
+                  // screen (the menu sits just above the chat input).
+                  alignOffset={-160}
                   className="w-44 bg-background/80 backdrop-blur-xl border-foreground/10"
                 >
                   <DropdownMenuItem

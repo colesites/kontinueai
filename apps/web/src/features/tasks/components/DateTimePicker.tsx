@@ -20,6 +20,9 @@ type DateTimePickerProps = {
   className?: string;
   // When true, render compact (icon-only when empty).
   align?: "start" | "center" | "end";
+  // Open the picker immediately on mount (used when the user explicitly picks
+  // "Custom time…" so the time input shows right away instead of a stale value).
+  autoOpen?: boolean;
 };
 
 function toTimeInput(d: Date): string {
@@ -34,8 +37,9 @@ export function DateTimePicker({
   placeholder = "Set due date",
   className,
   align = "start",
+  autoOpen = false,
 }: DateTimePickerProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(autoOpen);
   const current = value != null ? new Date(value) : undefined;
   const timeValue = current ? toTimeInput(current) : "09:00";
 

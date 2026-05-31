@@ -195,12 +195,20 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-      // Enter (without Shift) submits — unless the mention menu intercepted it
-      // first via the wrapper's capture handler.
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        onSubmit();
-      }
+      if (e.key !== "Enter" || e.shiftKey) return;
+      // On touch devices (phones/tablets) the virtual keyboard's Enter/return
+      // should insert a newline, NOT send — sending on Enter is a desktop-only
+      // convention. Detect a coarse (touch) primary pointer and let the default
+      // newline happen there. Also respect IME composition.
+      const isTouchPrimary =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(pointer: coarse)").matches;
+      if (isTouchPrimary || e.nativeEvent.isComposing) return;
+      // Desktop hardware Enter (without Shift) submits — unless the mention menu
+      // intercepted it first via the wrapper's capture handler.
+      e.preventDefault();
+      onSubmit();
     };
 
     return (

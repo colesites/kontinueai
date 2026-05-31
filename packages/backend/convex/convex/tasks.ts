@@ -150,6 +150,9 @@ export const createTask = mutation({
     projectId: v.optional(v.id("projects")),
     recurring: v.optional(v.boolean()),
     recurrenceRule: v.optional(v.string()),
+    isAgentTask: v.optional(v.boolean()),
+    aiInstruction: v.optional(v.string()),
+    agentId: v.optional(v.string()),
     linkedConversationId: v.optional(v.id("chats")),
     reminderMinutesBefore: v.optional(v.number()),
     createdByAgent: v.optional(v.string()),
@@ -171,6 +174,9 @@ export const createTask = mutation({
       status: args.status ?? "todo",
       recurring: args.recurring ?? false,
       recurrenceRule: args.recurrenceRule,
+      isAgentTask: args.isAgentTask ?? false,
+      aiInstruction: args.aiInstruction?.trim().slice(0, 2000) || undefined,
+      agentId: args.agentId,
       linkedConversationId: args.linkedConversationId,
       reminderMinutesBefore: args.reminderMinutesBefore,
       createdByAgent: args.createdByAgent,
@@ -191,6 +197,9 @@ export const updateTask = mutation({
     projectId: v.optional(v.union(v.id("projects"), v.null())),
     recurring: v.optional(v.boolean()),
     recurrenceRule: v.optional(v.union(v.string(), v.null())),
+    isAgentTask: v.optional(v.boolean()),
+    aiInstruction: v.optional(v.union(v.string(), v.null())),
+    agentId: v.optional(v.union(v.string(), v.null())),
     reminderMinutesBefore: v.optional(v.union(v.number(), v.null())),
   },
   handler: async (ctx, args) => {
@@ -199,6 +208,10 @@ export const updateTask = mutation({
 
     const patch: Partial<Doc<"tasks">> = { updatedAt: Date.now() };
     if (args.title !== undefined) patch.title = normalizeTitle(args.title);
+    if (args.isAgentTask !== undefined) patch.isAgentTask = args.isAgentTask;
+    if (args.aiInstruction !== undefined)
+      patch.aiInstruction = args.aiInstruction?.trim().slice(0, 2000) || undefined;
+    if (args.agentId !== undefined) patch.agentId = args.agentId ?? undefined;
     if (args.description !== undefined)
       patch.description =
         args.description.trim().slice(0, DESCRIPTION_MAX) || undefined;
@@ -262,6 +275,50 @@ const REMINDER_GRACE_MS = 60 * 60 * 1000; // 1 hour
 // Cron-driven: scan tasks whose reminder hasn't been dispatched yet and create
 // an in-app notification once we cross `dueDate - reminderMinutesBefore`.
 // Driven by the `by_reminder` index (reminderSentAt === undefined first).
+// Advance a due date to the next occurrence for a simple FREQ rule. Loops until
+// the result is in the future so a long-dormant recurring task doesn't fire a
+// burst of past occurrences. Returns null for unknown/one-off rules.
+function nextRecurrence(
+  dueDate: number,
+  rule: string | undefined,
+  now: number,
+): number | null {
+  if (!rule) return null;
+  const freq = /FREQ=([A-Z]+)/.exec(rule)?.[1];
+  if (!freq) return null;
+
+  const advance = (ms: number): number => {
+    const d = new Date(ms);
+    switch (freq) {
+      case "DAILY":
+        d.setDate(d.getDate() + 1);
+        break;
+      case "WEEKLY":
+        d.setDate(d.getDate() + 7);
+        break;
+      case "MONTHLY":
+        d.setMonth(d.getMonth() + 1);
+        break;
+      case "YEARLY":
+        d.setFullYear(d.getFullYear() + 1);
+        break;
+      default:
+        return NaN;
+    }
+    return d.getTime();
+  };
+
+  let next = advance(dueDate);
+  if (Number.isNaN(next)) return null;
+  let guard = 0;
+  while (next <= now && guard++ < 1000) {
+    const stepped = advance(next);
+    if (Number.isNaN(stepped)) break;
+    next = stepped;
+  }
+  return next;
+}
+
 export const dispatchDueReminders = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -283,30 +340,49 @@ export const dispatchDueReminders = internalMutation({
       const fireAt = task.dueDate - minutesBefore * 60_000;
       if (now < fireAt) continue; // not time yet
 
-      // Still within the window where notifying is useful.
+      // Still within the window where acting is useful.
       if (now <= task.dueDate + REMINDER_GRACE_MS) {
-        const title = `Reminder: ${task.title}`;
-        // In-app notification (always).
-        await ctx.runMutation(internal.notifications.create, {
-          ownerId: task.ownerId,
-          type: "task_reminder",
-          title,
-          body: task.description,
-          taskId: task._id,
-          chatId: task.linkedConversationId,
-        });
-        // External channels (email + web push) run in a Node action.
-        await ctx.scheduler.runAfter(0, internal.reminderDelivery.deliver, {
-          userId: task.ownerId,
-          title,
-          body: task.description,
-          taskId: task._id,
-        });
+        if (task.isAgentTask && task.aiInstruction) {
+          // AI task: run K-AI with the instruction and deliver the result.
+          await ctx.scheduler.runAfter(0, internal.agentTasks.run, {
+            taskId: task._id,
+          });
+        } else {
+          const title = `Reminder: ${task.title}`;
+          // In-app notification (always).
+          await ctx.runMutation(internal.notifications.create, {
+            ownerId: task.ownerId,
+            type: "task_reminder",
+            title,
+            body: task.description,
+            taskId: task._id,
+            chatId: task.linkedConversationId,
+          });
+          // External channels (email + web push) run in a Node action.
+          await ctx.scheduler.runAfter(0, internal.reminderDelivery.deliver, {
+            userId: task.ownerId,
+            title,
+            body: task.description,
+            taskId: task._id,
+          });
+        }
         sent++;
       }
 
-      // Mark sent either way so we don't re-scan it every minute.
-      await ctx.db.patch(task._id, { reminderSentAt: now });
+      // Recurring tasks roll forward to their next occurrence and re-arm the
+      // reminder; one-off tasks are simply marked sent so we stop scanning them.
+      const next = task.recurring
+        ? nextRecurrence(task.dueDate, task.recurrenceRule, now)
+        : null;
+      if (next != null) {
+        await ctx.db.patch(task._id, {
+          dueDate: next,
+          reminderSentAt: undefined,
+          updatedAt: now,
+        });
+      } else {
+        await ctx.db.patch(task._id, { reminderSentAt: now });
+      }
     }
 
     return { scanned: candidates.length, sent };

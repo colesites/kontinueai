@@ -1,11 +1,12 @@
 "use client";
 
-import { CalendarClock, Check, Flag, Pencil, Trash2 } from "lucide-react";
+import { Bell, Bot, CalendarClock, Check, Flag, Pencil, Repeat, Trash2 } from "lucide-react";
 import { cn } from "@repo/ui/lib/utils";
 import {
   PRIORITY_META,
   formatDue,
   isOverdue,
+  recurrenceLabel,
   type Task,
 } from "../lib/task-shared";
 
@@ -71,6 +72,29 @@ export function TaskRow({
             >
               <Flag size={11} />
               {priority.label}
+            </span>
+          )}
+          {task.reminderMinutesBefore != null && (
+            <span className="inline-flex items-center gap-1">
+              <Bell size={11} />
+            </span>
+          )}
+          {task.recurring && (
+            <span
+              className="inline-flex items-center gap-1"
+              title={recurrenceLabel(task.recurrenceRule)}
+            >
+              <Repeat size={11} />
+              {recurrenceLabel(task.recurrenceRule)}
+            </span>
+          )}
+          {task.isAgentTask && (
+            <span
+              className="inline-flex items-center gap-1 text-primary"
+              title="K-AI runs this automatically"
+            >
+              <Bot size={11} />
+              K-AI
             </span>
           )}
         </div>

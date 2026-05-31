@@ -39,6 +39,28 @@ export const REMINDER_OPTIONS: { label: string; minutes: number | null }[] = [
   { label: "1 day before", minutes: 1440 },
 ];
 
+// Priority options for selects (ordered high → low for picker UX).
+export const PRIORITY_OPTIONS: { label: string; value: Task["priority"] }[] = [
+  { label: "Urgent", value: "urgent" },
+  { label: "High", value: "high" },
+  { label: "Medium", value: "medium" },
+  { label: "Low", value: "low" },
+];
+
+// Repeat presets. `rule` is the RRULE-ish string stored on the task; null = one-off.
+export const RECURRENCE_OPTIONS: { label: string; rule: string | null }[] = [
+  { label: "Does not repeat", rule: null },
+  { label: "Daily", rule: "FREQ=DAILY" },
+  { label: "Weekly", rule: "FREQ=WEEKLY" },
+  { label: "Monthly", rule: "FREQ=MONTHLY" },
+  { label: "Yearly", rule: "FREQ=YEARLY" },
+];
+
+export function recurrenceLabel(rule: string | null | undefined): string {
+  const found = RECURRENCE_OPTIONS.find((o) => o.rule === (rule ?? null));
+  return found?.label ?? "Custom";
+}
+
 export function startOfToday(): number {
   const d = new Date();
   d.setHours(0, 0, 0, 0);

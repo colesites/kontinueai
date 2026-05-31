@@ -10,6 +10,10 @@ import { getAgent, type AgentId } from "@repo/ai/lib/agents";
 import type { AiGatewayModel, OpenAIImageSize } from "./types";
 import { modelSupportsTools } from "./model-utils";
 import { toOpenAIImageSize } from "./request-utils";
+import {
+  userConnectorTokens,
+  type ConnectorTokens,
+} from "./connector-tokens";
 
 const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 
@@ -121,7 +125,7 @@ function makeCreateTaskTool(
  * the decrypted access token from Convex (owner-scoped) and queries the GitHub
  * REST API on the user's behalf. Read-only: repos and issues.
  */
-function makeGithubTool(convexToken: string) {
+function makeGithubTool(tokens: ConnectorTokens) {
   return tool({
     description: [
       "Read AND modify the user's connected GitHub account.",
@@ -170,11 +174,7 @@ function makeGithubTool(convexToken: string) {
     }),
     execute: async ({ action, repo, title, body, issueNumber }) => {
       try {
-        const tokenResult = await fetchAction(
-          convexApi.connectors.getAccessToken,
-          { provider: "github" },
-          { token: convexToken },
-        );
+        const tokenResult = await tokens.getAccessToken("github");
         if (!tokenResult) {
           return { connected: false, error: "GitHub is not connected." };
         }
@@ -304,7 +304,7 @@ function makeGithubTool(convexToken: string) {
 /**
  * Build the notion tool. Searches the user's connected Notion workspace.
  */
-function makeNotionTool(convexToken: string) {
+function makeNotionTool(tokens: ConnectorTokens) {
   return tool({
     description: [
       "Read AND write the user's connected Notion workspace.",
@@ -347,11 +347,7 @@ function makeNotionTool(convexToken: string) {
     }),
     execute: async ({ action, query, parentPageId, pageId, title, content }) => {
       try {
-        const tokenResult = await fetchAction(
-          convexApi.connectors.getAccessToken,
-          { provider: "notion" },
-          { token: convexToken },
-        );
+        const tokenResult = await tokens.getAccessToken("notion");
         if (!tokenResult) return { connected: false, error: "Notion is not connected." };
         const headers = {
           Authorization: `Bearer ${tokenResult.accessToken}`,
@@ -543,7 +539,7 @@ function extractNotionTitle(props?: Record<string, unknown>): string {
 /**
  * Build the vercel tool. Lists the user's recent deployments.
  */
-function makeVercelTool(convexToken: string) {
+function makeVercelTool(tokens: ConnectorTokens) {
   return tool({
     description: [
       "Read AND act on the user's connected Vercel account.",
@@ -583,11 +579,7 @@ function makeVercelTool(convexToken: string) {
     }),
     execute: async ({ action, limit, deploymentId, name, target }) => {
       try {
-        const tokenResult = await fetchAction(
-          convexApi.connectors.getAccessToken,
-          { provider: "vercel" },
-          { token: convexToken },
-        );
+        const tokenResult = await tokens.getAccessToken("vercel");
         if (!tokenResult) return { connected: false, error: "Vercel is not connected." };
         const authHeader = { Authorization: `Bearer ${tokenResult.accessToken}` };
 
@@ -674,14 +666,10 @@ function isValidTimezone(tz: string): boolean {
 // access token: it reads the stored token set, and if the access token is
 // missing/expired, exchanges the refresh token for a new one (and persists it).
 async function getGoogleAccessToken(
-  convexToken: string,
+  tokens: ConnectorTokens,
   provider: "gmail" | "google_calendar" | "google_drive",
 ): Promise<{ accessToken: string } | { error: string }> {
-  const tokenSet = await fetchAction(
-    convexApi.connectors.getRefreshableToken,
-    { provider },
-    { token: convexToken },
-  );
+  const tokenSet = await tokens.getRefreshableToken(provider);
   if (!tokenSet) {
     return { error: `${provider} is not connected.` };
   }
@@ -742,11 +730,7 @@ async function getGoogleAccessToken(
     : undefined;
   // Persist the refreshed token (best-effort — don't block the call on it).
   try {
-    await fetchAction(
-      convexApi.connectors.persistRefreshedToken,
-      { provider, accessToken: json.access_token, tokenExpiresAt },
-      { token: convexToken },
-    );
+    await tokens.persistRefreshedToken(provider, json.access_token, tokenExpiresAt);
   } catch (error) {
     console.error(`[oauth ${provider}] failed to persist refreshed token`, error);
   }
@@ -785,7 +769,26 @@ async function googleApiError(res: Response, label: string): Promise<string> {
   return message;
 }
 
-function makeGmailTool(convexToken: string) {
+// Assemble the connector tool set for an AUTONOMOUS agent-task run (no user
+// session). Uses owner-scoped token access; excludes image/web/perplexity and
+// create_task (those need extra context). Shared with the interactive path's
+// factories so behavior stays identical.
+export function buildAutonomousConnectorTools(
+  tokens: ConnectorTokens,
+  userTimezone: string | null,
+): ToolSet {
+  return {
+    get_current_time: makeGetCurrentTimeTool(userTimezone),
+    github: makeGithubTool(tokens),
+    notion: makeNotionTool(tokens),
+    vercel: makeVercelTool(tokens),
+    gmail: makeGmailTool(tokens),
+    google_calendar: makeGoogleCalendarTool(tokens),
+    google_drive: makeGoogleDriveTool(tokens),
+  };
+}
+
+function makeGmailTool(tokens: ConnectorTokens) {
   return tool({
     description: [
       "Search and read the user's connected Gmail (read-only).",
@@ -810,7 +813,7 @@ function makeGmailTool(convexToken: string) {
     }),
     execute: async ({ action, query, messageId }) => {
       try {
-        const token = await getGoogleAccessToken(convexToken, "gmail");
+        const token = await getGoogleAccessToken(tokens, "gmail");
         if ("error" in token) return { connected: false, error: token.error };
         const auth = { Authorization: `Bearer ${token.accessToken}` };
 
@@ -902,7 +905,7 @@ function makeGmailTool(convexToken: string) {
   });
 }
 
-function makeGoogleCalendarTool(convexToken: string) {
+function makeGoogleCalendarTool(tokens: ConnectorTokens) {
   return tool({
     description: [
       "Read and create events on the user's connected Google Calendar.",
@@ -941,7 +944,7 @@ function makeGoogleCalendarTool(convexToken: string) {
       location,
     }) => {
       try {
-        const token = await getGoogleAccessToken(convexToken, "google_calendar");
+        const token = await getGoogleAccessToken(tokens, "google_calendar");
         if ("error" in token) return { connected: false, error: token.error };
         const auth = {
           Authorization: `Bearer ${token.accessToken}`,
@@ -1023,7 +1026,7 @@ function makeGoogleCalendarTool(convexToken: string) {
   });
 }
 
-function makeGoogleDriveTool(convexToken: string) {
+function makeGoogleDriveTool(tokens: ConnectorTokens) {
   return tool({
     description: [
       "Search and read files from the user's connected Google Drive (read-only).",
@@ -1048,7 +1051,7 @@ function makeGoogleDriveTool(convexToken: string) {
     }),
     execute: async ({ action, query, fileId }) => {
       try {
-        const token = await getGoogleAccessToken(convexToken, "google_drive");
+        const token = await getGoogleAccessToken(tokens, "google_drive");
         if ("error" in token) return { connected: false, error: token.error };
         const auth = { Authorization: `Bearer ${token.accessToken}` };
 
@@ -1159,6 +1162,7 @@ import {
   buildResponseBudgetContext,
   buildImageGenerationContext,
   buildWebSearchContext,
+  buildWebSearchResultsContext,
   CHAT_SYSTEM_PROMPT,
   isLikelyImageRequest,
   isLikelyWebSearchRequest,
@@ -1191,6 +1195,7 @@ export function buildToolsAndPrompt(options: {
   gatewayOpenAIBaseUrl: string;
   userTimezone?: string | null;
   memoryContextText?: string | null;
+  webSearchContextText?: string | null;
   convexToken?: string | null;
   chatId?: Id<"chats"> | null;
   agentId?: AgentId | null;
@@ -1207,6 +1212,7 @@ export function buildToolsAndPrompt(options: {
     gatewayOpenAIBaseUrl,
     userTimezone,
     memoryContextText,
+    webSearchContextText,
     convexToken,
     chatId,
     agentId,
@@ -1233,13 +1239,14 @@ export function buildToolsAndPrompt(options: {
   // Task creation is available whenever the model supports tools and we have an
   // authed Convex token to write on the user's behalf.
   if (supportsTools && convexToken) {
+    const tokens = userConnectorTokens(convexToken);
     tools.create_task = makeCreateTaskTool(convexToken, chatId ?? null);
-    tools.github = makeGithubTool(convexToken);
-    tools.notion = makeNotionTool(convexToken);
-    tools.vercel = makeVercelTool(convexToken);
-    tools.gmail = makeGmailTool(convexToken);
-    tools.google_calendar = makeGoogleCalendarTool(convexToken);
-    tools.google_drive = makeGoogleDriveTool(convexToken);
+    tools.github = makeGithubTool(tokens);
+    tools.notion = makeNotionTool(tokens);
+    tools.vercel = makeVercelTool(tokens);
+    tools.gmail = makeGmailTool(tokens);
+    tools.google_calendar = makeGoogleCalendarTool(tokens);
+    tools.google_drive = makeGoogleDriveTool(tokens);
   }
 
   if (webSearchEnabled && !hasWebSearch) {
@@ -1337,7 +1344,8 @@ export function buildToolsAndPrompt(options: {
     taskToolContext +
     connectorToolContext +
     mentionDirective +
-    buildMemoryContext(memoryContextText ?? null);
+    buildMemoryContext(memoryContextText ?? null) +
+    buildWebSearchResultsContext(webSearchContextText ?? null);
 
   const forceImageTool =
     hasImageGen &&

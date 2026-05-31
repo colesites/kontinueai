@@ -22,6 +22,26 @@ Communication style:
 - Use tables only when they improve clarity.
 - Avoid filler, repetition, and vague wording.`;
 
+// Inject pre-fetched, cleaned web-search results into the prompt. The search
+// already happened server-side (Tavily/Brave) — the model only synthesizes and
+// MUST cite. Sources are numbered [1], [2]… with their URLs.
+export function buildWebSearchResultsContext(
+  webSearchContextText: string | null,
+): string {
+  if (!webSearchContextText) return "";
+  return [
+    "\n\nWEB SEARCH RESULTS (live, retrieved just now for this query):",
+    webSearchContextText,
+    "",
+    "Using these results:",
+    "- Answer the user's question directly and concisely, grounded in the results above.",
+    "- Cite sources inline as markdown links, e.g. [1](url), next to the claims they support.",
+    "- End with a '**Sources**' section listing each source you used as a clickable markdown link: '- [Title](url)'.",
+    "- Prefer the most recent and authoritative results. If the results don't answer the question, say so rather than guessing.",
+    "- Do not paste raw result text verbatim; synthesize.",
+  ].join("\n");
+}
+
 export function buildResponseBudgetContext(options: {
   maxOutputTokens: number;
 }): string {

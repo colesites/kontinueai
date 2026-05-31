@@ -28,6 +28,13 @@ export interface AgentDefinition {
   suggestedActions: string[];
   /** Lowercased keywords used by the lightweight recommendation heuristic. */
   recommendKeywords: string[];
+  /**
+   * When true, this agent biases toward live web search on K-AI: intent
+   * detection runs in aggressive mode so borderline queries still search
+   * (still suppressed by clearly self-contained queries, still bounded by the
+   * user's daily web-search quota).
+   */
+  autoWebSearch?: boolean;
 }
 
 export const AGENTS: AgentDefinition[] = [
@@ -68,6 +75,7 @@ export const AGENTS: AgentDefinition[] = [
       "compare",
       "report",
     ],
+    autoWebSearch: true,
   },
   {
     id: "coding",
@@ -150,6 +158,7 @@ export const AGENTS: AgentDefinition[] = [
       "landing page",
       "headline",
     ],
+    autoWebSearch: true,
   },
   {
     id: "assistant",

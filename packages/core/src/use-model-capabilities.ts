@@ -54,9 +54,9 @@ export function useModelCapabilities() {
         if (modelId === K_AI_MODEL_ID) {
           // Gemma / GPT-OSS support reasoning and tool calling (tool calling is
           // not a displayed capability — it's wired in the chat route). Web
-          // search is intentionally omitted: it relies on the Vercel-gateway
-          // Perplexity tool, which is incompatible with OpenRouter routing.
-          return ["text", "thinking"] as ModelCapability[];
+          // search uses K-AI's own server-side pipeline (Tavily→Serper), not the
+          // gateway Perplexity tool, so it's a real capability here.
+          return ["text", "thinking", "web-search"] as ModelCapability[];
         }
         return capabilitiesById[modelId] ?? [];
       },
