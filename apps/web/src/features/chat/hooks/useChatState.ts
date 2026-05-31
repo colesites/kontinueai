@@ -8,6 +8,7 @@ import {
   getDefaultModelForPlan,
   getModelById,
 } from "@repo/ai/models";
+import { isKaiModel } from "@repo/ai/lib/kai";
 import {
   readCachedDefaultModel,
   writeCachedDefaultModel,
@@ -106,7 +107,9 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
       setUserSelectedModel(draft.model);
     }
     if (typeof draft.webSearchEnabled === "boolean") {
-      setWebSearchEnabled(isPaidPlan ? draft.webSearchEnabled : false);
+      const allowSearch =
+        isPaidPlan || isKaiModel(draft.model ?? selectedModel);
+      setWebSearchEnabled(allowSearch ? draft.webSearchEnabled : false);
     }
     if (draft.imageAspectRatio) {
       setImageAspectRatio(draft.imageAspectRatio);
@@ -123,7 +126,10 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
     userSelectedModel:
       localSelectedModel ?? validatedPersistedModel ?? cachedSelectedModel,
     setUserSelectedModel,
-    webSearchEnabled: isPaidPlan ? webSearchEnabled : false,
+    // K-AI's web search is free for all tiers (its own daily quota); only the
+    // gateway models' search is paid-gated.
+    webSearchEnabled:
+      isPaidPlan || isKaiModel(selectedModel) ? webSearchEnabled : false,
     setWebSearchEnabled,
     imageAspectRatio,
     setImageAspectRatio,

@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { api } from "@repo/convex/convex/_generated/api";
 import { detectProvider } from "@repo/utils/url-safety";
 import { getDefaultModelForPlan, getModelById } from "@repo/ai/lib/models";
+import { isKaiModel } from "@repo/ai/lib/kai";
 import {
   readCachedDefaultModel,
   writeCachedDefaultModel,
@@ -103,7 +104,8 @@ export function useHomePageActions() {
         savePendingChatDraft(String(chatId), {
           text: prompt,
           model: selectedModel,
-          webSearchEnabled: isPaidPlan ? webSearchEnabled : false,
+          webSearchEnabled:
+            isPaidPlan || isKaiModel(selectedModel) ? webSearchEnabled : false,
           imageAspectRatio,
           imageSize,
         });
@@ -191,7 +193,8 @@ export function useHomePageActions() {
   return {
     selectedModel,
     setSelectedModel,
-    webSearchEnabled: isPaidPlan ? webSearchEnabled : false,
+    webSearchEnabled:
+      isPaidPlan || isKaiModel(selectedModel) ? webSearchEnabled : false,
     setWebSearchEnabled,
     imageAspectRatio,
     setImageAspectRatio,
