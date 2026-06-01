@@ -28,6 +28,8 @@ export function useCanvas() {
   const [expandedCreation, setExpandedCreation] = useState<CreationData | null>(null);
   const { tab, setTab } = useCanvasContext();
   const [pendingNewId, setPendingNewId] = useState<Id<"canvasCreations"> | null>(null);
+  // Active long-form K-Video render job (drives the progress loader).
+  const [activeVideoJobId, setActiveVideoJobId] = useState<Id<"videoJobs"> | null>(null);
 
   // Convex paginated queries
   const {
@@ -186,9 +188,7 @@ export function useCanvas() {
         // Long-form K-Video renders asynchronously on the worker. The finished
         // clip lands in the gallery automatically when the job completes.
         if (data.async) {
-          toast.success(
-            "K-Video is rendering in the background — it'll appear in your creations in a few minutes.",
-          );
+          if (data.jobId) setActiveVideoJobId(data.jobId as Id<"videoJobs">);
           setTab("mine");
           setIsGenerating(false);
           return;
@@ -290,6 +290,8 @@ export function useCanvas() {
     tab,
     setTab,
     isGenerating,
+    activeVideoJobId,
+    clearActiveVideoJob: () => setActiveVideoJobId(null),
     expandedCreation,
     setExpandedCreation,
     displayCreations,

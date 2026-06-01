@@ -166,10 +166,18 @@ export async function POST(req: Request) {
           { token: convexToken },
         );
 
-        // Fire the worker (don't block on the full render).
+        // Fire the worker (don't block on the full render). The scraper auth
+        // middleware requires an Origin in its allowlist, so send it (same as
+        // the import/scrape route).
+        const scraperOrigin =
+          process.env.SCRAPER_REQUEST_ORIGIN ?? appUrl;
         void fetch(`${scraperUrl}/generate-long-video`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-api-key": scraperKey },
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": scraperKey,
+            Origin: scraperOrigin,
+          },
           body: JSON.stringify({
             jobId,
             prompt: body.prompt,

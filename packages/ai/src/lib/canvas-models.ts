@@ -54,7 +54,8 @@ const K_VIDEO_MODEL: CanvasModel = {
   provider: "Kontinue",
   capability: "video",
   description: "Kontinue's proprietary video generation model.",
-  isFree: true,
+  // NOT free: video is costly (paid Veo on OpenRouter), so it's Pro-only and
+  // uses the normal credit system. K-Image stays free for everyone.
   resolutions: [
     { value: "1280x720", label: "720P" },
     { value: "1920x1080", label: "1080P" },

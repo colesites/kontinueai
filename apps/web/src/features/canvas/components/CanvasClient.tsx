@@ -3,12 +3,15 @@
 import { CanvasGallery } from "./CanvasGallery";
 import { CanvasInputBar } from "./CanvasInputBar";
 import { CreationLightbox } from "./CreationLightbox";
+import { KVideoJobProgress } from "./KVideoJobProgress";
 import { useCanvas } from "../hooks/use-canvas";
 export function CanvasClient() {
   const {
     tab,
     setTab,
     isGenerating,
+    activeVideoJobId,
+    clearActiveVideoJob,
     expandedCreation,
     setExpandedCreation,
     displayCreations,
@@ -61,6 +64,13 @@ export function CanvasClient() {
         canGenerateVideos={canGenerateVideos}
         isPro={isPro}
       />
+
+      {activeVideoJobId && (
+        <KVideoJobProgress
+          jobId={activeVideoJobId}
+          onClose={clearActiveVideoJob}
+        />
+      )}
     </div>
   );
 }
