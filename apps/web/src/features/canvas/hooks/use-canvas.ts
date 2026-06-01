@@ -188,6 +188,16 @@ export function useCanvas() {
         // Long-form K-Video renders asynchronously on the worker. The finished
         // clip lands in the gallery automatically when the job completes.
         if (data.async) {
+          // Charge credits up front (same pricing as a normal video) — the job
+          // is now committed to the paid Veo render on OpenRouter.
+          if (opts.mode === "video" && opts.duration && !isFree) {
+            await deductCreditsMutation({
+              seconds: opts.duration,
+              modelId: opts.model,
+              resolution: opts.resolution,
+              quality: opts.quality as "standard" | "pro" | undefined,
+            });
+          }
           if (data.jobId) setActiveVideoJobId(data.jobId as Id<"videoJobs">);
           setTab("mine");
           setIsGenerating(false);
