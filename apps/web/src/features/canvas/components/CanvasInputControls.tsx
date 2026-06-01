@@ -201,13 +201,17 @@ export function CanvasInputControls({
         onChange={onModelChange}
         tooltip="AI Model"
         align="end"
-        disabled={mode === "image" && !isPro}
         isPro={isPro}
         label={models.find((m) => m.id === activeModel)?.name.toUpperCase()}
         options={models.map((m) => ({
           value: m.id,
           label: m.name,
-          disabled: mode === "video" && !isPro && !m.isFree,
+          isFree: m.isFree,
+          // Free models (K-Image/K-Video) are always selectable. Otherwise:
+          // image needs Starter/Pro, video needs Pro.
+          disabled:
+            !m.isFree &&
+            (mode === "image" ? planTier === "free" : planTier !== "pro"),
         }))}
       />
 

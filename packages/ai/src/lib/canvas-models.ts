@@ -405,7 +405,6 @@ export const VIDEO_MODELS: CanvasModel[] = [
     provider: "Alibaba",
     capability: "video",
     description: "Alibaba's advanced text-to-video model.",
-    isFree: true,
     resolutions: [
       { value: "1280x720", label: "720P" },
       { value: "1920x1080", label: "1080P" },
@@ -417,7 +416,6 @@ export const VIDEO_MODELS: CanvasModel[] = [
     provider: "Alibaba",
     capability: "video",
     description: "Alibaba's advanced image-to-video model.",
-    isFree: true,
     resolutions: [
       { value: "1280x720", label: "720P" },
       { value: "1920x1080", label: "1080P" },
@@ -429,7 +427,6 @@ export const VIDEO_MODELS: CanvasModel[] = [
     provider: "Alibaba",
     capability: "video",
     description: "Fast image-to-video generation.",
-    isFree: true,
     resolutions: [
       { value: "1280x720", label: "720P" },
       { value: "1920x1080", label: "1080P" },
@@ -441,7 +438,6 @@ export const VIDEO_MODELS: CanvasModel[] = [
     provider: "Alibaba",
     capability: "video",
     description: "Real-to-video generation from Alibaba.",
-    isFree: true,
     resolutions: [
       { value: "1280x720", label: "720P" },
       { value: "1920x1080", label: "1080P" },
@@ -453,7 +449,6 @@ export const VIDEO_MODELS: CanvasModel[] = [
     provider: "Alibaba",
     capability: "video",
     description: "Fast real-to-video generation.",
-    isFree: true,
     resolutions: [
       { value: "1280x720", label: "720P" },
       { value: "1920x1080", label: "1080P" },
@@ -465,7 +460,6 @@ export const VIDEO_MODELS: CanvasModel[] = [
     provider: "Alibaba",
     capability: "video",
     description: "Preview text-to-video model from Alibaba.",
-    isFree: true,
     resolutions: [
       { value: "848x480", label: "480P" },
       { value: "1280x720", label: "720P" },
