@@ -7,7 +7,12 @@ import { gateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
-import { IMAGE_MODELS } from "@repo/ai/lib/canvas-models";
+import {
+  IMAGE_MODELS,
+  resolveCanvasModelId,
+  isKontinueCanvasModel,
+} from "@repo/ai/lib/canvas-models";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { toOpenAIImageSize } from "../../chat/lib/request-utils";
 import { fetchAiGatewayModels } from "@repo/ai/lib/model-capabilities";
 
@@ -49,6 +54,9 @@ export async function POST(req: Request) {
         { status: 400 },
       );
     }
+    // Resolve branded K-Image id → underlying gateway model. The branded id is
+    // kept for the response/DB so the provider is never surfaced to the client.
+    const resolvedModelId = resolveCanvasModelId(modelId);
 
     // Ensure AI Gateway key is set
     const apiKey =
@@ -70,14 +78,14 @@ export async function POST(req: Request) {
       console.error("[canvas/generate-image] Gateway models fetch failed:", err);
       return [];
     });
-    const modelInfo = gatewayModels.find(m => m.id === modelId);
+    const modelInfo = gatewayModels.find(m => m.id === resolvedModelId);
 
     // Fallback: models with these keywords are typically language models in the gateway
     // when they are NOT recognized as type "image".
     const isLanguageModel = modelInfo 
       ? modelInfo.type === "language" 
-      : (modelId.includes("gpt-5") || 
-         (modelId.includes("gemini") && !modelId.includes("-image") && !modelId.includes("imagen")));
+      : (resolvedModelId.includes("gpt-5") ||
+         (resolvedModelId.includes("gemini") && !resolvedModelId.includes("-image") && !resolvedModelId.includes("imagen")));
 
     let mediaUrl: string;
     let pathname: string | undefined;
@@ -109,7 +117,7 @@ export async function POST(req: Request) {
       ] : undefined;
 
       const { steps } = await generateText({
-        model: gateway(modelId) as Parameters<typeof generateText>[0]["model"],
+        model: gateway(resolvedModelId) as Parameters<typeof generateText>[0]["model"],
         ...(messages ? { messages } : { prompt: `Generate a high-quality image based on this prompt: ${body.prompt}. Use the image_generation tool.` }),
         tools: {
           image_generation: imageTool,
@@ -157,13 +165,37 @@ export async function POST(req: Request) {
         throw new Error("Unsupported image data format from tool");
       }
     } else {
+      // K-Image routes through OpenRouter; every other model uses the AI Gateway.
+      const useOpenRouter = isKontinueCanvasModel(modelId);
+      if (useOpenRouter && !process.env.OPEN_ROUTER) {
+        return NextResponse.json(
+          { error: "K-Image is not configured (missing OPEN_ROUTER key)." },
+          { status: 500 },
+        );
+      }
+      const imageModel = useOpenRouter
+        ? createOpenRouter({ apiKey: process.env.OPEN_ROUTER }).imageModel(
+            resolvedModelId,
+            // Grok Imagine only supports image OUTPUT; the provider defaults to
+            // modalities ["image","text"] which 404s. Override to image-only.
+            { extraBody: { modalities: ["image"] } },
+          )
+        : gateway.imageModel(resolvedModelId);
       const result = await generateImage({
-        model: gateway.imageModel(modelId),
-        prompt: body.image 
-          ? { text: body.prompt || "", images: [body.image] } 
+        model: imageModel,
+        prompt: body.image
+          ? { text: body.prompt || "", images: [body.image] }
           : (body.prompt || ""),
         aspectRatio: (body.aspectRatio || "1:1") as `${number}:${number}`,
         n: 1,
+      }).catch((err) => {
+        // Surface the real provider error (e.g. unknown model / no image
+        // endpoint on OpenRouter) instead of a generic 500.
+        console.error(
+          `[canvas/generate-image] generation failed for ${resolvedModelId} (via ${useOpenRouter ? "openrouter" : "gateway"}):`,
+          err,
+        );
+        throw err;
       });
 
       if (!result.images || result.images.length === 0) {

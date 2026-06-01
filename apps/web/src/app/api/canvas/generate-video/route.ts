@@ -3,7 +3,21 @@ import { experimental_generateVideo as generateVideo } from "ai";
 import { gateway } from "@ai-sdk/gateway";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
-import { VIDEO_MODELS } from "@repo/ai/lib/canvas-models";
+import {
+  VIDEO_MODELS,
+  resolveCanvasModelId,
+  isKontinueCanvasModel,
+  clampKVideoDuration,
+  clampKVideoResolution,
+} from "@repo/ai/lib/canvas-models";
+import { getUserPlanTier } from "../../chat/lib/plan-limits";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { fetchMutation } from "convex/nextjs";
+import { api as convexApi } from "@repo/convex/convex/_generated/api";
+
+// Veo's practical single-clip max; longer K-Video durations are rendered as a
+// multi-scene job on the Render worker (storyboard → clips → ffmpeg merge).
+const SINGLE_CLIP_MAX_SECONDS = 8;
 
 export const maxDuration = 300;
 
@@ -20,7 +34,7 @@ function isProviderError(
 
 export async function POST(req: Request) {
   try {
-    const { userId } = await auth();
+    const { userId, has, getToken } = await auth();
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -75,20 +89,158 @@ export async function POST(req: Request) {
     // Set for subsequent library calls
     process.env.AI_GATEWAY_API_KEY = apiKey;
 
-    // Standardized resolution/ratio types
-    const resolution = (body.resolution || "1280x720") as `${number}x${number}`;
-    const aspectRatio = (body.aspectRatio || "16:9") as `${number}:${number}`;
+    // Resolve branded K-Video id → underlying gateway model; keep branded id for
+    // the response so the provider is never surfaced to the client.
+    const resolvedModelId = resolveCanvasModelId(modelId);
 
-    const promptParam = body.image 
-      ? { text: body.prompt, image: body.image } 
+    // Standardized resolution/ratio types
+    let resolutionStr = body.resolution || "1280x720";
+    let aspectRatioStr = body.aspectRatio || "16:9";
+
+    // Plan-based resolution cap for the (hidden) raw models: free → 720p max.
+    const planTier = await getUserPlanTier(userId, has);
+    if (
+      !isKontinueCanvasModel(modelId) &&
+      planTier === "free" &&
+      resolutionStr === "1920x1080"
+    ) {
+      resolutionStr = "1280x720";
+    }
+
+    const resolution = resolutionStr as `${number}x${number}`;
+    const aspectRatio = aspectRatioStr as `${number}:${number}`;
+
+    const promptParam = body.image
+      ? { text: body.prompt, image: body.image }
       : body.prompt;
 
     // ── Provider-Specific Params ─────────────────────────────
 
     let result;
-    const model = gateway.video(modelId);
 
-    if (modelId.startsWith("google/")) {
+    if (isKontinueCanvasModel(modelId)) {
+      // K-Video → OpenRouter (Veo). Clamp duration + resolution to the user's
+      // plan ceiling (free 5/10s·720p, starter ≤60s·1080p, pro ≤5min·4K).
+      const kDuration = clampKVideoDuration(planTier, duration);
+      const kResolution = clampKVideoResolution(
+        planTier,
+        resolutionStr,
+      ) as `${number}x${number}`;
+
+      // Long-form (> one Veo clip): hand off to the Render worker as an async
+      // job (storyboard → per-scene clips → ffmpeg merge). Returns a jobId the
+      // client polls; the worker reports progress via the callback route.
+      if (kDuration > SINGLE_CLIP_MAX_SECONDS) {
+        const convexToken = (await getToken({ template: "convex" })) ?? null;
+        const scraperUrl = process.env.SCRAPER_API_URL?.replace(/\/$/, "");
+        const scraperKey =
+          process.env.SCRAPER_API_KEY ?? process.env.API_KEY ?? "";
+        const openRouterKey = process.env.OPEN_ROUTER;
+        const agentSecret = process.env.AGENT_TASK_SECRET;
+        const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+        const appUrl =
+          process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin;
+
+        if (
+          !convexToken ||
+          !scraperUrl ||
+          !openRouterKey ||
+          !agentSecret ||
+          !blobToken
+        ) {
+          return NextResponse.json(
+            { error: "Long-form video is not fully configured." },
+            { status: 500 },
+          );
+        }
+
+        const jobId = await fetchMutation(
+          convexApi.videoJobs.createVideoJob,
+          {
+            prompt: body.prompt,
+            durationSec: kDuration,
+            resolution: kResolution,
+            aspectRatio,
+            audio: body.audio ?? false,
+          },
+          { token: convexToken },
+        );
+
+        // Fire the worker (don't block on the full render).
+        void fetch(`${scraperUrl}/generate-long-video`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-api-key": scraperKey },
+          body: JSON.stringify({
+            jobId,
+            prompt: body.prompt,
+            durationSec: kDuration,
+            resolution: kResolution,
+            aspectRatio,
+            audio: body.audio ?? false,
+            openRouterKey,
+            blobToken,
+            callbackUrl: `${appUrl}/api/canvas/video-job/callback`,
+            callbackSecret: agentSecret,
+          }),
+        }).catch((err) =>
+          console.error("[canvas/generate-video] worker dispatch failed", err),
+        );
+
+        return NextResponse.json({
+          async: true,
+          jobId,
+          mediaType: "video",
+          modelId,
+          duration: kDuration,
+        });
+      }
+
+      const openrouter = createOpenRouter({ apiKey: process.env.OPEN_ROUTER });
+      result = await generateVideo({
+        model: openrouter.videoModel(resolvedModelId, {
+          generateAudio: body.audio ?? false,
+          maxPollTimeMs: 600000,
+        }),
+        prompt: promptParam,
+        duration: kDuration,
+        resolution: kResolution,
+        aspectRatio,
+      }).catch((err) => {
+        console.error(
+          `[canvas/generate-video] K-Video failed (dur=${kDuration} res=${kResolution} ar=${aspectRatio}):`,
+          err,
+        );
+        throw err;
+      });
+      // fall through to the shared result handling below
+      if (!result.video) {
+        console.error("[canvas/generate-video] K-Video returned no video data");
+        return NextResponse.json(
+          { error: "Model failed to return a video." },
+          { status: 500 },
+        );
+      }
+      const videoData = result.video;
+      const mediaType = videoData.mediaType || "video/mp4";
+      const extension = mediaType.split("/")[1] || "mp4";
+      const buffer = Buffer.from(videoData.uint8Array);
+      const filename = `canvas/vid_${Date.now()}_${userId.slice(-6)}.${extension}`;
+      const blob = await put(filename, buffer, {
+        access: "public",
+        contentType: mediaType,
+      });
+      return NextResponse.json({
+        mediaUrl: blob.url,
+        pathname: blob.pathname,
+        mediaType: "video",
+        modelId,
+        duration: kDuration,
+      });
+    }
+
+    const model = gateway.video(resolvedModelId);
+
+    if (resolvedModelId.startsWith("google/")) {
       // Google Veo: 4/6/8s. Prefers resolution over aspectRatio.
       const veoDuration = [4, 6, 8].includes(duration) ? duration : 4;
       result = await generateVideo({
@@ -103,7 +255,7 @@ export async function POST(req: Request) {
           },
         },
       });
-    } else if (modelId.startsWith("klingai/")) {
+    } else if (resolvedModelId.startsWith("klingai/")) {
       // KlingAI: 5/10s. Uses aspectRatio.
       const klingDuration = duration > 5 ? 10 : 5;
       result = await generateVideo({
@@ -118,7 +270,7 @@ export async function POST(req: Request) {
           },
         },
       });
-    } else if (modelId.startsWith("alibaba/")) {
+    } else if (resolvedModelId.startsWith("alibaba/")) {
       // Wan: 1-15s. Uses resolution exclusively.
       result = await generateVideo({
         model,
@@ -132,7 +284,7 @@ export async function POST(req: Request) {
           },
         },
       });
-    } else if (modelId.startsWith("xai/")) {
+    } else if (resolvedModelId.startsWith("xai/")) {
       // Grok: Supports both.
       result = await generateVideo({
         model,
@@ -146,7 +298,7 @@ export async function POST(req: Request) {
           },
         },
       });
-    } else if (modelId.startsWith("bytedance/")) {
+    } else if (resolvedModelId.startsWith("bytedance/")) {
       // Seedance: Supports both.
       result = await generateVideo({
         model,

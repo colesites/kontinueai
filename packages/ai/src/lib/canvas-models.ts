@@ -14,9 +14,109 @@ export interface CanvasModel {
   resolutions?: { value: string; label: string }[];
 }
 
-// ── Image Generation Models ───────────────────────────────
+// ── K-Image / K-Video 1.0 — Kontinue's proprietary canvas models ──────────────
+// Orchestration layer on top of provider models. Users NEVER see the underlying
+// provider; the canvas only shows "K-Image 1.0" / "K-Video 1.0". The generate
+// routes resolve the branded id to the underlying gateway id below.
+export const K_IMAGE_MODEL_ID = "kontinue/k-image-1.0";
+export const K_VIDEO_MODEL_ID = "kontinue/k-video-1.0";
+
+// Underlying OpenRouter models (kept private to the server routes). These are
+// OpenRouter slugs (note the `x-ai/` namespace), routed via @openrouter/ai-sdk-provider.
+export const KONTINUE_CANVAS_UNDERLYING: Record<string, string> = {
+  [K_IMAGE_MODEL_ID]: "x-ai/grok-imagine-image-quality",
+  [K_VIDEO_MODEL_ID]: "google/veo-3.1-fast",
+};
+
+// Resolve a (possibly branded) canvas model id to the real gateway id.
+export function resolveCanvasModelId(id: string): string {
+  return KONTINUE_CANVAS_UNDERLYING[id] ?? id;
+}
+
+export function isKontinueCanvasModel(id: string): boolean {
+  return id === K_IMAGE_MODEL_ID || id === K_VIDEO_MODEL_ID;
+}
+
+const K_IMAGE_MODEL: CanvasModel = {
+  id: K_IMAGE_MODEL_ID,
+  name: "K-Image 1.0",
+  provider: "Kontinue",
+  capability: "image",
+  description: "Kontinue's proprietary image generation model.",
+  // Free for everyone and does NOT consume credits (the canvas gating reads
+  // isFree to bypass plan checks + credit deduction).
+  isFree: true,
+};
+
+const K_VIDEO_MODEL: CanvasModel = {
+  id: K_VIDEO_MODEL_ID,
+  name: "K-Video 1.0",
+  provider: "Kontinue",
+  capability: "video",
+  description: "Kontinue's proprietary video generation model.",
+  isFree: true,
+  resolutions: [
+    { value: "1280x720", label: "720P" },
+    { value: "1920x1080", label: "1080P" },
+    { value: "3840x2160", label: "4K" },
+  ],
+};
+
+// ── K-Video plan limits (per the product spec) ────────────────────────────────
+// Durations in seconds. Free: 5/10s @720p. Starter: ≤60s @1080p. Pro: ≤5min @4K.
+export type CanvasPlanTier = "free" | "starter" | "pro";
+
+export const K_VIDEO_PLAN_LIMITS: Record<
+  CanvasPlanTier,
+  { durations: number[]; maxResolution: string }
+> = {
+  free: { durations: [5, 10], maxResolution: "1280x720" },
+  starter: { durations: [5, 10, 15, 30, 60], maxResolution: "1920x1080" },
+  pro: {
+    durations: [5, 10, 15, 30, 60, 120, 180, 300],
+    maxResolution: "3840x2160",
+  },
+};
+
+// Resolution rank for "max resolution" comparisons.
+const RESOLUTION_RANK: Record<string, number> = {
+  "1280x720": 1,
+  "1920x1080": 2,
+  "3840x2160": 3,
+};
+
+export function kVideoDurationsForTier(tier: CanvasPlanTier): number[] {
+  return K_VIDEO_PLAN_LIMITS[tier].durations;
+}
+
+export function kVideoAllowedResolutions(
+  tier: CanvasPlanTier,
+): { value: string; label: string }[] {
+  const maxRank = RESOLUTION_RANK[K_VIDEO_PLAN_LIMITS[tier].maxResolution] ?? 1;
+  return (K_VIDEO_MODEL.resolutions ?? []).filter(
+    (r) => (RESOLUTION_RANK[r.value] ?? 99) <= maxRank,
+  );
+}
+
+// Clamp a requested duration/resolution to the tier's ceiling (server-side guard).
+export function clampKVideoDuration(tier: CanvasPlanTier, duration: number): number {
+  const allowed = K_VIDEO_PLAN_LIMITS[tier].durations;
+  if (allowed.includes(duration)) return duration;
+  const max = Math.max(...allowed);
+  return duration > max ? max : (allowed.find((d) => d >= duration) ?? max);
+}
+
+export function clampKVideoResolution(tier: CanvasPlanTier, resolution: string): string {
+  const maxRank = RESOLUTION_RANK[K_VIDEO_PLAN_LIMITS[tier].maxResolution] ?? 1;
+  const reqRank = RESOLUTION_RANK[resolution] ?? 1;
+  return reqRank > maxRank
+    ? K_VIDEO_PLAN_LIMITS[tier].maxResolution
+    : resolution;
+}
+
 // ── Image Generation Models ───────────────────────────────
 export const IMAGE_MODELS: CanvasModel[] = [
+  K_IMAGE_MODEL,
   // xAI
   {
     id: "xai/grok-imagine-image-pro",
@@ -233,6 +333,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 
 // ── Video Generation Models ───────────────────────────────
 export const VIDEO_MODELS: CanvasModel[] = [
+  K_VIDEO_MODEL,
   // xAI
   {
     id: "xai/grok-imagine-video",
@@ -480,8 +581,10 @@ export const VIDEO_MODELS: CanvasModel[] = [
   },
 ];
 
-export const DEFAULT_IMAGE_MODEL = "xai/grok-imagine-image";
-export const DEFAULT_VIDEO_MODEL = "alibaba/wan-v2.6-t2v";
+// Default to the free, no-credit Kontinue models (the rest stay available and
+// plan/credit-gated: image = Starter/Pro, video = Pro).
+export const DEFAULT_IMAGE_MODEL = K_IMAGE_MODEL_ID;
+export const DEFAULT_VIDEO_MODEL = K_VIDEO_MODEL_ID;
 
 export function getCanvasModelById(id: string): CanvasModel | undefined {
   return [...IMAGE_MODELS, ...VIDEO_MODELS].find((m) => m.id === id);
@@ -501,6 +604,8 @@ export const ASPECT_RATIOS = [
 export type AspectRatioValue = (typeof ASPECT_RATIOS)[number]["value"];
 
 export const PROVIDER_RATIOS: Record<string, AspectRatioValue[]> = {
+  // K-Image / K-Video support the full common set per the product spec.
+  Kontinue: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"],
   Google: ["16:9", "9:16"],
   KlingAI: ["16:9", "9:16", "1:1"],
   xAI: ["1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3"],
@@ -513,7 +618,18 @@ export function isRatioSupported(provider: string, ratio: string): boolean {
   return supported.includes(ratio as AspectRatioValue);
 }
 
-export const VIDEO_DURATIONS = [2, 3, 4, 5, 6, 8, 10, 12, 15] as const;
+export const VIDEO_DURATIONS = [
+  2, 3, 4, 5, 6, 8, 10, 12, 15, 30, 60, 120, 180, 300,
+] as const;
+
+// Human label for a duration (5s, … 1m, 5m).
+export function formatDuration(seconds: number): string {
+  return seconds < 60
+    ? `${seconds}s`
+    : seconds % 60 === 0
+      ? `${seconds / 60}m`
+      : `${Math.floor(seconds / 60)}m${seconds % 60}s`;
+}
 
 export function isDurationSupported(
   modelId: string,
@@ -527,7 +643,11 @@ export function isDurationSupported(
     return duration >= 2 && duration <= 15;
   }
 
-  // Google Veo
+  // K-Video — full product duration set (plan tier further restricts in the UI).
+  if (modelId === K_VIDEO_MODEL_ID) {
+    return [5, 10, 15, 30, 60, 120, 180, 300].includes(duration);
+  }
+  // Raw Google Veo
   if (modelId.includes("google/veo")) {
     return [4, 6, 8].includes(duration);
   }

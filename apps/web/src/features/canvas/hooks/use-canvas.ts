@@ -183,6 +183,17 @@ export function useCanvas() {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Generation failed");
 
+        // Long-form K-Video renders asynchronously on the worker. The finished
+        // clip lands in the gallery automatically when the job completes.
+        if (data.async) {
+          toast.success(
+            "K-Video is rendering in the background — it'll appear in your creations in a few minutes.",
+          );
+          setTab("mine");
+          setIsGenerating(false);
+          return;
+        }
+
         if (opts.mode === "video" && opts.duration && !isFree) {
           await deductCreditsMutation({
             seconds: opts.duration,

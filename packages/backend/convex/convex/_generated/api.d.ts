@@ -33,6 +33,7 @@ import type * as reminderDelivery from "../reminderDelivery.js";
 import type * as tasks from "../tasks.js";
 import type * as titleGenerator from "../titleGenerator.js";
 import type * as users from "../users.js";
+import type * as videoJobs from "../videoJobs.js";
 import type * as webSearch from "../webSearch.js";
 import type * as whitelist from "../whitelist.js";
 
@@ -68,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   tasks: typeof tasks;
   titleGenerator: typeof titleGenerator;
   users: typeof users;
+  videoJobs: typeof videoJobs;
   webSearch: typeof webSearch;
   whitelist: typeof whitelist;
 }>;

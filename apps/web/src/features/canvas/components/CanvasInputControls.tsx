@@ -9,7 +9,12 @@ import {
   isRatioSupported,
   isDurationSupported,
   CanvasModel,
+  K_VIDEO_MODEL_ID,
+  kVideoDurationsForTier,
+  kVideoAllowedResolutions,
+  formatDuration,
 } from "@repo/ai/lib/canvas-models";
+import { usePlanTier } from "@web/lib/use-plan-tier";
 import { PillSelect } from "./PillSelect";
 import { MobileSettings } from "./MobileSettings";
 import { RatioIcon } from "./RatioIcon";
@@ -60,6 +65,21 @@ export function CanvasInputControls({
   isPro,
 }: CanvasInputControlsProps) {
   const models = mode === "image" ? IMAGE_MODELS : VIDEO_MODELS;
+  const planTier = usePlanTier();
+  const isKVideo = activeModel === K_VIDEO_MODEL_ID;
+
+  // K-Video exposes plan-tiered durations/resolutions; other models keep their
+  // existing (credit-bounded) behavior.
+  const resolutionOptions = isKVideo
+    ? kVideoAllowedResolutions(planTier)
+    : (selectedModelData?.resolutions ?? []);
+  const durationOptions = isKVideo
+    ? kVideoDurationsForTier(planTier)
+    : VIDEO_DURATIONS.filter(
+        (d) =>
+          isDurationSupported(activeModel, d) &&
+          (isFreeModel || d * costMultiplier <= creditsRemaining),
+      );
 
   return (
     <div className="flex flex-wrap items-center gap-1.5 px-3 pb-4 pt-1 sm:gap-2 sm:px-8 sm:pb-5">
@@ -123,7 +143,7 @@ export function CanvasInputControls({
         />
       )}
 
-      {selectedModelData?.resolutions?.length && (
+      {resolutionOptions.length > 0 && (
         <PillSelect
           value={resolution}
           onChange={setResolution}
@@ -132,11 +152,10 @@ export function CanvasInputControls({
           }
           tooltip="Resolution"
           label={
-            selectedModelData.resolutions.find((r) => r.value === resolution)
-              ?.label
+            resolutionOptions.find((r) => r.value === resolution)?.label
           }
           className="hidden sm:inline-flex"
-          options={selectedModelData.resolutions.map((r) => ({
+          options={resolutionOptions.map((r) => ({
             value: r.value,
             label: r.label,
           }))}
@@ -164,13 +183,12 @@ export function CanvasInputControls({
           onChange={(v) => setDuration(Number(v))}
           icon={<Clock className="h-3.5 w-3.5" />}
           tooltip="Duration"
-          label={`${duration}s`}
+          label={formatDuration(duration)}
           className="hidden sm:inline-flex"
-          options={VIDEO_DURATIONS.filter(
-            (d) =>
-              isDurationSupported(activeModel, d) &&
-              (isFreeModel || d * costMultiplier <= creditsRemaining)
-          ).map((d) => ({ value: String(d), label: `${d}s` }))}
+          options={durationOptions.map((d) => ({
+            value: String(d),
+            label: formatDuration(d),
+          }))}
         />
       )}
 

@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "@vercel/blob": "^2.4.0",
+    "ai": "^6.0.180",
     "cheerio": "^1.2.0",
     "hono": "^4.12.21",
     "playwright": "^1.57.0"

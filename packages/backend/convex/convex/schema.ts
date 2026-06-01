@@ -289,6 +289,32 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_owner_bucket", ["ownerId", "bucketType", "bucketStartMs"]),
 
+  // K-Video long-form render jobs (multi-scene → ffmpeg merge on the Render
+  // worker). The worker reports progress/result back via a secret-guarded
+  // callback; the UI polls these rows.
+  videoJobs: defineTable({
+    ownerId: v.id("users"),
+    prompt: v.string(),
+    durationSec: v.number(),
+    resolution: v.string(),
+    aspectRatio: v.string(),
+    audio: v.boolean(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    progress: v.number(), // 0..100
+    stage: v.optional(v.string()),
+    finalUrl: v.optional(v.string()),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_owner_created", ["ownerId", "createdAt"]),
+
   // Global cache of web-search results (not per-user) so identical queries reuse
   // a recent answer instead of re-hitting the search provider. Keyed by a
   // normalized query hash; rows expire via expiresAt (checked at read time).

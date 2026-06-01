@@ -17,6 +17,7 @@ import { extractManus } from "./scraper/extractors/manus";
 import { extractGrok } from "./scraper/extractors/grok";
 import { extractKimi } from "./scraper/extractors/kimi";
 import { extractMetaAI } from "./scraper/extractors/metaai";
+import { runLongVideoJob, type LongVideoRequest } from "./video/longform";
 import { normalizeMessages } from "./scraper/normalize";
 import { withRetry } from "./scraper/retry";
 import type { ScrapeResult, Platform, IngestRequest, RawMessage } from "./types";
@@ -62,6 +63,49 @@ app.get("/health", (c) => {
 
 app.use("*", authMiddleware);
 app.use("*", rateLimitMiddleware);
+
+// K-Video long-form rendering. Kicks off the job detached and returns
+// immediately; progress + final URL are reported via the callback. Auth is the
+// shared x-api-key (authMiddleware) like the other endpoints.
+app.post("/generate-long-video", async (c) => {
+  let body: Partial<LongVideoRequest>;
+  try {
+    body = await c.req.json();
+  } catch {
+    return c.json({ error: "Bad request" }, 400);
+  }
+  const required: (keyof LongVideoRequest)[] = [
+    "jobId",
+    "prompt",
+    "durationSec",
+    "resolution",
+    "aspectRatio",
+    "openRouterKey",
+    "blobToken",
+    "callbackUrl",
+    "callbackSecret",
+  ];
+  for (const k of required) {
+    if (body[k] === undefined || body[k] === null || body[k] === "") {
+      return c.json({ error: `Missing field: ${k}` }, 400);
+    }
+  }
+  const req: LongVideoRequest = {
+    jobId: String(body.jobId),
+    prompt: String(body.prompt),
+    durationSec: Number(body.durationSec),
+    resolution: String(body.resolution),
+    aspectRatio: String(body.aspectRatio),
+    audio: Boolean(body.audio),
+    openRouterKey: String(body.openRouterKey),
+    blobToken: String(body.blobToken),
+    callbackUrl: String(body.callbackUrl),
+    callbackSecret: String(body.callbackSecret),
+  };
+  // Detached — do NOT await; the job reports progress via the callback.
+  void runLongVideoJob(req);
+  return c.json({ accepted: true, jobId: req.jobId });
+});
 
 app.post("/v1/scrape", async (c) => {
   try {

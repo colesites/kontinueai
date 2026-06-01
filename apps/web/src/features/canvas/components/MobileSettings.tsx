@@ -23,7 +23,12 @@ import {
   IMAGE_MODELS,
   VIDEO_MODELS,
   CanvasModel,
+  K_VIDEO_MODEL_ID,
+  kVideoDurationsForTier,
+  kVideoAllowedResolutions,
+  formatDuration,
 } from "@repo/ai/lib/canvas-models";
+import { usePlanTier } from "@web/lib/use-plan-tier";
 import { cn } from "@repo/ui/lib/utils";
 import { RatioIcon } from "./RatioIcon";
 
@@ -72,7 +77,19 @@ export function MobileSettings({
   const selectedModelData = models.find(
     (m: CanvasModel) => m.id === activeModel
   );
-  const hasResolutions = (selectedModelData?.resolutions?.length ?? 0) > 0;
+  const planTier = usePlanTier();
+  const isKVideo = activeModel === K_VIDEO_MODEL_ID;
+  const resolutionOptions = isKVideo
+    ? kVideoAllowedResolutions(planTier)
+    : (selectedModelData?.resolutions ?? []);
+  const durationOptions = isKVideo
+    ? kVideoDurationsForTier(planTier)
+    : VIDEO_DURATIONS.filter(
+        (d) =>
+          isDurationSupported(activeModel, d) &&
+          (isFreeModel || d * costMultiplier <= creditsRemaining),
+      );
+  const hasResolutions = resolutionOptions.length > 0;
 
   const dropdownContentClasses =
     "z-[100] min-w-[240px] rounded-[2.5rem] border border-border/20 bg-background/95 p-3 text-popover-foreground shadow-2xl backdrop-blur-3xl transition-all duration-300 animate-in fade-in zoom-in-95 slide-in-from-bottom-4";
@@ -144,7 +161,7 @@ export function MobileSettings({
                     Resolution
                   </span>
                   <span className="text-foreground/40 font-black">
-                    {selectedModelData?.resolutions?.find(
+                    {resolutionOptions.find(
                       (r: { value: string; label: string }) =>
                         r.value === resolution
                     )?.label || resolution}
@@ -185,7 +202,7 @@ export function MobileSettings({
                     Duration
                   </span>
                   <span className="text-foreground/40 font-black">
-                    {duration}s
+                    {formatDuration(duration)}
                   </span>
                   <ChevronRight className="h-4 w-4 text-foreground/10" />
                 </button>
@@ -248,7 +265,7 @@ export function MobileSettings({
                   Select Res
                 </span>
               </div>
-              {selectedModelData?.resolutions?.map(
+              {resolutionOptions.map(
                 (r: { value: string; label: string }) => (
                   <button
                     key={r.value}
@@ -323,11 +340,7 @@ export function MobileSettings({
                   Duration
                 </span>
               </div>
-              {VIDEO_DURATIONS.filter(
-                (d) =>
-                  isDurationSupported(activeModel, d) &&
-                  (isFreeModel || d * costMultiplier <= creditsRemaining)
-              ).map((d) => (
+              {durationOptions.map((d) => (
                 <button
                   key={d}
                   onClick={() => {
@@ -341,7 +354,7 @@ export function MobileSettings({
                 >
                   <Clock className="h-4 w-4 text-foreground/40" />
                   <span className="flex-1 text-left font-bold text-foreground/80">
-                    {d}s
+                    {formatDuration(d)}
                   </span>
                   {duration === d && (
                     <Check className="h-4 w-4 text-foreground" />
