@@ -18,11 +18,13 @@
     "dev:convex": "bun run --cwd packages/backend/convex dev",
     "dev:scraper-api": "bun run --cwd packages/backend/scraper dev",
     "dev:scraper": "bun run --cwd apps/scraper dev",
+    "dev:desktop": "bun run --cwd apps/kode-ide tauri dev",
     "build": "bun run build:web && bun run build:mobile && bun run build:convex && bun run build:scraper-api",
     "build:web": "bun run --cwd apps/web build",
     "build:mobile": "bun run --cwd apps/mobile-app build",
     "build:convex": "bun run --cwd packages/backend/convex build",
     "build:scraper-api": "bun run --cwd packages/backend/scraper typecheck",
+    "build:desktop": "bun run --cwd apps/kode-ide tauri build",
     "convex:codegen": "bun run --cwd packages/backend/convex codegen",
     "convex:deploy": "bun run --cwd packages/backend/convex deploy",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
@@ -36,7 +38,8 @@
     "typecheck:convex": "tsc -p packages/backend/convex/tsconfig.json --noEmit",
     "typecheck:scraper-api": "bun run --cwd packages/backend/scraper typecheck",
     "typecheck:mobile": "bun run --cwd apps/mobile-app typecheck",
-    "typecheck:web": "bun run --cwd apps/web typecheck"
+    "typecheck:web": "bun run --cwd apps/web typecheck",
+    "typecheck:desktop": "bun run --cwd apps/kode-ide typecheck"
   },
   "workspaces": [
     "apps/*",
