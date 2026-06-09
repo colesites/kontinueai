@@ -7,6 +7,7 @@ import {
   Palette,
   ListChecks,
   Bot,
+  Plug,
 } from "lucide-react";
 import {
   SidebarHeader,
@@ -174,6 +175,28 @@ export function SidebarHeaderSection({
               className="transition-transform duration-300 group-hover:scale-110"
             />
             <span>Agents</span>
+          </Link>
+        </div>
+
+        {/* Row 3: Connectors */}
+        <div className="flex items-stretch">
+          <Link
+            href="/settings/connectors"
+            onClick={onNavigate}
+            aria-label="Open Connectors"
+            title="Open Connectors"
+            className={cn(
+              "group flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2 text-[13px] font-medium transition-all duration-200",
+              "surface-inset text-muted-foreground",
+              "hover:bg-foreground/8 hover:text-foreground hover:scale-[1.015]",
+              "active:scale-[0.98]"
+            )}
+          >
+            <Plug
+              size={15}
+              className="transition-transform duration-300 group-hover:scale-110"
+            />
+            <span>Connectors</span>
           </Link>
         </div>
       </div>

@@ -1,0 +1,8 @@
+{
+	"servers": {
+		"Sentry": {
+			"url": "https://mcp.sentry.dev/mcp/c-tech-4m/kontinue-ai-landing-page",
+			"type": "http"
+		}
+	}
+}

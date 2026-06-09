@@ -14,6 +14,7 @@
   "scripts": {
     "dev": "bun run dev:web && bun run dev:mobile && bun run dev:convex",
     "dev:web": "bun run --cwd apps/web dev",
+    "dev:marketing": "bun run --cwd apps/marketing dev",
     "dev:mobile": "bun run --cwd apps/mobile-app dev",
     "dev:convex": "bun run --cwd packages/backend/convex dev",
     "dev:scraper-api": "bun run --cwd packages/backend/scraper dev",
@@ -21,6 +22,7 @@
     "dev:desktop": "bun run --cwd apps/kode-ide tauri dev",
     "build": "bun run build:web && bun run build:mobile && bun run build:convex && bun run build:scraper-api",
     "build:web": "bun run --cwd apps/web build",
+    "build:marketing": "bun run --cwd apps/marketing build",
     "build:mobile": "bun run --cwd apps/mobile-app build",
     "build:convex": "bun run --cwd packages/backend/convex build",
     "build:scraper-api": "bun run --cwd packages/backend/scraper typecheck",
@@ -31,6 +33,7 @@
     "lint": "bun run lint:web && bun run lint:mobile",
     "lint:mobile": "bun run --cwd apps/mobile-app lint",
     "lint:web": "bun run --cwd apps/web lint",
+    "lint:marketing": "bun run --cwd apps/marketing lint",
     "test": "bun run test:convex && bun run test:web",
     "test:convex": "bun test packages/backend/convex/convex",
     "test:web": "bun run --cwd apps/web test",
@@ -39,6 +42,7 @@
     "typecheck:scraper-api": "bun run --cwd packages/backend/scraper typecheck",
     "typecheck:mobile": "bun run --cwd apps/mobile-app typecheck",
     "typecheck:web": "bun run --cwd apps/web typecheck",
+    "typecheck:marketing": "bun run --cwd apps/marketing typecheck",
     "typecheck:desktop": "bun run --cwd apps/kode-ide typecheck"
   },
   "workspaces": [
