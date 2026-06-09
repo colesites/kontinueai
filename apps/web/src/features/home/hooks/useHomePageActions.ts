@@ -43,6 +43,7 @@ export function useHomePageActions() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [imageAspectRatio, setImageAspectRatio] = useState("auto");
   const [imageSize, setImageSize] = useState<string | null>(null);
+  const [agentId, setAgentId] = useState<string | null>(null);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
@@ -112,7 +113,10 @@ export function useHomePageActions() {
           imageSize,
         });
 
-        router.push(`/chat/${chatId}`);
+        // Carry the selected agent into the new chat (ChatClient reads ?agent=).
+        router.push(
+          agentId ? `/chat/${chatId}?agent=${agentId}` : `/chat/${chatId}`,
+        );
       } catch (err: unknown) {
         const data = (err as { data?: { message?: string } })?.data;
         const message =
@@ -124,6 +128,7 @@ export function useHomePageActions() {
       }
     },
     [
+      agentId,
       createChat,
       imageAspectRatio,
       imageSize,
@@ -203,6 +208,8 @@ export function useHomePageActions() {
     setImageAspectRatio,
     imageSize,
     setImageSize,
+    agentId,
+    setAgentId,
     isCreatingChat,
     startChatFromPrompt,
     importModalOpen,

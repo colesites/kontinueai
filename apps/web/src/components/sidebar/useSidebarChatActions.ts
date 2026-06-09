@@ -94,10 +94,13 @@ export function useSidebarChatActions({
 
     setBusyChatId(chat._id);
     try {
-      await deleteChat({ chatId: chat._id });
+      // Navigate away first so the chat page unmounts (and unsubscribes its
+      // chat-scoped queries) before the chat is actually removed — otherwise
+      // those queries momentarily resolve against a now-missing chat.
       if (pathname === `/chat/${chat._id}`) {
         router.push("/");
       }
+      await deleteChat({ chatId: chat._id });
       toast.success("Chat deleted.");
     } catch (error) {
       toast.error(getFriendlyError(error, "Could not delete chat."));

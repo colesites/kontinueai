@@ -2,6 +2,7 @@ import { gateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { tool, type ToolSet } from "ai";
 import { z } from "zod";
+import { markdownToBlocks } from "@tryfabric/martian";
 import { fetchMutation, fetchAction } from "convex/nextjs";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
@@ -41,10 +42,10 @@ function makeCreateTaskTool(
       "short clarifying question first. Only create the task when confident.",
       "",
       "DUE DATES: Resolve relative dates ('tomorrow', 'Friday', 'next week') to an",
-      "absolute ISO 8601 datetime using the current time (call get_current_time if",
-      "unsure of 'now'). Omit dueDateIso when the user gives no timing.",
+      "absolute ISO 8601 datetime using the CURRENT TIME provided in your context",
+      "(do NOT call get_current_time for this). Omit dueDateIso when the user gives no timing.",
       "",
-      "After creating, briefly confirm to the user in one sentence.",
+      "After creating, briefly confirm in one sentence (e.g. 'Done — I'll remind you tomorrow at 3 PM'). Do not show a clock widget.",
     ].join("\n"),
     inputSchema: z.object({
       title: z
@@ -304,6 +305,37 @@ function makeGithubTool(tokens: ConnectorTokens) {
 /**
  * Build the notion tool. Searches the user's connected Notion workspace.
  */
+// Notion accepts at most 100 child blocks per request.
+const NOTION_MAX_CHILDREN = 100;
+
+// Convert the model's markdown into real Notion blocks (headings, lists,
+// bold/italic/code, links, quotes, code blocks) instead of dumping literal
+// "#", "*", "-" characters into a plain paragraph.
+function markdownToNotionBlocks(text: string): Record<string, unknown>[] {
+  if (!text.trim()) return [];
+  return markdownToBlocks(text, {
+    notionLimits: { truncate: true },
+  }) as unknown as Record<string, unknown>[];
+}
+
+async function notionAppendChildren(
+  pageId: string,
+  blocks: Record<string, unknown>[],
+  headers: Record<string, string>,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  for (let i = 0; i < blocks.length; i += NOTION_MAX_CHILDREN) {
+    const chunk = blocks.slice(i, i + NOTION_MAX_CHILDREN);
+    const res = await fetch(
+      `https://api.notion.com/v1/blocks/${pageId}/children`,
+      { method: "PATCH", headers, body: JSON.stringify({ children: chunk }) },
+    );
+    if (!res.ok) {
+      return { ok: false, error: `Notion API error ${res.status}: ${await res.text()}` };
+    }
+  }
+  return { ok: true };
+}
+
 function makeNotionTool(tokens: ConnectorTokens) {
   return tool({
     description: [
@@ -316,9 +348,13 @@ function makeNotionTool(tokens: ConnectorTokens) {
       "- append: add paragraph text to the end of an existing page (needs pageId).",
       "",
       "To read or act on a page you usually need its id first — call search to find",
-      "it, then read/append with its id. Paragraphs come from the `content` field",
-      "(split on newlines into blocks). If Notion is not connected, tell the user to",
-      "connect it in Settings → Connectors.",
+      "it, then read/append with its id.",
+      "",
+      "CONTENT FORMATTING: write the `content` field as normal Markdown — use #/##/### for",
+      "headings, -/1. for lists, **bold**, *italic*, `code`, > quotes, ```code fences```,",
+      "and [text](url) links. It is converted to native Notion blocks automatically, so",
+      "the user sees proper Notion headings/lists/links — NOT raw '#' or '*' characters.",
+      "If Notion is not connected, tell the user to connect it in Settings → Connectors.",
     ].join("\n"),
     inputSchema: z.object({
       action: z
@@ -343,7 +379,9 @@ function makeNotionTool(tokens: ConnectorTokens) {
       content: z
         .string()
         .optional()
-        .describe("For create_page/append: body text. Newlines become separate paragraphs."),
+        .describe(
+          "For create_page/append: body as Markdown (headings, lists, bold/italic/code, links, quotes, code blocks). Converted to native Notion blocks — never include raw markup the user shouldn't see.",
+        ),
     }),
     execute: async ({ action, query, parentPageId, pageId, title, content }) => {
       try {
@@ -435,19 +473,11 @@ function makeNotionTool(tokens: ConnectorTokens) {
           };
         }
 
-        const toParagraphs = (text: string) =>
-          text.split("\n").map((line) => ({
-            object: "block",
-            type: "paragraph",
-            paragraph: {
-              rich_text: line ? [{ type: "text", text: { content: line } }] : [],
-            },
-          }));
-
         if (action === "create_page") {
           if (!parentPageId || !title) {
             return { connected: true, error: "parentPageId and title are required to create a page." };
           }
+          const blocks = content ? markdownToNotionBlocks(content) : [];
           const res = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers,
@@ -456,11 +486,21 @@ function makeNotionTool(tokens: ConnectorTokens) {
               properties: {
                 title: { title: [{ type: "text", text: { content: title } }] },
               },
-              children: content ? toParagraphs(content) : [],
+              // Notion caps children at 100 per request; send the first 100 here
+              // and append the rest in follow-up batches below.
+              children: blocks.slice(0, NOTION_MAX_CHILDREN),
             }),
           });
           if (!res.ok) return { connected: true, error: `Notion API error ${res.status}: ${await res.text()}` };
           const page = (await res.json()) as { id: string; url?: string };
+          if (blocks.length > NOTION_MAX_CHILDREN) {
+            const rest = await notionAppendChildren(
+              page.id,
+              blocks.slice(NOTION_MAX_CHILDREN),
+              headers,
+            );
+            if (!rest.ok) return { connected: true, error: rest.error };
+          }
           return { connected: true, created: true, id: page.id, url: page.url };
         }
 
@@ -468,11 +508,12 @@ function makeNotionTool(tokens: ConnectorTokens) {
         if (!pageId || !content) {
           return { connected: true, error: "pageId and content are required to append." };
         }
-        const res = await fetch(
-          `https://api.notion.com/v1/blocks/${pageId}/children`,
-          { method: "PATCH", headers, body: JSON.stringify({ children: toParagraphs(content) }) },
+        const appendResult = await notionAppendChildren(
+          pageId,
+          markdownToNotionBlocks(content),
+          headers,
         );
-        if (!res.ok) return { connected: true, error: `Notion API error ${res.status}: ${await res.text()}` };
+        if (!appendResult.ok) return { connected: true, error: appendResult.error };
         return { connected: true, appended: true, pageId };
       } catch (error) {
         return {
@@ -1125,7 +1166,9 @@ function makeGetCurrentTimeTool(userTimezone: string | null) {
     description: [
       "Get the current real-world time and render a clock widget.",
       "",
-      "Call this whenever the user asks about the current time, date, hour, day of week, or anything tied to 'now'.",
+      "Call this ONLY when the user is explicitly asking what the current time/date is (e.g. 'what time is it', 'what's today's date', 'is it morning in Tokyo').",
+      "",
+      "DO NOT call this when the user is scheduling something at a time (e.g. 'remind me at 3pm', 'set a task for tomorrow 9am', 'do X at 5'). In those cases the user is GIVING you a time, not asking for it — use create_task and resolve the datetime from the CURRENT TIME provided in your context. Calling this here wrongly shows the user a clock they didn't ask for.",
       "",
       "TIMEZONE PARAMETER:",
       "- Only set `timezone` if the user explicitly names a different location (e.g. 'what time is it in Tokyo' → 'Asia/Tokyo').",
@@ -1305,7 +1348,7 @@ export function buildToolsAndPrompt(options: {
     imageSize,
   });
   const taskToolContext = tools.create_task
-    ? "\n\nTASKS: You can create tasks/reminders with the create_task tool. When the user clearly states something to do or be reminded of, create it and confirm briefly. If the intent or timing is unclear, ask one short clarifying question before creating."
+    ? "\n\nTASKS: You can create tasks/reminders with the create_task tool. When the user clearly states something to do or be reminded of, create it and confirm briefly. When they include a time (e.g. 'remind me at 3pm'), that is the DUE time for the task — resolve it from the CURRENT TIME in your context and set dueDateIso; do NOT call get_current_time and do NOT show a clock widget (they did not ask what time it is). If the intent or timing is unclear, ask one short clarifying question before creating."
     : "";
   const connectorToolContext = tools.github
     ? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list repos/issues, create/comment/close issues), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email), google_calendar (list and create events), and google_drive (search and read files). These tools are NOT read-only where actions exist: when the user asks you to create an event, create a page, comment, close, or redeploy, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@gmail', '@google_calendar', '@google_drive') or naturally ('my calendar', 'my email', 'my drive'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'You have 3 unread emails: …'). Never end your turn with only a tool call and no text."
@@ -1335,9 +1378,33 @@ export function buildToolsAndPrompt(options: {
     ? `\n\nACTIVE AGENT — ${agent.name}: ${agent.systemPrompt}`
     : "";
 
+  // Give the model the real "now" in the user's timezone so it can resolve
+  // relative scheduling phrases ("tomorrow 3pm", "in 2 hours") on its own —
+  // without calling the get_current_time clock widget just to set a reminder.
+  const nowContext = (() => {
+    const tz =
+      userTimezone && isValidTimezone(userTimezone) ? userTimezone : undefined;
+    try {
+      const formatted = new Intl.DateTimeFormat("en-US", {
+        timeZone: tz,
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      }).format(new Date());
+      return `\n\nCURRENT TIME: It is currently ${formatted}${tz ? ` (${tz})` : ""}. Use this to resolve relative dates/times yourself. Do NOT call get_current_time just to schedule a task or reminder — only call it when the user is actually asking what the time or date is.`;
+    } catch {
+      return "";
+    }
+  })();
+
   const systemPrompt =
     CHAT_SYSTEM_PROMPT +
     agentContext +
+    nowContext +
     responseBudgetContext +
     webSearchContext +
     imageGenContext +

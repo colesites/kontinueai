@@ -97,9 +97,12 @@ export const listByChat = query({
     chatId: v.id("chats"),
   },
   handler: async (ctx, args) => {
+    // Return [] (rather than throwing) for missing auth/user/chat so that a
+    // reactive subscriber on the chat page doesn't error during the brief window
+    // when the chat is deleted while still being viewed (the page then redirects).
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
-      throw new Error("Unauthenticated");
+      return [];
     }
 
     const user = await ctx.db
@@ -110,13 +113,13 @@ export const listByChat = query({
       .first();
 
     if (!user) {
-      throw new Error("User not found");
+      return [];
     }
 
     // Verify chat ownership
     const chat = await ctx.db.get(args.chatId);
     if (!chat || chat.ownerId !== user._id) {
-      throw new Error("Chat not found or unauthorized");
+      return [];
     }
 
     // Get all files for this chat

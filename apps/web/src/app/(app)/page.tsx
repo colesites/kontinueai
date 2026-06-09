@@ -20,6 +20,8 @@ export default function HomePage() {
     setImageAspectRatio,
     imageSize,
     setImageSize,
+    agentId,
+    setAgentId,
     isCreatingChat,
     startChatFromPrompt,
     importModalOpen,
@@ -73,6 +75,8 @@ export default function HomePage() {
                 imageSize={imageSize}
                 onImageAspectRatioChange={setImageAspectRatio}
                 onImageSizeChange={setImageSize}
+                agentId={agentId}
+                onAgentChange={setAgentId}
               />
             </div>
           </div>

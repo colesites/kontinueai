@@ -42,27 +42,19 @@ export function CanvasGallery({
 
   if (items.length === 0) {
     return (
-      <div className="px-3 pt-4 sm:p-8">
-        <div className="columns-1 md:columns-2 lg:columns-3 gap-1 pb-4 space-y-1">
-          {[
-            "aspect-video",
-            "aspect-square",
-            "aspect-[3/4]",
-            "aspect-[4/3]",
-            "aspect-[9/16]",
-            "aspect-video",
-          ].map((aspect, i) => (
-            <div
-              key={i}
-              className={cn(
-                "w-full bg-muted/10 border-2 border-dashed border-border/40 rounded-2xl flex items-center justify-center break-inside-avoid",
-                aspect
-              )}
-            >
-              <Sparkles className="h-8 w-8 text-muted-foreground/30" />
-            </div>
-          ))}
+      <div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
+        <div className="relative mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
+          <div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-primary/20 blur-2xl" />
+          <Sparkles className="h-6 w-6 text-primary" />
         </div>
+        <h3 className="text-lg font-semibold tracking-tight text-foreground">
+          {tab === "mine" ? "Your canvas is a blank page" : "Nothing here yet"}
+        </h3>
+        <p className="mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-muted-foreground/80">
+          {tab === "mine"
+            ? "Describe an image or video below and your creations will appear here."
+            : "Be the first to publish — community creations will show up here soon."}
+        </p>
       </div>
     );
   }
