@@ -1,3 +1,86 @@
-@import "@repo/tailwind-config";
- 
+@import "tailwindcss";
 @import "nativewind/theme";
+
+/* Scan the app + components for class names (Tailwind v4 content sources). */
+@source "./**/*.{ts,tsx}";
+@source "../components/**/*.{ts,tsx}";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * Kontinue mobile design tokens — the SAME magenta brand palette as web/desktop
+ * (copied from @repo/tailwind-config).
+ *
+ * NOTE: the app is dark-first, so the DARK values live in `:root` (the default,
+ * applied with no class needed). Light mode is opt-in via a `.light` ancestor
+ * class, which ThemeProvider adds when the user picks Light. This avoids relying
+ * on NativeWind's `.dark` variant being applied to the RN tree.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+}
+
+/* Dark = default (dark-first). */
+:root {
+  --radius: 0.875rem;
+  --background: oklch(0.142 0.01 346.02);
+  --foreground: oklch(0.96 0.003 339.55);
+  --card: oklch(0.226 0.034 348.74);
+  --card-foreground: oklch(0.96 0.003 339.55);
+  --popover: oklch(0.226 0.034 348.74);
+  --popover-foreground: oklch(0.96 0.003 339.55);
+  --primary: oklch(0.63 0.239 348.95);
+  --primary-foreground: oklch(0.96 0.003 339.55);
+  --secondary: oklch(0.259 0.036 342.31);
+  --secondary-foreground: oklch(0.958 0.01 339.71);
+  --muted: oklch(0.259 0.036 342.31);
+  --muted-foreground: oklch(0.71 0.039 340.64);
+  --accent: oklch(0.27 0.038 338.34);
+  --accent-foreground: oklch(0.921 0.007 336.02);
+  --destructive: oklch(0.58 0.237 28.43);
+  --border: oklch(0.246 0.041 349.16);
+  --input: oklch(0.246 0.041 349.16);
+  --ring: oklch(0.63 0.239 348.95);
+}
+
+/* Light = opt-in. */
+.light {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.144 0.004 339.98);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.144 0.004 339.98);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.144 0.004 339.98);
+  --primary: oklch(0.624 0.255 352.01);
+  --primary-foreground: oklch(0.96 0.003 339.55);
+  --secondary: oklch(0.908 0.019 339.93);
+  --secondary-foreground: oklch(0.207 0.03 342.48);
+  --muted: oklch(0.908 0.019 339.93);
+  --muted-foreground: oklch(0.528 0.107 343.59);
+  --accent: oklch(0.747 0.113 12.63);
+  --accent-foreground: oklch(0.2 0.043 14.56);
+  --destructive: oklch(0.58 0.237 28.43);
+  --border: oklch(0.832 0.036 340.39);
+  --input: oklch(0.832 0.036 340.39);
+  --ring: oklch(0.624 0.255 352.01);
+}

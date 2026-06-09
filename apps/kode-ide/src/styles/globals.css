@@ -232,57 +232,86 @@
     }
 }
 
-/* ── Kontinue "frosted obsidian" design system ──────────────────────────────
-   Deep near-black base with atmospheric glow so glass surfaces have light to
-   refract. A single restrained magenta brand accent. */
+/* ── Kode "dimensional Codex" design system ─────────────────────────────────
+   Charcoal workspace, restrained neutral controls, and beveled depth. */
 :root {
-  --brand: oklch(0.62 0.21 348);          /* Kontinue magenta */
-  --brand-soft: oklch(0.62 0.21 348 / 0.16);
+  --brand: oklch(0.63 0.239 349);
+  --brand-soft: oklch(0.63 0.239 349 / 0.18);
+  --surface-0: oklch(0.135 0.004 260);
+  --surface-1: oklch(0.17 0.004 260);
+  --surface-2: oklch(0.205 0.005 260);
+  --surface-3: oklch(0.245 0.006 260);
+  --edge: oklch(1 0 0 / 0.08);
+  --edge-strong: oklch(1 0 0 / 0.12);
 }
 
 .dark {
-  /* Slightly deeper, cooler base than default for the obsidian feel. */
-  --background: oklch(0.16 0.006 285);
+  --background: var(--surface-0);
+  --foreground: oklch(0.92 0.004 260);
+  --card: var(--surface-1);
+  --card-foreground: oklch(0.92 0.004 260);
+  --popover: var(--surface-2);
+  --popover-foreground: oklch(0.92 0.004 260);
+  --primary: oklch(0.92 0.004 260);
+  --primary-foreground: oklch(0.16 0.004 260);
+  --secondary: var(--surface-2);
+  --secondary-foreground: oklch(0.88 0.004 260);
+  --muted: var(--surface-2);
+  --muted-foreground: oklch(0.67 0.004 260);
+  --accent: var(--surface-3);
+  --accent-foreground: oklch(0.94 0.004 260);
+  --border: var(--edge);
+  --input: oklch(1 0 0 / 0.1);
+  --ring: oklch(0.63 0.239 349 / 0.55);
+  --sidebar: var(--surface-1);
+  --sidebar-foreground: oklch(0.9 0.004 260);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: oklch(0.12 0.004 260);
+  --sidebar-accent: var(--surface-3);
+  --sidebar-accent-foreground: oklch(0.94 0.004 260);
+  --sidebar-border: var(--edge);
+  --sidebar-ring: var(--ring);
 }
 
 .dark body {
-  background-color: oklch(0.15 0.006 285);
+  background-color: var(--surface-0);
 }
 
 @layer utilities {
-  /* Frosted glass panel: translucent fill, blur, hairline top highlight, depth. */
+  /* Flat surfaces — no gradient sheen, no white top-glow. Just a translucent
+     fill, a hairline border, and a soft drop shadow for depth. */
   .glass {
-    background: color-mix(in oklch, var(--background) 55%, transparent);
-    backdrop-filter: blur(20px) saturate(140%);
-    -webkit-backdrop-filter: blur(20px) saturate(140%);
-    border: 1px solid oklch(1 0 0 / 0.07);
-    box-shadow:
-      inset 0 1px 0 oklch(1 0 0 / 0.06),
-      0 1px 2px oklch(0 0 0 / 0.4),
-      0 16px 40px -12px oklch(0 0 0 / 0.55);
+    background: color-mix(in oklch, var(--surface-1) 90%, transparent);
+    backdrop-filter: blur(20px) saturate(115%);
+    -webkit-backdrop-filter: blur(20px) saturate(115%);
+    border: 1px solid var(--edge);
+    box-shadow: 0 16px 40px -22px oklch(0 0 0 / 0.7);
   }
-  /* Heavier, more opaque variant for primary surfaces (sidebar, input). */
   .glass-strong {
-    background: color-mix(in oklch, var(--background) 78%, transparent);
-    backdrop-filter: blur(28px) saturate(150%);
-    -webkit-backdrop-filter: blur(28px) saturate(150%);
-    border: 1px solid oklch(1 0 0 / 0.08);
-    box-shadow:
-      inset 0 1px 0 oklch(1 0 0 / 0.07),
-      0 2px 4px oklch(0 0 0 / 0.45),
-      0 24px 60px -16px oklch(0 0 0 / 0.65);
+    background: var(--surface-1);
+    backdrop-filter: blur(24px) saturate(115%);
+    -webkit-backdrop-filter: blur(24px) saturate(115%);
+    border: 1px solid var(--edge-strong);
+    box-shadow: 0 22px 56px -24px oklch(0 0 0 / 0.78);
   }
-  /* Soft inset surface (chips, wells). */
   .surface-inset {
-    background: oklch(1 0 0 / 0.03);
-    box-shadow: inset 0 1px 0 oklch(1 0 0 / 0.04), inset 0 0 0 1px oklch(1 0 0 / 0.04);
+    background: oklch(1 0 0 / 0.04);
+    border: 1px solid oklch(1 0 0 / 0.06);
   }
-  /* Brand focus glow ring. */
+  .surface-raised {
+    background: var(--surface-2);
+    border: 1px solid var(--edge);
+    box-shadow: 0 10px 24px -18px oklch(0 0 0 / 0.7);
+  }
+  .surface-pressed {
+    background: oklch(0 0 0 / 0.2);
+    border: 1px solid oklch(1 0 0 / 0.05);
+  }
   .ring-brand {
     box-shadow:
       inset 0 1px 0 oklch(1 0 0 / 0.08),
-      0 0 0 1px oklch(0.62 0.21 348 / 0.45),
-      0 0 24px -4px oklch(0.62 0.21 348 / 0.45);
+      0 0 0 1px oklch(0.63 0.239 349 / 0.48),
+      0 0 26px -8px oklch(0.63 0.239 349 / 0.48);
   }
   .text-brand { color: var(--brand); }
   .bg-brand { background-color: var(--brand); }

@@ -8,3 +8,11 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     <App />
   </React.StrictMode>
 );
+
+// Fade out the branded splash once the app has painted.
+requestAnimationFrame(() => {
+  const splash = document.getElementById("splash");
+  if (!splash) return;
+  splash.classList.add("hide");
+  setTimeout(() => splash.remove(), 400);
+});

@@ -36,7 +36,7 @@ const LeftSidebarProjects = () => {
           <button
             key={p.name}
             type="button"
-            className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground/70 transition-colors hover:bg-white/[0.04] hover:text-foreground"
+            className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground/70 transition-colors hover:bg-white/[0.055] hover:text-foreground"
           >
             <span
               className="flex size-5 shrink-0 items-center justify-center rounded-md ring-1 ring-white/[0.08]"

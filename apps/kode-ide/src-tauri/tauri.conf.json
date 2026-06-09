@@ -12,11 +12,12 @@
   "app": {
     "windows": [
       {
-        "title": "Kode IDE",
+        "title": "Kontinue",
         "width": 1600,
         "height": 1024,
         "minWidth": 1280,
-        "minHeight": 820
+        "minHeight": 820,
+        "backgroundColor": "#0B0A0C"
       }
     ],
     "security": {

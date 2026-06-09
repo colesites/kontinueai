@@ -6,7 +6,7 @@ const FloatingSidebarButtonGroup = () => {
   const sidebarCollapsed = state === "collapsed";
 
   const iconBtn =
-    "flex size-7 items-center justify-center rounded-lg text-foreground/55 transition-colors duration-150 hover:bg-white/[0.07] hover:text-foreground active:scale-95";
+    "flex size-7 items-center justify-center rounded-lg text-foreground/55 transition-all duration-150 hover:bg-white/[0.07] hover:text-foreground active:scale-95";
 
   return (
     <div className="fixed top-3 left-3 z-50 flex items-center">

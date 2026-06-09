@@ -3,14 +3,12 @@ import { SquarePen, Search, Plug2 } from "lucide-react";
 const LeftSidebarHeader = () => {
   return (
     <div className="px-3 pt-1">
-      {/* Primary action */}
+      {/* Primary action — monochrome, with a small brand-tinted icon. */}
       <button
         type="button"
-        className="bg-brand flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white transition-colors duration-150
-          ring-1 ring-[color-mix(in_oklch,var(--brand)_55%,transparent)]
-          hover:brightness-105 active:scale-[0.99]"
+        className="surface-raised flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-foreground transition-colors duration-150 hover:bg-white/[0.06] active:scale-[0.99]"
       >
-        <SquarePen size={15} className="shrink-0" />
+        <SquarePen size={15} className="shrink-0 text-brand" />
         <span>New chat</span>
       </button>
 
@@ -36,7 +34,7 @@ const LeftSidebarHeader = () => {
         </button>
       </div>
 
-      <div className="mt-3 h-px bg-white/[0.07]" />
+      <div className="mt-3 h-px bg-white/[0.065]" />
     </div>
   );
 };

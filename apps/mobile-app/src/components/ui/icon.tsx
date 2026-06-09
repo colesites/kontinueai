@@ -1,21 +1,24 @@
 import { TextClassContext } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import type { LucideIcon, LucideProps } from 'lucide-react-native';
-import { cssInterop } from 'nativewind';
+import { styled } from 'react-native-css';
 import * as React from 'react';
 
 type IconProps = LucideProps & {
   as: LucideIcon;
 } & React.RefAttributes<LucideIcon>;
 
-function IconImpl({ as: IconComponent, ...props }: IconProps) {
+function IconBase({ as: IconComponent, ...props }: IconProps) {
   return <IconComponent {...props} />;
 }
 
-cssInterop(IconImpl, {
+// NativeWind v5 (react-native-css) replaced `cssInterop` with `styled`: it
+// returns an HOC that maps `className` → `style` and remaps the resolved
+// width/height back onto the Lucide `size` prop.
+const IconImpl = styled(IconBase, {
   className: {
     target: 'style',
-    nativeStyleToProp: {
+    nativeStyleMapping: {
       height: 'size',
       width: 'size',
     },

@@ -24,7 +24,7 @@ const LeftSidebarChats = () => {
             <button
               key={c.title}
               type="button"
-              className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-foreground/65 transition-colors hover:bg-white/[0.04] hover:text-foreground"
+              className="group flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-foreground/65 transition-colors hover:bg-white/[0.055] hover:text-foreground"
             >
               <MessageSquare
                 size={13}
