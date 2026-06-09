@@ -63,6 +63,15 @@ export async function POST(request: NextRequest) {
 
     const data = (await scraperResponse.json().catch(() => ({}))) as ScraperResponse;
     if (!scraperResponse.ok) {
+      // Surface scraper rejections (e.g. 403 "Origin not allowed", 403 invalid
+      // API key) in Vercel logs — otherwise these fail silently.
+      console.error("[import/scrape] scraper rejected request", {
+        status: scraperResponse.status,
+        scraperError: data.error,
+        scraperMessage: data.message,
+        origin: headers.Origin,
+        scraperUrl: SCRAPER_API_URL,
+      });
       return NextResponse.json(
         {
           error: data.error ?? "scrape_failed",

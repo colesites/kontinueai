@@ -1,5 +1,12 @@
 export type ImportStrategy = "scraper" | "firecrawl";
 
+// TEMP KILL-SWITCH: the self-hosted scraper OOMs (Chromium > 512MB) on the
+// current Render Starter plan, crashing the process (502s). Until it's moved to
+// a larger instance, route ALL imports through Firecrawl (hosted — no memory
+// limit on our side). The scraper code + host list below are kept intact; flip
+// this back to `true` once the scraper has more RAM.
+const SCRAPER_ENABLED = false;
+
 // Hosts the self-hosted Kontinue scraper can extract directly (work headless on
 // a datacenter IP). Everything else falls through to Firecrawl.
 const SCRAPER_HOST_PATTERNS: RegExp[] = [
@@ -30,7 +37,7 @@ export function getImportStrategy(url: string): ImportStrategy {
     return "firecrawl";
   }
 
-  if (SCRAPER_HOST_PATTERNS.some((pattern) => pattern.test(host))) {
+  if (SCRAPER_ENABLED && SCRAPER_HOST_PATTERNS.some((pattern) => pattern.test(host))) {
     return "scraper";
   }
 
