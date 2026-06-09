@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { toast } from "sonner";
 import { api } from "@repo/convex/convex/_generated/api";
 import { detectProvider } from "@repo/utils/url-safety";
+import { getImportStrategy } from "../../import/lib/import-strategy";
 import { getDefaultModelForPlan, getModelById } from "@repo/ai/lib/models";
 import { isKaiModel } from "@repo/ai/lib/kai";
 import {
@@ -27,6 +28,7 @@ export function useHomePageActions() {
   const appendImportFailureMessageToChat = useMutation(
     api.chats.appendImportFailureMessageToChat,
   );
+  const importViaFirecrawl = useAction(api.firecrawl.importIntoChat);
   const saveDefaultModel = useMutation(api.users.setDefaultModel);
 
   const fallbackModel = useMemo(
