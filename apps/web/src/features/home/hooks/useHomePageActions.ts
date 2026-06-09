@@ -171,6 +171,7 @@ export function useHomePageActions() {
         url: sourceUrl,
         appendImportedMessagesToChat,
         appendImportFailureMessageToChat,
+        importViaFirecrawl,
       });
 
       router.push(`/chat/${chatId}?imported=true&importing=1`);
@@ -219,6 +220,7 @@ async function scrapeAndAppendImport({
   url,
   appendImportedMessagesToChat,
   appendImportFailureMessageToChat,
+  importViaFirecrawl,
 }: {
   chatId: string;
   url: string;
@@ -231,7 +233,30 @@ async function scrapeAndAppendImport({
     chatId: any;
     errorMessage: string;
   }) => Promise<unknown>;
+  importViaFirecrawl: (args: {
+    chatId: any;
+    url: string;
+  }) => Promise<{ success: boolean; error?: string }>;
 }) {
+  // Route per strategy: Firecrawl-designated hosts (and everything while the
+  // self-hosted scraper is disabled via SCRAPER_ENABLED) go through the Convex
+  // Firecrawl action; only "scraper" hosts hit the Render scraper REST endpoint.
+  if (getImportStrategy(url) === "firecrawl") {
+    try {
+      const result = await importViaFirecrawl({ chatId, url });
+      // importIntoChat appends the messages / failure notice itself.
+      if (!result.success) {
+        toast.error(result.error || "Failed to import chat");
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Failed to import chat";
+      await appendImportFailureMessageToChat({ chatId, errorMessage: message });
+      toast.error(message);
+    }
+    return;
+  }
+
   try {
     const response = await fetch("/api/import/scrape", {
       method: "POST",
