@@ -90,6 +90,7 @@ export function ChatMessageList({
               content={message.content}
               imageParts={message.imageParts}
               clockData={message.clockData}
+              emailDraft={message.emailDraft}
               isImported={message.isImported}
               isStreaming={
                 isStreaming &&

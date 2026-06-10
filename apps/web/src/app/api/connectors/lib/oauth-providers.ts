@@ -358,6 +358,8 @@ function makeGoogleProvider(
 
 const GMAIL = makeGoogleProvider("gmail", [
   "https://www.googleapis.com/auth/gmail.readonly",
+  // Lets the user send mail composed in Kontinue (sensitive scope).
+  "https://www.googleapis.com/auth/gmail.send",
 ]);
 const GOOGLE_CALENDAR = makeGoogleProvider("google_calendar", [
   "https://www.googleapis.com/auth/calendar.events",

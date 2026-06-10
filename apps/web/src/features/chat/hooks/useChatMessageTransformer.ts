@@ -3,12 +3,14 @@ import type { UIMessage } from "ai";
 import {
   buildSearchFallbackContent,
   collectClockDataFromParts,
+  collectEmailDraftFromParts,
   collectImageUrlsFromParts,
   collectPerplexitySearchResults,
   mapImportedFlags,
   mapStoredGeneratedImages,
   mergeImportedChunks,
   type ClockData,
+  type EmailDraft,
 } from "../lib/message-transformer";
 
 export type DisplayMessage = {
@@ -18,6 +20,7 @@ export type DisplayMessage = {
   imageParts: string[];
   isImported: boolean;
   clockData?: ClockData | null;
+  emailDraft?: EmailDraft | null;
 };
 
 interface ConvexMessage {
@@ -68,6 +71,7 @@ function mapAiMessageToDisplayMessage(params: {
   const resolvedImages = [...new Set([...persisted, ...stored, ...imageParts])];
 
   const clockData = collectClockDataFromParts(msg.parts);
+  const emailDraft = collectEmailDraftFromParts(msg.parts);
 
   return {
     id: msg.id,
@@ -76,6 +80,7 @@ function mapAiMessageToDisplayMessage(params: {
     imageParts: resolvedImages,
     isImported: importedById[msg.id] ?? false,
     clockData,
+    emailDraft,
   };
 }
 

@@ -1711,7 +1711,7 @@ function resolveDueDate(
 // Google access tokens expire after ~1h. This helper returns a guaranteed-fresh
 // access token: it reads the stored token set, and if the access token is
 // missing/expired, exchanges the refresh token for a new one (and persists it).
-async function getGoogleAccessToken(
+export async function getGoogleAccessToken(
   tokens: ConnectorTokens,
   provider: "gmail" | "google_calendar" | "google_drive",
 ): Promise<{ accessToken: string } | { error: string }> {
@@ -1835,17 +1835,63 @@ export function buildAutonomousConnectorTools(
   };
 }
 
+/**
+ * Build the compose_email tool. Pure draft tool: the model fills in the email
+ * fields and the result renders as an interactive composer card in the chat,
+ * where the user reviews/edits and clicks Send (which actually delivers it via
+ * the Gmail send route). The model NEVER sends mail directly — sending is always
+ * a user-confirmed action.
+ */
+function makeComposeEmailTool() {
+  return tool({
+    description: [
+      "Draft an email for the user to review and send from Kontinue.",
+      "",
+      "Call this whenever the user asks to write, draft, compose or send an email",
+      "(e.g. 'email my landlord that the dishwasher is leaking', 'send Sarah a",
+      "follow-up'). Fill in recipients, a clear subject, and a complete, well-written",
+      "body in the user's voice. The result is shown as an editable email card with a",
+      "Send button — the user reviews and sends it themselves, so do NOT claim the",
+      "email was sent. After drafting, you can briefly say something like 'Here's a",
+      "draft — review and hit Send when you're happy with it.'",
+      "",
+      "Write the body as plain text (real line breaks, no markdown). If you don't",
+      "know a recipient's address, leave `to` empty and the user will fill it in.",
+    ].join("\n"),
+    inputSchema: z.object({
+      to: z
+        .string()
+        .optional()
+        .describe("Recipient email address(es), comma-separated. Leave empty if unknown."),
+      cc: z
+        .string()
+        .optional()
+        .describe("Optional Cc address(es), comma-separated."),
+      subject: z.string().describe("The email subject line."),
+      body: z.string().describe("The full email body as plain text (no markdown)."),
+    }),
+    // Echo the draft straight back — rendering + sending happen in the UI.
+    execute: async ({ to, cc, subject, body }) => ({
+      to: to ?? "",
+      cc: cc ?? "",
+      subject,
+      body,
+    }),
+  });
+}
+
 function makeGmailTool(tokens: ConnectorTokens) {
   return tool({
     description: [
       "Search and read the user's connected Gmail (read-only).",
       "",
       "Actions:",
-      "- search: find messages with a Gmail search query (e.g. 'from:boss newer_than:7d', 'is:unread invoice'). Returns matching message summaries.",
+      "- search: find messages with a Gmail search query (e.g. 'from:boss newer_than:7d', 'is:unread invoice'). Returns matching message summaries PLUS `estimatedTotal` — the total number of matches (use this to answer 'how many …' questions; the returned message list is only a sample capped by maxResults).",
       "- read: fetch the full body of one message by id (get the id from search first).",
       "",
-      "Use search to find relevant mail, then summarize or answer from the results.",
-      "If Gmail is not connected, tell the user to connect it in Settings → Connectors.",
+      "Use search to find relevant mail, then summarize or answer from the results. For",
+      "counts (e.g. 'how many unread emails'), report `estimatedTotal`, not the length",
+      "of the returned sample. If Gmail is not connected, tell the user to connect it in Settings → Connectors.",
     ].join("\n"),
     inputSchema: z.object({
       action: z.enum(["search", "read"]).describe("The Gmail operation."),
@@ -1853,30 +1899,39 @@ function makeGmailTool(tokens: ConnectorTokens) {
         .string()
         .optional()
         .describe("For search: a Gmail search query. See Gmail search operators."),
+      maxResults: z
+        .number()
+        .int()
+        .min(1)
+        .max(50)
+        .optional()
+        .describe("For search: how many message summaries to return (default 10). Does not affect estimatedTotal."),
       messageId: z
         .string()
         .optional()
         .describe("For read: the id of the message to fetch (from a prior search)."),
     }),
-    execute: async ({ action, query, messageId }) => {
+    execute: async ({ action, query, maxResults, messageId }) => {
       try {
         const token = await getGoogleAccessToken(tokens, "gmail");
         if ("error" in token) return { connected: false, error: token.error };
         const auth = { Authorization: `Bearer ${token.accessToken}` };
 
         if (action === "search") {
+          const cap = maxResults ?? 10;
           const url = new URL(
             "https://gmail.googleapis.com/gmail/v1/users/me/messages",
           );
-          url.searchParams.set("maxResults", "10");
+          url.searchParams.set("maxResults", String(cap));
           if (query) url.searchParams.set("q", query);
           const res = await fetch(url, { headers: auth });
           if (!res.ok)
             return { connected: true, error: await googleApiError(res, "Gmail") };
           const data = (await res.json()) as {
             messages?: Array<{ id: string }>;
+            resultSizeEstimate?: number;
           };
-          const ids = (data.messages ?? []).slice(0, 10);
+          const ids = (data.messages ?? []).slice(0, cap);
           // Fetch lightweight metadata for each match.
           const messages = await Promise.all(
             ids.map(async ({ id }) => {
@@ -1902,7 +1957,13 @@ function makeGmailTool(tokens: ConnectorTokens) {
               };
             }),
           );
-          return { connected: true, messages };
+          return {
+            connected: true,
+            // Gmail's own estimate of total matches — use this for "how many" answers.
+            estimatedTotal: data.resultSizeEstimate ?? messages.length,
+            returned: messages.length,
+            messages,
+          };
         }
 
         // read
@@ -2283,6 +2344,9 @@ export function buildToolsAndPrompt(options: {
   // like UTC or Asia/Kolkata).
   if (supportsTools) {
     tools.get_current_time = makeGetCurrentTimeTool(userTimezone ?? null);
+    // Email composer is always available; the Send action (client-side) is what
+    // requires a connected Gmail account, not the drafting.
+    tools.compose_email = makeComposeEmailTool();
   }
 
   // Task creation is available whenever the model supports tools and we have an
@@ -2361,8 +2425,11 @@ export function buildToolsAndPrompt(options: {
   const taskToolContext = tools.create_task
     ? "\n\nTASKS: You can create tasks/reminders with the create_task tool. When the user clearly states something to do or be reminded of, create it and confirm briefly. When they include a time (e.g. 'remind me at 3pm'), that is the DUE time for the task — resolve it from the CURRENT TIME in your context and set dueDateIso; do NOT call get_current_time and do NOT show a clock widget (they did not ask what time it is). If the intent or timing is unclear, ask one short clarifying question before creating."
     : "";
+  const emailToolContext = tools.compose_email
+    ? "\n\nEMAIL: When the user asks to write, draft, compose or send an email, call the compose_email tool with recipients, a subject, and a complete body in the user's voice — this renders an editable email card with a Send button that the user clicks to actually send via their Gmail. Do NOT write the email as plain chat text, and do NOT claim you sent it — the user reviews and sends it themselves. If they ask you to email someone but you don't know the address, draft it with `to` empty so they can fill it in."
+    : "";
   const connectorToolContext = tools.github
-    ? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list ALL repos with accurate count, read repos/files/commits/branches, search code, create/update/close/reopen/comment issues, commit files, create branches and pull requests), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email), google_calendar (list and create events), google_drive (search and read files), and todoist (list, create and complete tasks). These tools are NOT read-only where actions exist: when the user asks you to create an event, create a page, comment, close, redeploy, or add a Todoist task, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@gmail', '@google_calendar', '@google_drive', '@todoist') or naturally ('my calendar', 'my email', 'my drive', 'my todoist'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'You have 3 unread emails: …'). Never end your turn with only a tool call and no text."
+    ? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list ALL repos with accurate count, read repos/files/commits/branches, search code, create/update/close/reopen/comment issues, commit files, create branches and pull requests), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email; to write or send a message use the compose_email tool), google_calendar (list and create events), google_drive (search and read files), and todoist (list, create and complete tasks). These tools are NOT read-only where actions exist: when the user asks you to create an event, create a page, comment, close, redeploy, or add a Todoist task, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@gmail', '@google_calendar', '@google_drive', '@todoist') or naturally ('my calendar', 'my email', 'my drive', 'my todoist'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'You have 3 unread emails: …'). Never end your turn with only a tool call and no text."
     : "";
 
   // When the user explicitly @-mentions a connected connector, force the model to
@@ -2420,6 +2487,7 @@ export function buildToolsAndPrompt(options: {
     webSearchContext +
     imageGenContext +
     taskToolContext +
+    emailToolContext +
     connectorToolContext +
     mentionDirective +
     buildMemoryContext(memoryContextText ?? null) +

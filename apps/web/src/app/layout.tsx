@@ -9,7 +9,7 @@ import LoadingFallback from "../components/LoadingFallback";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://kontinueai.com";
 const siteTitle = "Kontinue AI";
 const siteDescription = "Continue your AI conversations from any platform";
-const ogImage = "/kontinueai-3d.png";
+const ogImage = "/og.png";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

@@ -7,6 +7,7 @@ import { MessageContent } from "./MessageContent";
 import { ChatMessageActions } from "./ChatMessageActions";
 import { ChatMessageImages } from "./ChatMessageImages";
 import { ClockWidget } from "./ClockWidget";
+import { EmailComposer } from "./EmailComposer";
 
 const EMPTY_IMAGE_PARTS: string[] = [];
 
@@ -15,6 +16,7 @@ export function ChatMessage({
   content,
   imageParts = EMPTY_IMAGE_PARTS,
   clockData,
+  emailDraft,
   isImported,
   isStreaming,
   onRetry,
@@ -159,7 +161,7 @@ export function ChatMessage({
             >
               {content ? (
                 <MessageContent content={content} isStreaming={isStreaming} />
-              ) : !isUser && !isStreaming && imageParts.length === 0 && !clockData ? (
+              ) : !isUser && !isStreaming && imageParts.length === 0 && !clockData && !emailDraft ? (
                 <p className="italic text-muted-foreground">
                   No response was returned. Please retry or switch models.
                 </p>
@@ -168,6 +170,7 @@ export function ChatMessage({
               {!isUser && clockData && (
                 <ClockWidget timezone={clockData.timezone} />
               )}
+              {!isUser && emailDraft && <EmailComposer draft={emailDraft} />}
             </div>
           )}
         </div>

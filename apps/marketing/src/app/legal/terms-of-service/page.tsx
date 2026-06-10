@@ -4,7 +4,7 @@ export default function TermsOfService() {
 			<h1 className="text-4xl font-bold mb-8">Kontinue AI Terms of Service</h1>
 			<div className="space-y-6 text-muted-foreground">
 				<p className="text-sm">
-					<strong>Last Updated:</strong> February 10, 2026
+					<strong>Last Updated:</strong> June 10, 2026
 				</p>
 
 				<section>
@@ -44,6 +44,13 @@ export default function TermsOfService() {
 						<li>Switch between different AI models for different tasks</li>
 						<li>Compare responses from multiple AI models</li>
 						<li>Access multiple AI models through a single subscription</li>
+						<li>
+							Optionally connect third-party accounts (such as Google/Gmail,
+							Google Calendar, Google Drive, GitHub, Notion, Vercel, and Todoist)
+							so the assistant can read and act on them at your request — for
+							example, reading your email, managing calendar events, or sending an
+							email you compose
+						</li>
 					</ul>
 				</section>
 
@@ -176,6 +183,29 @@ export default function TermsOfService() {
 							third-party services
 						</li>
 					</ul>
+
+					<h3 className="text-xl font-semibold text-foreground mb-2 mt-4">
+						Connected Accounts:
+					</h3>
+					<p>
+						If you connect a third-party account (such as Google/Gmail, Google
+						Calendar, Google Drive, GitHub, Notion, Vercel, or Todoist), you
+						authorize Kontinue AI to access and, where applicable, act on that
+						account on your behalf to perform the actions you request. You can
+						revoke this access at any time by disconnecting the connector in
+						Settings → Connectors. Kontinue AI&apos;s access to and use of Google
+						user data adheres to the{" "}
+						<a
+							href="https://developers.google.com/terms/api-services-user-data-policy"
+							className="text-violet-600 hover:underline"
+							target="_blank"
+							rel="noreferrer"
+						>
+							Google API Services User Data Policy
+						</a>
+						, including the Limited Use requirements, as described in our Privacy
+						Policy.
+					</p>
 				</section>
 
 				<section>

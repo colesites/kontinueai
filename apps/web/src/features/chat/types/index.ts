@@ -22,6 +22,13 @@ interface ChatMessageProps {
   imageParts?: string[];
   /** Time-tool result; when present, the message renders a clock widget */
   clockData?: { timezone: string | null } | null;
+  /** compose_email result; when present, the message renders an email composer */
+  emailDraft?: {
+    to: string;
+    cc: string;
+    subject: string;
+    body: string;
+  } | null;
   isImported?: boolean;
   isStreaming?: boolean;
   onRetry?: () => void;

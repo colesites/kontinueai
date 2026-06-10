@@ -4,9 +4,9 @@ export default function PrivacyPolicy() {
 			<h1 className="text-4xl font-bold mb-8">Kontinue AI Privacy Policy</h1>
 			<div className="space-y-6 text-muted-foreground">
 				<p className="text-sm">
-					<strong>Last Updated:</strong> February 10, 2026
+					<strong>Last Updated:</strong> June 10, 2026
 					<br />
-					<strong>Effective Date:</strong> February 10, 2026
+					<strong>Effective Date:</strong> June 10, 2026
 				</p>
 
 				<section>
@@ -60,6 +60,14 @@ export default function PrivacyPolicy() {
 						<li>
 							<strong>Payment Information:</strong> If you subscribe to our Pro
 							plan, we collect billing details through our payment processor.
+						</li>
+						<li>
+							<strong>Connected Account Data:</strong> If you choose to connect a
+							third-party account (such as Google/Gmail, Google Calendar, Google
+							Drive, GitHub, Notion, Vercel, or Todoist), we access data from that
+							account only as needed to perform the actions you request in
+							Kontinue AI. Google data is handled as described in the "Google User
+							Data and Limited Use" section below.
 						</li>
 					</ul>
 
@@ -144,7 +152,69 @@ export default function PrivacyPolicy() {
 
 				<section>
 					<h2 className="text-2xl font-bold text-foreground mb-4">
-						5. Your Choices and Rights
+						5. Google User Data and Limited Use
+					</h2>
+					<p className="mb-4">
+						When you connect a Google account (Gmail, Google Calendar, and/or
+						Google Drive), Kontinue AI requests only the OAuth scopes needed for
+						the features you use, and accesses your Google data solely to provide
+						those features at your request:
+					</p>
+					<ul className="list-disc pl-6 space-y-2">
+						<li>
+							<strong>Gmail</strong> (<code>gmail.readonly</code>,{" "}
+							<code>gmail.send</code>): to search and read your messages when you
+							ask the assistant about your email, and to send emails that you
+							compose and explicitly choose to send from Kontinue AI.
+						</li>
+						<li>
+							<strong>Google Calendar</strong> (<code>calendar.readonly</code>,{" "}
+							<code>calendar.events</code>): to show your events when you ask, and
+							to create or update events at your request.
+						</li>
+						<li>
+							<strong>Google Drive</strong> (<code>drive.readonly</code>): to
+							search for and read your files when you ask the assistant about
+							them.
+						</li>
+					</ul>
+					<p className="mt-4">
+						Google data is accessed only in direct response to an explicit action
+						you take, is used only to provide and improve these user-facing
+						features, and is never sold, used for advertising, or used to train
+						generalized AI/ML models. We retain Google data only as long as needed
+						to provide the feature, and you can revoke access at any time by
+						disconnecting the connector in Settings → Connectors or via your{" "}
+						<a
+							href="https://myaccount.google.com/permissions"
+							className="text-violet-600 hover:underline"
+							target="_blank"
+							rel="noreferrer"
+						>
+							Google Account permissions
+						</a>
+						.
+					</p>
+					<p className="mt-4">
+						<strong>
+							Kontinue AI&apos;s use and transfer of information received from
+							Google APIs to any other app will adhere to the{" "}
+							<a
+								href="https://developers.google.com/terms/api-services-user-data-policy"
+								className="text-violet-600 hover:underline"
+								target="_blank"
+								rel="noreferrer"
+							>
+								Google API Services User Data Policy
+							</a>
+							, including the Limited Use requirements.
+						</strong>
+					</p>
+				</section>
+
+				<section>
+					<h2 className="text-2xl font-bold text-foreground mb-4">
+						6. Your Choices and Rights
 					</h2>
 					<ul className="list-disc pl-6 space-y-2">
 						<li>
@@ -172,7 +242,7 @@ export default function PrivacyPolicy() {
 
 				<section>
 					<h2 className="text-2xl font-bold text-foreground mb-4">
-						6. Data Security
+						7. Data Security
 					</h2>
 					<p>
 						We implement reasonable security measures to protect your personal
@@ -184,7 +254,7 @@ export default function PrivacyPolicy() {
 
 				<section>
 					<h2 className="text-2xl font-bold text-foreground mb-4">
-						7. Data Retention
+						8. Data Retention
 					</h2>
 					<p>
 						We retain your personal information for as long as necessary to
@@ -195,7 +265,7 @@ export default function PrivacyPolicy() {
 
 				<section>
 					<h2 className="text-2xl font-bold text-foreground mb-4">
-						8. Children's Privacy
+						9. Children's Privacy
 					</h2>
 					<p>
 						Our Services are not intended for children under 13 years of age. We
@@ -207,7 +277,7 @@ export default function PrivacyPolicy() {
 
 				<section>
 					<h2 className="text-2xl font-bold text-foreground mb-4">
-						9. International Users
+						10. International Users
 					</h2>
 					<p>
 						Our Services are provided in the United States. If you use our
@@ -218,7 +288,7 @@ export default function PrivacyPolicy() {
 
 				<section>
 					<h2 className="text-2xl font-bold text-foreground mb-4">
-						10. Changes to This Policy
+						11. Changes to This Policy
 					</h2>
 					<p>
 						We may update this Policy from time to time. We will notify you of
@@ -229,7 +299,7 @@ export default function PrivacyPolicy() {
 
 				<section>
 					<h2 className="text-2xl font-bold text-foreground mb-4">
-						11. Contact Us
+						12. Contact Us
 					</h2>
 					<p>
 						If you have questions about this Privacy Policy, please contact us

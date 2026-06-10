@@ -56,6 +56,34 @@ export function collectClockDataFromParts(
   return null;
 }
 
+export type EmailDraft = {
+  to: string;
+  cc: string;
+  subject: string;
+  body: string;
+};
+
+export function collectEmailDraftFromParts(
+  parts: UIMessage["parts"],
+): EmailDraft | null {
+  // Last compose_email tool call in the message wins (model may revise).
+  let draft: EmailDraft | null = null;
+  for (const part of parts) {
+    if (part.type === "tool-compose_email" && "output" in part) {
+      const o = part.output as Partial<EmailDraft> | undefined;
+      if (o && typeof o.subject === "string") {
+        draft = {
+          to: o.to ?? "",
+          cc: o.cc ?? "",
+          subject: o.subject ?? "",
+          body: o.body ?? "",
+        };
+      }
+    }
+  }
+  return draft;
+}
+
 export function collectImageUrlsFromParts(parts: UIMessage["parts"]): string[] {
   const imageParts: string[] = [];
   for (const part of parts) {
