@@ -11,6 +11,8 @@ import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import * as WebBrowser from "expo-web-browser";
 
 import { LoadingScreen } from "@/components/loading-screen";
+import { PushRegistrar } from "@/components/push-registrar";
+import { UserSync } from "@/components/user-sync";
 import { AppDrawer } from "@/components/sidebar/app-drawer";
 import { SidebarProvider } from "@/components/sidebar/sidebar-context";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
@@ -57,8 +59,12 @@ function AppShell() {
             <Stack.Screen name="index" />
             <Stack.Screen name="tasks" />
             <Stack.Screen name="agents" />
+            <Stack.Screen name="canvas" />
             <Stack.Screen name="settings" />
+            <Stack.Screen name="connectors" />
+            <Stack.Screen name="notifications" />
             <Stack.Screen name="chat/[id]" />
+            <Stack.Screen name="project/[id]" />
           </Stack.Protected>
 
           <Stack.Protected guard={!isSignedIn}>
@@ -68,6 +74,8 @@ function AppShell() {
         </Stack>
 
         {/* Drawer + first-visit theme picker only matter once authenticated. */}
+        {isSignedIn ? <UserSync /> : null}
+        {isSignedIn ? <PushRegistrar /> : null}
         {isSignedIn ? <AppDrawer /> : null}
         {isSignedIn ? <ThemeOnboarding /> : null}
       </SidebarProvider>

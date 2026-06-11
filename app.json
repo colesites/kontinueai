@@ -1,0 +1,13 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "b813a291-b1d2-4fcc-940a-816a4e89ba5b"
+      }
+    },
+    "owner": "colecrown",
+    "android": {
+      "package": "com.colecrown.kontinueai"
+    }
+  }
+}

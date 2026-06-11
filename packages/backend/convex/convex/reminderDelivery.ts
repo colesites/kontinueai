@@ -51,6 +51,51 @@ async function sendEmail(
   }
 }
 
+// Send to the mobile app via Expo's push service. No SDK needed — the HTTP
+// API accepts up to 100 messages per request. Returns tokens Expo reported
+// as dead (DeviceNotRegistered) so the caller can prune them.
+async function sendExpoPush(
+  tokens: string[],
+  message: { title: string; body: string; data: Record<string, string> },
+): Promise<string[]> {
+  if (tokens.length === 0) return [];
+  const res = await fetch("https://exp.host/--/api/v2/push/send", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(
+      tokens.map((to) => ({
+        to,
+        title: message.title,
+        body: message.body,
+        data: message.data,
+        sound: "default",
+      })),
+    ),
+  });
+  if (!res.ok) {
+    console.error("[reminder] expo push send failed", res.status, await res.text());
+    return [];
+  }
+  const json = (await res.json()) as {
+    data?: Array<{ status: string; details?: { error?: string } }>;
+  };
+  const dead: string[] = [];
+  (json.data ?? []).forEach((ticket, i) => {
+    if (ticket.status === "error") {
+      if (ticket.details?.error === "DeviceNotRegistered") {
+        const token = tokens[i];
+        if (token) dead.push(token);
+      } else {
+        console.error("[reminder] expo push ticket error", ticket);
+      }
+    }
+  });
+  return dead;
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -79,6 +124,29 @@ export const deliver = internalAction({
         await sendEmail(profile.email, args.title, args.body ?? "");
       } catch (error) {
         console.error("[reminder] email error", error);
+      }
+    }
+
+    // Mobile push (Expo) — independent of the web-push VAPID config.
+    if (profile.pushEnabled) {
+      try {
+        const expoTokens = await ctx.runQuery(
+          internal.push.getExpoTokensForUser,
+          { userId: args.userId },
+        );
+        const dead = await sendExpoPush(
+          expoTokens.map((t) => t.token),
+          {
+            title: args.title,
+            body: args.body ?? "",
+            data: args.taskId ? { url: "/tasks" } : { url: "/notifications" },
+          },
+        );
+        for (const token of dead) {
+          await ctx.runMutation(internal.push.removeExpoTokenByToken, { token });
+        }
+      } catch (error) {
+        console.error("[reminder] expo push error", error);
       }
     }
 

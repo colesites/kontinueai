@@ -8,11 +8,16 @@
     "scheme": "mobileapp",
     "userInterfaceStyle": "automatic",
     "android": {
+      "package": "com.kontinueai.app",
       "adaptiveIcon": {
         "backgroundColor": "#0B0A0C",
         "foregroundImage": "./assets/images/kontinue-icon.png"
       },
       "predictiveBackGestureEnabled": false
+    },
+    "ios": {
+      "bundleIdentifier": "com.kontinueai.app",
+      "supportsTablet": true
     },
     "web": {
       "output": "static",
@@ -34,7 +39,28 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-sharing",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Kontinue uses your photos so you can attach images to chats and Canvas."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Kontinue uses the microphone for voice input.",
+          "speechRecognitionPermission": "Kontinue uses speech recognition to turn your voice into text."
+        }
+      ],
+      "expo-video",
+      [
+        "expo-notifications",
+        {
+          "color": "#ec4899"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

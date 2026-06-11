@@ -486,6 +486,18 @@ export default defineSchema({
     .index("by_owner", ["ownerId"])
     .index("by_endpoint", ["endpoint"]),
 
+  // Expo push tokens for the mobile app (one row per device).
+  expoPushTokens: defineTable({
+    ownerId: v.id("users"),
+    token: v.string(), // ExponentPushToken[…]
+    platform: v.optional(v.string()), // "ios" | "android"
+    deviceName: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_token", ["token"]),
+
   // ── Connectors ──────────────────────────────────────────
   // Third-party OAuth integrations (GitHub, Gmail, Notion, …). Access/refresh
   // tokens are AES-GCM encrypted at rest — NEVER stored in plaintext.

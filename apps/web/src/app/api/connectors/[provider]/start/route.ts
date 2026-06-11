@@ -43,6 +43,20 @@ export async function GET(
     maxAge: 600,
   });
 
+  // The mobile app passes ?return_to=mobileapp://… so the callback can bounce
+  // back into the app once the grant completes. Only the app scheme is allowed
+  // (never an arbitrary URL) to keep this from becoming an open redirect.
+  const returnTo = new URL(req.url).searchParams.get("return_to");
+  if (returnTo && returnTo.startsWith("mobileapp://")) {
+    cookieStore.set(`oauth_return_${provider}`, returnTo, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 600,
+    });
+  }
+
   const redirectUri = `${origin}/api/connectors/${provider}/callback`;
   return NextResponse.redirect(
     config.buildAuthorizeUrl({ clientId, redirectUri, state }),

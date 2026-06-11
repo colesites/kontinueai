@@ -84,6 +84,83 @@ export const deletePushSubscription = mutation({
   },
 });
 
+// ── Expo push tokens (mobile app) ───────────────────────────────────────
+
+// Upsert this device's Expo push token for the current user (keyed by token —
+// the same device re-registers on every app launch).
+export const saveExpoPushToken = mutation({
+  args: {
+    token: v.string(),
+    platform: v.optional(v.string()),
+    deviceName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("expoPushTokens")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        ownerId: user._id, // re-claim if the device switched accounts
+        platform: args.platform,
+        deviceName: args.deviceName,
+        updatedAt: now,
+      });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("expoPushTokens", {
+      ownerId: user._id,
+      token: args.token,
+      platform: args.platform,
+      deviceName: args.deviceName,
+      createdAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+export const deleteExpoPushToken = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const user = await requireUser(ctx);
+    const existing = await ctx.db
+      .query("expoPushTokens")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+    if (existing && existing.ownerId === user._id) {
+      await ctx.db.delete(existing._id);
+    }
+    return null;
+  },
+});
+
+export const getExpoTokensForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("expoPushTokens")
+      .withIndex("by_owner", (q) => q.eq("ownerId", args.userId))
+      .take(20);
+  },
+});
+
+// Remove a token Expo reported as DeviceNotRegistered.
+export const removeExpoTokenByToken = internalMutation({
+  args: { token: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("expoPushTokens")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .unique();
+    if (existing) await ctx.db.delete(existing._id);
+    return null;
+  },
+});
+
 // ── Internal helpers used by the reminder delivery action ──────────────
 
 export const getSubscriptionsForUser = internalQuery({

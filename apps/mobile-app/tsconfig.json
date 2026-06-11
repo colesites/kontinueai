@@ -11,6 +11,12 @@
       ],
       "@repo/ai/lib/*": [
         "../../packages/ai/src/lib/*"
+      ],
+      "@repo/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@repo/convex/*": [
+        "../../packages/backend/convex/*"
       ]
     }
   },

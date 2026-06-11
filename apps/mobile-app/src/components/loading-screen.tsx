@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { Animated, View } from "react-native";
 
 import { KontinueLogo } from "@/components/ui/kontinue-logo";
@@ -6,7 +6,9 @@ import { useTheme } from "@/components/theme-provider";
 
 /** Single bouncing dot with a staggered start. */
 function Dot({ delay, color }: { delay: number; color: string }) {
-  const y = useRef(new Animated.Value(0)).current;
+  // Lazy useState (not useRef) so the animated value is created once without
+  // reading a ref during render, which React Compiler forbids.
+  const [y] = useState(() => new Animated.Value(0));
 
   useEffect(() => {
     const anim = Animated.loop(

@@ -13,7 +13,17 @@ function settled(
   req: Request,
   provider: string,
   status: "connected" | "error",
+  returnTo?: string | null,
 ) {
+  // Mobile flows set an app-scheme return URL in the start route; bouncing to
+  // it closes the in-app browser and lands the user back on the app's
+  // connectors screen. Re-validate the scheme in case the cookie was tampered.
+  if (returnTo && returnTo.startsWith("mobileapp://")) {
+    const url = new URL(returnTo);
+    url.searchParams.set("connector", provider);
+    url.searchParams.set("status", status);
+    return NextResponse.redirect(url);
+  }
   const url = new URL("/settings/connectors", appOrigin(req));
   url.searchParams.set("connector", provider);
   url.searchParams.set("status", status);
@@ -32,14 +42,18 @@ export async function GET(
     return NextResponse.redirect(new URL("/sign-in", origin));
   }
 
+  const cookieStore = await cookies();
+  const returnCookieName = `oauth_return_${provider}`;
+  const returnTo = cookieStore.get(returnCookieName)?.value ?? null;
+  cookieStore.delete(returnCookieName);
+
   const config = getOAuthProvider(provider);
-  if (!config) return settled(req, provider, "error");
+  if (!config) return settled(req, provider, "error", returnTo);
 
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
 
-  const cookieStore = await cookies();
   const cookieName = `oauth_state_${provider}`;
   const expectedState = cookieStore.get(cookieName)?.value;
   cookieStore.delete(cookieName);
@@ -52,7 +66,7 @@ export async function GET(
       error: providerError,
       description: url.searchParams.get("error_description"),
     });
-    return settled(req, provider, "error");
+    return settled(req, provider, "error", returnTo);
   }
 
   if (!code || !state || !expectedState || state !== expectedState) {
@@ -62,7 +76,7 @@ export async function GET(
       hasExpectedState: !!expectedState,
       stateMatches: state === expectedState,
     });
-    return settled(req, provider, "error");
+    return settled(req, provider, "error", returnTo);
   }
 
   const clientId = process.env[config.clientIdEnv];
@@ -72,7 +86,7 @@ export async function GET(
       clientIdEnv: config.clientIdEnv,
       clientSecretEnv: config.clientSecretEnv,
     });
-    return settled(req, provider, "error");
+    return settled(req, provider, "error", returnTo);
   }
 
   try {
@@ -85,11 +99,11 @@ export async function GET(
     });
     if (!token) {
       console.error(`[oauth ${provider}] token exchange returned no token`);
-      return settled(req, provider, "error");
+      return settled(req, provider, "error", returnTo);
     }
 
     const convexToken = (await getToken({ template: "convex" })) ?? undefined;
-    if (!convexToken) return settled(req, provider, "error");
+    if (!convexToken) return settled(req, provider, "error", returnTo);
 
     await fetchAction(
       convexApi.connectors.storeOAuthToken,
@@ -104,9 +118,9 @@ export async function GET(
       { token: convexToken },
     );
 
-    return settled(req, provider, "connected");
+    return settled(req, provider, "connected", returnTo);
   } catch (error) {
     console.error(`[oauth ${provider}] callback error`, error);
-    return settled(req, provider, "error");
+    return settled(req, provider, "error", returnTo);
   }
 }

@@ -2,7 +2,6 @@ import {
   createContext,
   useContext,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import { View } from "react-native";
@@ -41,17 +40,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const isDark = mode === "system" ? colorScheme !== "light" : mode !== "light";
   const { primary, primaryForeground } = themePrimary(theme, isDark);
 
-  const value = useMemo<ThemeContextValue>(
-    () => ({
-      mode,
-      setMode: setModeState,
-      theme,
-      setTheme,
-      isDark,
-      primary: theme === "default" ? THEME_SWATCH.default : primary,
-    }),
-    [mode, theme, isDark, primary],
-  );
+  // No manual useMemo: React Compiler memoizes this (and couldn't preserve
+  // the hand-written dependency list, which failed its lint).
+  const value: ThemeContextValue = {
+    mode,
+    setMode: setModeState,
+    theme,
+    setTheme,
+    isDark,
+    primary: theme === "default" ? THEME_SWATCH.default : primary,
+  };
 
   return (
     <ThemeContext.Provider value={value}>

@@ -1,0 +1,51 @@
+{
+  "cli": {
+    "version": ">= 20.1.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_bWFnaWNhbC1zbG90aC0zNS5jbGVyay5hY2NvdW50cy5kZXYk",
+        "EXPO_PUBLIC_CONVEX_URL": "https://honorable-poodle-461.convex.cloud",
+        "EXPO_PUBLIC_API_URL": "http://localhost:3000"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2hhdC5rb250aW51ZWFpLmNvbSQ",
+        "EXPO_PUBLIC_CONVEX_URL": "https://honorable-poodle-461.convex.cloud",
+        "EXPO_PUBLIC_API_URL": "https://chat.kontinueai.com"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2hhdC5rb250aW51ZWFpLmNvbSQ",
+        "EXPO_PUBLIC_CONVEX_URL": "https://honorable-poodle-461.convex.cloud",
+        "EXPO_PUBLIC_API_URL": "https://chat.kontinueai.com"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
