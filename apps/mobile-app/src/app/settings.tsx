@@ -14,7 +14,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter, type Href } from "expo-router";
-import { useClerk, useUser } from "@clerk/clerk-expo";
+import { useClerk, useUser } from "@clerk/expo";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";

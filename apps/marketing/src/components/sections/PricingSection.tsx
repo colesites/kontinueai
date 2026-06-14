@@ -1,22 +1,6 @@
-"use client";
-
-import { motion } from "motion/react";
-import {
-	easeTransition,
-	fadeIn,
-	getAnimationConfig,
-	staggerContainer,
-} from "@/lib/animations";
+import { Reveal } from "@/components/anim/Reveal";
+import type { PricingTier } from "@/data/pricing";
 import { PricingCard } from "./PricingCard";
-
-export interface PricingTier {
-	id: string;
-	name: string;
-	price: string;
-	period: string;
-	features: string[];
-	highlighted?: boolean;
-}
 
 interface PricingSectionProps {
 	tiers: PricingTier[];
@@ -24,54 +8,36 @@ interface PricingSectionProps {
 
 export function PricingSection({ tiers }: PricingSectionProps) {
 	return (
-		<section id="pricing" className="py-24 md:py-32 px-4 bg-gray-50/20">
-			<div className="container mx-auto max-w-7xl">
-				<motion.div
-					className="text-center max-w-3xl mx-auto mb-20"
-					initial={getAnimationConfig(fadeIn.initial)}
-					whileInView={getAnimationConfig(fadeIn.animate)}
-					viewport={{ once: true, margin: "-100px" }}
-					transition={easeTransition}
-				>
-					<span className="text-[10px] uppercase tracking-[0.4em] font-black text-violet-500 bg-violet-50 px-4 py-2 rounded-full mb-8 inline-block">
-						Pricing
-					</span>
-					<h2 className="mt-6 font-display text-5xl md:text-7xl tracking-tightest leading-[1.1]">
-						One plan beats <br />
-						<span className="bg-linear-to-r from-violet-600 to-purple-600 bg-clip-text text-transparent">
-							five subscriptions.
-						</span>
+		<section
+			id="pricing"
+			className="border-y border-border bg-secondary/40 py-24 lg:py-32"
+		>
+			<div className="mx-auto max-w-6xl px-5 lg:px-8">
+				<Reveal className="mx-auto max-w-2xl text-center">
+					<p className="eyebrow">Pricing</p>
+					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
+						One plan instead of five
 					</h2>
-				</motion.div>
+					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
+						Start free. Upgrade when you want higher limits, more models, and
+						image or video generation.
+					</p>
+				</Reveal>
 
-				{/* Professional 3rd one under layout (3-column grid in a 7xl container) */}
-				<motion.div
-					className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 lg:gap-10 max-w-7xl mx-auto items-stretch"
-					variants={getAnimationConfig(staggerContainer)}
-					initial="initial"
-					whileInView="animate"
-					viewport={{ once: true, margin: "-100px" }}
+				<Reveal
+					stagger={0.12}
+					className="mx-auto mt-14 grid max-w-5xl items-stretch gap-6 lg:mt-20 lg:grid-cols-3"
 				>
-					{tiers.map((tier, index) => (
-						<motion.div
-							key={tier.id}
-							className="flex h-full w-full"
-							variants={getAnimationConfig({
-								initial: { opacity: 0, y: 30 },
-								animate: { opacity: 1, y: 0 },
-							})}
-							transition={{ ...easeTransition, delay: index * 0.1 }}
-						>
-							<PricingCard
-								name={tier.name}
-								price={tier.price}
-								period={tier.period}
-								features={tier.features}
-								highlighted={tier.highlighted}
-							/>
-						</motion.div>
+					{tiers.map((tier) => (
+						<div key={tier.id} data-anim className="h-full">
+							<PricingCard tier={tier} />
+						</div>
 					))}
-				</motion.div>
+				</Reveal>
+
+				<p className="mt-10 text-center text-sm text-muted-foreground">
+					Prices in USD. Cancel anytime.
+				</p>
 			</div>
 		</section>
 	);

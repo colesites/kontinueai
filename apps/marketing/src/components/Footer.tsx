@@ -1,116 +1,93 @@
 import Image from "next/image";
 import Link from "next/link";
+import { APP_URL } from "@/lib/structured-data";
+
+const columns = [
+	{
+		title: "Product",
+		links: [
+			{ href: "/#how-it-works", label: "How it works" },
+			{ href: "/#features", label: "Features" },
+			{ href: "/#pricing", label: "Pricing" },
+			{ href: "/#faq", label: "FAQ" },
+		],
+	},
+	{
+		title: "Get started",
+		links: [
+			{ href: "/download", label: "Download app" },
+			{ href: `${APP_URL}/sign-up`, label: "Create account", external: true },
+			{ href: `${APP_URL}/sign-in`, label: "Sign in", external: true },
+			{ href: "mailto:support@kontinueai.com", label: "Contact support" },
+		],
+	},
+	{
+		title: "Legal",
+		links: [
+			{ href: "/legal/privacy-policy", label: "Privacy policy" },
+			{ href: "/legal/terms-of-service", label: "Terms of service" },
+		],
+	},
+];
 
 export function Footer() {
 	return (
-		<footer className="border-t border-border/40 py-16 px-4">
-			<div className="container mx-auto">
-				<div className="grid gap-10 md:grid-cols-4">
-					<div>
-						<div className="mb-4">
-							<Image
-								src="/kontinueai.svg"
-								alt="Kontinue AI logo"
-								width={120}
-								height={32}
-								className="h-6 w-auto object-contain"
-							/>
-						</div>
-						<p className="text-sm text-muted-foreground">
-							All your AI chats. One workspace. One plan.
+		<footer className="relative overflow-hidden border-t border-border bg-background">
+			<div className="relative z-10 mx-auto max-w-6xl px-5 pt-16 lg:px-8 lg:pt-20">
+				<div className="grid gap-12 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+					<div className="max-w-xs">
+						<Image
+							src="/kontinueai.svg"
+							alt="Kontinue AI"
+							width={128}
+							height={30}
+							className="h-6 w-auto object-contain"
+							style={{ filter: "brightness(0)" }}
+						/>
+						<p className="mt-5 text-sm leading-relaxed text-muted-foreground">
+							Every AI chat in one workspace. Switch models without losing your
+							place, and pay for one plan.
 						</p>
 					</div>
 
-					<div>
-						<h4 className="text-sm font-semibold mb-4">Product</h4>
-						<ul className="space-y-2 text-sm text-muted-foreground">
-							<li>
-								<Link
-									href="/#features"
-									className="hover:text-foreground transition-colors"
-								>
-									Features
-								</Link>
-							</li>
-							<li>
-								<Link
-									href="/#use-cases"
-									className="hover:text-foreground transition-colors"
-								>
-									Use Cases
-								</Link>
-							</li>
-							<li>
-								<Link
-									href="/#pricing"
-									className="hover:text-foreground transition-colors"
-								>
-									Pricing
-								</Link>
-							</li>
-						</ul>
-					</div>
-
-					<div>
-						<h4 className="text-sm font-semibold mb-4">Support</h4>
-						<ul className="space-y-2 text-sm text-muted-foreground">
-							<li>
-								<Link
-									href="/#faq"
-									className="hover:text-foreground transition-colors"
-								>
-									FAQ
-								</Link>
-							</li>
-							<li>
-								<Link
-									href="https://chat.kontinueai.com/sign-up"
-									target="_blank"
-									rel="noopener noreferrer"
-									className="hover:text-foreground transition-colors"
-								>
-									Sign up
-								</Link>
-							</li>
-							<li>
-								<a
-									href="mailto:support@kontinueai.com"
-									className="hover:text-foreground transition-colors"
-								>
-									Contact
-								</a>
-							</li>
-						</ul>
-					</div>
-
-					<div>
-						<h4 className="text-sm font-semibold mb-4">Legal</h4>
-						<ul className="space-y-2 text-sm text-muted-foreground">
-							<li>
-								<Link
-									href="/legal/privacy-policy"
-									className="hover:text-foreground transition-colors"
-								>
-									Privacy Policy
-								</Link>
-							</li>
-							<li>
-								<Link
-									href="/legal/terms-of-service"
-									className="hover:text-foreground transition-colors"
-								>
-									Terms of Service
-								</Link>
-							</li>
-						</ul>
-					</div>
+					{columns.map((col) => (
+						<div key={col.title}>
+							<h2 className="eyebrow mb-5">{col.title}</h2>
+							<ul className="space-y-3 text-sm">
+								{col.links.map((link) => (
+									<li key={link.label}>
+										<Link
+											href={link.href}
+											{...("external" in link && link.external
+												? { target: "_blank", rel: "noopener noreferrer" }
+												: {})}
+											className="text-muted-foreground transition-colors hover:text-foreground"
+										>
+											{link.label}
+										</Link>
+									</li>
+								))}
+							</ul>
+						</div>
+					))}
 				</div>
 
-				<div className="mt-12 pt-8 border-t border-border/40 text-center text-xs text-muted-foreground">
-					<p>
-						&copy; {new Date().getFullYear()} Kontinue AI. All rights reserved.
+				<div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-border pt-8 text-xs text-muted-foreground sm:flex-row sm:items-center">
+					<p>© {new Date().getFullYear()} Kontinue AI. All rights reserved.</p>
+					<p className="font-mono uppercase tracking-widest">
+						One workspace for every model
 					</p>
 				</div>
+			</div>
+
+			{/* Oversized wordmark bleeding off the bottom edge */}
+			<div
+				aria-hidden
+				className="pointer-events-none relative mt-6 select-none overflow-hidden"
+			>
+				<span className="block translate-y-[16%] text-center font-display font-extrabold leading-[0.82] tracking-[-0.05em] text-[21vw] text-brand/[0.08] [mask-image:linear-gradient(to_bottom,#000_45%,transparent_90%)] [-webkit-mask-image:linear-gradient(to_bottom,#000_45%,transparent_90%)]">
+					Kontinue
+				</span>
 			</div>
 		</footer>
 	);

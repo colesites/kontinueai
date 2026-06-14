@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "dependencies": {
     "@ai-sdk/react": "^3.0.195",
-    "@clerk/clerk-expo": "^2.19.31",
+    "@clerk/expo": "^3.4.2",
     "@expo/react-native-action-sheet": "^4.1.1",
     "@expo/ui": "~56.0.14",
     "@repo/ai": "workspace:*",

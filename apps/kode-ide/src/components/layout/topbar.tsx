@@ -1,3 +1,4 @@
+import { UserButton } from "@clerk/clerk-react";
 import {
   ChevronDown,
   Code2,
@@ -94,6 +95,19 @@ export function Topbar({
       >
         <PanelRight size={19} />
       </IconButton>
+      <div className="flex size-10 items-center justify-center rounded-xl bg-white/[0.035] ring-1 ring-white/[0.06]">
+        <UserButton
+          appearance={{
+            elements: {
+              avatarBox: "size-7",
+              userButtonPopoverCard:
+                "border border-white/[0.08] bg-[var(--surface-1)] text-foreground shadow-2xl",
+              userButtonPopoverActionButton:
+                "text-foreground/72 hover:bg-white/[0.06] hover:text-foreground",
+            },
+          }}
+        />
+      </div>
     </div>
   );
 }

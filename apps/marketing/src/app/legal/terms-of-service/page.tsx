@@ -46,10 +46,10 @@ export default function TermsOfService() {
 						<li>Access multiple AI models through a single subscription</li>
 						<li>
 							Optionally connect third-party accounts (such as Google/Gmail,
-							Google Calendar, Google Drive, GitHub, Notion, Vercel, and Todoist)
-							so the assistant can read and act on them at your request — for
-							example, reading your email, managing calendar events, or sending an
-							email you compose
+							Google Calendar, Google Drive, GitHub, Notion, Vercel, and
+							Todoist) so the assistant can read and act on them at your request
+							— for example, reading your email, managing calendar events, or
+							sending an email you compose
 						</li>
 					</ul>
 				</section>
@@ -193,8 +193,8 @@ export default function TermsOfService() {
 						authorize Kontinue AI to access and, where applicable, act on that
 						account on your behalf to perform the actions you request. You can
 						revoke this access at any time by disconnecting the connector in
-						Settings → Connectors. Kontinue AI&apos;s access to and use of Google
-						user data adheres to the{" "}
+						Settings → Connectors. Kontinue AI&apos;s access to and use of
+						Google user data adheres to the{" "}
 						<a
 							href="https://developers.google.com/terms/api-services-user-data-policy"
 							className="text-violet-600 hover:underline"
@@ -203,8 +203,8 @@ export default function TermsOfService() {
 						>
 							Google API Services User Data Policy
 						</a>
-						, including the Limited Use requirements, as described in our Privacy
-						Policy.
+						, including the Limited Use requirements, as described in our
+						Privacy Policy.
 					</p>
 				</section>
 

@@ -13,11 +13,18 @@
         "backgroundColor": "#0B0A0C",
         "foregroundImage": "./assets/images/kontinue-icon.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.kontinueai.app",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "Kontinue uses speech recognition to turn your voice into text.",
+        "NSMicrophoneUsageDescription": "Kontinue uses the microphone for voice input."
+      }
     },
     "web": {
       "output": "static",
@@ -25,6 +32,7 @@
     },
     "plugins": [
       "expo-router",
+      "@clerk/expo",
       [
         "expo-splash-screen",
         {
@@ -65,6 +73,14 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "779148953674-bui7t3mfp2en86gn5l34765hq35r37b2.apps.googleusercontent.com",
+      "EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID": "309168072626-job6db4ids0fj0q8brklbql51tssp71r.apps.googleusercontent.com",
+      "router": {},
+      "eas": {
+        "projectId": "cc10f014-59e5-4f77-8231-4f8568ddf73b"
+      }
     }
   }
 }

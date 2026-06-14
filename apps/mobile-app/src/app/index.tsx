@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useUser } from "@clerk/clerk-expo";
+import { useUser } from "@clerk/expo";
 import { useAction, useMutation } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import { isKaiModel } from "@repo/ai/lib/kai";

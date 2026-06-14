@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAuth, useUser } from "@clerk/clerk-expo";
+import { useAuth, useUser } from "@clerk/expo";
 import { useMutation } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import { persistedPlanForTier } from "@repo/core/plan-tier";

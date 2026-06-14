@@ -1,4 +1,4 @@
-import { Pressable } from "react-native";
+import { ActivityIndicator, Pressable } from "react-native";
 
 import { Text } from "@/components/ui/text";
 import GoogleIcon from "@/assets/images/google.svg";
@@ -8,10 +8,12 @@ export function GoogleButton({
   label,
   onPress,
   disabled,
+  loading,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
+  loading?: boolean;
 }) {
   return (
     <Pressable
@@ -19,7 +21,11 @@ export function GoogleButton({
       disabled={disabled}
       className="h-12 flex-row items-center justify-center gap-3 rounded-xl border border-border bg-white active:opacity-90"
     >
-      <GoogleIcon width={19} height={19} />
+      {loading ? (
+        <ActivityIndicator color="#1f1f1f" />
+      ) : (
+        <GoogleIcon width={19} height={19} />
+      )}
       <Text className="text-[15px] font-semibold" style={{ color: "#1f1f1f" }}>
         {label}
       </Text>

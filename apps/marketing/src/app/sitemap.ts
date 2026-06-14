@@ -16,6 +16,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
 			priority: 0.9,
 			images: ["https://kontinueai.com/favicon.ico"],
 		},
+		{
+			url: "https://kontinueai.com/download",
+			lastModified: new Date(),
+			changeFrequency: "monthly",
+			priority: 0.8,
+			images: ["https://kontinueai.com/favicon.ico"],
+		},
 
 		{
 			url: "https://kontinueai.com/legal/privacy-policy",

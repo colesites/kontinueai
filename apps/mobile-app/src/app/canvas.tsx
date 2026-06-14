@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Image } from "expo-image";
 import { VideoView, useVideoPlayer } from "expo-video";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/expo";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Doc, Id } from "@repo/convex/convex/_generated/dataModel";

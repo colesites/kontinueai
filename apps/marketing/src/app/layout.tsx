@@ -1,47 +1,70 @@
-import type { Metadata } from "next";
-import { JetBrains_Mono, Syne, Urbanist } from "next/font/google";
-import "./globals.css";
 import { GoogleTagManager } from "@next/third-parties/google";
 import { Analytics } from "@vercel/analytics/next";
+import type { Metadata, Viewport } from "next";
+import {
+	Bricolage_Grotesque,
+	Hanken_Grotesk,
+	JetBrains_Mono,
+} from "next/font/google";
+import { BottomBlur } from "@/components/BottomBlur";
+import { SmoothScroll } from "@/components/SmoothScroll";
+import {
+	JsonLd,
+	organizationSchema,
+	SITE_URL,
+	softwareSchema,
+	websiteSchema,
+} from "@/lib/structured-data";
+import "./globals.css";
 
-const display = Syne({
+const display = Bricolage_Grotesque({
 	variable: "--font-ui-display",
 	subsets: ["latin"],
-	weight: ["400", "500", "600", "700", "800"],
+	display: "swap",
 });
 
-const body = Urbanist({
+const body = Hanken_Grotesk({
 	variable: "--font-ui-body",
 	subsets: ["latin"],
-	weight: ["400", "500", "600", "700"],
+	display: "swap",
 });
 
 const mono = JetBrains_Mono({
 	variable: "--font-ui-mono",
 	subsets: ["latin"],
-	weight: ["400", "500", "600"],
+	weight: ["400", "500"],
+	display: "swap",
 });
 
-const siteTitle = "Kontinue AI — One workspace for every AI model";
+const siteTitle = "Kontinue AI: One workspace for every AI model";
 const siteDescription =
-	"Import chats from ChatGPT, Claude, Gemini, Perplexity, Mistral, and more. Switch models instantly, compare answers, and pay for one plan.";
+	"Import your chats from ChatGPT, Claude, Gemini, Perplexity, Grok and more, switch models without losing context, and pay for one plan instead of five.";
 
 export const metadata: Metadata = {
-	metadataBase: new URL("https://kontinueai.com"),
+	metadataBase: new URL(SITE_URL),
 	title: {
 		default: siteTitle,
-		template: "%s — Kontinue AI",
+		template: "%s | Kontinue AI",
 	},
 	description: siteDescription,
 	applicationName: "Kontinue AI",
 	authors: [{ name: "Kontinue AI" }],
+	creator: "Kontinue AI",
+	publisher: "Kontinue AI",
+	category: "technology",
+	alternates: {
+		canonical: "/",
+	},
 	keywords: [
 		"Kontinue AI",
 		"kontinueai",
-		"multi-model AI",
+		"multi model AI workspace",
 		"AI model switcher",
-		"AI chat import",
-		"ChatGPT import",
+		"import ChatGPT chat",
+		"import Claude chat",
+		"one plan for every AI model",
+		"continue AI conversation after limit",
+		"compare AI models",
 	],
 	openGraph: {
 		title: siteTitle,
@@ -53,7 +76,7 @@ export const metadata: Metadata = {
 				url: "/og.png",
 				width: 1200,
 				height: 630,
-				alt: "Kontinue AI logo",
+				alt: "Kontinue AI: one workspace for every AI model",
 				type: "image/png",
 			},
 		],
@@ -84,18 +107,34 @@ export const metadata: Metadata = {
 	},
 };
 
+export const viewport: Viewport = {
+	themeColor: "#fafaf6",
+	colorScheme: "light",
+};
+
 export default function RootLayout({
 	children,
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
 	return (
-		<html lang="en" className="light" suppressHydrationWarning>
+		<html lang="en" suppressHydrationWarning>
 			<body
 				className={`${body.variable} ${display.variable} ${mono.variable} antialiased`}
 			>
+				{/* Flag JS presence before paint so scroll-reveal elements start hidden. */}
+				<script
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: tiny inline bootstrap flag, no dynamic data
+					dangerouslySetInnerHTML={{
+						__html: "document.documentElement.classList.add('gsap')",
+					}}
+				/>
 				<GoogleTagManager gtmId={process.env.GTM || ""} />
-				{children}
+				<JsonLd data={organizationSchema} />
+				<JsonLd data={websiteSchema} />
+				<JsonLd data={softwareSchema} />
+				<SmoothScroll>{children}</SmoothScroll>
+				<BottomBlur />
 				<Analytics />
 			</body>
 		</html>

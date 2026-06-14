@@ -3,132 +3,149 @@
 import { Menu, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { scrollToTarget } from "@/lib/scroll";
+import { APP_URL } from "@/lib/structured-data";
 
 const navLinks = [
-	{ href: "/#features", label: "Features" },
-	{ href: "/#use-cases", label: "Use cases" },
-	{ href: "/#pricing", label: "Pricing" },
-	{ href: "/#faq", label: "FAQ" },
+	{ href: "/#how-it-works", id: "how-it-works", label: "How it works" },
+	{ href: "/#features", id: "features", label: "Features" },
+	{ href: "/#pricing", id: "pricing", label: "Pricing" },
+	{ href: "/download", id: "download", label: "Download" },
+	{ href: "/#faq", id: "faq", label: "FAQ" },
 ];
 
 export function Header() {
-	const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+	const [scrolled, setScrolled] = useState(false);
+	const [mobileOpen, setMobileOpen] = useState(false);
 
-	const closeMobileMenu = () => setMobileMenuOpen(false);
+	useEffect(() => {
+		const onScroll = () => setScrolled(window.scrollY > 16);
+		onScroll();
+		window.addEventListener("scroll", onScroll, { passive: true });
+		return () => window.removeEventListener("scroll", onScroll);
+	}, []);
+
+	const handleNav = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+		const el =
+			typeof document !== "undefined" ? document.getElementById(id) : null;
+		if (el) {
+			e.preventDefault();
+			scrollToTarget(`#${id}`);
+		}
+		setMobileOpen(false);
+	};
 
 	return (
-		<header className="fixed top-0 left-0 right-0 z-50 pointer-events-none lg:sticky lg:top-4">
-			<div className="mx-auto max-w-6xl px-4 pt-4 pb-2 pointer-events-auto">
-				<div className="flex items-center justify-between rounded-xl border border-gray-200 bg-white px-5 py-2 shadow-sm">
-					{/* Logo */}
-					<Link
-						href="/"
-						className="flex items-center font-display text-lg shrink-0"
-					>
-						<Image
-							src="/kontinueai.svg"
-							alt="Kontinue AI logo"
-							width={120}
-							height={32}
-							className="h-6 w-auto object-contain"
-							style={{ filter: "brightness(0)" }}
-							priority
-						/>
-					</Link>
+		<header
+			className={`fixed inset-x-0 top-0 z-50 transition-colors duration-300 ${
+				scrolled
+					? "border-b border-border bg-background/80 backdrop-blur-xl"
+					: "border-b border-transparent"
+			}`}
+		>
+			<div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 lg:px-8">
+				<Link
+					href="/"
+					aria-label="Kontinue AI home"
+					className="flex shrink-0 items-center"
+				>
+					<Image
+						src="/kontinueai.svg"
+						alt="Kontinue AI"
+						width={120}
+						height={28}
+						className="h-[1.35rem] w-auto object-contain"
+						style={{ filter: "brightness(0)" }}
+						priority
+					/>
+				</Link>
 
-					{/* Desktop Nav */}
-					<nav className="hidden lg:flex items-center gap-8 text-sm text-gray-600 font-medium">
-						{navLinks.map((link) => (
-							<Link
-								key={link.href}
-								href={link.href}
-								className="hover:text-gray-900 transition-colors"
-							>
-								{link.label}
-							</Link>
-						))}
-					</nav>
-
-					{/* Desktop CTA */}
-					<div className="hidden lg:flex items-center gap-3">
+				<nav className="hidden items-center gap-9 lg:flex">
+					{navLinks.map((link) => (
 						<Link
-							href="https://chat.kontinueai.com/sign-in"
+							key={link.id}
+							href={link.href}
+							onClick={(e) => handleNav(e, link.id)}
+							className="link-underline text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+						>
+							{link.label}
+						</Link>
+					))}
+				</nav>
+
+				<div className="hidden items-center gap-2 lg:flex">
+					<Button asChild variant="ghost" size="sm">
+						<Link
+							href={`${APP_URL}/sign-in`}
 							target="_blank"
 							rel="noopener noreferrer"
-							className="text-sm px-4 py-1.5 rounded-lg button-3d-white text-gray-700 hover:text-gray-900 transition-colors font-semibold"
 						>
 							Sign in
 						</Link>
-						<Button asChild size="sm" className="rounded-lg shadow-md">
+					</Button>
+					<Button asChild size="sm">
+						<Link
+							href={`${APP_URL}/sign-up`}
+							target="_blank"
+							rel="noopener noreferrer"
+						>
+							Get started
+						</Link>
+					</Button>
+				</div>
+
+				<button
+					type="button"
+					className="inline-flex size-10 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent lg:hidden"
+					aria-expanded={mobileOpen}
+					aria-controls="mobile-nav"
+					aria-label={mobileOpen ? "Close menu" : "Open menu"}
+					onClick={() => setMobileOpen((v) => !v)}
+				>
+					{mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+				</button>
+			</div>
+
+			<div
+				id="mobile-nav"
+				className={`overflow-hidden border-t border-border bg-background/95 backdrop-blur-xl transition-[max-height,opacity] duration-300 lg:hidden ${
+					mobileOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
+				}`}
+			>
+				<nav className="mx-auto flex max-w-6xl flex-col gap-1 px-5 py-4">
+					{navLinks.map((link) => (
+						<Link
+							key={`m-${link.id}`}
+							href={link.href}
+							onClick={(e) => handleNav(e, link.id)}
+							className="rounded-lg px-3 py-3 text-[0.95rem] font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+						>
+							{link.label}
+						</Link>
+					))}
+					<div className="mt-2 flex flex-col gap-2 border-t border-border pt-4">
+						<Button asChild variant="outline">
 							<Link
-								href="https://chat.kontinueai.com/sign-up"
+								href={`${APP_URL}/sign-in`}
 								target="_blank"
 								rel="noopener noreferrer"
 							>
-								Sign up
+								Sign in
+							</Link>
+						</Button>
+						<Button asChild>
+							<Link
+								href={`${APP_URL}/sign-up`}
+								target="_blank"
+								rel="noopener noreferrer"
+							>
+								Get started
 							</Link>
 						</Button>
 					</div>
-
-					{/* Mobile hamburger */}
-					<button
-						type="button"
-						className="inline-flex size-10 items-center justify-center rounded-full text-gray-700 lg:hidden hover:bg-gray-100 transition-colors"
-						aria-expanded={mobileMenuOpen}
-						aria-controls="mobile-nav"
-						aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
-						onClick={() => setMobileMenuOpen((prev) => !prev)}
-					>
-						{mobileMenuOpen ? (
-							<X className="size-5" />
-						) : (
-							<Menu className="size-5" />
-						)}
-					</button>
-				</div>
-
-				{/* Mobile Nav */}
-				<div
-					id="mobile-nav"
-					className={`overflow-hidden transition-[max-height,opacity] duration-300 lg:hidden ${
-						mobileMenuOpen ? "max-h-96 opacity-100 pt-3" : "max-h-0 opacity-0"
-					}`}
-				>
-					<nav className="flex flex-col gap-1 rounded-xl border border-gray-200 bg-white p-3 shadow-sm">
-						{navLinks.map((link) => (
-							<Link
-								key={`mobile-${link.href}`}
-								href={link.href}
-								onClick={closeMobileMenu}
-								className="rounded-lg px-3 py-2.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 font-medium"
-							>
-								{link.label}
-							</Link>
-						))}
-						<hr className="my-1 border-gray-100" />
-						<Link
-							href="https://chat.kontinueai.com/sign-in"
-							target="_blank"
-							rel="noopener noreferrer"
-							onClick={closeMobileMenu}
-							className="rounded-lg px-3 py-2.5 text-sm text-gray-600 transition-colors hover:bg-gray-50 hover:text-gray-900 font-medium"
-						>
-							Sign in
-						</Link>
-						<Button asChild size="sm" className="mt-1">
-							<Link
-								href="https://chat.kontinueai.com/sign-up"
-								target="_blank"
-								rel="noopener noreferrer"
-								onClick={closeMobileMenu}
-							>
-								Sign up
-							</Link>
-						</Button>
-					</nav>
-				</div>
+				</nav>
 			</div>
 		</header>
 	);

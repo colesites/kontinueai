@@ -1,70 +1,6 @@
-"use client";
-
-import { motion } from "motion/react";
+import { ArrowUpRight } from "lucide-react";
+import { Reveal } from "@/components/anim/Reveal";
 import type { UseCase } from "@/data/useCases";
-import { getAnimationConfig, slideUp } from "@/lib/animations";
-
-interface UseCaseScreenProps {
-	useCase: UseCase;
-	index: number;
-}
-
-function UseCaseScreen({ useCase, index }: UseCaseScreenProps) {
-	return (
-		<motion.div
-			initial={getAnimationConfig(slideUp.initial)}
-			whileInView={getAnimationConfig(slideUp.animate)}
-			viewport={{ once: true, margin: "-200px" }}
-			transition={{
-				duration: 1.2,
-				ease: [0.22, 1, 0.36, 1], // Quintic ease for high-end feel
-				delay: 0.1,
-			}}
-			className="min-h-screen flex flex-col justify-center items-center text-center px-4 md:px-8 relative"
-		>
-			<div className="max-w-6xl mx-auto w-full">
-				{/* Background Number for Depth */}
-				<motion.span
-					initial={{ opacity: 0, scale: 0.8 }}
-					whileInView={{ opacity: 0.03, scale: 1 }}
-					viewport={{ once: true }}
-					transition={{ duration: 1.5, ease: "easeOut" }}
-					className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-[40rem] font-display font-black pointer-events-none select-none -z-10"
-				>
-					{index + 1}
-				</motion.span>
-
-				<motion.div
-					initial={{ opacity: 0, y: 30 }}
-					whileInView={{ opacity: 1, y: 0 }}
-					viewport={{ once: true }}
-					transition={{ duration: 0.8, delay: 0.3 }}
-				>
-					<span className="text-violet-600 font-bold tracking-[0.6em] uppercase text-xs md:text-sm mb-8 block">
-						Case {index + 1}
-					</span>
-
-					<h3 className="font-display text-5xl md:text-7xl lg:text-9xl tracking-tightest leading-[0.9] mb-12 text-gray-900 balance-text">
-						{useCase.title}
-					</h3>
-
-					<p className="text-xl md:text-3xl text-gray-500 max-w-4xl mx-auto leading-tight font-medium">
-						{useCase.description}
-					</p>
-				</motion.div>
-			</div>
-
-			{/* Subtle indicator of more content */}
-			<motion.div
-				animate={{ y: [0, 10, 0] }}
-				transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-				className="absolute bottom-12 left-1/2 -translate-x-1/2 opacity-20"
-			>
-				<div className="w-px h-12 bg-linear-to-b from-transparent via-violet-600 to-transparent" />
-			</motion.div>
-		</motion.div>
-	);
-}
 
 interface UseCasesSectionProps {
 	useCases: UseCase[];
@@ -72,11 +8,35 @@ interface UseCasesSectionProps {
 
 export function UseCasesSection({ useCases }: UseCasesSectionProps) {
 	return (
-		<section id="use-cases" className="bg-white">
-			<div className="container mx-auto">
-				<div className="space-y-0">
-					{useCases.map((useCase, index) => (
-						<UseCaseScreen key={useCase.id} useCase={useCase} index={index} />
+		<section id="use-cases" className="bg-background py-24 lg:py-32">
+			<div className="mx-auto max-w-6xl px-5 lg:px-8">
+				<Reveal className="max-w-2xl">
+					<p className="eyebrow">When it helps</p>
+					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
+						Built for the moments you actually hit
+					</h2>
+				</Reveal>
+
+				<div className="mt-14 border-t border-border lg:mt-20">
+					{useCases.map((useCase) => (
+						<Reveal
+							key={useCase.id}
+							y={20}
+							className="group grid grid-cols-[auto_1fr] items-baseline gap-x-6 gap-y-2 border-b border-border py-10 transition-colors hover:bg-secondary/40 sm:gap-x-10 lg:grid-cols-[140px_1fr_auto] lg:py-14"
+						>
+							<span className="font-display text-4xl text-muted-foreground/25 transition-colors duration-300 group-hover:text-brand sm:text-6xl">
+								{useCase.index}
+							</span>
+							<div className="col-span-2 lg:col-span-1">
+								<h3 className="font-display text-2xl tracking-tight sm:text-3xl">
+									{useCase.title}
+								</h3>
+								<p className="mt-3 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+									{useCase.description}
+								</p>
+							</div>
+							<ArrowUpRight className="col-start-2 row-start-1 size-6 translate-y-1 text-muted-foreground/40 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:text-foreground group-hover:opacity-100 lg:col-start-3 lg:self-center" />
+						</Reveal>
 					))}
 				</div>
 			</div>

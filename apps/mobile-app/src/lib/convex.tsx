@@ -1,7 +1,7 @@
 import React from "react";
 import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
-import { useAuth } from "@clerk/clerk-expo";
+import { useAuth } from "@clerk/expo";
 
 const convexUrl = process.env.EXPO_PUBLIC_CONVEX_URL;
 
@@ -14,7 +14,7 @@ const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
  * and resets once the auth identity settles, so the app never white-screens.
  */
 class AuthTransitionBoundary extends React.Component<
-  { resetKey: string | null | undefined; children: React.ReactNode },
+  { children: React.ReactNode },
   { hasError: boolean }
 > {
   state = { hasError: false };
@@ -27,12 +27,6 @@ class AuthTransitionBoundary extends React.Component<
     console.warn("[convex] query error caught at boundary", error);
   }
 
-  componentDidUpdate(prev: { resetKey: string | null | undefined }) {
-    if (prev.resetKey !== this.props.resetKey && this.state.hasError) {
-      this.setState({ hasError: false });
-    }
-  }
-
   render() {
     if (this.state.hasError) return null;
     return this.props.children;
@@ -40,11 +34,11 @@ class AuthTransitionBoundary extends React.Component<
 }
 
 function AuthAwareBoundary({ children }: { children: React.ReactNode }) {
-  const { userId, isSignedIn } = useAuth();
+  const { sessionId, userId, isSignedIn } = useAuth();
+  const resetKey = `${sessionId ?? "signed-out"}:${userId ?? "anon"}:${isSignedIn}`;
+
   return (
-    <AuthTransitionBoundary resetKey={`${userId ?? "anon"}:${isSignedIn}`}>
-      {children}
-    </AuthTransitionBoundary>
+    <AuthTransitionBoundary key={resetKey}>{children}</AuthTransitionBoundary>
   );
 }
 
@@ -53,10 +47,16 @@ export function ConvexClientProvider({
 }: {
   children: React.ReactNode;
 }) {
+  const { sessionId } = useAuth();
+
   if (!convex) return <>{children}</>;
 
   return (
-    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+    <ConvexProviderWithClerk
+      key={sessionId ?? "signed-out"}
+      client={convex}
+      useAuth={useAuth}
+    >
       <AuthAwareBoundary>{children}</AuthAwareBoundary>
     </ConvexProviderWithClerk>
   );

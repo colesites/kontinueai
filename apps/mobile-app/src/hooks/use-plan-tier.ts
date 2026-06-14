@@ -1,4 +1,4 @@
-import { useAuth, useUser } from "@clerk/clerk-expo";
+import { useAuth, useUser } from "@clerk/expo";
 import { useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 

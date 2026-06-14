@@ -62,12 +62,12 @@ export default function PrivacyPolicy() {
 							plan, we collect billing details through our payment processor.
 						</li>
 						<li>
-							<strong>Connected Account Data:</strong> If you choose to connect a
-							third-party account (such as Google/Gmail, Google Calendar, Google
-							Drive, GitHub, Notion, Vercel, or Todoist), we access data from that
-							account only as needed to perform the actions you request in
-							Kontinue AI. Google data is handled as described in the "Google User
-							Data and Limited Use" section below.
+							<strong>Connected Account Data:</strong> If you choose to connect
+							a third-party account (such as Google/Gmail, Google Calendar,
+							Google Drive, GitHub, Notion, Vercel, or Todoist), we access data
+							from that account only as needed to perform the actions you
+							request in Kontinue AI. Google data is handled as described in the
+							"Google User Data and Limited Use" section below.
 						</li>
 					</ul>
 
@@ -157,20 +157,20 @@ export default function PrivacyPolicy() {
 					<p className="mb-4">
 						When you connect a Google account (Gmail, Google Calendar, and/or
 						Google Drive), Kontinue AI requests only the OAuth scopes needed for
-						the features you use, and accesses your Google data solely to provide
-						those features at your request:
+						the features you use, and accesses your Google data solely to
+						provide those features at your request:
 					</p>
 					<ul className="list-disc pl-6 space-y-2">
 						<li>
 							<strong>Gmail</strong> (<code>gmail.readonly</code>,{" "}
-							<code>gmail.send</code>): to search and read your messages when you
-							ask the assistant about your email, and to send emails that you
-							compose and explicitly choose to send from Kontinue AI.
+							<code>gmail.send</code>): to search and read your messages when
+							you ask the assistant about your email, and to send emails that
+							you compose and explicitly choose to send from Kontinue AI.
 						</li>
 						<li>
 							<strong>Google Calendar</strong> (<code>calendar.readonly</code>,{" "}
-							<code>calendar.events</code>): to show your events when you ask, and
-							to create or update events at your request.
+							<code>calendar.events</code>): to show your events when you ask,
+							and to create or update events at your request.
 						</li>
 						<li>
 							<strong>Google Drive</strong> (<code>drive.readonly</code>): to
@@ -179,12 +179,13 @@ export default function PrivacyPolicy() {
 						</li>
 					</ul>
 					<p className="mt-4">
-						Google data is accessed only in direct response to an explicit action
-						you take, is used only to provide and improve these user-facing
-						features, and is never sold, used for advertising, or used to train
-						generalized AI/ML models. We retain Google data only as long as needed
-						to provide the feature, and you can revoke access at any time by
-						disconnecting the connector in Settings → Connectors or via your{" "}
+						Google data is accessed only in direct response to an explicit
+						action you take, is used only to provide and improve these
+						user-facing features, and is never sold, used for advertising, or
+						used to train generalized AI/ML models. We retain Google data only
+						as long as needed to provide the feature, and you can revoke access
+						at any time by disconnecting the connector in Settings → Connectors
+						or via your{" "}
 						<a
 							href="https://myaccount.google.com/permissions"
 							className="text-violet-600 hover:underline"

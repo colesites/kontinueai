@@ -15,6 +15,8 @@
       },
       "env": {
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_bWFnaWNhbC1zbG90aC0zNS5jbGVyay5hY2NvdW50cy5kZXYk",
+        "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "779148953674-bui7t3mfp2en86gn5l34765hq35r37b2.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID": "309168072626-job6db4ids0fj0q8brklbql51tssp71r.apps.googleusercontent.com",
         "EXPO_PUBLIC_CONVEX_URL": "https://honorable-poodle-461.convex.cloud",
         "EXPO_PUBLIC_API_URL": "http://localhost:3000"
       }
@@ -29,6 +31,8 @@
       },
       "env": {
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2hhdC5rb250aW51ZWFpLmNvbSQ",
+        "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "779148953674-bui7t3mfp2en86gn5l34765hq35r37b2.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID": "309168072626-job6db4ids0fj0q8brklbql51tssp71r.apps.googleusercontent.com",
         "EXPO_PUBLIC_CONVEX_URL": "https://honorable-poodle-461.convex.cloud",
         "EXPO_PUBLIC_API_URL": "https://chat.kontinueai.com"
       }
@@ -40,6 +44,8 @@
       },
       "env": {
         "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_live_Y2xlcmsuY2hhdC5rb250aW51ZWFpLmNvbSQ",
+        "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "779148953674-bui7t3mfp2en86gn5l34765hq35r37b2.apps.googleusercontent.com",
+        "EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID": "309168072626-job6db4ids0fj0q8brklbql51tssp71r.apps.googleusercontent.com",
         "EXPO_PUBLIC_CONVEX_URL": "https://honorable-poodle-461.convex.cloud",
         "EXPO_PUBLIC_API_URL": "https://chat.kontinueai.com"
       }

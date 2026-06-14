@@ -14,7 +14,7 @@ import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { useUser, useClerk } from "@clerk/clerk-expo";
+import { useUser, useClerk } from "@clerk/expo";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";

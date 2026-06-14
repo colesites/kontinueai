@@ -7,16 +7,6 @@ import { useRouter, type Href } from "expo-router";
 import { useMutation } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 
-// Show alerts for pushes that arrive while the app is open.
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: false,
-    shouldSetBadge: true,
-  }),
-});
-
 /**
  * Registers this device for push notifications and stores the Expo token in
  * Convex (reminderDelivery fans out to it alongside email/web push). Remote
@@ -28,9 +18,28 @@ export function PushRegistrar() {
   const saveExpoPushToken = useMutation(api.push.saveExpoPushToken);
 
   useEffect(() => {
-    let cancelled = false;
+    try {
+      // Show alerts for pushes that arrive while the app is open.
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowBanner: true,
+          shouldShowList: true,
+          shouldPlaySound: false,
+          shouldSetBadge: true,
+        }),
+      });
+    } catch (error) {
+      console.warn("[push] notification handler skipped:", error);
+    }
+  }, []);
 
-    (async () => {
+  useEffect(() => {
+    let cancelled = false;
+    const timeout = setTimeout(() => {
+      void register();
+    }, 3000);
+
+    async function register() {
       try {
         if (!Device.isDevice) return; // simulators can't receive remote push
 
@@ -66,21 +75,24 @@ export function PushRegistrar() {
         // Expected in Expo Go (no push module) — never block the app on this.
         console.warn("[push] registration skipped:", error);
       }
-    })();
+    }
 
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
     };
   }, [saveExpoPushToken]);
 
   // Tapping a notification deep-links into the screen it points at.
   useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener((response) => {
-      const url = response.notification.request.content.data?.url;
-      if (typeof url === "string" && url.startsWith("/")) {
-        router.push(url as Href);
-      }
-    });
+    const sub = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const url = response.notification.request.content.data?.url;
+        if (typeof url === "string" && url.startsWith("/")) {
+          router.push(url as Href);
+        }
+      },
+    );
     return () => sub.remove();
   }, [router]);
 

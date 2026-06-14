@@ -1,5 +1,6 @@
 export interface UseCase {
 	id: string;
+	index: string;
 	title: string;
 	description: string;
 }
@@ -7,26 +8,30 @@ export interface UseCase {
 export const useCases: UseCase[] = [
 	{
 		id: "out-of-tokens",
-		title: "Out of tokens / message limits",
+		index: "01",
+		title: "You hit the message limit",
 		description:
-			"Hit a limit on one platform, import your chat to Kontinue AI and continue.",
+			"Run out of messages on one app? Import the conversation into Kontinue AI and keep going on another model. No copy and paste, no lost thread.",
 	},
 	{
 		id: "hallucinations",
-		title: "AI hallucinations",
+		index: "02",
+		title: "A model gets it wrong",
 		description:
-			"If a model is misbehaving, simply switch to another one instantly to verify and continue your flow.",
+			"When an answer looks off, send the same chat to a different model and compare. Two opinions, one conversation, no second tab.",
 	},
 	{
 		id: "best-model",
-		title: '"This model is good at X"',
+		index: "03",
+		title: "The right model for the job",
 		description:
-			"Customise your workflow by using the right model for every task - from coding to creative writing.",
+			"Use one model for writing, another for reasoning, another for research. Pick what fits each task while everything stays in one history.",
 	},
 	{
 		id: "study-assignments",
-		title: "Study & assignments",
+		index: "04",
+		title: "Study and assignments",
 		description:
-			"Pick up exactly where you left off. Import your learning sessions and use more powerful models to master complex topics.",
+			"Pick up exactly where you left off. Bring a study session in and move to a stronger model when the topic gets hard.",
 	},
 ];
