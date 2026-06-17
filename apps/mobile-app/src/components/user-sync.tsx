@@ -5,6 +5,7 @@ import { api } from "@repo/convex/convex/_generated/api";
 import { persistedPlanForTier } from "@repo/core/plan-tier";
 
 import { usePlanTier } from "@/hooks/use-plan-tier";
+import { getDisplayName } from "@/lib/user-display";
 
 /**
  * Ensures the signed-in Clerk user has a Convex `users` record (mirrors
@@ -23,7 +24,7 @@ export function UserSync() {
     void getOrCreateUser({
       clerkUserId: user.id,
       email: user.primaryEmailAddress?.emailAddress ?? "",
-      name: user.fullName ?? undefined,
+      name: getDisplayName(user, "") || undefined,
       imageUrl: user.imageUrl ?? undefined,
       subscriptionStatus: planTier === "free" ? "inactive" : "active",
       plan: persistedPlanForTier(planTier),

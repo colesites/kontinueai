@@ -456,6 +456,40 @@ export const toggleChatPin = mutation({
   },
 });
 
+export const setChatArchived = mutation({
+  args: {
+    chatId: v.id("chats"),
+    archived: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    const chat = await ctx.db.get(args.chatId);
+    if (!chat) {
+      throw new Error("Chat not found");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+      .unique();
+
+    if (!user || chat.ownerId !== user._id) {
+      throw new Error("Unauthorized");
+    }
+
+    await ctx.db.patch(args.chatId, {
+      archived: args.archived,
+      updatedAt: Date.now(),
+    });
+
+    return { archived: args.archived };
+  },
+});
+
 export const updateChatTitle = mutation({
   args: {
     chatId: v.id("chats"),

@@ -29,16 +29,18 @@ export function AuthProviders({ children }: { children: ReactNode }) {
         },
         elements: {
           cardBox: "shadow-none",
-          card: "border border-white/[0.08] bg-[var(--surface-1)] shadow-none",
+          card:
+            "border border-white/[0.08] bg-[oklch(0.12_0.004_260_/_0.82)] shadow-none backdrop-blur-xl",
           footer: "bg-transparent",
           headerTitle: "text-foreground",
           headerSubtitle: "text-foreground/60",
           socialButtonsBlockButton:
-            "border-white/[0.08] bg-white/[0.04] text-foreground hover:bg-white/[0.07]",
+            "border-white/[0.08] bg-white/[0.035] text-foreground hover:bg-white/[0.07]",
           formButtonPrimary:
-            "bg-[var(--brand)] text-primary-foreground hover:bg-[var(--brand)]/90",
+            "bg-[var(--brand)] text-primary-foreground shadow-none hover:bg-[var(--brand)]/90",
           formFieldInput:
             "border-white/[0.08] bg-white/[0.04] text-foreground",
+          footerActionLink: "text-brand hover:text-brand",
         },
       }}
     >

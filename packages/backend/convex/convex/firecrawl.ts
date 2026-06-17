@@ -83,7 +83,9 @@ function getLLMModel() {
     throw new Error("AI_GATEWAY_TOKEN is not set");
   }
   const gw = createGateway({ apiKey });
-  const modelId = "google/gemini-2.0-flash-001";
+  // `google/gemini-2.0-flash-001` was dropped from the Vercel AI Gateway
+  // catalog (404 model_not_found); use a currently-served id.
+  const modelId = process.env.MEMORY_GATEWAY_MODEL ?? "google/gemini-2.5-flash";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return gw(modelId) as any;
 }

@@ -1,5 +1,6 @@
 import "@/global.css";
 
+import * as Sentry from "@sentry/react-native";
 import {
   DarkTheme,
   DefaultTheme,
@@ -22,7 +23,16 @@ import { ConvexClientProvider } from "@/lib/convex";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
-export default function RootLayout() {
+// Crash + error reporting. No-ops when no DSN is set or in local dev, so it
+// stays quiet in Expo Go and only reports from real (preview/production)
+// builds where EXPO_PUBLIC_SENTRY_DSN is provided.
+Sentry.init({
+  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
+  enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+  tracesSampleRate: 0.1,
+});
+
+function RootLayout() {
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ConvexClientProvider>
@@ -34,15 +44,19 @@ export default function RootLayout() {
   );
 }
 
+export default Sentry.wrap(RootLayout);
+
 function AppShell() {
   const { isDark } = useTheme();
-  const { isSignedIn } = useAuth({ treatPendingAsSignedOut: false });
+  const { isLoaded, isSignedIn } = useAuth();
   const { isLoading: isConvexLoading, isAuthenticated: isConvexAuthenticated } =
     useConvexAuth();
   const isAppReady =
     !!isSignedIn && !isConvexLoading && isConvexAuthenticated;
 
-  if (isSignedIn && !isAppReady) {
+  // Until Clerk has hydrated from the token cache, isSignedIn is undefined.
+  // Show the loader instead of flashing the sign-in screen.
+  if (!isLoaded || (isSignedIn && !isAppReady)) {
     return (
       <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
         <LoadingScreen />
@@ -75,6 +89,7 @@ function AppShell() {
             <Stack.Protected guard={!isSignedIn}>
               <Stack.Screen name="(auth)/sign-in" />
               <Stack.Screen name="(auth)/sign-up" />
+              <Stack.Screen name="(auth)/forgot-password" />
             </Stack.Protected>
           </Stack>
 

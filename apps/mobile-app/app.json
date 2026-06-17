@@ -68,6 +68,14 @@
         {
           "color": "#ec4899"
         }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "organization": "YOUR_SENTRY_ORG_SLUG",
+          "project": "kontinue-mobile"
+        }
       ]
     ],
     "experiments": {

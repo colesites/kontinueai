@@ -8,6 +8,8 @@ import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { deriveCapabilities } from "@repo/ai/lib/model-capabilities";
 import { getAgent, type AgentId } from "@repo/ai/lib/agents";
+import { isKodeModel, KODE_DISPLAY_NAME } from "@repo/ai/lib/kode";
+import { isKaiModel, K_AI_DISPLAY_NAME } from "@repo/ai/lib/kai";
 import type { AiGatewayModel, OpenAIImageSize } from "./types";
 import { modelSupportsTools } from "./model-utils";
 import { toOpenAIImageSize } from "./request-utils";
@@ -2273,6 +2275,7 @@ import {
   buildImageGenerationContext,
   buildWebSearchContext,
   buildWebSearchResultsContext,
+  buildIdentityContext,
   CHAT_SYSTEM_PROMPT,
   isLikelyImageRequest,
   isLikelyWebSearchRequest,
@@ -2479,7 +2482,22 @@ export function buildToolsAndPrompt(options: {
     }
   })();
 
+  // Identity lock. Resolve the brand from the requested model so the underlying
+  // open-source model never surfaces its own identity (e.g. "Gemma by Google").
+  // Kode IDE → "Kode 1.0"; everything else in the Kontinue surface → "K-AI 1.0".
+  const requestedModelId = requestedModel as unknown as string;
+  const productName = isKodeModel(requestedModelId)
+    ? KODE_DISPLAY_NAME
+    : isKaiModel(requestedModelId)
+      ? K_AI_DISPLAY_NAME
+      : K_AI_DISPLAY_NAME;
+  const identityContext = buildIdentityContext({
+    productName,
+    company: "Kontinue AI",
+  });
+
   const systemPrompt =
+    identityContext +
     CHAT_SYSTEM_PROMPT +
     agentContext +
     nowContext +

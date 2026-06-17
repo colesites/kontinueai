@@ -56,7 +56,15 @@ function getGatewayApiKey() {
   return apiKey;
 }
 
-function getGatewayModel(modelId = "google/gemini-2.0-flash-001") {
+// Default summarization model for the memory system. NOTE: this runs on the
+// Vercel AI Gateway (not OpenRouter), independent of Kode 1.0's routing. The
+// gateway dropped the pinned `google/gemini-2.0-flash-001` id (404
+// model_not_found), so default to a currently-served id and allow an env
+// override so a future catalog rename doesn't require a code change.
+const DEFAULT_MEMORY_MODEL =
+  process.env.MEMORY_GATEWAY_MODEL ?? "google/gemini-2.5-flash";
+
+function getGatewayModel(modelId = DEFAULT_MEMORY_MODEL) {
   const gateway = createGateway({ apiKey: getGatewayApiKey() });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return gateway(modelId) as any;

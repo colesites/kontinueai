@@ -43,6 +43,7 @@ import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { cn } from "@/lib/utils";
+import { getDisplayName, getInitial } from "@/lib/user-display";
 
 type SettingsTab = "account" | "memory" | "data";
 
@@ -59,10 +60,9 @@ export default function SettingsScreen() {
   const planTier = usePlanTier();
   const [tab, setTab] = useState<SettingsTab>("account");
 
-  const displayName =
-    user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Account";
+  const displayName = getDisplayName(user, "Account");
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
-  const initial = displayName[0]?.toUpperCase() ?? "?";
+  const initial = getInitial(user);
 
   return (
     <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>

@@ -11,6 +11,11 @@ import {
   K_AI_PRIMARY_MODEL,
   K_AI_MODEL_CHAIN,
 } from "@repo/ai/lib/kai";
+import {
+  isKodeModel,
+  KODE_PRIMARY_MODEL,
+  KODE_MODEL_CHAIN,
+} from "@repo/ai/lib/kode";
 import { getAgent } from "@repo/ai/lib/agents";
 import { isPaidTier } from "@repo/core/plan-tier";
 import { detectSearchIntent } from "./lib/web-search/intent";
@@ -69,9 +74,16 @@ export async function POST(req: Request) {
     // synthesize a language-model descriptor so the rest of the pipeline (tool
     // attachment, prompt building) works unchanged.
     const usingKai = isKaiModel(modelId);
+    // Kode 1.0 is Kontinue's coding orchestration layer — like K-AI it lives
+    // outside the AI Gateway catalog and routes to OpenRouter (with failover).
+    const usingKode = isKodeModel(modelId);
+    // Both branded layers share the same OpenRouter path; pick the right chain.
+    const usingOpenRouter = usingKai || usingKode;
+    const openRouterPrimary = usingKode ? KODE_PRIMARY_MODEL : K_AI_PRIMARY_MODEL;
+    const openRouterChain = usingKode ? KODE_MODEL_CHAIN : K_AI_MODEL_CHAIN;
 
     let requestedModel: AiGatewayModel;
-    if (usingKai) {
+    if (usingOpenRouter) {
       requestedModel = { id: modelId, type: "language", tags: [] };
     } else {
       const models = await getAiGatewayModelsCached();
@@ -86,7 +98,7 @@ export async function POST(req: Request) {
     // K-AI routes through OpenRouter, which can't use the Vercel-gateway
     // Perplexity web-search tool, so web search is disabled for it.
     const webSearchEnabled =
-      !usingKai && isPaidTier(planTier) && requestedWebSearchEnabled;
+      !usingOpenRouter && isPaidTier(planTier) && requestedWebSearchEnabled;
     if (!isPaidTier(planTier) && hasUserFileAttachments(messages)) {
       return new Response("Starter or Pro plan required for file attachments", {
         status: 403,
@@ -94,7 +106,7 @@ export async function POST(req: Request) {
     }
 
     // K-AI is free for every tier and is never a "premium" model.
-    const isPremium = usingKai ? false : isProModel(requestedModel);
+    const isPremium = usingOpenRouter ? false : isProModel(requestedModel);
     if (!isPaidTier(planTier) && isPremium) {
       return new Response("Starter or Pro plan required for this model", {
         status: 403,
@@ -108,9 +120,9 @@ export async function POST(req: Request) {
       planTier,
       isPremiumModel: isPremium,
     });
-    const maxOutputTokens = usingKai ? 8192 : tokenLimits.maxOutputTokens;
+    const maxOutputTokens = usingOpenRouter ? 8192 : tokenLimits.maxOutputTokens;
 
-    if (!usingKai) {
+    if (!usingOpenRouter) {
       const estimatedInputTokens = Math.ceil(lastUserContent.length / 4);
       if (estimatedInputTokens > tokenLimits.maxInputTokens) {
         return createInputTooLongResponse({
@@ -123,9 +135,11 @@ export async function POST(req: Request) {
 
     const gatewayRuntime = getGatewayRuntimeConfig();
     const openRouterKey = process.env.OPEN_ROUTER ?? null;
-    if (usingKai) {
+    if (usingOpenRouter) {
       if (!openRouterKey) {
-        console.error("Chat API misconfigured: missing OPEN_ROUTER key for K-AI.");
+        console.error(
+          "Chat API misconfigured: missing OPEN_ROUTER key for K-AI/Kode.",
+        );
         return new Response("AI is not configured. Please try again later.", {
           status: 500,
         });
@@ -200,12 +214,12 @@ export async function POST(req: Request) {
     // fails over on rate limits, provider downtime, or model errors — all
     // transparent to the user, who only ever sees "K-AI 1.0".
     let modelInstance: LanguageModel;
-    if (usingKai) {
+    if (usingOpenRouter) {
       const openrouter = createOpenRouter({ apiKey: openRouterKey! });
-      modelInstance = openrouter.chat(K_AI_PRIMARY_MODEL, {
+      modelInstance = openrouter.chat(openRouterPrimary, {
         // OpenRouter tries this ordered list and auto-fails-over on rate limit,
         // provider downtime, or model error — transparent to the user.
-        models: K_AI_MODEL_CHAIN,
+        models: openRouterChain,
       }) as unknown as LanguageModel;
     } else {
       modelInstance = gateway(modelId) as unknown as LanguageModel;
@@ -214,7 +228,7 @@ export async function POST(req: Request) {
     // K-AI never uses the gateway Perplexity tool (incompatible with OpenRouter);
     // its web search runs through our own pipeline above. So force the tool-side
     // web-search flag off for K-AI even when the toggle is on.
-    const toolWebSearchEnabled = usingKai ? false : webSearchEnabled;
+    const toolWebSearchEnabled = usingOpenRouter ? false : webSearchEnabled;
 
     const toolsConfig = buildToolsAndPrompt({
       requestedModel,

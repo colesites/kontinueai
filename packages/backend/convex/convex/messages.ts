@@ -79,6 +79,19 @@ export const addMessage = mutation({
     content: v.string(),
     model: v.optional(v.string()),
     isPremiumModel: v.optional(v.boolean()),
+    // Kode IDE: docs citations + the agent's plan for this turn.
+    sources: v.optional(
+      v.array(v.object({ title: v.string(), url: v.string() })),
+    ),
+    todos: v.optional(
+      v.array(
+        v.object({
+          title: v.string(),
+          description: v.optional(v.string()),
+          status: v.string(),
+        }),
+      ),
+    ),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -386,6 +399,8 @@ export const addMessage = mutation({
         model: args.model,
         tokenCount: Math.ceil(args.content.length / 4),
         isImported: false,
+        sources: args.sources,
+        todos: args.todos,
       },
     });
 

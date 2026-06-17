@@ -24,7 +24,7 @@ export const THEME_LABELS: Record<Theme, string> = {
 export const THEME_SWATCH: Record<Theme, string> = {
   default: "#ec2d96",
   emerald: "#10b981",
-  chelsea: "#2156c9",
+  chelsea: "#1f2db8",
   amethyst: "#a435f0",
   normal: "#0a0a0a",
 };

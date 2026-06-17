@@ -86,6 +86,20 @@ export default defineSchema({
         model: v.optional(v.string()),
         tokenCount: v.optional(v.number()),
         isImported: v.optional(v.boolean()),
+        // Kode IDE: official-docs citations that grounded the answer.
+        sources: v.optional(
+          v.array(v.object({ title: v.string(), url: v.string() })),
+        ),
+        // Kode IDE: the agent's plan/todo list for this turn.
+        todos: v.optional(
+          v.array(
+            v.object({
+              title: v.string(),
+              description: v.optional(v.string()),
+              status: v.string(),
+            }),
+          ),
+        ),
       }),
     ),
   })

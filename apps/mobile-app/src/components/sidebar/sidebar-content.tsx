@@ -60,6 +60,7 @@ import {
 import { useTheme } from "@/components/theme-provider";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { API_BASE_URL } from "@/lib/chat-api";
+import { getDisplayName, getInitial } from "@/lib/user-display";
 
 // Kept in sync with @repo/utils url-safety PROVIDER_CONFIG (that package's
 // exports map doesn't resolve under Metro, so the colors live here too).
@@ -252,12 +253,8 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
   // Matches the drawer panel: 86% of screen, capped at 340.
   const sidebarWidth = Math.min(Dimensions.get("window").width * 0.86, 340);
 
-  const initial =
-    user?.firstName?.[0]?.toUpperCase() ??
-    user?.primaryEmailAddress?.emailAddress?.[0]?.toUpperCase() ??
-    "?";
-  const displayName =
-    user?.fullName ?? user?.primaryEmailAddress?.emailAddress ?? "Account";
+  const initial = getInitial(user);
+  const displayName = getDisplayName(user, "Account");
 
   return (
     <View style={{ flex: 1 }}>

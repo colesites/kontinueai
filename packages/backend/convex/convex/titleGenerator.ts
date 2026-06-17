@@ -13,7 +13,9 @@ async function generateShortTitle(firstMessage: string): Promise<string> {
     }
 
     const gw = createGateway({ apiKey });
-    const modelId = "google/gemini-2.0-flash-001";
+    // `google/gemini-2.0-flash-001` was dropped from the Vercel AI Gateway
+    // catalog (404 model_not_found); use a currently-served id.
+    const modelId = process.env.MEMORY_GATEWAY_MODEL ?? "google/gemini-2.5-flash";
 
     const { text } = await generateText({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

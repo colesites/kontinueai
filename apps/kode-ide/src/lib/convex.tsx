@@ -3,32 +3,49 @@ import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import React from "react";
 
-const convexUrl = import.meta.env.VITE_CONVEX_URL;
+// Strip trailing slashes — a trailing "/" produces a malformed WebSocket URL
+// and the client never connects (queries hang in "loading" forever).
+const convexUrl = import.meta.env.VITE_CONVEX_URL?.replace(/\/+$/, "");
 
 const convex = convexUrl ? new ConvexReactClient(convexUrl) : null;
 
 class AuthTransitionBoundary extends React.Component<
   { resetKey: string | null | undefined; children: React.ReactNode },
-  { hasError: boolean }
+  { hasError: boolean; error: unknown }
 > {
-  state = { hasError: false };
+  state = { hasError: false, error: undefined as unknown };
 
-  static getDerivedStateFromError(): { hasError: true } {
-    return { hasError: true };
+  static getDerivedStateFromError(error: unknown): {
+    hasError: true;
+    error: unknown;
+  } {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error: unknown) {
-    console.warn("[convex] query error caught at boundary", error);
+    console.error("[convex] error caught at boundary", error);
   }
 
   componentDidUpdate(prev: { resetKey: string | null | undefined }) {
     if (prev.resetKey !== this.props.resetKey && this.state.hasError) {
-      this.setState({ hasError: false });
+      this.setState({ hasError: false, error: undefined });
     }
   }
 
   render() {
-    if (this.state.hasError) return null;
+    if (this.state.hasError) {
+      const message =
+        this.state.error instanceof Error
+          ? `${this.state.error.message}\n\n${this.state.error.stack ?? ""}`
+          : String(this.state.error);
+      return (
+        <div className="grid min-h-screen place-items-center bg-background p-8 text-foreground">
+          <pre className="max-w-2xl overflow-auto whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-300">
+            {message}
+          </pre>
+        </div>
+      );
+    }
     return this.props.children;
   }
 }

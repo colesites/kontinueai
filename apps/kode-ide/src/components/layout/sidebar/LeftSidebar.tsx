@@ -1,6 +1,7 @@
 import { Sidebar, SidebarRail } from "@/components/ui/sidebar";
 import LeftSidebarHeader from "./LeftSidebarHeader";
 import LeftSidebarContent from "./LeftSidebarContent";
+import LeftSidebarFooter from "./LeftSidebarFooter";
 
 const LeftSidebar = () => {
   return (
@@ -13,6 +14,7 @@ const LeftSidebar = () => {
     >
       <LeftSidebarHeader />
       <LeftSidebarContent />
+      <LeftSidebarFooter />
       <SidebarRail />
     </Sidebar>
   );

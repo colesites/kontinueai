@@ -224,6 +224,14 @@
   * {
     @apply border-border outline-ring/50;
     }
+  /* WKWebView draws focus rings with the macOS system accent (often orange/red)
+     via `outline-style: auto`. Force our brand color for every focus ring.
+     Components with their own `outline-none` + ring utilities still override
+     this (base layer has the lowest priority). */
+  *:focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    }
   body {
     @apply bg-background text-foreground;
     }
@@ -315,4 +323,47 @@
   }
   .text-brand { color: var(--brand); }
   .bg-brand { background-color: var(--brand); }
+
+  /* Thin, subtle pink scrollbar — only the bar shows, no track, low opacity.
+     NB: do NOT set the standard `scrollbar-width`/`scrollbar-color` here — once
+     `scrollbar-width` is set, WebKit/Chromium disable the ::-webkit-scrollbar
+     pseudo-elements below and fall back to a native bar. Tauri runs in WebKit
+     (macOS) / Chromium (Windows), so the pseudo-elements alone are enough. */
+  .kode-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .kode-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .kode-scroll::-webkit-scrollbar-thumb {
+    background: oklch(0.63 0.239 349 / 0.35);
+    border-radius: 9999px;
+  }
+  .kode-scroll::-webkit-scrollbar-thumb:hover {
+    background: oklch(0.63 0.239 349 / 0.6);
+  }
+}
+
+/* Global scrollbars: transparent track (no white/grey), subtle pink thumb.
+   Styled purely via ::-webkit-scrollbar — setting the standard `scrollbar-width`
+   would make WebKit/Chromium ignore these pseudo-elements and render a native
+   bar instead, which is exactly the bug this replaces. */
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+  background: transparent;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: oklch(0.63 0.239 349 / 0.4);
+  border-radius: 9999px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.63 0.239 349 / 0.7);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
 }

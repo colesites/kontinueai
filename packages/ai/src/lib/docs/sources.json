@@ -1,0 +1,17 @@
+{
+  "$schema": "Kode AI docs ingestion sources. Each entry is indexed by docs/indexer.ts (v2) and retrieved via docs/retriever.ts. Metadata travels with every chunk for version-aware, citable RAG.",
+  "sources": [
+    { "framework": "nextjs", "version": "latest", "url": "https://nextjs.org/docs", "kind": "site", "refreshDays": 30 },
+    { "framework": "nextjs-upgrade", "version": "latest", "url": "https://nextjs.org/docs/app/getting-started/upgrading", "kind": "page", "refreshDays": 60 },
+    { "framework": "react", "version": "latest", "url": "https://react.dev/reference/react", "kind": "site", "refreshDays": 60 },
+    { "framework": "expo", "version": "latest", "url": "https://docs.expo.dev/", "kind": "site", "refreshDays": 30 },
+    { "framework": "supabase", "version": "latest", "url": "https://supabase.com/docs", "kind": "site", "refreshDays": 30 },
+    { "framework": "prisma", "version": "latest", "url": "https://www.prisma.io/docs", "kind": "site", "refreshDays": 30 },
+    { "framework": "tailwind", "version": "4", "url": "https://tailwindcss.com/docs", "kind": "site", "refreshDays": 60 },
+    { "framework": "tailwind-vite", "version": "4", "url": "https://tailwindcss.com/docs/installation/using-vite", "kind": "page", "refreshDays": 60 },
+    { "framework": "tailwind-upgrade", "version": "4", "url": "https://tailwindcss.com/docs/upgrade-guide", "kind": "page", "refreshDays": 60 },
+    { "framework": "shadcn", "version": "latest", "url": "https://ui.shadcn.com/docs/installation", "kind": "site", "refreshDays": 60 },
+    { "framework": "sanity", "version": "latest", "url": "https://www.sanity.io/docs", "kind": "site", "refreshDays": 30 },
+    { "framework": "neon", "version": "latest", "url": "https://neon.com/docs/introduction", "kind": "site", "refreshDays": 30 }
+  ]
+}

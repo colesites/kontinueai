@@ -20,7 +20,7 @@ const THEME_LABELS: Record<Theme, string> = {
 const THEME_PRIMARY_COLORS: Record<Theme, string> = {
   default: "#e91e63",
   emerald: "#10b981",
-  chelsea: "oklch(0.412 0.143 256.8203792327415)",
+  chelsea: "oklch(0.420 0.205 266)",
   amethyst: "oklch(0.603 0.267 316.3767413595733)",
   normal: "#000000",
 };

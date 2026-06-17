@@ -35,6 +35,7 @@ import {
   type PendingAttachment,
 } from "@/lib/chat-attachments";
 import { savePendingChatDraft } from "@/lib/pending-chat-draft";
+import { getFirstName } from "@/lib/user-display";
 
 const STEPS = [
   {
@@ -83,7 +84,7 @@ function detectProvider(url: string): string {
 export default function HomeScreen() {
   const router = useRouter();
   const { user } = useUser();
-  const firstName = user?.firstName ?? "there";
+  const firstName = getFirstName(user);
 
   const { selectedModel, setSelectedModel, isPaidPlan } = useSelectedModel();
   const createChat = useMutation(api.chats.createChat);

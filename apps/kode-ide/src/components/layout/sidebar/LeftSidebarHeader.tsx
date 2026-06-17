@@ -1,11 +1,15 @@
 import { SquarePen, Search, Plug2 } from "lucide-react";
+import { useKodeWorkspace } from "@/lib/kode-workspace";
 
 const LeftSidebarHeader = () => {
+  const { newChat } = useKodeWorkspace();
+
   return (
     <div className="px-3 pt-1">
       {/* Primary action — monochrome, with a small brand-tinted icon. */}
       <button
         type="button"
+        onClick={() => newChat()}
         className="surface-raised flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-foreground transition-colors duration-150 hover:bg-white/[0.06] active:scale-[0.99]"
       >
         <SquarePen size={15} className="shrink-0 text-brand" />
