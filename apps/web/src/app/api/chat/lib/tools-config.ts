@@ -2377,6 +2377,10 @@ export function buildToolsAndPrompt(options: {
   }
 
   if (shouldAttachWebSearchTool) {
+    // `gateway.tools.perplexitySearch` is typed against @ai-sdk/gateway's own
+    // copy of the AI SDK Tool type, which doesn't line up with `ai`'s ToolSet
+    // (missing internal schema symbol). Cast through unknown to bridge the two
+    // SDK type copies — runtime shape is a valid tool.
     tools.perplexity_search = gateway.tools.perplexitySearch({
       searchRecencyFilter: sportsPlayerQuery ? "year" : "month",
       maxResults: 5,
@@ -2394,7 +2398,7 @@ export function buildToolsAndPrompt(options: {
             ],
           }
         : {}),
-    });
+    }) as unknown as ToolSet[string];
   }
 
   const canUseOpenAIImageTool = hasImageGen && provider === "openai";
