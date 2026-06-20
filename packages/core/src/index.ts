@@ -1,2 +1,3 @@
-export * from "./speech-settings";
+export * from "./kode-web";
 export * from "./memory";
+export * from "./speech-settings";

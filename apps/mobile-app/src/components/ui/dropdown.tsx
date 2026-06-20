@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   Dimensions,
   Modal,
@@ -51,22 +51,16 @@ export function Dropdown({
 }) {
   const { isDark } = useTheme();
   const screen = Dimensions.get("window");
-  const lastAnchorRef = useRef<DropdownAnchor | null>(anchor);
 
-  useEffect(() => {
-    if (anchor) lastAnchorRef.current = anchor;
-  }, [anchor]);
-
-  const resolvedAnchor = anchor ?? lastAnchorRef.current;
   const left =
     leftOverride ??
     Math.min(
-      Math.max(SCREEN_MARGIN, (resolvedAnchor?.x ?? SCREEN_MARGIN) - width + 24),
+      Math.max(SCREEN_MARGIN, (anchor?.x ?? SCREEN_MARGIN) - width + 24),
       screen.width - width - SCREEN_MARGIN,
     );
   const openAbove =
     placement === "above" ||
-    (resolvedAnchor ? resolvedAnchor.y > screen.height * 0.6 : false);
+    (anchor ? anchor.y > screen.height * 0.6 : false);
 
   return (
     <Modal
@@ -83,8 +77,8 @@ export function Dropdown({
             width,
             left,
             ...(openAbove
-              ? { bottom: screen.height - (resolvedAnchor?.y ?? 0) + 8 }
-              : { top: (resolvedAnchor?.y ?? 0) + 8 }),
+              ? { bottom: screen.height - (anchor?.y ?? 0) + 8 }
+              : { top: (anchor?.y ?? 0) + 8 }),
             borderRadius: 16,
             shadowColor: "#000",
             shadowOpacity: 0.4,
@@ -180,11 +174,16 @@ export function DropdownSeparator() {
 
 /** Convenience hook bundling open state + anchor capture. */
 export function useDropdown() {
-  const [anchor, setAnchor] = useState<DropdownAnchor | null>(null);
+  const [state, setState] = useState<{
+    visible: boolean;
+    anchor: DropdownAnchor | null;
+  }>({ visible: false, anchor: null });
+
   return {
-    visible: anchor !== null,
-    anchor,
-    open: (event: GestureResponderEvent) => setAnchor(anchorFromEvent(event)),
-    close: () => setAnchor(null),
+    visible: state.visible,
+    anchor: state.anchor,
+    open: (event: GestureResponderEvent) =>
+      setState({ visible: true, anchor: anchorFromEvent(event) }),
+    close: () => setState((current) => ({ ...current, visible: false })),
   };
 }

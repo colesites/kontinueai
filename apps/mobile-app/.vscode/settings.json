@@ -3,5 +3,14 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
-  }
+  },
+  // global.css uses Tailwind v4 / NativeWind at-rules (@theme, @source,
+  // @custom-variant, @apply). Treat CSS as the Tailwind dialect and disable the
+  // built-in CSS validator so it stops reporting "Unknown at rule" errors.
+  "files.associations": {
+    "*.css": "tailwindcss"
+  },
+  "css.validate": false,
+  "less.validate": false,
+  "scss.validate": false
 }

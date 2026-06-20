@@ -1,43 +1,42 @@
 "use client";
 
 import { PricingTable } from "@clerk/nextjs";
+import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function PricingPage() {
-  const router = useRouter();
+	const router = useRouter();
 
-  return (
-    <div className="min-h-screen bg-background text-foreground selection:bg-primary/30 flex flex-col items-center p-6">
-      <div className="w-full max-w-6xl py-8 sm:py-12">
-        {/* Premium Header */}
-        <div className="text-center mb-6">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-primary">
-            Pricing
-          </h2>
-          <p className="mt-4 text-3xl font-bold tracking-tight text-foreground sm:text-5xl">
-            Pick the right plan for your workflow
-          </p>
-          <p className="mt-4 text-base text-muted-foreground max-w-2xl mx-auto font-medium">
-            Continue your conversations across any platform with powerful tools
-            and unlimited history.
-          </p>
-          <div className="mt-8">
-            <button
-              onClick={() => router.back()}
-              className="group text-sm text-muted-foreground hover:text-foreground transition-all flex items-center gap-2 mx-auto px-4 py-1.5 rounded-full border border-border bg-card/50 hover:bg-card hover:border-sidebar-border"
-            >
-              <span className="transition-transform group-hover:-translate-x-1">
-                ←
-              </span>
-              <span>Go Back</span>
-            </button>
-          </div>
-        </div>
+	return (
+		<div className="relative min-h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30">
+			{/* Ambient brand glow */}
+			<div className="pointer-events-none absolute left-1/2 top-0 z-0 h-[420px] w-[820px] max-w-[130vw] -translate-x-1/2 rounded-[100%] bg-primary/15 blur-[120px]" />
 
-        <main>
-          <PricingTable />
-        </main>
-      </div>
-    </div>
-  );
+			<div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col px-6 py-10 sm:py-16">
+				{/* Header */}
+				<div className="mb-10 text-center">
+					<button
+						type="button"
+						onClick={() => router.back()}
+						className="surface-inset group mx-auto mb-8 inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-foreground/8 hover:text-foreground"
+					>
+						<ArrowLeft className="size-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
+						Go back
+					</button>
+					<p className="eyebrow">Pricing</p>
+					<h1 className="mx-auto mt-3 max-w-2xl text-4xl font-semibold tracking-tight sm:text-5xl">
+						Pick the right plan for your workflow
+					</h1>
+					<p className="mx-auto mt-4 max-w-2xl text-base text-muted-foreground">
+						Continue your conversations across any platform with powerful tools
+						and unlimited history.
+					</p>
+				</div>
+
+				<main className="relative">
+					<PricingTable />
+				</main>
+			</div>
+		</div>
+	);
 }

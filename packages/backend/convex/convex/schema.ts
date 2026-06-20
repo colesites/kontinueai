@@ -111,6 +111,152 @@ export default defineSchema({
       filterFields: ["ownerId", "role"],
     }),
 
+  // ── Kode IDE (separate surface) ─────────────────────────
+  // The Kode IDE keeps its conversations in its OWN tables so coding chats never
+  // leak into the web app's chat list, search, memory extraction, or embeddings.
+  // Chat → folder grouping ("project chats") is kept locally on the desktop app,
+  // so there is no projectId / source here. Driven by convex/kode.ts only.
+  kodeChats: defineTable({
+    ownerId: v.id("users"),
+    title: v.string(),
+    archived: v.optional(v.boolean()),
+    lastMessageAt: v.optional(v.number()),
+    pinnedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_owner", ["ownerId"])
+    .index("by_updated", ["updatedAt"]),
+
+  kodeMessages: defineTable({
+    chatId: v.id("kodeChats"),
+    ownerId: v.id("users"),
+    role: v.union(
+      v.literal("system"),
+      v.literal("user"),
+      v.literal("assistant"),
+    ),
+    content: v.string(),
+    createdAt: v.number(),
+    order: v.number(),
+    metadata: v.optional(
+      v.object({
+        model: v.optional(v.string()),
+        // Official-docs citations that grounded the answer.
+        sources: v.optional(
+          v.array(v.object({ title: v.string(), url: v.string() })),
+        ),
+        // The agent's plan/todo list for this turn.
+        todos: v.optional(
+          v.array(
+            v.object({
+              title: v.string(),
+              description: v.optional(v.string()),
+              status: v.string(),
+            }),
+          ),
+        ),
+      }),
+    ),
+  })
+    .index("by_chat", ["chatId"])
+    .index("by_chat_order", ["chatId", "order"])
+    .index("by_owner", ["ownerId"]),
+
+  // ── Kode Web app builder (separate from the desktop IDE) ────────────────
+  kodeWebProjects: defineTable({
+    ownerId: v.id("users"),
+    title: v.string(),
+    description: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("building"),
+      v.literal("ready"),
+      v.literal("error"),
+    ),
+    activeVersion: v.number(),
+    starred: v.boolean(),
+    lastError: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastBuildAt: v.optional(v.number()),
+  })
+    .index("by_owner_and_updated", ["ownerId", "updatedAt"])
+    .index("by_owner_and_starred_and_updated", [
+      "ownerId",
+      "starred",
+      "updatedAt",
+    ]),
+
+  kodeWebMessages: defineTable({
+    projectId: v.id("kodeWebProjects"),
+    ownerId: v.id("users"),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    content: v.string(),
+    order: v.number(),
+    buildId: v.optional(v.id("kodeWebBuilds")),
+    createdAt: v.number(),
+  })
+    .index("by_project", ["projectId"])
+    .index("by_project_and_order", ["projectId", "order"])
+    .index("by_owner", ["ownerId"]),
+
+  kodeWebFiles: defineTable({
+    projectId: v.id("kodeWebProjects"),
+    ownerId: v.id("users"),
+    version: v.number(),
+    path: v.string(),
+    language: v.string(),
+    content: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_project_and_version", ["projectId", "version"])
+    .index("by_project_and_version_and_path", [
+      "projectId",
+      "version",
+      "path",
+    ])
+    .index("by_owner", ["ownerId"]),
+
+  kodeWebBuilds: defineTable({
+    projectId: v.id("kodeWebProjects"),
+    ownerId: v.id("users"),
+    prompt: v.string(),
+    mode: v.optional(v.union(v.literal("build"), v.literal("plan"))),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("planning"),
+      v.literal("generating"),
+      v.literal("validating"),
+      v.literal("completed"),
+      v.literal("failed"),
+    ),
+    targetVersion: v.number(),
+    creditCost: v.number(),
+    chargedCredits: v.optional(v.number()),
+    creditMonthKey: v.string(),
+    model: v.optional(v.string()),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    totalTokens: v.optional(v.number()),
+    attachmentContext: v.optional(v.string()),
+    validation: v.optional(v.string()),
+    errorMessage: v.optional(v.string()),
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_project_and_created", ["projectId", "createdAt"])
+    .index("by_owner_and_created", ["ownerId", "createdAt"]),
+
+  kodeWebCredits: defineTable({
+    ownerId: v.id("users"),
+    monthKey: v.string(),
+    allowance: v.number(),
+    used: v.number(),
+    updatedAt: v.number(),
+  }).index("by_owner_and_month", ["ownerId", "monthKey"]),
+
   memories: defineTable({
     userId: v.id("users"),
     type: v.union(
@@ -297,6 +443,10 @@ export default defineSchema({
       v.literal("month_standard"), // paid users: standard-model quota by tier
       v.literal("month_kai"), // K-AI 1.0: separate monthly request budget
       v.literal("day_kai_search"), // K-AI 1.0: daily web-search budget
+      // Kode IDE: one GENERAL token budget per window (daily + weekly), all models
+      // counted the same. The `requestCount` field stores summed tokens here.
+      v.literal("day_kode"),
+      v.literal("week_kode"),
     ),
     bucketStartMs: v.number(),
     requestCount: v.number(),

@@ -74,8 +74,9 @@ export async function POST(req: Request) {
     // synthesize a language-model descriptor so the rest of the pipeline (tool
     // attachment, prompt building) works unchanged.
     const usingKai = isKaiModel(modelId);
-    // Kode 1.0 is Kontinue's coding orchestration layer — like K-AI it lives
-    // outside the AI Gateway catalog and routes to OpenRouter (with failover).
+    // Kode 1.0 is the Kode IDE's coding model and is NOT offered in the web model
+    // picker — its real home is the IDE (Tauri). Like K-AI it lives outside the AI
+    // Gateway catalog and routes to OpenRouter via KODE_PRIMARY_MODEL/KODE_MODEL_CHAIN.
     const usingKode = isKodeModel(modelId);
     // Both branded layers share the same OpenRouter path; pick the right chain.
     const usingOpenRouter = usingKai || usingKode;

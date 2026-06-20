@@ -1,5 +1,6 @@
 import React from "react";
 import { Pressable, ScrollView, Text as RNText, View } from "react-native";
+import * as Sentry from "@sentry/react-native";
 
 type AppErrorBoundaryState = {
   error: Error | null;
@@ -17,6 +18,10 @@ export class AppErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error("[app-crash-boundary]", error, info.componentStack);
+    Sentry.withScope((scope) => {
+      scope.setContext("react", { componentStack: info.componentStack });
+      Sentry.captureException(error);
+    });
   }
 
   render() {

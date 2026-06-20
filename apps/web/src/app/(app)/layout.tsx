@@ -7,6 +7,7 @@ import LoadingFallback from "../../components/LoadingFallback";
 import type { Metadata } from "next";
 import { convexServer } from "@repo/core/convex-server";
 import { api } from "@repo/convex/convex/_generated/api";
+import { isKodeComingSoon } from "../../features/kode/lib/availability";
 
 export const metadata: Metadata = {
   title: "Kontinue AI - Chat",
@@ -51,10 +52,13 @@ export default async function AppLayout({
 
   const cookieStore = await cookies();
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
+  const kodeComingSoon = isKodeComingSoon(host);
 
   return (
     <Suspense fallback={<LoadingFallback />}>
-      <AppShell defaultOpen={defaultOpen}>{children}</AppShell>
+      <AppShell defaultOpen={defaultOpen} kodeComingSoon={kodeComingSoon}>
+        {children}
+      </AppShell>
     </Suspense>
   );
 }

@@ -42,3 +42,6 @@ next-env.d.ts
 
 # Sentry Config File
 .env.sentry-build-plugin
+
+# Sanity (generated schema artifact from `bun run typegen`)
+schema.json

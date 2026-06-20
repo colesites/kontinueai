@@ -9,7 +9,8 @@ import { KODE_MODEL_ID, KODE_PRIMARY_MODEL } from "@repo/ai/lib/kode";
 // Used only if a fetch fails or a slug is missing from the catalogs.
 const DEFAULT_WINDOW = 128_000;
 const FALLBACK: Record<string, number> = {
-  // Kode 1.0 is Gemma 4 under the hood (262K) — covers the offline/first-run case.
+  // Kode 1.0 runs on Nex N2 Pro (262K ctx) — covers the offline/first-run case
+  // before the live OpenRouter catalog window is fetched.
   [KODE_MODEL_ID]: 262_144,
   [KODE_PRIMARY_MODEL]: 262_144,
 };

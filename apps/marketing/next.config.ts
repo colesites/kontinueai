@@ -11,6 +11,11 @@ const nextConfig: NextConfig = {
 				hostname: "res.cloudinary.com",
 				pathname: "/dqovfvo29/**",
 			},
+			{
+				protocol: "https",
+				hostname: "cdn.sanity.io",
+				pathname: "/images/cwgeoo9j/**",
+			},
 		],
 	},
 };

@@ -10,19 +10,19 @@ const SCRAPER_ENABLED = false;
 // Hosts the self-hosted Kontinue scraper can extract directly (work headless on
 // a datacenter IP). Everything else falls through to Firecrawl.
 const SCRAPER_HOST_PATTERNS: RegExp[] = [
-  /(^|\.)chatgpt\.com$/,
-  /(^|\.)chat\.openai\.com$/,
-  /(^|\.)gemini\.google\.com$/,
-  /(^|\.)g\.co$/,
-  /(^|\.)grok\.com$/,
-  /(^|\.)x\.com$/,
-  /(^|\.)qwen\.ai$/,
-  /(^|\.)tongyi\.aliyun\.com$/,
-  /(^|\.)deepseek\.com$/,
-  /(^|\.)kimi\.com$/,
-  /(^|\.)kimi\.moonshot\.cn$/,
-  /(^|\.)meta\.ai$/,
-  /(^|\.)manus\.(ai|im)$/,
+	/(^|\.)chatgpt\.com$/,
+	/(^|\.)chat\.openai\.com$/,
+	/(^|\.)gemini\.google\.com$/,
+	/(^|\.)g\.co$/,
+	/(^|\.)grok\.com$/,
+	/(^|\.)x\.com$/,
+	/(^|\.)qwen\.ai$/,
+	/(^|\.)tongyi\.aliyun\.com$/,
+	/(^|\.)deepseek\.com$/,
+	/(^|\.)kimi\.com$/,
+	/(^|\.)kimi\.moonshot\.cn$/,
+	/(^|\.)meta\.ai$/,
+	/(^|\.)manus\.(ai|im)$/,
 ];
 
 // Anti-bot walled platforms (Cloudflare Turnstile, Vercel checkpoint, join-only
@@ -30,16 +30,19 @@ const SCRAPER_HOST_PATTERNS: RegExp[] = [
 // Claude, T3Chat, Perplexity, Copilot. Unknown hosts also default to Firecrawl
 // since it's the generic fallback extractor.
 export function getImportStrategy(url: string): ImportStrategy {
-  let host: string;
-  try {
-    host = new URL(url).hostname.toLowerCase();
-  } catch {
-    return "firecrawl";
-  }
+	let host: string;
+	try {
+		host = new URL(url).hostname.toLowerCase();
+	} catch {
+		return "firecrawl";
+	}
 
-  if (SCRAPER_ENABLED && SCRAPER_HOST_PATTERNS.some((pattern) => pattern.test(host))) {
-    return "scraper";
-  }
+	if (
+		SCRAPER_ENABLED &&
+		SCRAPER_HOST_PATTERNS.some((pattern) => pattern.test(host))
+	) {
+		return "scraper";
+	}
 
-  return "firecrawl";
+	return "firecrawl";
 }

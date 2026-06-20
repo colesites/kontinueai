@@ -58,7 +58,12 @@ import {
   getContextWindow,
   type ContextWindows,
 } from "@/lib/kode-context";
-import { compactHistory, type CompactionState } from "@/lib/kode-compact";
+import {
+  compactHistory,
+  estimateTokens,
+  needsCompaction,
+  type CompactionState,
+} from "@/lib/kode-compact";
 import {
   useKodeWorkspace,
   type KodeWorkspaceMessage,
@@ -80,6 +85,12 @@ type ChatMessage = KodeWorkspaceMessage & {
 
 // Key for an in-flight send started on the home page before a chat exists.
 const DRAFT_KEY = "draft";
+
+// Approximate tokens the IDE adds to every request on top of the visible messages
+// (identity + agent guidance + per-request skills/docs/repo context). Folded into
+// the context meter so a fresh chat isn't reported as 0% when the model already
+// sees the system prompt.
+const KODE_SYSTEM_PROMPT_TOKENS = 1200;
 
 const getModelName = (modelId: string) =>
   KODE_MODELS.find((model) => model.id === modelId)?.name ?? "Kode 1.0";
@@ -159,6 +170,10 @@ const PlanView = () => {
     Record<string, ChatMessage[]>
   >({});
   const [sendingChats, setSendingChats] = useState<Record<string, boolean>>({});
+  // Per-chat flag: the summarizer is folding older turns to fit the model window.
+  const [compactingChats, setCompactingChats] = useState<
+    Record<string, boolean>
+  >({});
   const [usageByChat, setUsageByChat] = useState<
     Record<string, ChatMessage["usage"]>
   >({});
@@ -174,6 +189,8 @@ const PlanView = () => {
   }, []);
   // Per-chat compaction summary cache + which chats have been compacted (for UI).
   const compactionByChat = useRef<Map<string, CompactionState>>(new Map());
+  // Per-run AbortController so the Stop button can cancel an in-flight agent run.
+  const abortByChat = useRef<Map<string, AbortController>>(new Map());
   const [compactedChats, setCompactedChats] = useState<Record<string, boolean>>(
     {},
   );
@@ -215,9 +232,13 @@ const PlanView = () => {
   };
 
   const convexMessages = useQuery(
-    api.messages.getMessages,
+    api.kode.getMessages,
     activeChatId ? { chatId: activeChatId } : "skip",
   );
+
+  // General token budget for the signed-in user (daily + weekly). Used to block a
+  // turn before it runs when the budget is exhausted.
+  const kodeUsage = useQuery(api.kode.getUsage, {});
 
   const persistedMessages: ChatMessage[] = (convexMessages ?? [])
     .filter((message) => message.role !== "system")
@@ -241,6 +262,7 @@ const PlanView = () => {
   const overlay = pendingByChat[currentKey] ?? [];
   const messages: ChatMessage[] = [...persistedMessages, ...overlay];
   const isCurrentSending = !!sendingChats[currentKey];
+  const isCompacting = !!compactingChats[currentKey];
   const latestUsage = usageByChat[currentKey];
   const messagesLoading =
     activeChatId !== null && convexMessages === undefined;
@@ -303,6 +325,42 @@ const PlanView = () => {
       return;
     }
 
+    // Token-budget enforcement: block the turn before it runs if the user's general
+    // budget is already exhausted for this day or week. We can't know the turn's
+    // cost up front, so we gate on "already at/over the limit".
+    if (kodeUsage) {
+      const overWeekly = kodeUsage.weekly.used >= kodeUsage.weekly.limit;
+      const overDaily = kodeUsage.daily.used >= kodeUsage.daily.limit;
+      if (overWeekly || overDaily) {
+        const win = overWeekly ? kodeUsage.weekly : kodeUsage.daily;
+        const resetLabel = overWeekly
+          ? new Date(win.resetAt).toLocaleDateString([], {
+              month: "short",
+              day: "numeric",
+            })
+          : new Date(win.resetAt).toLocaleTimeString([], {
+              hour: "numeric",
+              minute: "2-digit",
+            });
+        const upgradeHint =
+          planTier === "pro" ? "" : " Upgrade your plan for a higher limit.";
+        setPendingByChat((current) => ({
+          ...current,
+          [key]: [
+            userMessage,
+            {
+              id: `assistant-${now}`,
+              role: "assistant",
+              content: `You've reached your ${overWeekly ? "weekly" : "daily"} usage limit. It resets ${resetLabel}.${upgradeHint}`,
+              modelId,
+              status: "error",
+            },
+          ],
+        }));
+        return;
+      }
+    }
+
     const thinkingMessage: ChatMessage = {
       id: `assistant-${now}`,
       role: "assistant",
@@ -311,6 +369,9 @@ const PlanView = () => {
       createdAt: now,
       status: "thinking",
     };
+
+    const abortController = new AbortController();
+    abortByChat.current.set(key, abortController);
 
     setSendingChats((current) => ({ ...current, [key]: true }));
     runtime.setRunning(key, true);
@@ -355,6 +416,10 @@ const PlanView = () => {
         });
         runtime.setRunning(newId, true);
         runtime.clearChat(DRAFT_KEY);
+        // Re-key the abort controller from the draft slot to the real chat id so
+        // the Stop button (which looks up by the now-active chat id) finds it.
+        abortByChat.current.delete(key);
+        abortByChat.current.set(newId, abortController);
         runKey = newId;
       }
 
@@ -362,6 +427,8 @@ const PlanView = () => {
       // stream in, so the chain-of-thought fills in progressively.
       const assistantId = thinkingMessage.id;
       const applyDelta = (field: "reasoning" | "content", delta: string) => {
+        // Once stopped, ignore any tokens still arriving from the orphaned stream.
+        if (abortController.signal.aborted) return;
         setPendingByChat((current) => ({
           ...current,
           [runKey]: (current[runKey] ?? []).map((item) =>
@@ -407,7 +474,12 @@ const PlanView = () => {
 
       // Auto-compaction: if the conversation is near the model's window, summarize
       // older turns and send [summary, ...recent] instead. Original messages stay.
+      // Surface a "Compacting context…" indicator only when it will actually run
+      // (summarizing a large history can take a moment).
       const window = getContextWindow(modelId, contextWindows);
+      if (needsCompaction(history, window)) {
+        setCompactingChats((current) => ({ ...current, [runKey]: true }));
+      }
       const { messages: sentHistory, compacted } = await compactHistory(
         history,
         window,
@@ -417,6 +489,7 @@ const PlanView = () => {
           set: (state) => compactionByChat.current.set(runKey, state),
         },
       );
+      setCompactingChats((current) => ({ ...current, [runKey]: false }));
       if (compacted) {
         setCompactedChats((current) => ({ ...current, [runKey]: true }));
       }
@@ -440,6 +513,7 @@ const PlanView = () => {
             runtime.registerOptions(step.id, resolve);
           }),
         onTodos: upsertTodos,
+        signal: abortController.signal,
       });
 
       // Persist both turns only after the model responds — avoids a duplicate
@@ -455,6 +529,9 @@ const PlanView = () => {
         role: "assistant",
         content: response.content,
         model: modelId,
+        // Whole-turn token cost (summed across all agent iterations) — meters the
+        // user's general daily + weekly token budget.
+        tokens: response.tokensConsumed,
         sources: response.sources.length > 0 ? response.sources : undefined,
         todos: latestTodos.length > 0 ? latestTodos : undefined,
       });
@@ -486,13 +563,29 @@ const PlanView = () => {
       }));
     } finally {
       setSendingChats((current) => ({ ...current, [runKey]: false }));
+      setCompactingChats((current) => ({ ...current, [runKey]: false }));
+      abortByChat.current.delete(runKey);
+      abortByChat.current.delete(key);
       runtime.clearChat(runKey);
     }
   };
 
-  // Whole-chat context usage: the last turn's total ≈ full history + system that
-  // gets re-sent each request. Denominator follows the SELECTED model's window.
-  const usedTokens = latestUsage?.totalTokens ?? 0;
+  // Stop the in-flight run for the chat currently in view.
+  const stopCurrentRun = () => {
+    abortByChat.current.get(currentKey)?.abort();
+  };
+
+  // Whole-chat context usage. The persisted estimate (system prompt + every
+  // message, all in Convex) is the cumulative floor that survives reloads. When the
+  // provider reported real usage this session we TRUE UP to it (exact tokenizer vs
+  // our chars/4 estimate) by taking the larger of the two — so the number is exact
+  // during a session and a stable estimate after a reload, never resetting to 0 or
+  // shrinking below the real conversation. The denominator follows the SELECTED
+  // model's window, so switching models reprices the SAME conversation against the
+  // new window (numerator unchanged) — like Codex / Claude Code. Only compaction
+  // (kode-compact) shrinks it, not a new turn.
+  const persistedEstimate = estimateTokens(messages) + KODE_SYSTEM_PROMPT_TOKENS;
+  const usedTokens = Math.max(persistedEstimate, latestUsage?.totalTokens ?? 0);
   const contextWindow = getContextWindow(selectedModelId, contextWindows);
   const inChat = activeChatId !== null || messages.length > 0;
   return (
@@ -529,39 +622,33 @@ const PlanView = () => {
                   <MessageContent>
                     {message.role === "assistant" ? (
                       <>
-                        {(message.status === "thinking" ||
-                          message.reasoning) && (
-                          <ChainOfThought
-                            defaultOpen={message.status === "thinking"}
-                          >
-                            <ChainOfThoughtHeader>
-                              {message.status === "thinking" ? (
-                                <Shimmer>Kode is reasoning</Shimmer>
-                              ) : (
-                                "Kode reasoning"
-                              )}
-                            </ChainOfThoughtHeader>
-                            <ChainOfThoughtContent>
-                              {message.reasoning ? (
-                                <div className="rounded-xl border border-brand/15 bg-brand/5 p-3 text-sm leading-relaxed text-foreground/72">
-                                  {message.reasoning}
-                                </div>
-                              ) : (
-                                <div className="space-y-2">
-                                  <Shimmer className="text-sm">
-                                    {`Working through your request with ${getModelName(message.modelId)}`}
-                                  </Shimmer>
-                                  <Shimmer className="block text-sm">
-                                    Considering the relevant context and files
-                                  </Shimmer>
-                                  <Shimmer className="block text-sm">
-                                    Planning the response
-                                  </Shimmer>
-                                </div>
-                              )}
-                            </ChainOfThoughtContent>
-                          </ChainOfThought>
-                        )}
+                        {(() => {
+                          // Not every model emits reasoning tokens, and they
+                          // arrive after a beat when they do. Only render the
+                          // reasoning BOX when there's real content; while waiting,
+                          // show a single clean shimmer header (no empty box).
+                          const reasoningText = message.reasoning?.trim();
+                          const isThinking = message.status === "thinking";
+                          if (!reasoningText && !isThinking) return null;
+                          return (
+                            <ChainOfThought defaultOpen={Boolean(reasoningText)}>
+                              <ChainOfThoughtHeader>
+                                {reasoningText ? (
+                                  "Kode reasoning"
+                                ) : (
+                                  <Shimmer>Kode is reasoning</Shimmer>
+                                )}
+                              </ChainOfThoughtHeader>
+                              {reasoningText ? (
+                                <ChainOfThoughtContent>
+                                  <div className="rounded-xl border border-brand/15 bg-brand/5 p-3 text-sm leading-relaxed text-foreground/72">
+                                    {reasoningText}
+                                  </div>
+                                </ChainOfThoughtContent>
+                              ) : null}
+                            </ChainOfThought>
+                          );
+                        })()}
 
                         {message.toolSteps?.map((step) => (
                           <ToolStepView
@@ -622,6 +709,7 @@ const PlanView = () => {
         <div className="w-full">
           <ChatInput
             loading={isCurrentSending}
+            onStop={stopCurrentRun}
             modelId={selectedModelId}
             onModelChange={setSelectedModelId}
             onSend={submitPrompt}
@@ -658,6 +746,12 @@ const PlanView = () => {
           ) : null}
 
           <div className="mt-2 flex items-center justify-end gap-2">
+            {isCompacting ? (
+              <span className="mr-auto flex items-center gap-1.5 text-[11px] text-foreground/45">
+                <Loader2 className="size-3 animate-spin" />
+                <Shimmer>Compacting context…</Shimmer>
+              </span>
+            ) : null}
             {compactedChats[currentKey] ? (
               <button
                 type="button"

@@ -1,6 +1,6 @@
 "use client";
 
-import { Play } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 import { useRef, useState } from "react";
 import { Reveal } from "@/components/anim/Reveal";
 
@@ -11,11 +11,16 @@ const DEMO_POSTER =
 
 export function DemoVideo() {
 	const videoRef = useRef<HTMLVideoElement>(null);
-	const [started, setStarted] = useState(false);
+	const [isPlaying, setIsPlaying] = useState(true);
 
-	const play = () => {
-		setStarted(true);
-		videoRef.current?.play();
+	const toggle = () => {
+		const video = videoRef.current;
+		if (!video) return;
+		if (video.paused) {
+			video.play();
+		} else {
+			video.pause();
+		}
 	};
 
 	return (
@@ -33,32 +38,34 @@ export function DemoVideo() {
 				</Reveal>
 
 				<Reveal y={32} delay={0.1} className="mt-14 lg:mt-16">
-					<div className="relative overflow-hidden rounded-[1.6rem] border border-border bg-secondary card-shadow">
+					<div className="relative overflow-hidden rounded-[1.6rem]">
 						<video
 							ref={videoRef}
 							src={DEMO_SRC}
 							poster={DEMO_POSTER}
-							controls={started}
-							preload="none"
+							autoPlay
+							muted
+							loop
 							playsInline
-							onPlay={() => setStarted(true)}
+							onPlay={() => setIsPlaying(true)}
+							onPause={() => setIsPlaying(false)}
 							className="aspect-video w-full object-cover"
 						>
 							<track kind="captions" />
 						</video>
 
-						{!started && (
-							<button
-								type="button"
-								onClick={play}
-								aria-label="Play the Kontinue AI demo"
-								className="group absolute inset-0 grid place-items-center bg-foreground/10 transition-colors hover:bg-foreground/5"
-							>
-								<span className="flex size-16 items-center justify-center rounded-full bg-background/95 shadow-lg ring-1 ring-foreground/5 transition-transform duration-300 group-hover:scale-110 sm:size-20">
-									<Play className="size-6 translate-x-0.5 fill-foreground text-foreground sm:size-7" />
-								</span>
-							</button>
-						)}
+						<button
+							type="button"
+							onClick={toggle}
+							aria-label={isPlaying ? "Pause the demo" : "Play the demo"}
+							className="absolute bottom-4 right-4 grid size-11 place-items-center rounded-full bg-background/70 text-foreground ring-1 ring-foreground/10 backdrop-blur-md transition hover:bg-background/90 sm:bottom-5 sm:right-5"
+						>
+							{isPlaying ? (
+								<Pause className="size-4 fill-foreground" />
+							) : (
+								<Play className="size-4 translate-x-0.5 fill-foreground" />
+							)}
+						</button>
 					</div>
 				</Reveal>
 			</div>

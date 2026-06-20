@@ -12,7 +12,7 @@ import { SidebarHeaderSection } from "./sidebar/SidebarHeaderSection";
 import { Sidebar as SidebarPrimitive, SidebarContent, useSidebar } from "@repo/ui/components/ui/sidebar";
 import { usePlanTier } from "../lib/use-plan-tier";
 
-export function Sidebar() {
+export function Sidebar({ kodeComingSoon = false }: { kodeComingSoon?: boolean }) {
   const pathname = usePathname();
   const sidebar = useSidebar();
   const { user } = useUser();
@@ -83,6 +83,8 @@ export function Sidebar() {
         onSearchQueryChange={setSearchQuery}
         onClearSearch={() => setSearchQuery("")}
         onNavigate={handleNavigate}
+        planTier={planTier}
+        kodeComingSoon={kodeComingSoon}
       />
 
       <SidebarContent className="px-2 py-3">

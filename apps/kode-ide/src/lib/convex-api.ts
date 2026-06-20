@@ -19,24 +19,16 @@ type GetOrCreateUserArgs = {
   plan?: string;
 };
 
+// The Kode IDE talks to its OWN Convex tables (kodeChats / kodeMessages) via the
+// `kode` module, so coding chats never leak into the web app's chat list/search
+// or its memory/embedding/title pipelines.
 export type KodeConvexChat = {
   _id: string;
   title: string;
-  projectId?: string;
   archived?: boolean;
   lastMessageAt?: number;
   pinnedAt?: number;
   createdAt: number;
-  updatedAt: number;
-};
-
-export type KodeConvexProject = {
-  _id: string;
-  name: string;
-  color?: string;
-  icon?: string;
-  archived: boolean;
-  chatCount: number;
   updatedAt: number;
 };
 
@@ -47,8 +39,30 @@ export type KodeConvexMessage = {
   content: string;
   order: number;
   createdAt: number;
-  metadata?: { model?: string };
+  metadata?: {
+    model?: string;
+    sources?: { title: string; url: string }[];
+    todos?: { title: string; description?: string; status: string }[];
+  };
 };
+
+type KodeMessageMetadataArgs = {
+  sources?: { title: string; url: string }[];
+  todos?: { title: string; description?: string; status: string }[];
+};
+
+// `used` / `limit` are in TOKENS (input+output summed across the agent turn).
+export type KodeUsageWindow = {
+  used: number;
+  limit: number;
+  resetAt: number;
+};
+
+export type KodeUsage = {
+  plan: "free" | "starter" | "pro";
+  daily: KodeUsageWindow;
+  weekly: KodeUsageWindow;
+} | null;
 
 type KodeConvexApi = {
   users: {
@@ -65,7 +79,7 @@ type KodeConvexApi = {
       string
     >;
   };
-  chats: {
+  kode: {
     getUserChats: FunctionReference<
       "query",
       "public",
@@ -75,55 +89,9 @@ type KodeConvexApi = {
     createChat: FunctionReference<
       "mutation",
       "public",
-      {
-        title: string;
-        provider: string;
-        sourceUrl?: string;
-        importMethod: "automatic" | "manual";
-        messages: { role: "system" | "user" | "assistant"; content: string }[];
-      },
+      { title: string },
       string
     >;
-    toggleChatPin: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; pinned: boolean },
-      { pinned: boolean }
-    >;
-    setChatArchived: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; archived: boolean },
-      { archived: boolean }
-    >;
-    deleteChat: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string },
-      unknown
-    >;
-  };
-  projects: {
-    listProjects: FunctionReference<
-      "query",
-      "public",
-      { includeArchived?: boolean },
-      KodeConvexProject[]
-    >;
-    createProject: FunctionReference<
-      "mutation",
-      "public",
-      { name: string; description?: string },
-      string
-    >;
-    assignChatToProject: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; projectId: string | null },
-      null
-    >;
-  };
-  messages: {
     getMessages: FunctionReference<
       "query",
       "public",
@@ -138,7 +106,8 @@ type KodeConvexApi = {
         role: "user" | "assistant";
         content: string;
         model?: string;
-      },
+        tokens?: number;
+      } & KodeMessageMetadataArgs,
       string
     >;
     deleteMessagesAfter: FunctionReference<
@@ -146,6 +115,36 @@ type KodeConvexApi = {
       "public",
       { messageId: string; inclusive?: boolean },
       null
+    >;
+    toggleChatPin: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string; pinned: boolean },
+      { pinned: boolean }
+    >;
+    setChatArchived: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string; archived: boolean },
+      { archived: boolean }
+    >;
+    updateChatTitle: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string; title: string },
+      null
+    >;
+    deleteChat: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string },
+      unknown
+    >;
+    getUsage: FunctionReference<
+      "query",
+      "public",
+      Record<string, never>,
+      KodeUsage
     >;
   };
 };

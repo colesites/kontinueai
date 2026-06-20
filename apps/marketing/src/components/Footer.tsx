@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ParticleWordmark } from "@/components/ParticleWordmark";
 import { APP_URL } from "@/lib/structured-data";
 
 const columns = [
@@ -80,14 +81,12 @@ export function Footer() {
 				</div>
 			</div>
 
-			{/* Oversized wordmark bleeding off the bottom edge */}
+			{/* Oversized particle wordmark bleeding off the bottom edge */}
 			<div
 				aria-hidden
 				className="pointer-events-none relative mt-6 select-none overflow-hidden"
 			>
-				<span className="block translate-y-[16%] text-center font-display font-extrabold leading-[0.82] tracking-[-0.05em] text-[21vw] text-brand/[0.08] [mask-image:linear-gradient(to_bottom,#000_45%,transparent_90%)] [-webkit-mask-image:linear-gradient(to_bottom,#000_45%,transparent_90%)]">
-					Kontinue
-				</span>
+				<ParticleWordmark />
 			</div>
 		</footer>
 	);

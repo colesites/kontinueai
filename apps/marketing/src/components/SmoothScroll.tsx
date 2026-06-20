@@ -11,6 +11,9 @@ import { setLenis } from "@/lib/scroll";
  */
 export function SmoothScroll({ children }: { children: React.ReactNode }) {
 	useEffect(() => {
+		// Never hijack scrolling inside the embedded Sanity Studio.
+		if (window.location.pathname.startsWith("/studio")) return;
+
 		const reduced = window.matchMedia(
 			"(prefers-reduced-motion: reduce)",
 		).matches;

@@ -30,6 +30,14 @@ export function estimateTokens(messages: { content?: string | null }[]): number 
   return Math.ceil(chars / 4);
 }
 
+/** Whether `history` is large enough to trigger compaction for the given window. */
+export function needsCompaction(
+  history: { content?: string | null }[],
+  window: number,
+): boolean {
+  return estimateTokens(history) >= window * THRESHOLD;
+}
+
 const SUMMARY_INSTRUCTION =
   "Summarize the conversation into compact but complete context for continuing the work. Preserve: decisions made, important facts, file paths and names, code and architecture choices, the user's preferences, and any unfinished tasks. Output only the summary.";
 
@@ -49,6 +57,51 @@ async function summarize(
     messages: [{ role: "user", content: `${SUMMARY_INSTRUCTION}\n\n${prefix}${convo}` }],
   });
   return response.content || priorSummary || "";
+}
+
+/**
+ * Summarize a (possibly huge) span of messages without ever sending more than the
+ * model's window in one call. This matters when the user grows a chat on a large
+ * window model, then switches BACK to a smaller-window model (e.g. Kode 1.0): the
+ * older history can exceed that window, so we fold it in window-sized chunks.
+ */
+async function summarizeChunked(
+  modelId: string,
+  priorSummary: string | null,
+  messages: HistoryMessage[],
+  window: number,
+): Promise<string> {
+  // Leave headroom for the instruction + running summary + the model's reply.
+  const budget = Math.max(2000, Math.floor(window * 0.5));
+  let summary = priorSummary;
+  let chunk: HistoryMessage[] = [];
+  let chunkTokens = 0;
+
+  const flush = async () => {
+    if (chunk.length === 0) return;
+    summary = await summarize(modelId, summary, chunk);
+    chunk = [];
+    chunkTokens = 0;
+  };
+
+  for (const message of messages) {
+    // A single message larger than the budget is truncated for the summary only
+    // (the original stays intact in the chat); otherwise it could never fit.
+    const tokens = estimateTokens([message]);
+    const safe =
+      tokens > budget
+        ? { role: message.role, content: message.content.slice(0, budget * 4) }
+        : message;
+
+    if (chunkTokens > 0 && chunkTokens + Math.min(tokens, budget) > budget) {
+      await flush();
+    }
+    chunk.push(safe);
+    chunkTokens += Math.min(tokens, budget);
+  }
+  await flush();
+
+  return summary ?? "";
 }
 
 export type CompactResult = {
@@ -87,9 +140,14 @@ export async function compactHistory(
     summary =
       delta.length === 0
         ? prior.summary
-        : await summarize(modelId, prior.summary, delta);
+        : await summarizeChunked(modelId, prior.summary, delta, window);
   } else {
-    summary = await summarize(modelId, null, history.slice(0, olderEnd));
+    summary = await summarizeChunked(
+      modelId,
+      null,
+      history.slice(0, olderEnd),
+      window,
+    );
   }
 
   cache.set({ summary, covered: olderEnd });

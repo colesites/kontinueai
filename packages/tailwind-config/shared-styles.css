@@ -497,6 +497,233 @@ html.dark[data-color-theme="normal"] {
   animation: pulse-soft 1.8s ease-in-out infinite;
 }
 
+/* ─── signature glow rail (animated theme-primary edge) ──────────────── */
+
+@property --glow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes glow-rail-spin {
+  to {
+    --glow-angle: 360deg;
+  }
+}
+
+/* The "live wire": a primary-colored comet that travels around a rounded
+   container's edge. Subtle at rest, intensifies + blooms on focus-within.
+   Apply to a position:relative, rounded element (e.g. the chat input dock).
+   Fully theme-aware via --primary, works in light + dark. */
+@utility glow-rail {
+  position: relative;
+  transition: box-shadow 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glow-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--glow-angle),
+    transparent 0deg,
+    transparent 30deg,
+    color-mix(in oklch, var(--primary) 78%, white 22%) 58deg,
+    var(--primary) 74deg,
+    color-mix(in oklch, var(--primary) 78%, white 22%) 90deg,
+    transparent 122deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.4;
+  animation: glow-rail-spin 7s linear infinite;
+  transition: opacity 350ms ease;
+  pointer-events: none;
+}
+.glow-rail:focus-within::before {
+  opacity: 1;
+  animation-duration: 4.5s;
+}
+.glow-rail:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--primary) 32%, transparent),
+    0 12px 48px -14px color-mix(in oklch, var(--primary) 45%, transparent);
+}
+
+/* Focus-only live wire — comet hidden + paused at rest, ignites on
+   focus-within. For inputs, search fields, and trigger pills where an
+   always-on glow would be too much. */
+@utility glow-rail-focus {
+  position: relative;
+  transition: box-shadow 350ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.glow-rail-focus::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--glow-angle),
+    transparent 0deg,
+    transparent 30deg,
+    color-mix(in oklch, var(--primary) 78%, white 22%) 58deg,
+    var(--primary) 74deg,
+    color-mix(in oklch, var(--primary) 78%, white 22%) 90deg,
+    transparent 122deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  animation: glow-rail-spin 4.5s linear infinite;
+  animation-play-state: paused;
+  transition: opacity 300ms ease;
+  pointer-events: none;
+}
+.glow-rail-focus:focus-within::before {
+  opacity: 1;
+  animation-play-state: running;
+}
+.glow-rail-focus:focus-within {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--primary) 30%, transparent),
+    0 10px 40px -14px color-mix(in oklch, var(--primary) 40%, transparent);
+}
+
+/* Filled accent button with a soft primary bloom — the glowing "video"
+   button look. Pair with bg-primary text-primary-foreground. */
+@utility glow-button {
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in oklch, var(--primary) 88%, white 12%),
+    var(--primary)
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklch, white 30%, transparent),
+    0 2px 6px -2px color-mix(in oklch, var(--primary) 50%, transparent),
+    0 8px 24px -6px color-mix(in oklch, var(--primary) 55%, transparent);
+}
+
+/* Staggered typing / thinking dots. Referenced by className across chat +
+   import status indicators. */
+@keyframes typing-bounce {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  40% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+.typing-dot {
+  animation: typing-bounce 1.2s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.typing-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+/* App-shell frame — a single slow primary comet travelling the whole window
+   border. Render as an absolute inset-0 child of the shell (rounded to match).
+   Reuses --glow-angle + glow-rail-spin. */
+.app-frame-glow {
+  padding: 1.5px;
+  background: conic-gradient(
+    from var(--glow-angle),
+    transparent 0deg,
+    transparent 56deg,
+    color-mix(in oklch, var(--primary) 72%, white 28%) 84deg,
+    var(--primary) 90deg,
+    color-mix(in oklch, var(--primary) 72%, white 28%) 96deg,
+    transparent 124deg,
+    transparent 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.5;
+  animation: glow-rail-spin 9s linear infinite;
+}
+
+/* Send press feedback — a soft primary glow blooms first, then a ripple
+   expands from the press point. The ripple is clipped to the round button by
+   an overflow-hidden layer; the glow box-shadow blooms outside it. */
+@keyframes send-glow {
+  0% {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  22% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.06);
+  }
+}
+@keyframes send-ripple {
+  0% {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0;
+  }
+}
+.send-glow {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    0 0 0 2px color-mix(in oklch, var(--primary) 55%, transparent),
+    0 0 30px 7px color-mix(in oklch, var(--primary) 62%, transparent);
+  animation: send-glow 600ms ease-out forwards;
+  pointer-events: none;
+}
+.send-ripple {
+  position: absolute;
+  border-radius: 9999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklch, white 72%, transparent) 0%,
+    color-mix(in oklch, var(--primary) 55%, transparent) 52%,
+    transparent 76%
+  );
+  animation: send-ripple 620ms cubic-bezier(0.22, 1, 0.3, 1) forwards;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glow-rail::before,
+  .glow-rail-focus::before,
+  .app-frame-glow,
+  .typing-dot {
+    animation: none;
+  }
+  .send-glow,
+  .send-ripple {
+    display: none;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

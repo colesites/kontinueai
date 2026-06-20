@@ -22,6 +22,7 @@
       }
     },
     "preview": {
+      "environment": "preview",
       "distribution": "internal",
       "android": {
         "buildType": "apk"
@@ -35,10 +36,12 @@
         "EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID": "309168072626-job6db4ids0fj0q8brklbql51tssp71r.apps.googleusercontent.com",
         "EXPO_PUBLIC_CONVEX_URL": "https://tacit-stingray-331.convex.cloud",
         "EXPO_PUBLIC_API_URL": "https://chat.kontinueai.com",
-        "EXPO_PUBLIC_SENTRY_DSN": ""
+        "EXPO_PUBLIC_APP_ENV": "preview",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "production": {
+      "environment": "production",
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
@@ -49,7 +52,8 @@
         "EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID": "309168072626-job6db4ids0fj0q8brklbql51tssp71r.apps.googleusercontent.com",
         "EXPO_PUBLIC_CONVEX_URL": "https://tacit-stingray-331.convex.cloud",
         "EXPO_PUBLIC_API_URL": "https://chat.kontinueai.com",
-        "EXPO_PUBLIC_SENTRY_DSN": ""
+        "EXPO_PUBLIC_APP_ENV": "production",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },

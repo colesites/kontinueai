@@ -78,6 +78,7 @@ type KodeWorkspaceContextValue = {
     role: "user" | "assistant";
     content: string;
     model?: string;
+    tokens?: number;
     sources?: { title: string; url: string }[];
     todos?: { title: string; description?: string; status: string }[];
   }) => Promise<void>;
@@ -102,14 +103,14 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     loadJSON<Record<string, string>>(CHAT_FOLDER_KEY, {}),
   );
 
-  const convexChats = useQuery(api.chats.getUserChats, {});
+  const convexChats = useQuery(api.kode.getUserChats, {});
 
-  const createChat = useMutation(api.chats.createChat);
-  const addMessage = useMutation(api.messages.addMessage);
-  const toggleChatPin = useMutation(api.chats.toggleChatPin);
-  const setChatArchived = useMutation(api.chats.setChatArchived);
-  const deleteChatMutation = useMutation(api.chats.deleteChat);
-  const deleteMessagesAfter = useMutation(api.messages.deleteMessagesAfter);
+  const createChat = useMutation(api.kode.createChat);
+  const addMessage = useMutation(api.kode.addMessage);
+  const toggleChatPin = useMutation(api.kode.toggleChatPin);
+  const setChatArchived = useMutation(api.kode.setChatArchived);
+  const deleteChatMutation = useMutation(api.kode.deleteChat);
+  const deleteMessagesAfter = useMutation(api.kode.deleteMessagesAfter);
 
   useEffect(() => {
     window.localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
@@ -204,9 +205,6 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     }) => {
       const chatId = await createChat({
         title: toChatTitle(title),
-        provider: "kode",
-        importMethod: "manual",
-        messages: [],
       });
 
       // Group under a local folder client-side (folders never touch Convex).
@@ -227,6 +225,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       role: "user" | "assistant";
       content: string;
       model?: string;
+      tokens?: number;
       sources?: { title: string; url: string }[];
       todos?: { title: string; description?: string; status: string }[];
     }) => {

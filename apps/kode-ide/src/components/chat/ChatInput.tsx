@@ -7,7 +7,7 @@ import {
   Mic,
   ChevronDown,
   Check,
-  Loader2,
+  Square,
 } from "lucide-react";
 import { KODE_DEFAULT_MODEL_ID, KODE_MODELS } from "@repo/ai/lib/kode";
 import type { KodePlanTier } from "@repo/ai/lib/kode";
@@ -75,6 +75,8 @@ type ChatInputProps = {
   // `loading` reflects only THIS chat's in-flight send. The textarea stays
   // editable so the user can keep working (and switch to other chats).
   loading?: boolean;
+  // Abort the in-flight run for this chat (turns the send button into Stop).
+  onStop?: () => void;
   modelId?: string;
   onModelChange?: (modelId: string) => void;
   onSend?: (
@@ -95,6 +97,7 @@ type ChatInputProps = {
 
 export function ChatInput({
   loading = false,
+  onStop,
   modelId: controlledModelId,
   onModelChange,
   placeholder = "Describe what you want to build…",
@@ -386,16 +389,19 @@ export function ChatInput({
           </ToolButton>
           <button
             type="button"
-            onClick={submit}
-            disabled={!canSend}
-            aria-label={loading ? "Sending" : "Send"}
-            aria-busy={loading}
+            onClick={loading ? onStop : submit}
+            disabled={loading ? !onStop : !canSend}
+            aria-label={loading ? "Stop" : "Send"}
             className="surface-raised flex size-8 items-center justify-center rounded-lg text-foreground transition-all duration-150
               disabled:cursor-not-allowed disabled:opacity-30
               enabled:hover:bg-white/[0.07] enabled:active:scale-95"
           >
             {loading ? (
-              <Loader2 size={16} strokeWidth={2.5} className="animate-spin" />
+              <Square
+                size={13}
+                strokeWidth={2.5}
+                className="fill-current text-brand"
+              />
             ) : (
               <ArrowUp size={16} strokeWidth={2.5} />
             )}

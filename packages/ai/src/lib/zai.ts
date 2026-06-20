@@ -2,6 +2,12 @@ import type { ModelOption } from "./models";
 
 export const ZAI_MODELS: ModelOption[] = [
   {
+    id: "zai/glm-5.2",
+    name: "GLM 5.2",
+    provider: "zai",
+    description: "Agentic coding and reasoning",
+  },
+  {
     id: "zai/glm-5.1",
     name: "GLM 5.1",
     provider: "zai",

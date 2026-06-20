@@ -1,8 +1,9 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Suspense } from "react";
 import { Toaster } from "sonner";
-import { Providers } from "./providers";
 import { ThemeProvider } from "../components/theme-provider";
+import { Providers } from "./providers";
 import "./globals.css";
 import LoadingFallback from "../components/LoadingFallback";
 
@@ -12,52 +13,51 @@ const siteDescription = "Continue your AI conversations from any platform";
 const ogImage = "/og.png";
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
-  title: siteTitle,
-  description: siteDescription,
-  icons: {
-    icon: "/favicon.ico",
-  },
-  openGraph: {
-    type: "website",
-    url: siteUrl,
-    siteName: siteTitle,
-    title: siteTitle,
-    description: siteDescription,
-    images: [
-      {
-        url: ogImage,
-        width: 1200,
-        height: 630,
-        alt: siteTitle,
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: siteTitle,
-    description: siteDescription,
-    images: [ogImage],
-  },
+	metadataBase: new URL(siteUrl),
+	title: siteTitle,
+	description: siteDescription,
+	icons: {
+		icon: "/favicon.ico",
+	},
+	openGraph: {
+		type: "website",
+		url: siteUrl,
+		siteName: siteTitle,
+		title: siteTitle,
+		description: siteDescription,
+		images: [
+			{
+				url: ogImage,
+				width: 1200,
+				height: 630,
+				alt: siteTitle,
+			},
+		],
+	},
+	twitter: {
+		card: "summary_large_image",
+		title: siteTitle,
+		description: siteDescription,
+		images: [ogImage],
+	},
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0a0c",
-  width: "device-width",
-  initialScale: 1,
+	themeColor: "#0a0a0c",
+	width: "device-width",
+	initialScale: 1,
 };
 
 export default function RootLayout({
-  children,
+	children,
 }: Readonly<{
-  children: React.ReactNode;
+	children: React.ReactNode;
 }>) {
-  return (
-    <html lang="en" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
+	return (
+		<html lang="en" suppressHydrationWarning>
+			<head>
+				<Script id="initialize-color-theme" strategy="beforeInteractive">
+					{`
               (function() {
                 try {
                   var rawTheme = localStorage.getItem('ui-theme');
@@ -70,23 +70,22 @@ export default function RootLayout({
                   }
                 } catch (e) {}
               })();
-            `,
-          }}
-        />
-      </head>
-      <body className="antialiased bg-background text-foreground">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <Suspense fallback={<LoadingFallback />}>
-            <Providers>{children}</Providers>
-          </Suspense>
-          <Toaster richColors theme="system" />
-        </ThemeProvider>
-      </body>
-    </html>
-  );
+					`}
+				</Script>
+			</head>
+			<body className="antialiased bg-background text-foreground">
+				<ThemeProvider
+					attribute="class"
+					defaultTheme="system"
+					enableSystem
+					disableTransitionOnChange
+				>
+					<Suspense fallback={<LoadingFallback />}>
+						<Providers>{children}</Providers>
+					</Suspense>
+					<Toaster richColors theme="system" />
+				</ThemeProvider>
+			</body>
+		</html>
+	);
 }

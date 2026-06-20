@@ -1,3 +1,7 @@
+"use client";
+
+import { usePathname } from "next/navigation";
+
 // Progressive frosted-glass blur fixed to the bottom of the viewport.
 // Each layer blurs more and is revealed lower, so content dissolves into
 // glass as it nears the bottom edge. Decorative and click-through.
@@ -9,6 +13,10 @@ const layers = [
 ];
 
 export function BottomBlur() {
+	const pathname = usePathname();
+	// Don't overlay the embedded Sanity Studio.
+	if (pathname?.startsWith("/studio")) return null;
+
 	return (
 		<div
 			aria-hidden

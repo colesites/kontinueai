@@ -1,130 +1,130 @@
 "use client";
 
-import { Sparkles, Loader2 } from "lucide-react";
-import { CreationCard, type CreationData } from "./CreationCard";
-import { cn } from "@repo/ui/lib/utils";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
+import { cn } from "@repo/ui/lib/utils";
+import { Loader2, Sparkles } from "lucide-react";
+import { CreationCard, type CreationData } from "./CreationCard";
 
 interface CanvasGalleryProps {
-  items?: CreationData[];
-  tab: "community" | "mine";
-  myLikes: Set<Id<"canvasCreations">>;
-  publishingIds: Set<Id<"canvasCreations">>;
-  onToggleLike: (id: Id<"canvasCreations">) => void;
-  onExpand: (creation: CreationData) => void;
-  onPublish: (id: Id<"canvasCreations">) => void;
-  paginationStatus:
-    | "CanLoadMore"
-    | "LoadingMore"
-    | "Exhausted"
-    | "LoadingFirstPage";
-  onLoadMore: () => void;
+	items?: CreationData[];
+	tab: "community" | "mine";
+	myLikes: Set<Id<"canvasCreations">>;
+	publishingIds: Set<Id<"canvasCreations">>;
+	onToggleLike: (id: Id<"canvasCreations">) => void;
+	onExpand: (creation: CreationData) => void;
+	onPublish: (id: Id<"canvasCreations">) => void;
+	paginationStatus:
+		| "CanLoadMore"
+		| "LoadingMore"
+		| "Exhausted"
+		| "LoadingFirstPage";
+	onLoadMore: () => void;
 }
 
 export function CanvasGallery({
-  items,
-  tab,
-  myLikes,
-  publishingIds,
-  onToggleLike,
-  onExpand,
-  onPublish,
-  paginationStatus,
-  onLoadMore,
+	items,
+	tab,
+	myLikes,
+	publishingIds,
+	onToggleLike,
+	onExpand,
+	onPublish,
+	paginationStatus,
+	onLoadMore,
 }: CanvasGalleryProps) {
-  if (!items || paginationStatus === "LoadingFirstPage") {
-    return (
-      <div className="flex h-[400px] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-      </div>
-    );
-  }
+	if (!items || paginationStatus === "LoadingFirstPage") {
+		return (
+			<div className="flex h-[400px] items-center justify-center">
+				<div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+			</div>
+		);
+	}
 
-  if (items.length === 0) {
-    return (
-      <div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
-        <div className="relative mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
-          <div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-primary/20 blur-2xl" />
-          <Sparkles className="h-6 w-6 text-primary" />
-        </div>
-        <h3 className="text-lg font-semibold tracking-tight text-foreground">
-          {tab === "mine" ? "Your canvas is a blank page" : "Nothing here yet"}
-        </h3>
-        <p className="mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-muted-foreground/80">
-          {tab === "mine"
-            ? "Describe an image or video below and your creations will appear here."
-            : "Be the first to publish — community creations will show up here soon."}
-        </p>
-      </div>
-    );
-  }
+	if (items.length === 0) {
+		return (
+			<div className="flex min-h-[420px] flex-col items-center justify-center px-6 text-center">
+				<div className="relative mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
+					<div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-primary/20 blur-2xl" />
+					<Sparkles className="h-6 w-6 text-primary" />
+				</div>
+				<h3 className="text-lg font-semibold tracking-tight text-foreground">
+					{tab === "mine" ? "Your canvas is a blank page" : "Nothing here yet"}
+				</h3>
+				<p className="mt-1.5 max-w-sm text-[13.5px] leading-relaxed text-muted-foreground/80">
+					{tab === "mine"
+						? "Describe an image or video below and your creations will appear here."
+						: "Be the first to publish — community creations will show up here soon."}
+				</p>
+			</div>
+		);
+	}
 
-  return (
-    <div className="w-full h-full">
-      <div className="columns-1 md:columns-2 lg:columns-3 gap-1 px-3 pb-4 space-y-1">
-        {items.map((creation) => (
-          <div
-            key={creation._id}
-            className="relative group overflow-hidden break-inside-avoid mb-1"
-          >
-            <CreationCard
-              creation={creation}
-              isLiked={myLikes.has(creation._id)}
-              onToggleLike={onToggleLike}
-              onExpand={onExpand}
-            />
+	return (
+		<div className="w-full h-full">
+			<div className="columns-1 sm:columns-2 lg:columns-3 gap-4 px-3 pb-4 sm:px-4">
+				{items.map((creation) => (
+					<div
+						key={creation._id}
+						className="relative group break-inside-avoid mb-4"
+					>
+						<CreationCard
+							creation={creation}
+							isLiked={myLikes.has(creation._id)}
+							onToggleLike={onToggleLike}
+							onExpand={onExpand}
+						/>
 
-            {/* Admin controls for 'mine' tab */}
-            {tab === "mine" && (
-              <div className="absolute top-4 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  type="button"
-                  disabled={publishingIds?.has(creation._id)}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPublish(creation._id);
-                  }}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-xl border backdrop-blur-md transition-all disabled:opacity-50 disabled:cursor-not-allowed",
-                    creation.isPublished
-                      ? "bg-green-500/20 text-green-400 border-green-500/30"
-                      : "bg-background/20 text-foreground border-foreground/20"
-                  )}
-                >
-                  {publishingIds?.has(creation._id) ? (
-                    <>
-                      <div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-                      Processing...
-                    </>
-                  ) : creation.isPublished ? (
-                    "Published"
-                  ) : (
-                    "Publish"
-                  )}
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
+						{/* Admin controls for 'mine' tab */}
+						{tab === "mine" && (
+							<div className="absolute top-4 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+								<button
+									type="button"
+									disabled={publishingIds?.has(creation._id)}
+									onClick={(e) => {
+										e.stopPropagation();
+										onPublish(creation._id);
+									}}
+									className={cn(
+										"flex items-center gap-2 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-xl border backdrop-blur-md transition-all disabled:opacity-50 disabled:cursor-not-allowed",
+										creation.isPublished
+											? "bg-green-500/20 text-green-400 border-green-500/30"
+											: "bg-background/20 text-foreground border-foreground/20",
+									)}
+								>
+									{publishingIds?.has(creation._id) ? (
+										<>
+											<div className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+											Processing...
+										</>
+									) : creation.isPublished ? (
+										"Published"
+									) : (
+										"Publish"
+									)}
+								</button>
+							</div>
+						)}
+					</div>
+				))}
+			</div>
 
-      {/* Load More */}
-      {paginationStatus === "CanLoadMore" && (
-        <div className="flex justify-center py-8">
-          <button
-            type="button"
-            onClick={onLoadMore}
-            className="inline-flex items-center gap-2 rounded-full bg-secondary/40 px-6 py-2.5 text-sm font-bold uppercase tracking-wider text-foreground/60 transition-all hover:bg-secondary hover:text-foreground hover:scale-105 active:scale-95"
-          >
-            Load More
-          </button>
-        </div>
-      )}
-      {paginationStatus === "LoadingMore" && (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      )}
-    </div>
-  );
+			{/* Load More */}
+			{paginationStatus === "CanLoadMore" && (
+				<div className="flex justify-center py-8">
+					<button
+						type="button"
+						onClick={onLoadMore}
+						className="glass inline-flex items-center gap-2 rounded-full bg-background/40 px-6 py-2.5 text-[13px] font-semibold text-foreground/70 backdrop-blur-xl transition-all duration-200 hover:bg-foreground/8 hover:text-foreground hover:scale-[1.03] active:scale-95"
+					>
+						Load more
+					</button>
+				</div>
+			)}
+			{paginationStatus === "LoadingMore" && (
+				<div className="flex justify-center py-8">
+					<Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+				</div>
+			)}
+		</div>
+	);
 }

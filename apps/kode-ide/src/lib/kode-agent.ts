@@ -67,14 +67,46 @@ export type RunKodeAgentParams = {
   /** Called when the model updates its plan/todo list. */
   onTodos?: (todos: KodeTodo[]) => void;
   maxIterations?: number;
+  /** Abort the run between/within steps (the Stop button). */
+  signal?: AbortSignal;
 };
 
 export type RunKodeAgentResult = {
   content: string;
+  /** The LAST model call's usage — represents the current context size (for the
+   *  context meter). NOT the whole turn's cost. */
   usage?: LanguageModelUsage;
+  /** SUM of tokens across every model call this turn (all agent iterations) — the
+   *  real cost of the turn, used to meter token-based usage/billing. */
+  tokensConsumed: number;
   /** Official-docs sources that grounded this answer (for the Sources element). */
   sources: DocSourceRef[];
+  /** True when the user stopped the run via the Stop button. */
+  stopped?: boolean;
 };
+
+/** Reject as soon as `signal` aborts, so an in-flight model call can be cut off
+ *  immediately rather than waiting for it to finish. */
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("Aborted", "AbortError"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
 
 function parseArgs(raw: string): ToolArgs {
   if (!raw || !raw.trim()) return {};
@@ -130,7 +162,11 @@ export async function runKodeAgent(
     requestApproval,
     requestOptions,
     onTodos,
-    maxIterations = 12,
+    // Each file read/write/edit/run/ask is one step, so a real "build X" task
+    // burns several quickly. Token budgets now bound runaway cost, so this can be
+    // generous without risking an infinite loop.
+    maxIterations = 25,
+    signal,
   } = params;
 
   const messages: KodeChatMessage[] = [
@@ -183,32 +219,65 @@ export async function runKodeAgent(
   const systemContext = `${buildKodeSkillsContext(userText, repoProfile)}${docsContext}`;
 
   let finalContent = "";
+  // `usage` = the latest call (context-size signal for the meter).
+  // `tokensConsumed` = running sum across all calls (turn cost for billing).
   let usage: LanguageModelUsage | undefined;
+  let tokensConsumed = 0;
+
+  let stopped = false;
 
   for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+    if (signal?.aborted) {
+      stopped = true;
+      break;
+    }
+
     // Filter the streamed content so models that emit tool calls as raw text
     // (e.g. free Gemma's `<|tool_call>call:...`) don't leak control tokens into
-    // the visible message. See kode-sanitize.ts.
-    const contentFilter = createContentFilter(onText);
-    const response = await sendKodeChat({
-      modelId,
-      messages,
-      tools,
-      systemContext,
-      // Only force on the very first turn; later turns use "auto" so the model
-      // can stop calling tools and write its final answer.
-      toolChoice: iteration === 0 && forceFirstTool ? "required" : "auto",
-      onEvent: (event) => {
-        if (event.type === "reasoning") onReasoning(event.delta);
-        else contentFilter.push(event.delta);
-      },
+    // the visible message. See kode-sanitize.ts. We also accumulate the streamed
+    // text so that if the user Stops mid-response, the turn just ends with what
+    // was generated (like any chatbot's stop) instead of discarding it.
+    let streamedThisCall = "";
+    const contentFilter = createContentFilter((delta) => {
+      streamedThisCall += delta;
+      onText(delta);
     });
+    let response: Awaited<ReturnType<typeof sendKodeChat>>;
+    try {
+      response = await abortable(
+        sendKodeChat({
+          modelId,
+          messages,
+          tools,
+          systemContext,
+          // Only force on the very first turn; later turns use "auto" so the model
+          // can stop calling tools and write its final answer.
+          toolChoice: iteration === 0 && forceFirstTool ? "required" : "auto",
+          onEvent: (event) => {
+            if (signal?.aborted) return;
+            if (event.type === "reasoning") onReasoning(event.delta);
+            else contentFilter.push(event.delta);
+          },
+        }),
+        signal,
+      );
+    } catch (error) {
+      if (signal?.aborted || (error as Error)?.name === "AbortError") {
+        contentFilter.flush();
+        const partial = streamedThisCall.trim();
+        if (partial) finalContent = partial;
+        stopped = true;
+        break;
+      }
+      throw error;
+    }
     contentFilter.flush();
     usage = response.usage ?? usage;
+    tokensConsumed += response.usage?.totalTokens ?? 0;
     finalContent = stripKodeArtifacts(response.content);
 
     if (response.toolCalls.length === 0) {
-      return { content: finalContent, usage, sources };
+      return { content: finalContent, usage, tokensConsumed, sources };
     }
 
     // Record the assistant turn that requested the tools (required so the model
@@ -234,13 +303,29 @@ export async function runKodeAgent(
         content: result,
       });
     }
+
+    if (signal?.aborted) {
+      stopped = true;
+      break;
+    }
+  }
+
+  if (stopped) {
+    // Ended by the user — keep whatever was generated; only fall back to a marker
+    // if nothing had streamed yet.
+    return {
+      content: finalContent || "_Stopped._",
+      usage,
+      tokensConsumed,
+      sources,
+      stopped: true,
+    };
   }
 
   return {
-    content:
-      finalContent ||
-      "Reached the maximum number of steps. Stopping to avoid a loop.",
+    content: finalContent || "Reached the maximum number of steps for this response.",
     usage,
+    tokensConsumed,
     sources,
   };
 }

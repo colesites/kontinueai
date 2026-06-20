@@ -1,9 +1,9 @@
 @import "tailwindcss";
 @import "nativewind/theme";
 
-/* Scan the app + components for class names (Tailwind v4 content sources). */
+/* Scan the app + components for class names (Tailwind v4 content sources).
+   global.css lives in src/, so this glob already covers src/components. */
 @source "./**/*.{ts,tsx}";
-@source "../components/**/*.{ts,tsx}";
 
 @custom-variant dark (&:is(.dark *));
 

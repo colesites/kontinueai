@@ -1,10 +1,10 @@
-import { CanvasClient } from "../../../features/canvas/components/CanvasClient";
 import type { Metadata } from "next";
+import { CanvasClient } from "../../../features/canvas/components/CanvasClient";
 
 export const metadata: Metadata = {
-  title: "Kontinue AI - Canvas",
+	title: "Kontinue AI - Canvas",
 };
 
 export default function CanvasPage() {
-  return <CanvasClient />;
+	return <CanvasClient />;
 }

@@ -1,1 +1,21 @@
 @import "@repo/ui/styles/globals";
+
+@layer utilities {
+	.kode-web-scroll::-webkit-scrollbar {
+		width: 6px;
+		height: 6px;
+	}
+
+	.kode-web-scroll::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	.kode-web-scroll::-webkit-scrollbar-thumb {
+		border-radius: 999px;
+		background: oklch(0.63 0.239 349 / 0.32);
+	}
+
+	.kode-web-scroll::-webkit-scrollbar-thumb:hover {
+		background: oklch(0.63 0.239 349 / 0.58);
+	}
+}

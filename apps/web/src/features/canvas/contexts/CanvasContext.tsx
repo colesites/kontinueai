@@ -1,28 +1,28 @@
 "use client";
 
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext, useState } from "react";
 
 interface CanvasContextValue {
-  tab: "community" | "mine";
-  setTab: (tab: "community" | "mine") => void;
+	tab: "community" | "mine";
+	setTab: (tab: "community" | "mine") => void;
 }
 
 const CanvasContext = createContext<CanvasContextValue | undefined>(undefined);
 
 export function CanvasProvider({ children }: { children: ReactNode }) {
-  const [tab, setTab] = useState<"community" | "mine">("community");
+	const [tab, setTab] = useState<"community" | "mine">("community");
 
-  return (
-    <CanvasContext.Provider value={{ tab, setTab }}>
-      {children}
-    </CanvasContext.Provider>
-  );
+	return (
+		<CanvasContext.Provider value={{ tab, setTab }}>
+			{children}
+		</CanvasContext.Provider>
+	);
 }
 
 export function useCanvasContext() {
-  const context = useContext(CanvasContext);
-  if (context === undefined) {
-    throw new Error("useCanvasContext must be used within a CanvasProvider");
-  }
-  return context;
+	const context = useContext(CanvasContext);
+	if (context === undefined) {
+		throw new Error("useCanvasContext must be used within a CanvasProvider");
+	}
+	return context;
 }

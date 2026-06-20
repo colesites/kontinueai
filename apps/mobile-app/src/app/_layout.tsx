@@ -22,13 +22,15 @@ import { ThemeOnboarding } from "@/components/theme-onboarding";
 import { ConvexClientProvider } from "@/lib/convex";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+const sentryDsn = process.env.EXPO_PUBLIC_SENTRY_DSN;
 
 // Crash + error reporting. No-ops when no DSN is set or in local dev, so it
 // stays quiet in Expo Go and only reports from real (preview/production)
 // builds where EXPO_PUBLIC_SENTRY_DSN is provided.
 Sentry.init({
-  dsn: process.env.EXPO_PUBLIC_SENTRY_DSN,
-  enabled: !__DEV__ && !!process.env.EXPO_PUBLIC_SENTRY_DSN,
+  dsn: sentryDsn,
+  enabled: !__DEV__ && !!sentryDsn,
+  environment: process.env.EXPO_PUBLIC_APP_ENV ?? (__DEV__ ? "development" : "production"),
   tracesSampleRate: 0.1,
 });
 

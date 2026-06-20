@@ -8,9 +8,12 @@ export const KODE_MODEL_ID = "kontinue/kode-1.0";
 export const KODE_DISPLAY_NAME = "Kode 1.0";
 export const KODE_PROVIDER = "kontinue";
 
-// Kode 1.0 runs on Gemma 4 (same open base as K-AI). The identity lock in the
-// chat prompt ensures it never surfaces as "Gemma by Google" — users see "Kode 1.0".
-export const KODE_PRIMARY_MODEL = "google/gemma-4-31b-it:free";
+// Kode 1.0 (the Kode IDE coding model) runs on Nex N2 Pro (free, tool-capable,
+// 262K ctx) via OpenRouter — see the IDE's Rust route in
+// apps/kode-ide/src-tauri/src/lib.rs (KODE_OPENROUTER_MODEL_ID). The identity lock
+// keeps it presenting as "Kode 1.0 by Kontinue AI". The IDE is the real home of
+// Kode 1.0; the web /api/chat path is not offered in the web model picker.
+export const KODE_PRIMARY_MODEL = "nex-agi/nex-n2-pro:free";
 export const KODE_FALLBACK_MODELS: string[] = [];
 export const KODE_MODEL_CHAIN = [
   KODE_PRIMARY_MODEL,
