@@ -31,44 +31,47 @@ export function HowToModal() {
 			<button
 				type="button"
 				aria-label="Close import instructions"
-				className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+				className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
 				onClick={handleClose}
 			/>
 
 			{/* Modal */}
-			<div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl overflow-hidden">
-				{/* Header gradient */}
-				<div className="h-1 bg-linear-to-r from-primary via-accent to-secondary" />
+			<div className="glass-strong animate-fade-in-up relative w-full max-w-lg overflow-hidden rounded-2xl">
+				{/* Accent bar */}
+				<div className="h-px bg-linear-to-r from-transparent via-primary/50 to-transparent" />
 
-				<div className="p-6">
+				<div className="p-7">
 					{/* Close button */}
 					<button
 						type="button"
 						onClick={handleClose}
-						className="absolute top-4 right-4 p-1.5 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+						aria-label="Close"
+						className="absolute right-4 top-4 flex size-8 items-center justify-center rounded-full bg-foreground/5 text-muted-foreground ring-1 ring-foreground/8 transition-all duration-200 hover:scale-105 hover:bg-foreground/10 hover:text-foreground"
 					>
-						<X size={18} />
+						<X size={16} />
 					</button>
 
 					{/* Title */}
-					<div className="text-center mb-6">
-						<div className="w-14 h-14 mx-auto mb-4 rounded-xl bg-linear-to-br from-primary to-accent flex items-center justify-center">
-							<Sparkles className="text-primary-foreground" size={28} />
+					<div className="mb-7 text-center">
+						<div className="relative mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/20 shadow-[0_8px_24px_-8px_color-mix(in_oklch,var(--primary)_60%,transparent)]">
+							<div className="pointer-events-none absolute inset-0 -z-10 rounded-2xl bg-primary/25 blur-xl" />
+							<Sparkles size={26} />
 						</div>
-						<h2 className="text-2xl font-bold text-foreground">
+						<p className="eyebrow">Welcome</p>
+						<h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground">
 							Welcome to Kontinue AI
 						</h2>
-						<p className="text-muted-foreground mt-2">
-							Pick up where you left off with any AI conversation
+						<p className="mt-2 text-sm text-muted-foreground">
+							Pick up where you left off with any AI conversation.
 						</p>
 					</div>
 
 					{/* Steps */}
-					<div className="space-y-4 mb-6">
+					<div className="mb-6 space-y-4">
 						<HowToStep
 							icon={<Sparkles size={18} />}
 							title="Continue with any model"
-							description="Pick GPT / Claude / Gemini (via AI Gateway) and keep going."
+							description="Pick GPT, Claude, or Gemini (via AI Gateway) and keep going."
 						/>
 
 						<HowToStep
@@ -79,16 +82,16 @@ export function HowToModal() {
 					</div>
 
 					{/* Tip */}
-					<div className="flex items-start gap-3 p-3 rounded-lg bg-primary/10 border border-primary/30 mb-6">
-						<Info size={18} className="text-primary shrink-0 mt-0.5" />
+					<div className="surface-inset mb-6 flex items-start gap-3 rounded-xl p-3.5">
+						<span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary ring-1 ring-primary/20">
+							<Info size={15} />
+						</span>
 						<div className="text-sm">
-							<p className="text-foreground font-medium">Pro tip</p>
-							<div className="mt-1 space-y-1 text-muted-foreground">
-								<p>
-									You can import shared links from multiple providers. Just
-									paste the URL and we handle the rest!
-								</p>
-							</div>
+							<p className="font-medium text-foreground">Pro tip</p>
+							<p className="mt-1 leading-relaxed text-muted-foreground">
+								You can import shared links from multiple providers. Just paste
+								the URL and we handle the rest.
+							</p>
 						</div>
 					</div>
 
@@ -96,9 +99,9 @@ export function HowToModal() {
 					<button
 						type="button"
 						onClick={handleClose}
-						className="w-full py-3 px-4 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-semibold transition-colors"
+						className="glow-button w-full rounded-xl px-4 py-3 text-sm font-semibold text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"
 					>
-						Get Started
+						Get started
 					</button>
 				</div>
 			</div>

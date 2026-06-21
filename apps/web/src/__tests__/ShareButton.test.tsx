@@ -13,8 +13,8 @@ describe("ShareButton - Unit Tests", () => {
 		expect(button).toBeDefined();
 
 		// Check that the button has the correct styling classes
-		expect(button.className).toContain("hover:bg-secondary/80");
-		expect(button.className).toContain("rounded-lg");
+		expect(button.className).toContain("hover:bg-foreground/8");
+		expect(button.className).toContain("rounded-full");
 		expect(button.className).toContain("focus-visible:ring-2");
 	});
 

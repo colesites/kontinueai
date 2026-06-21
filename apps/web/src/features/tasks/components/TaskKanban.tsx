@@ -52,8 +52,9 @@ export function TaskKanban({ tasks }: { tasks: Task[] }) {
 							setOverColumn(null);
 						}}
 						className={cn(
-							"flex flex-col rounded-2xl border border-border/60 bg-foreground/[0.015] p-2 transition-colors",
-							overColumn === col.status && "border-primary/50 bg-primary/5",
+							"surface-inset flex flex-col rounded-2xl p-2 transition-colors",
+							overColumn === col.status &&
+								"bg-primary/5 ring-1 ring-primary/40",
 						)}
 					>
 						<div className="flex items-center justify-between px-2 py-1.5">
@@ -77,7 +78,7 @@ export function TaskKanban({ tasks }: { tasks: Task[] }) {
 											onDragStart={() => setDraggingId(task._id)}
 											onDragEnd={() => setDraggingId(null)}
 											className={cn(
-												"group cursor-grab rounded-xl border border-border/60 bg-background p-2.5 shadow-sm transition-opacity active:cursor-grabbing",
+												"group surface-card cursor-grab rounded-xl p-2.5 transition-all hover:ring-primary/20 active:cursor-grabbing",
 												draggingId === task._id && "opacity-50",
 											)}
 										>
@@ -105,7 +106,7 @@ export function TaskKanban({ tasks }: { tasks: Task[] }) {
 													<span
 														className={cn(
 															"inline-flex items-center gap-1",
-															isOverdue(task) && "text-red-500",
+															isOverdue(task) && "text-destructive",
 														)}
 													>
 														<CalendarClock size={11} />

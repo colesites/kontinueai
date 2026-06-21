@@ -18,7 +18,7 @@ export function DesktopChatTurnNavigator({
 		<aside className="pointer-events-none fixed right-4 top-1/2 z-30 hidden -translate-y-1/2 lg:block">
 			<div
 				className={cn(
-					"group pointer-events-auto w-8 overflow-hidden rounded-2xl border border-border/70 bg-background/75 p-1.5 shadow-lg backdrop-blur-md transition-all duration-200",
+					"group glass pointer-events-auto w-8 overflow-hidden rounded-2xl p-1.5 transition-all duration-200",
 					"hover:w-[290px] hover:p-3 hover:shadow-2xl focus-within:w-[290px] focus-within:p-3 focus-within:shadow-2xl",
 				)}
 			>
@@ -69,7 +69,7 @@ export function DesktopChatTurnNavigator({
 								className={cn(
 									"h-1.5 w-3 rounded-full transition-all",
 									isActive
-										? "bg-primary shadow-[0_0_0_1px_rgba(59,130,246,0.35)]"
+										? "bg-primary shadow-[0_0_0_1px_color-mix(in_oklch,var(--primary)_40%,transparent),0_0_8px_0_color-mix(in_oklch,var(--primary)_50%,transparent)]"
 										: "bg-muted-foreground/35 hover:bg-foreground/55",
 								)}
 								aria-label={`Go to: ${turn.preview}`}

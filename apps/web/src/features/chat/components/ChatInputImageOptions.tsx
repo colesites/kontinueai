@@ -36,7 +36,7 @@ export function ChatInputImageOptions({
 	const supportedSizes = supportedImageOptions.sizes;
 
 	return (
-		<div className="flex items-center gap-1 border-l border-border/60 pl-1">
+		<div className="flex items-center gap-1 border-l border-foreground/10 pl-1.5">
 			<ImageIcon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
 			<Select
 				value={imageSize ?? (imageAspectRatio || "auto")}
@@ -57,7 +57,7 @@ export function ChatInputImageOptions({
 				}}
 			>
 				<SelectTrigger
-					className="h-8 min-w-20 w-fit border border-input text-xs text-muted-foreground"
+					className="surface-inset h-8 min-w-20 w-fit rounded-lg text-xs text-muted-foreground"
 					title="Image aspect / size"
 				>
 					<SelectValue placeholder="Aspect" />

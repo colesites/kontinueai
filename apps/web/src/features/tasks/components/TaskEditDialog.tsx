@@ -86,9 +86,12 @@ export function TaskEditDialog({
 
 	return (
 		<Dialog open={open} onOpenChange={onOpenChange}>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="glass-strong rounded-2xl sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Edit task</DialogTitle>
+					<span className="eyebrow">Task</span>
+					<DialogTitle className="text-xl font-semibold tracking-tight">
+						Edit task
+					</DialogTitle>
 				</DialogHeader>
 
 				<div className="flex flex-col gap-3">
@@ -116,7 +119,7 @@ export function TaskEditDialog({
 									setPriority(e.target.value as Task["priority"])
 								}
 								aria-label="Priority"
-								className="h-9 rounded-md border border-input bg-transparent px-2.5 text-sm"
+								className="surface-inset h-9 rounded-lg px-2.5 text-sm outline-none"
 							>
 								{PRIORITIES.map((p) => (
 									<option key={p} value={p}>
@@ -148,7 +151,11 @@ export function TaskEditDialog({
 					>
 						Cancel
 					</Button>
-					<Button onClick={() => void handleSave()} disabled={saving}>
+					<Button
+						onClick={() => void handleSave()}
+						disabled={saving}
+						className="glow-button text-primary-foreground disabled:opacity-60"
+					>
 						{saving ? "Saving…" : "Save"}
 					</Button>
 				</DialogFooter>

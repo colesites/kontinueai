@@ -93,7 +93,7 @@ export function MobileChatTurnNavigator({
 				)}
 			>
 				{showTapHint ? (
-					<div className="pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-border/70 bg-background/95 px-3 py-1.5 text-[11px] font-medium text-foreground shadow-lg backdrop-blur-sm">
+					<div className="glass pointer-events-none absolute -top-11 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1.5 text-[11px] font-medium text-foreground">
 						Tip: double-tap to open the scroll panel
 					</div>
 				) : null}
@@ -101,8 +101,8 @@ export function MobileChatTurnNavigator({
 					type="button"
 					onClick={handleTriggerTap}
 					className={cn(
-						"flex h-9 w-9 items-center justify-center rounded-full border border-border/70 bg-background/85 text-foreground shadow-lg backdrop-blur-sm transition-all",
-						isArmed && "scale-105 border-primary/60 text-primary",
+						"glass-subtle flex h-9 w-9 items-center justify-center rounded-full text-foreground shadow-lg transition-all",
+						isArmed && "scale-105 text-primary ring-1 ring-primary/50",
 					)}
 					aria-label={`Single tap quick scroll, double tap open navigator (${turns.length} turns)`}
 				>

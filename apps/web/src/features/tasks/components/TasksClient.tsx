@@ -271,7 +271,7 @@ export function TasksClient() {
 										setPriority(e.target.value as Task["priority"])
 									}
 									aria-label="Priority"
-									className="h-9 rounded-md border border-input bg-transparent pl-7 pr-2 text-sm text-muted-foreground"
+									className="surface-inset h-9 rounded-lg pl-7 pr-2 text-sm text-muted-foreground outline-none"
 								>
 									{PRIORITY_OPTIONS.map((opt) => (
 										<option key={opt.value} value={opt.value}>

@@ -49,7 +49,7 @@ export function SettingsMemoryPanel() {
 				</p>
 			</div>
 
-			<div className="rounded-xl border border-border/60 bg-background/70 p-5 space-y-4">
+			<div className="surface-inset rounded-2xl p-5 space-y-4">
 				<div className="flex items-start justify-between gap-4">
 					<div>
 						<p className="text-sm font-medium">Memory Usage</p>
@@ -80,7 +80,7 @@ export function SettingsMemoryPanel() {
 				) : null}
 			</div>
 
-			<div className="rounded-xl border border-border/60 bg-background/70 p-5 space-y-4">
+			<div className="surface-inset rounded-2xl p-5 space-y-4">
 				<div className="space-y-2">
 					<p className="text-sm font-medium">Save Memory Manually</p>
 					<p className="text-xs text-muted-foreground">
@@ -94,7 +94,7 @@ export function SettingsMemoryPanel() {
 						value={manualType}
 						onValueChange={(value) => setManualType(value as MemoryType)}
 					>
-						<SelectTrigger className="border-border/70 bg-background/80">
+						<SelectTrigger className="surface-inset">
 							<SelectValue placeholder="Memory type" />
 						</SelectTrigger>
 						<SelectContent>
@@ -110,12 +110,12 @@ export function SettingsMemoryPanel() {
 						value={manualContent}
 						onChange={(event) => setManualContent(event.target.value)}
 						placeholder="Example: My startup is Kontinue AI and I want the assistant to remember that."
-						className="min-h-24 border-border/70 bg-background/80"
+						className="min-h-24 surface-inset"
 					/>
 
 					<Button
 						type="button"
-						className="self-start"
+						className="glow-button self-start text-primary-foreground"
 						onClick={async () => {
 							const content = manualContent.trim();
 							if (content.length < 8) return;
@@ -133,14 +133,14 @@ export function SettingsMemoryPanel() {
 				</div>
 			</div>
 
-			<div className="rounded-xl border border-border/60 bg-background/70 p-5 space-y-4">
+			<div className="surface-inset rounded-2xl p-5 space-y-4">
 				<div className="flex items-center gap-2">
 					<Search className="h-4 w-4 text-muted-foreground" />
 					<Input
 						value={search}
 						onChange={(event) => setSearch(event.target.value)}
 						placeholder="Search saved memory"
-						className="border-border/70 bg-background/80"
+						className="surface-inset"
 					/>
 				</div>
 
@@ -148,15 +148,12 @@ export function SettingsMemoryPanel() {
 					{memories === undefined ? (
 						<div className="text-sm text-muted-foreground">Loading memory…</div>
 					) : memories.length === 0 ? (
-						<div className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-sm text-muted-foreground">
+						<div className="rounded-xl border border-dashed border-foreground/15 px-4 py-6 text-sm text-muted-foreground">
 							No memories matched this search yet.
 						</div>
 					) : (
 						memories.map((memory) => (
-							<div
-								key={memory._id}
-								className="rounded-xl border border-border/60 bg-card/60 p-4"
-							>
+							<div key={memory._id} className="surface-card rounded-xl p-4">
 								<div className="flex items-start justify-between gap-4">
 									<div className="space-y-2">
 										<div className="flex flex-wrap items-center gap-2">

@@ -89,9 +89,15 @@ export function ShareModal({
 
 	return (
 		<Dialog open={isOpen} onOpenChange={onClose}>
-			<DialogContent>
+			<DialogContent className="glass-strong rounded-2xl border-foreground/10 sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>Share {displayTitle}</DialogTitle>
+					<span className="eyebrow">Share</span>
+					<DialogTitle className="text-xl font-semibold tracking-tight">
+						Share {displayTitle}
+					</DialogTitle>
+					<p className="text-sm text-muted-foreground">
+						Anyone with this link can view this conversation.
+					</p>
 				</DialogHeader>
 
 				<div className="space-y-4">
@@ -99,13 +105,12 @@ export function ShareModal({
 						<Input
 							value={shareUrl}
 							readOnly
-							className="flex-1"
+							className="surface-inset flex-1 font-mono text-xs"
 							data-testid="share-link-input"
 						/>
 						<Button
 							onClick={handleCopyLink}
-							variant="secondary"
-							className="shrink-0"
+							className="glow-button shrink-0 text-primary-foreground"
 							data-testid="copy-link-button"
 						>
 							{copySuccess ? (

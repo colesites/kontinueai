@@ -267,7 +267,7 @@ export function FeedbackPostModal({
 	return (
 		<>
 			<Dialog open={open} onOpenChange={onOpenChange}>
-				<DialogContent className="flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-2xl border-border/60 bg-card p-0 sm:max-w-2xl">
+				<DialogContent className="glass-strong flex max-h-[85vh] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-2xl">
 					{/* Header */}
 					<DialogHeader className="border-b border-border/50 px-5 py-4 sm:px-6 relative">
 						{post.isOwner && !isEditing && (
@@ -297,14 +297,14 @@ export function FeedbackPostModal({
 								<input
 									value={editTitle}
 									onChange={(e) => setEditTitle(e.target.value)}
-									className="h-10 w-full rounded-xl border border-border/70 bg-background/70 px-3 text-sm outline-none ring-primary/40 focus:ring-2"
+									className="h-10 w-full rounded-xl surface-inset px-3 text-sm outline-none ring-primary/40 focus:ring-2"
 									placeholder="Post title"
 									maxLength={120}
 								/>
 								<textarea
 									value={editDetails}
 									onChange={(e) => setEditDetails(e.target.value)}
-									className="min-h-28 w-full resize-y rounded-xl border border-border/70 bg-background/70 px-3 py-2 text-sm outline-none ring-primary/40 focus:ring-2"
+									className="min-h-28 w-full resize-y rounded-xl surface-inset px-3 py-2 text-sm outline-none ring-primary/40 focus:ring-2"
 									placeholder="Details..."
 									maxLength={2000}
 								/>
@@ -314,7 +314,7 @@ export function FeedbackPostModal({
 										onChange={(e) =>
 											setEditType(e.target.value as FeedbackPostType)
 										}
-										className="h-9 rounded-xl border border-border/70 bg-background/70 px-3 text-sm outline-none"
+										className="h-9 rounded-xl surface-inset px-3 text-sm outline-none"
 									>
 										<option value="feature">Feature Idea</option>
 										<option value="bug">Bug Report</option>
@@ -385,7 +385,7 @@ export function FeedbackPostModal({
 						<button
 							type="button"
 							onClick={() => void onVote(post.id, "up")}
-							className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-background/70 transition-colors hover:bg-primary/10 hover:text-primary"
+							className="inline-flex h-8 w-8 items-center justify-center rounded-full surface-inset transition-colors hover:bg-primary/10 hover:text-primary"
 							aria-label="Upvote"
 						>
 							<ArrowUp className="h-3.5 w-3.5" />
@@ -396,7 +396,7 @@ export function FeedbackPostModal({
 						<button
 							type="button"
 							onClick={() => void onVote(post.id, "down")}
-							className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-border/70 bg-background/70 transition-colors hover:bg-destructive/10 hover:text-destructive"
+							className="inline-flex h-8 w-8 items-center justify-center rounded-full surface-inset transition-colors hover:bg-destructive/10 hover:text-destructive"
 							aria-label="Downvote"
 						>
 							<ArrowDown className="h-3.5 w-3.5" />
@@ -410,7 +410,7 @@ export function FeedbackPostModal({
 					{/* Comments list */}
 					<div className="flex-1 overflow-y-auto px-5 py-4 sm:px-6">
 						{post.comments.length === 0 && (
-							<p className="rounded-xl border border-dashed border-border/60 px-4 py-3 text-center text-xs text-muted-foreground">
+							<p className="rounded-xl border border-dashed border-foreground/15 px-4 py-3 text-center text-xs text-muted-foreground">
 								No comments yet. Be the first to share your thoughts.
 							</p>
 						)}
@@ -456,7 +456,7 @@ export function FeedbackPostModal({
 										void submitComment();
 									}
 								}}
-								className="h-9 flex-1 rounded-xl border border-border/60 bg-background/70 px-3 text-xs outline-none ring-primary/40 placeholder:text-muted-foreground/60 focus:ring-2"
+								className="surface-inset h-9 flex-1 rounded-xl px-3 text-xs outline-none transition-all placeholder:text-muted-foreground/60 focus:bg-foreground/6 focus:ring-2 focus:ring-primary/30"
 								placeholder="Write a comment..."
 								maxLength={500}
 							/>
@@ -468,7 +468,7 @@ export function FeedbackPostModal({
 									"inline-flex h-9 items-center gap-1.5 rounded-xl px-3 text-xs font-medium transition-opacity",
 									comment.trim()
 										? "bg-primary text-primary-foreground hover:opacity-90"
-										: "border border-border/70 bg-background/70 text-muted-foreground",
+										: "surface-inset text-muted-foreground",
 								)}
 							>
 								<MessageSquareText className="h-3.5 w-3.5" />

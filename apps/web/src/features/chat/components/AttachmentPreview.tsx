@@ -59,7 +59,7 @@ export function AttachmentPreview({
 	}, [file, isText]);
 
 	return (
-		<div className="group relative flex min-w-[240px] max-w-[360px] items-center gap-3 rounded-xl border border-border/60 bg-muted/30 p-2.5 pr-9 shadow-sm">
+		<div className="group surface-card relative flex min-w-[240px] max-w-[360px] items-center gap-3 rounded-xl p-2.5 pr-9">
 			{isImage && objectUrl && !imageError ? (
 				<Image
 					src={objectUrl}

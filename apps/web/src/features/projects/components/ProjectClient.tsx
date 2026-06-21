@@ -47,12 +47,17 @@ export function ProjectClient() {
 
 	if (project === null) {
 		return (
-			<div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-				<FolderOpen className="size-8 text-muted-foreground/60" />
+			<div className="flex h-full flex-col items-center justify-center gap-4 p-6 text-center">
+				<div className="flex size-12 items-center justify-center rounded-2xl bg-foreground/5 text-muted-foreground ring-1 ring-foreground/10">
+					<FolderOpen className="size-5" />
+				</div>
 				<p className="text-sm text-muted-foreground">
 					This project doesn’t exist or was deleted.
 				</p>
-				<Link href="/" className="text-sm text-primary hover:underline">
+				<Link
+					href="/"
+					className="glow-button inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform duration-200 hover:scale-[1.03] active:scale-[0.97]"
+				>
 					Back to chats
 				</Link>
 			</div>
@@ -87,9 +92,12 @@ export function ProjectClient() {
 		<div className="mx-auto flex h-full w-full max-w-3xl flex-col px-5 py-6">
 			<Link
 				href="/"
-				className="mb-5 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+				className="surface-inset group mb-5 inline-flex w-fit items-center gap-2 rounded-full px-3.5 py-1.5 text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-foreground/8 hover:text-foreground"
 			>
-				<ArrowLeft size={14} />
+				<ArrowLeft
+					size={14}
+					className="transition-transform duration-200 group-hover:-translate-x-0.5"
+				/>
 				Back
 			</Link>
 
@@ -113,7 +121,8 @@ export function ProjectClient() {
 						)}
 					</span>
 					<div>
-						<h1 className="text-xl font-semibold tracking-tight">
+						<p className="eyebrow">Project</p>
+						<h1 className="mt-1 text-2xl font-semibold tracking-tight">
 							{project?.name ?? "…"}
 						</h1>
 						{project?.description && (
@@ -123,7 +132,7 @@ export function ProjectClient() {
 						)}
 						{project && (
 							<div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-								<span className="rounded-full bg-foreground/5 px-2 py-0.5">
+								<span className="rounded-full bg-foreground/5 px-2 py-0.5 ring-1 ring-foreground/8">
 									{STATUS_LABELS[project.status] ?? project.status}
 								</span>
 								<span>
@@ -166,7 +175,7 @@ export function ProjectClient() {
 						<div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
 					</div>
 				) : chats.length === 0 ? (
-					<div className="rounded-xl border border-dashed border-border/60 px-4 py-10 text-center text-sm text-muted-foreground">
+					<div className="rounded-2xl border border-dashed border-foreground/15 px-4 py-10 text-center text-sm text-muted-foreground">
 						No chats in this project yet. Use a chat’s menu → “Move to project”.
 					</div>
 				) : (

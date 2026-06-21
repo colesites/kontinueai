@@ -57,7 +57,7 @@ export function TaskCalendar({ tasks }: { tasks: Task[] }) {
 	}
 
 	return (
-		<div className="rounded-2xl border border-border/60 p-3">
+		<div className="surface-card rounded-2xl p-3">
 			<div className="mb-3 flex items-center justify-between px-1">
 				<h2 className="text-sm font-semibold">
 					{cursor.toLocaleDateString(undefined, {
@@ -118,8 +118,9 @@ export function TaskCalendar({ tasks }: { tasks: Task[] }) {
 						<div
 							key={key}
 							className={cn(
-								"min-h-[72px] rounded-lg border border-border/40 p-1",
-								isToday && "border-primary/50 bg-primary/5",
+								"min-h-[72px] rounded-lg border border-foreground/8 p-1 transition-colors",
+								isToday &&
+									"border-primary/40 bg-primary/5 shadow-[inset_0_0_0_1px_color-mix(in_oklch,var(--primary)_25%,transparent)]",
 							)}
 						>
 							<div

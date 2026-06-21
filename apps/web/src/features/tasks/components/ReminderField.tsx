@@ -77,7 +77,7 @@ export function ReminderField({
 						onChange(Number(v));
 					}}
 					aria-label="Reminder"
-					className="h-9 rounded-md border border-input bg-transparent pl-7 pr-2 text-sm text-muted-foreground disabled:opacity-50"
+					className="surface-inset h-9 rounded-lg pl-7 pr-2 text-sm text-muted-foreground outline-none disabled:opacity-50"
 				>
 					{REMINDER_OPTIONS.map((opt) => (
 						<option key={opt.label} value={opt.minutes ?? ""}>

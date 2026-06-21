@@ -69,7 +69,7 @@ export function DateTimePicker({
 				<button
 					type="button"
 					className={cn(
-						"inline-flex h-9 items-center gap-2 rounded-md border border-input bg-transparent px-2.5 text-sm transition-colors hover:bg-foreground/5",
+						"surface-inset inline-flex h-9 items-center gap-2 rounded-lg px-2.5 text-sm transition-colors hover:bg-foreground/8",
 						current ? "text-foreground" : "text-muted-foreground",
 						className,
 					)}
@@ -90,7 +90,7 @@ export function DateTimePicker({
 					)}
 				</button>
 			</PopoverTrigger>
-			<PopoverContent align={align} className="w-auto p-3">
+			<PopoverContent align={align} className="glass w-auto rounded-xl p-3">
 				<Calendar
 					mode="single"
 					selected={current}

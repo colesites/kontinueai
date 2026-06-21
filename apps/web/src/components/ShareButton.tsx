@@ -24,7 +24,7 @@ export function ShareButton({
 				variant="ghost"
 				size="icon"
 				className={cn(
-					"h-8 w-8 items-center justify-center rounded-lg text-foreground/85 transition-colors hover:text-foreground hover:bg-secondary/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
+					"h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground hover:bg-foreground/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40",
 					className,
 				)}
 				onClick={() => setIsModalOpen(true)}

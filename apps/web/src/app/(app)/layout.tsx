@@ -1,64 +1,40 @@
-import { Suspense } from "react";
-import { auth, clerkClient } from "@clerk/nextjs/server";
-import { redirect, unauthorized } from "next/navigation";
-import { cookies, headers } from "next/headers";
-import { AppShell } from "./AppShell";
-import LoadingFallback from "../../components/LoadingFallback";
+import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
-import { convexServer } from "@repo/core/convex-server";
-import { api } from "@repo/convex/convex/_generated/api";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { Suspense } from "react";
+import LoadingFallback from "../../components/LoadingFallback";
 import { isKodeComingSoon } from "../../features/kode/lib/availability";
+import { AppShell } from "./AppShell";
 
 export const metadata: Metadata = {
-  title: "Kontinue AI - Chat",
+	title: "Kontinue AI - Chat",
 };
 
 export default async function AppLayout({
-  children,
+	children,
 }: {
-  children: React.ReactNode;
+	children: React.ReactNode;
 }) {
-  // Check auth at page level - more secure than proxy
-  const { userId } = await auth();
+	// Check auth at page level - more secure than proxy
+	const { userId } = await auth();
 
-  if (!userId) {
-    redirect("/sign-in");
-  }
+	if (!userId) {
+		redirect("/sign-in");
+	}
 
-  // Whitelist check (Production only)
-  const headerList = await headers();
-  const host = headerList.get("host") || "";
-  const isProductionDomain =
-    host === "chat.kontinueai.com" || host.endsWith(".vercel.app"); // Also catch preview deploys if needed
+	const headerList = await headers();
+	const host = headerList.get("host") || "";
 
-  // Whitelist temporarily deactivated as waitlist countdown is ending
-  /*
-  if (isProductionDomain) {
-    const client = await clerkClient();
-    const user = await client.users.getUser(userId);
-    const email = user.emailAddresses[0]?.emailAddress;
+	const cookieStore = await cookies();
+	const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
+	const kodeComingSoon = isKodeComingSoon(host);
 
-    if (email) {
-      const whitelisted = await convexServer.query(
-        api.whitelist.isWhitelisted,
-        { email },
-      );
-      if (!whitelisted) {
-        unauthorized();
-      }
-    }
-  }
-  */
-
-  const cookieStore = await cookies();
-  const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
-  const kodeComingSoon = isKodeComingSoon(host);
-
-  return (
-    <Suspense fallback={<LoadingFallback />}>
-      <AppShell defaultOpen={defaultOpen} kodeComingSoon={kodeComingSoon}>
-        {children}
-      </AppShell>
-    </Suspense>
-  );
+	return (
+		<Suspense fallback={<LoadingFallback />}>
+			<AppShell defaultOpen={defaultOpen} kodeComingSoon={kodeComingSoon}>
+				{children}
+			</AppShell>
+		</Suspense>
+	);
 }

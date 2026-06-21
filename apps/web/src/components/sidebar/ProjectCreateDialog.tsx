@@ -82,9 +82,12 @@ export function ProjectCreateDialog({
 
 	return (
 		<Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-			<DialogContent className="sm:max-w-md">
+			<DialogContent className="glass-strong rounded-2xl sm:max-w-md">
 				<DialogHeader>
-					<DialogTitle>New project</DialogTitle>
+					<span className="eyebrow">Project</span>
+					<DialogTitle className="text-xl font-semibold tracking-tight">
+						New project
+					</DialogTitle>
 					<DialogDescription>
 						Group related chats together in one workspace.
 					</DialogDescription>
@@ -158,7 +161,11 @@ export function ProjectCreateDialog({
 					<Button variant="ghost" onClick={handleClose} disabled={isSaving}>
 						Cancel
 					</Button>
-					<Button onClick={() => void handleCreate()} disabled={isSaving}>
+					<Button
+						onClick={() => void handleCreate()}
+						disabled={isSaving}
+						className="glow-button text-primary-foreground disabled:opacity-60"
+					>
 						{isSaving ? "Creating…" : "Create project"}
 					</Button>
 				</div>

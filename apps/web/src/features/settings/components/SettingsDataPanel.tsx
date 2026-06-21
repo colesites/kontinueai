@@ -141,7 +141,7 @@ function ExportSection() {
 							key={format}
 							disabled={inFlight || isPending}
 							onClick={() => void handleRequest(format)}
-							className="group flex flex-col items-start gap-3 rounded-xl border border-border/60 bg-background/70 p-4 text-left transition-all hover:border-foreground/20 hover:bg-foreground/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
+							className="group flex flex-col items-start gap-3 rounded-xl surface-inset p-4 text-left transition-all hover:border-foreground/20 hover:bg-foreground/[0.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
 						>
 							<div className="flex w-full items-center justify-between">
 								<div className="flex size-9 items-center justify-center rounded-lg bg-foreground/5 text-foreground/80 transition-colors group-hover:bg-foreground/10">
@@ -245,7 +245,7 @@ function ExportRow({
 	};
 
 	return (
-		<div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2.5">
+		<div className="surface-card flex items-center justify-between gap-3 rounded-lg px-3 py-2.5">
 			<div className="flex min-w-0 items-center gap-3">
 				<div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-foreground/5 text-foreground/80">
 					<Icon className="size-4" />
@@ -446,8 +446,8 @@ function ImportSection() {
 						key={option.value}
 						className={`group cursor-pointer rounded-xl border p-4 transition-all ${
 							provider === option.value
-								? "border-primary/60 bg-primary/[0.04] shadow-[0_0_0_1px_var(--primary)/0.2]"
-								: "border-border/60 bg-background/70 hover:border-foreground/20"
+								? "border-primary/50 bg-primary/[0.06] shadow-[0_0_20px_-8px_color-mix(in_oklch,var(--primary)_55%,transparent)]"
+								: "border-foreground/8 bg-foreground/[0.02] hover:border-foreground/20"
 						} ${isDisabled ? "pointer-events-none opacity-60" : ""}`}
 					>
 						<input
@@ -471,7 +471,7 @@ function ImportSection() {
 				))}
 			</div>
 
-			<div className="rounded-xl border border-dashed border-border/70 bg-background/40 p-6">
+			<div className="rounded-xl border border-dashed border-foreground/15 bg-foreground/[0.02] p-6">
 				<div className="flex flex-col items-center gap-3 text-center">
 					<div className="flex size-11 items-center justify-center rounded-full bg-foreground/5 text-foreground/80">
 						<Upload className="size-5" />
@@ -570,7 +570,7 @@ function ImportJobCard({
 	const percent = Math.round((job.progress ?? 0) * 100);
 
 	return (
-		<div className="rounded-xl border border-border/60 bg-background/70 p-4 space-y-3">
+		<div className="rounded-xl surface-inset p-4 space-y-3">
 			<div className="flex items-start justify-between gap-3">
 				<div className="space-y-1">
 					<div className="flex items-center gap-2 text-sm font-medium">

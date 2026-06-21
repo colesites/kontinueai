@@ -45,17 +45,20 @@ export function ConnectorsClient() {
 						}
 						router.push(returnTo);
 					}}
-					className="mb-6 inline-flex items-center gap-2 rounded-lg border border-border/70 bg-card/60 px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+					className="surface-inset group mb-6 inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-foreground/8 hover:text-foreground"
 				>
-					<ArrowLeft className="size-4" />
-					Back to Chat
+					<ArrowLeft className="size-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
+					Back to chat
 				</button>
 
-				<div className="mb-6 flex items-center gap-2">
-					<Plug className="size-5 text-primary" />
-					<h1 className="text-xl font-semibold tracking-tight">Connectors</h1>
+				<p className="eyebrow">Integrations</p>
+				<div className="mt-2 flex items-center gap-3">
+					<span className="flex size-10 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20 shadow-[0_4px_18px_-6px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
+						<Plug className="size-5" />
+					</span>
+					<h1 className="text-3xl font-semibold tracking-tight">Connectors</h1>
 				</div>
-				<p className="mb-6 text-sm text-muted-foreground">
+				<p className="mb-6 mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground">
 					Connect external services so your assistant can act on your behalf.
 					Tokens are encrypted at rest and never shared.
 				</p>
@@ -68,7 +71,7 @@ export function ConnectorsClient() {
 						return (
 							<div
 								key={def.provider}
-								className="flex items-center gap-4 rounded-xl border border-border/70 bg-card/60 p-4"
+								className="surface-card lift-hover flex items-center gap-4 rounded-xl p-4 hover:ring-primary/20"
 							>
 								<ConnectorLogo logo={def.logo} alt={def.name} />
 								<div className="min-w-0 flex-1">
@@ -86,7 +89,7 @@ export function ConnectorsClient() {
 								</div>
 
 								{!isAvailable ? (
-									<span className="shrink-0 rounded-full bg-foreground/5 px-2.5 py-1 text-[11px] text-muted-foreground">
+									<span className="surface-inset shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
 										Coming soon
 									</span>
 								) : isConnected ? (
@@ -102,7 +105,7 @@ export function ConnectorsClient() {
 													toast.success(`${def.name} disconnected.`),
 												);
 											}}
-											className="rounded-lg border border-border/70 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+											className="surface-inset rounded-full px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-foreground/8 hover:text-foreground"
 										>
 											Disconnect
 										</button>
@@ -111,7 +114,7 @@ export function ConnectorsClient() {
 									<a
 										href={def.startPath}
 										className={cn(
-											"shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90",
+											"glow-button shrink-0 rounded-full px-4 py-1.5 text-xs font-semibold text-primary-foreground transition-transform duration-200 hover:scale-105 active:scale-95",
 										)}
 									>
 										Connect

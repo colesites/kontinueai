@@ -119,7 +119,7 @@ export function ChatInputTools({
 				<DropdownMenuContent
 					align="start"
 					sideOffset={8}
-					className="w-56 bg-background/80 backdrop-blur-xl border-foreground/10"
+					className="glass w-56 rounded-xl border-foreground/10"
 				>
 					{menuView === "root" ? (
 						<>

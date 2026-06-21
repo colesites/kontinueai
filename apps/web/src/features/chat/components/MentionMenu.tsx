@@ -17,7 +17,7 @@ export function MentionMenu({
 }) {
 	if (items.length === 0) return null;
 	return (
-		<div className="absolute bottom-full left-2 z-50 mb-2 w-60 overflow-hidden rounded-xl border border-foreground/10 bg-popover/95 p-1 shadow-lg backdrop-blur-xl">
+		<div className="glass absolute bottom-full left-2 z-50 mb-2 w-60 overflow-hidden rounded-xl p-1">
 			<p className="px-2 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
 				Connectors
 			</p>

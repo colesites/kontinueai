@@ -24,7 +24,7 @@ export function RecurrenceField({ value, onChange }: RecurrenceFieldProps) {
 					onChange(e.target.value === "" ? null : e.target.value)
 				}
 				aria-label="Repeat"
-				className="h-9 rounded-md border border-input bg-transparent pl-7 pr-2 text-sm text-muted-foreground"
+				className="surface-inset h-9 rounded-lg pl-7 pr-2 text-sm text-muted-foreground outline-none"
 			>
 				{RECURRENCE_OPTIONS.map((opt) => (
 					<option key={opt.label} value={opt.rule ?? ""}>

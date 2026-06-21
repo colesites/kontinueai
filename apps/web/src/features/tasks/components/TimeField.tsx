@@ -29,7 +29,7 @@ function build(hour12: number, minute: number, pm: boolean): string {
 }
 
 const selectCls =
-	"h-8 rounded-md border border-input bg-transparent px-1.5 text-sm tabular-nums transition-colors hover:bg-foreground/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+	"surface-inset h-8 rounded-lg px-1.5 text-sm tabular-nums transition-colors hover:bg-foreground/8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30";
 
 export function TimeField({ value, onChange, className }: TimeFieldProps) {
 	const { hour12, minute, pm } = parse(value);

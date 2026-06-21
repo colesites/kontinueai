@@ -71,6 +71,7 @@ function ShellLayout({
 	const isCanvas = pathname === "/canvas";
 	const isChatRoute = pathname.startsWith("/chat/");
 	const isKodeRoute = pathname.startsWith("/kode");
+	const isKodeWorkspace = isKodeRoute && pathname !== "/kode";
 
 	const floatingPillClasses =
 		"pointer-events-auto glass bg-background/40 backdrop-blur-3xl rounded-2xl p-1 text-foreground transition-all duration-300";
@@ -232,16 +233,18 @@ function ShellLayout({
 					<div
 						id="chat-scroll-container"
 						className={cn(
-							"flex-1",
-							isKodeRoute
-								? "overflow-hidden pt-12 lg:pt-0"
-								: isHome
-									? "pt-0"
-									: isCanvas
-										? "pt-16 lg:pt-0"
-										: isChatRoute
-											? "pt-14 lg:pt-0"
-											: "pt-9",
+							"min-h-0 flex-1 overscroll-y-contain",
+							isKodeWorkspace
+								? "overflow-y-auto pt-12 lg:overflow-hidden lg:pt-0"
+								: isKodeRoute
+									? "overflow-y-auto pt-12 lg:pt-0"
+									: isHome
+										? "overflow-hidden pt-0"
+										: isCanvas
+											? "overflow-y-auto pt-16 lg:pt-0"
+											: isChatRoute
+												? "overflow-y-auto pt-14 lg:pt-0"
+												: "overflow-y-auto pt-9",
 						)}
 					>
 						{children}
