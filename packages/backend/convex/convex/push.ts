@@ -48,9 +48,10 @@ export const savePushSubscription = mutation({
       .unique();
 
     if (existing) {
-      // Re-claim/refresh keys (endpoint may be reissued to the same user).
+      if (existing.ownerId !== user._id) {
+        throw new Error("Push subscription already belongs to another user");
+      }
       await ctx.db.patch(existing._id, {
-        ownerId: user._id,
         p256dh: args.p256dh,
         auth: args.auth,
         userAgent: args.userAgent,
@@ -103,8 +104,10 @@ export const saveExpoPushToken = mutation({
       .unique();
 
     if (existing) {
+      if (existing.ownerId !== user._id) {
+        throw new Error("Push token already belongs to another user");
+      }
       await ctx.db.patch(existing._id, {
-        ownerId: user._id, // re-claim if the device switched accounts
         platform: args.platform,
         deviceName: args.deviceName,
         updatedAt: now,

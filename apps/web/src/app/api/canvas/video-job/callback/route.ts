@@ -1,12 +1,16 @@
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { fetchMutation } from "convex/nextjs";
+import { sharedSecretMatches } from "../../../lib/shared-secret";
 
 // Progress/result callback from the Render long-video worker. Guarded by the
 // shared AGENT_TASK_SECRET; forwards into the Convex job row.
 export async function POST(req: Request) {
 	const secret = process.env.AGENT_TASK_SECRET;
-	if (!secret || req.headers.get("x-agent-secret") !== secret) {
+	if (
+		!secret ||
+		!sharedSecretMatches(secret, req.headers.get("x-agent-secret"))
+	) {
 		return Response.json({ error: "Forbidden" }, { status: 403 });
 	}
 	let body: {

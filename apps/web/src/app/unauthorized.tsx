@@ -9,20 +9,22 @@ export default function UnauthorizedPage() {
 			<div className="max-w-md w-full text-center space-y-8 animate-in fade-in zoom-in duration-500">
 				<div className="relative inline-block">
 					<div className="absolute inset-0 bg-primary/20 blur-3xl rounded-full" />
-					<div className="relative bg-secondary/50 border border-border p-6 rounded-2xl shadow-2xl backdrop-blur-sm">
-						<Lock className="w-12 h-12 text-primary mx-auto mb-4" />
-						<h1 className="text-3xl font-bold text-foreground mb-2">
-							Access Restricted
+					<div className="glass-strong relative rounded-2xl p-7">
+						<span className="mx-auto mb-5 flex size-14 items-center justify-center rounded-2xl bg-primary/12 text-primary ring-1 ring-primary/25 shadow-[0_0_24px_-6px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
+							<Lock className="size-6" />
+						</span>
+						<h1 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
+							Access restricted
 						</h1>
-						<p className="text-foreground/90 text-lg leading-relaxed mb-6">
+						<p className="mb-6 text-[15px] leading-relaxed text-muted-foreground">
 							Kontinue AI is currently in a private beta. Your email address has
 							not been whitelisted for access yet.
 						</p>
 
 						<div className="space-y-3">
 							<Link href="/sign-in" className="block">
-								<Button className="w-full font-semibold shadow-lg shadow-primary/20">
-									Try Another Account
+								<Button className="glow-button w-full font-semibold text-primary-foreground">
+									Try another account
 								</Button>
 							</Link>
 

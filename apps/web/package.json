@@ -9,6 +9,7 @@
 		"start": "next start",
 		"lint": "biome check .",
 		"check-types": "next typegen && tsc --noEmit",
+		"typecheck": "bun run check-types",
 		"test": "bun test"
 	},
 	"dependencies": {

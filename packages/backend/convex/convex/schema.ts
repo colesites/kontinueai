@@ -11,11 +11,14 @@ export default defineSchema({
     plan: v.optional(v.string()), // 'free', 'starter_plan', 'pro_plan'
     memoryUsedBytes: v.optional(v.number()),
     memoryLimitBytes: v.optional(v.number()),
+    // Referral program: this user's own shareable invite code (generated lazily).
+    referralCode: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
     .index("by_clerk_id", ["clerkUserId"])
-    .index("by_email", ["email"]),
+    .index("by_email", ["email"])
+    .index("by_referral_code", ["referralCode"]),
 
   chats: defineTable({
     ownerId: v.id("users"),
@@ -716,11 +719,29 @@ export default defineSchema({
 
   videoCredits: defineTable({
     ownerId: v.id("users"),
-    monthKey: v.string(), // "2026-02" format
-    totalCredits: v.number(), // 300
+    // "2026-02" for the monthly allowance, or the reserved key "bonus" for the
+    // persistent referral-reward pool (never resets).
+    monthKey: v.string(),
+    totalCredits: v.number(), // 300 for monthly; cumulative gifts for "bonus"
     usedCredits: v.number(),
     updatedAt: v.number(),
   }).index("by_owner_month", ["ownerId", "monthKey"]),
+
+  // ── Referrals ("invite & earn") ─────────────────────────
+  // One row per invited user, created when they sign up via an invite link.
+  // status flips pending → rewarded when the invitee becomes a paying user,
+  // at which point the referrer is granted bonus video credits.
+  referrals: defineTable({
+    referrerUserId: v.id("users"), // the inviter (A) who earns the reward
+    refereeUserId: v.id("users"), // the invited user (B) who must pay
+    code: v.string(), // referrer's invite code used at signup
+    status: v.union(v.literal("pending"), v.literal("rewarded")),
+    rewardCredits: v.optional(v.number()), // credits granted when rewarded
+    createdAt: v.number(),
+    rewardedAt: v.optional(v.number()),
+  })
+    .index("by_referrer", ["referrerUserId"])
+    .index("by_referee", ["refereeUserId"]),
 
   whitelistedEmails: defineTable({
     email: v.string(),

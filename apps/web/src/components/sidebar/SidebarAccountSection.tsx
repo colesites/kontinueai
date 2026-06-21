@@ -11,7 +11,7 @@ import {
 } from "@repo/ui/components/ui/dropdown-menu";
 import { SidebarFooter } from "@repo/ui/components/ui/sidebar";
 import { cn } from "@repo/ui/lib/utils";
-import { ChevronUp, Sparkles } from "lucide-react";
+import { ChevronUp, Gift, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { IoSettingsSharp } from "react-icons/io5";
 import { LuMessageSquarePlus } from "react-icons/lu";
@@ -39,6 +39,32 @@ export function SidebarAccountSection({
 
 	return (
 		<SidebarFooter className="border-t border-foreground/6 -mx-2 px-3 py-2.5 gap-0">
+			{/* Invite & earn — persistent CTA so the referral program is discoverable
+			    everywhere, not just buried in Settings. Deep-links to the Invite tab. */}
+			<Link
+				href="/settings?tab=invite"
+				onClick={onNavigate}
+				className={cn(
+					"group mb-1.5 flex items-center gap-2.5 rounded-xl px-2 py-1.5 transition-colors duration-150",
+					"bg-primary/8 ring-1 ring-primary/15 hover:bg-primary/12",
+				)}
+			>
+				<span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-primary/25 to-primary/10 text-primary ring-1 ring-primary/25">
+					<Gift className="size-3.5" />
+				</span>
+				<div className="min-w-0 flex-1">
+					<p className="truncate text-[12.5px] font-semibold leading-tight text-primary">
+						Invite &amp; earn
+					</p>
+					<p className="truncate text-[10.5px] leading-tight text-muted-foreground">
+						100 free video credits
+					</p>
+				</div>
+				<span className="shrink-0 text-primary/60 transition-transform duration-200 group-hover:translate-x-0.5">
+					→
+				</span>
+			</Link>
+
 			{/* Account pill — minimal one-line layout */}
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import LoadingFallback from "../../components/LoadingFallback";
 import { isKodeComingSoon } from "../../features/kode/lib/availability";
+import { protectedAppRedirect } from "../../lib/auth-routing";
 import { AppShell } from "./AppShell";
 
 export const metadata: Metadata = {
@@ -19,9 +20,8 @@ export default async function AppLayout({
 	// Check auth at page level - more secure than proxy
 	const { userId } = await auth();
 
-	if (!userId) {
-		redirect("/sign-in");
-	}
+	const authRedirect = protectedAppRedirect(userId);
+	if (authRedirect) redirect(authRedirect);
 
 	const headerList = await headers();
 	const host = headerList.get("host") || "";

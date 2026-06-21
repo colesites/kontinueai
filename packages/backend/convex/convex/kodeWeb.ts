@@ -133,7 +133,7 @@ export const listProjects = query({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const user = await getUserOrNull(ctx);
-		if (!user) return [];
+		if (!user || getPersistedPlanTier(user.plan) !== "pro") return [];
 		const limit = Math.max(1, Math.min(50, Math.floor(args.limit ?? 24)));
 		return await ctx.db
 			.query("kodeWebProjects")
@@ -173,7 +173,7 @@ export const getWorkspace = query({
 	args: { projectId: v.id("kodeWebProjects") },
 	handler: async (ctx, args) => {
 		const user = await getUserOrNull(ctx);
-		if (!user) return null;
+		if (!user || getPersistedPlanTier(user.plan) !== "pro") return null;
 		const project = await ctx.db.get(args.projectId);
 		if (!project || project.ownerId !== user._id) return null;
 
@@ -645,6 +645,7 @@ export const deleteProject = mutation({
 	args: { projectId: v.id("kodeWebProjects") },
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
+		requirePro(user);
 		const project = await requireOwnedProject(ctx, args.projectId, user._id);
 		const [messages, files, builds] = await Promise.all([
 			ctx.db

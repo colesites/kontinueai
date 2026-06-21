@@ -21,7 +21,6 @@ export function useCanvas() {
 	const isPro = planTier === "pro";
 	const isStarter = planTier === "starter";
 	const canGenerateImages = isPro || isStarter;
-	const canGenerateVideos = isPro;
 
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [publishingIds, setPublishingIds] = useState<
@@ -74,6 +73,12 @@ export function useCanvas() {
 
 	const credits = useQuery(api.canvas.getCredits);
 	const myLikesRaw = useQuery(api.canvas.getMyLikes);
+
+	// Video unlocks for Pro (monthly allowance) OR anyone holding referral-bonus
+	// credits — the latter is what lets a free/Starter inviter generate video at
+	// all, until the gift runs out.
+	const bonusRemaining = credits?.bonus?.remaining ?? 0;
+	const canGenerateVideos = isPro || bonusRemaining > 0;
 
 	// Convex mutations
 	const createCreation = useMutation(api.canvas.createCreation);
@@ -160,9 +165,10 @@ export function useCanvas() {
 					const currentCredits = credits;
 					const multiplier = opts.quality === "pro" ? 20 : 15;
 					const cost = (opts.duration ?? 5) * multiplier;
-					if (!currentCredits || currentCredits.remaining < cost) {
+					// `available` = monthly (Pro) + referral-bonus credits combined.
+					if (!currentCredits || currentCredits.available < cost) {
 						toast.error(
-							`Not enough credits. You have ${currentCredits?.remaining ?? 0} remaining, need ${cost}.`,
+							`Not enough credits. You have ${currentCredits?.available ?? 0} remaining, need ${cost}.`,
 						);
 						setIsGenerating(false);
 						return;

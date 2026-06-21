@@ -56,8 +56,12 @@ export function CanvasClient() {
 				onGenerate={handleGenerate}
 				isGenerating={isGenerating}
 				credits={{
-					remaining: credits?.remaining ?? 300,
-					total: credits?.total ?? 300,
+					// Combined spendable credits and matching denominator: monthly
+					// allowance (Pro only) plus the persistent referral-bonus pool.
+					remaining: credits?.available ?? 0,
+					total:
+						(credits?.isPro ? (credits?.monthly?.total ?? 0) : 0) +
+						(credits?.bonus?.total ?? 0),
 				}}
 				canGenerateImages={canGenerateImages}
 				canGenerateVideos={canGenerateVideos}

@@ -9,6 +9,7 @@ import {
 import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { sharedSecretMatches } from "@repo/core/shared-secret";
 import { decryptToken, encryptToken } from "./lib/encryption";
 
 // Providers we know how to connect. Keep in sync with the UI catalog.
@@ -307,8 +308,11 @@ export const getRefreshableToken = action({
 // server-only.
 function assertAgentSecret(secret: string) {
   const expected = process.env.AGENT_TASK_SECRET;
-  if (!expected || secret !== expected) {
-    throw new ConvexError({ code: "FORBIDDEN", message: "Invalid agent secret." });
+  if (!sharedSecretMatches(expected, secret)) {
+    throw new ConvexError({
+      code: "FORBIDDEN",
+      message: "Invalid agent secret.",
+    });
   }
 }
 

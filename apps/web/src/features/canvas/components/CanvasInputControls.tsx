@@ -197,7 +197,6 @@ export function CanvasInputControls({
 			/>
 
 			<CanvasCredits
-				isPro={isPro}
 				mode={mode}
 				remaining={creditsRemaining}
 				total={creditsTotal}

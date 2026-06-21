@@ -7,6 +7,7 @@ import {
 	KODE_WEB_MODEL_ID,
 	KODE_WEB_PLAN_CREDIT_RESERVATION,
 } from "@repo/core/kode-web";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -222,7 +223,7 @@ export function KodeWorkspace() {
 		}
 	};
 
-	if (planTier !== "pro") return <KodeAccessGate />;
+	if (!canAccessPlanFeature(planTier, "kode")) return <KodeAccessGate />;
 
 	if (workspace === undefined) {
 		return (

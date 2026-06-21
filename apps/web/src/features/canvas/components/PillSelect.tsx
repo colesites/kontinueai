@@ -49,7 +49,7 @@ export function PillSelect({
 						type="button"
 						disabled={disabled}
 						className={cn(
-							"inline-flex h-9 items-center gap-1.5 rounded-full border border-border/40 bg-secondary/20 px-3.5 text-xs font-bold uppercase tracking-tight text-foreground/70 shadow-none transition-all hover:bg-secondary/40 hover:text-foreground focus:outline-none",
+							"inline-flex h-9 items-center gap-1.5 rounded-full border border-foreground/10 bg-foreground/[0.04] px-3.5 text-xs font-bold uppercase tracking-tight text-foreground/70 shadow-none transition-all hover:border-foreground/15 hover:bg-foreground/8 hover:text-foreground focus:outline-none",
 							disabled &&
 								"pointer-events-none cursor-not-allowed opacity-20 grayscale",
 						)}
@@ -65,7 +65,7 @@ export function PillSelect({
 					side="top"
 					sideOffset={12}
 					align={align}
-					className="z-100 max-h-[70vh] min-w-[160px] overflow-y-auto border-border/40 bg-background/90 p-2 text-popover-foreground shadow-2xl backdrop-blur-3xl"
+					className="glass z-100 max-h-[70vh] min-w-[160px] overflow-y-auto rounded-xl p-2 text-popover-foreground"
 				>
 					{header && (
 						<div className="px-2 py-1.5 text-[10px] font-black uppercase tracking-widest text-foreground/40">

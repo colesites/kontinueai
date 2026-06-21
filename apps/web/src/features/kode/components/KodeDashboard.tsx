@@ -8,6 +8,7 @@ import {
 	KODE_WEB_MODEL_ID,
 	KODE_WEB_PLAN_CREDIT_RESERVATION,
 } from "@repo/core/kode-web";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { useMutation, useQuery } from "convex/react";
 import { ArrowRight, LoaderCircle, Plus, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -42,7 +43,7 @@ export function KodeDashboard() {
 	const [mode, setMode] = useState<KodeComposerMode>("build");
 
 	const buildProject = async (prompt: string, files?: File[]) => {
-		if (isBuilding || planTier !== "pro") return;
+		if (isBuilding || !canAccessPlanFeature(planTier, "kode")) return;
 		setIsBuilding(true);
 		setActivePrompt(prompt);
 		let projectId: Id<"kodeWebProjects"> | null = null;
@@ -76,7 +77,7 @@ export function KodeDashboard() {
 		}
 	};
 
-	if (planTier !== "pro") return <KodeAccessGate />;
+	if (!canAccessPlanFeature(planTier, "kode")) return <KodeAccessGate />;
 
 	const firstName = user?.firstName?.trim() || "there";
 	const requiredCredits =

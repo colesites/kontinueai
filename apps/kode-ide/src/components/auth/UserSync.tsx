@@ -16,7 +16,6 @@ export function UserSync() {
     if (!isLoaded || !isAuthLoaded || !user) return;
 
     void getOrCreateUser({
-      clerkUserId: user.id,
       email: user.primaryEmailAddress?.emailAddress ?? "",
       name: user.fullName ?? undefined,
       imageUrl: user.imageUrl ?? undefined,

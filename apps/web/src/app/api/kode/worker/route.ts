@@ -7,6 +7,7 @@ import {
 import { Sandbox } from "@vercel/sandbox";
 import { generateText, Output, stepCountIs } from "ai";
 import { z } from "zod";
+import { sharedSecretMatches } from "../../lib/shared-secret";
 import { buildKodeConnectorToolsForOwner } from "../build/connector-tools";
 
 export const maxDuration = 300;
@@ -200,7 +201,9 @@ export async function POST(request: Request) {
 			{ status: 500 },
 		);
 	}
-	if (request.headers.get("x-kode-worker-secret") !== secret) {
+	if (
+		!sharedSecretMatches(secret, request.headers.get("x-kode-worker-secret"))
+	) {
 		return Response.json({ error: "Forbidden" }, { status: 403 });
 	}
 

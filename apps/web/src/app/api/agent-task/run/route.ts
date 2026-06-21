@@ -6,6 +6,7 @@ import { ownerConnectorTokens } from "../../chat/lib/connector-tokens";
 import { buildAutonomousConnectorTools } from "../../chat/lib/tools-config";
 import { detectSearchIntent } from "../../chat/lib/web-search/intent";
 import { searchWithFallback } from "../../chat/lib/web-search/providers";
+import { sharedSecretMatches } from "../../lib/shared-secret";
 
 export const maxDuration = 120;
 
@@ -17,7 +18,7 @@ export async function POST(req: Request) {
 	if (!secret) {
 		return Response.json({ error: "Not configured" }, { status: 500 });
 	}
-	if (req.headers.get("x-agent-secret") !== secret) {
+	if (!sharedSecretMatches(secret, req.headers.get("x-agent-secret"))) {
 		return Response.json({ error: "Forbidden" }, { status: 403 });
 	}
 

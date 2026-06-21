@@ -11,7 +11,6 @@ type CurrentUser = {
 } | null;
 
 type GetOrCreateUserArgs = {
-  clerkUserId: string;
   email: string;
   name?: string;
   imageUrl?: string;

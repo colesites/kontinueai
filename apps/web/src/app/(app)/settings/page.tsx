@@ -10,19 +10,21 @@ import {
 import { cn } from "@repo/ui/lib/utils";
 import { useQuery } from "convex/react";
 import { ArrowLeft, LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { SettingsAccountPanel } from "../../../features/settings/components/SettingsAccountPanel";
 import { SettingsContactCards } from "../../../features/settings/components/SettingsContactCards";
 import { SettingsDataPanel } from "../../../features/settings/components/SettingsDataPanel";
 import { SettingsMemoryPanel } from "../../../features/settings/components/SettingsMemoryPanel";
 import { SettingsProfileSidebar } from "../../../features/settings/components/SettingsProfileSidebar";
+import { SettingsReferralPanel } from "../../../features/settings/components/SettingsReferralPanel";
 import { usePlanTier } from "../../../lib/use-plan-tier";
 
-type SettingsTab = "account" | "memory" | "data" | "contact";
+type SettingsTab = "account" | "invite" | "memory" | "data" | "contact";
 
 const TABS: { id: SettingsTab; label: string }[] = [
 	{ id: "account", label: "Account" },
+	{ id: "invite", label: "Invite" },
 	{ id: "memory", label: "Memory" },
 	{ id: "data", label: "Data" },
 	{ id: "contact", label: "Contact" },
@@ -30,10 +32,17 @@ const TABS: { id: SettingsTab; label: string }[] = [
 
 export default function SettingsPage() {
 	const { back } = useRouter();
+	const searchParams = useSearchParams();
 	const { user } = useUser();
 	const usage = useQuery(api.messages.getMonthlyUsage, {});
 	const currentPlanTier = usePlanTier();
-	const [activeTab, setActiveTab] = useState<SettingsTab>("account");
+	const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+		// Allow deep-linking to a tab, e.g. /settings?tab=invite from the sidebar CTA.
+		const requested = searchParams.get("tab");
+		return TABS.some((t) => t.id === requested)
+			? (requested as SettingsTab)
+			: "account";
+	});
 	const [selectedLanguage, setSelectedLanguage] = useState<string>(() =>
 		getSavedSpeechLanguage(),
 	);
@@ -128,6 +137,8 @@ export default function SettingsPage() {
 								}}
 								usage={usage}
 							/>
+						) : activeTab === "invite" ? (
+							<SettingsReferralPanel />
 						) : activeTab === "memory" ? (
 							<SettingsMemoryPanel />
 						) : activeTab === "data" ? (

@@ -1,9 +1,11 @@
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { fetchMutation } from "convex/nextjs";
 import { isKodeComingSoon } from "../../../../features/kode/lib/availability";
 import { getUserPlanTier } from "../../chat/lib/plan-limits";
 import { getAuthContext } from "../../chat/lib/route-input";
+import { PLAN_ERROR_CODES, planDeniedResponse } from "../../lib/plan-denial";
 
 export const maxDuration = 30;
 
@@ -45,10 +47,10 @@ export async function POST(request: Request) {
 		const { userId, hasPlan, getToken } = await getAuthContext();
 		if (!userId)
 			return Response.json({ error: "Unauthorized" }, { status: 401 });
-		if ((await getUserPlanTier(userId, hasPlan)) !== "pro") {
-			return Response.json(
-				{ error: "Kode is available exclusively on the Pro plan." },
-				{ status: 403 },
+		if (!canAccessPlanFeature(await getUserPlanTier(userId, hasPlan), "kode")) {
+			return planDeniedResponse(
+				PLAN_ERROR_CODES.KODE_PRO_REQUIRED,
+				"Kode is available exclusively on the Pro plan.",
 			);
 		}
 

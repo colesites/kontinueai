@@ -218,9 +218,9 @@ export function SidebarHeaderSection({
 					</DropdownMenuTrigger>
 					<DropdownMenuContent
 						align="start"
-						side="right"
-						sideOffset={8}
-						className="w-52"
+						side="bottom"
+						sideOffset={6}
+						className="w-(--radix-dropdown-menu-trigger-width)"
 					>
 						<DropdownMenuItem asChild>
 							<Link href="/kode" onClick={onNavigate} className="gap-2">

@@ -101,6 +101,18 @@ export function isPaidTier(tier: PlanTier): boolean {
   return tier !== "free";
 }
 
+// Resolve the tier from a persisted plan string (users.plan in Convex), where
+// the value comes from `persistedPlanForTier`. Defaults to "free" for unknown
+// or absent values. Handles the legacy plan ids in PRO_PLAN_IDS/STARTER_PLAN_IDS.
+export function planTierFromPersisted(plan?: string | null): PlanTier {
+  return parsePlanTierFromValue(plan) ?? "free";
+}
+
+// True when a persisted plan represents any paid tier (Starter or Pro).
+export function isPaidPersistedPlan(plan?: string | null): boolean {
+  return planTierFromPersisted(plan) !== "free";
+}
+
 // Per-plan max bytes for a single import upload.
 export const IMPORT_UPLOAD_LIMIT_BYTES: Record<PlanTier, number> = {
   free: 500 * 1024 * 1024,

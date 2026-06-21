@@ -1,5 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import {
+  mutation,
+  query,
+  internalMutation,
+  internalQuery,
+} from "./_generated/server";
 import { getPersistedPlanTier, isPersistedPaidPlan } from "../lib/plan";
 import {
   getMonthlyAutomaticImportLimit,
@@ -100,17 +105,13 @@ export const addMessage = mutation({
     }
 
     const chat = await ctx.db.get(args.chatId);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
-
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
-    if (!user || chat.ownerId !== user._id) {
-      throw new Error("Unauthorized");
+    if (!chat || !user || chat.ownerId !== user._id) {
+      throw new Error("Chat not found");
     }
 
     // Rate limiting (requests only): apply to user messages
@@ -410,13 +411,21 @@ export const addMessage = mutation({
       updatedAt: now,
     });
 
-    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageForMemory, {
-      chatId: args.chatId,
-      messageId,
-    });
-    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
-      messageId,
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.memoryWorkers.processMessageForMemory,
+      {
+        chatId: args.chatId,
+        messageId,
+      },
+    );
+    await ctx.scheduler.runAfter(
+      0,
+      internal.memoryWorkers.processMessageEmbedding,
+      {
+        messageId,
+      },
+    );
 
     return messageId;
   },
@@ -434,22 +443,15 @@ export const updateMessageContent = mutation({
     }
 
     const message = await ctx.db.get(args.messageId);
-    if (!message) {
-      throw new Error("Message not found");
-    }
-
-    const chat = await ctx.db.get(message.chatId);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
+    const chat = message ? await ctx.db.get(message.chatId) : null;
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
-    if (!user || chat.ownerId !== user._id) {
-      throw new Error("Unauthorized");
+    if (!message || !chat || !user || chat.ownerId !== user._id) {
+      throw new Error("Message not found");
     }
 
     await ctx.db.patch(args.messageId, {
@@ -461,13 +463,21 @@ export const updateMessageContent = mutation({
       },
     });
 
-    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageForMemory, {
-      chatId: message.chatId,
-      messageId: args.messageId,
-    });
-    await ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
-      messageId: args.messageId,
-    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.memoryWorkers.processMessageForMemory,
+      {
+        chatId: message.chatId,
+        messageId: args.messageId,
+      },
+    );
+    await ctx.scheduler.runAfter(
+      0,
+      internal.memoryWorkers.processMessageEmbedding,
+      {
+        messageId: args.messageId,
+      },
+    );
   },
 });
 
@@ -490,22 +500,15 @@ export const deleteMessagesAfter = mutation({
     }
 
     const target = await ctx.db.get(args.messageId);
-    if (!target) {
-      throw new Error("Message not found");
-    }
-
-    const chat = await ctx.db.get(target.chatId);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
+    const chat = target ? await ctx.db.get(target.chatId) : null;
 
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
-    if (!user || chat.ownerId !== user._id) {
-      throw new Error("Unauthorized");
+    if (!target || !chat || !user || chat.ownerId !== user._id) {
+      throw new Error("Message not found");
     }
 
     const cutoff = target._creationTime;
@@ -590,25 +593,37 @@ export const getMonthlyUsage = query({
         ctx.db
           .query("usage")
           .withIndex("by_owner_bucket", (q) =>
-            q.eq("ownerId", user._id).eq("bucketType", "month").eq("bucketStartMs", monthBucketStartMs),
+            q
+              .eq("ownerId", user._id)
+              .eq("bucketType", "month")
+              .eq("bucketStartMs", monthBucketStartMs),
           )
           .unique(),
         ctx.db
           .query("usage")
           .withIndex("by_owner_bucket", (q) =>
-            q.eq("ownerId", user._id).eq("bucketType", "month_premium").eq("bucketStartMs", monthBucketStartMs),
+            q
+              .eq("ownerId", user._id)
+              .eq("bucketType", "month_premium")
+              .eq("bucketStartMs", monthBucketStartMs),
           )
           .unique(),
         ctx.db
           .query("usage")
           .withIndex("by_owner_bucket", (q) =>
-            q.eq("ownerId", user._id).eq("bucketType", "month_standard").eq("bucketStartMs", monthBucketStartMs),
+            q
+              .eq("ownerId", user._id)
+              .eq("bucketType", "month_standard")
+              .eq("bucketStartMs", monthBucketStartMs),
           )
           .unique(),
         ctx.db
           .query("usage")
           .withIndex("by_owner_bucket", (q) =>
-            q.eq("ownerId", user._id).eq("bucketType", "month_kai").eq("bucketStartMs", monthBucketStartMs),
+            q
+              .eq("ownerId", user._id)
+              .eq("bucketType", "month_kai")
+              .eq("bucketStartMs", monthBucketStartMs),
           )
           .unique(),
         ctx.db

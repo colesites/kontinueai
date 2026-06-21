@@ -8,7 +8,7 @@ This document is the ordered testing plan for the Kontinue AI web application an
 - [~] In progress
 - [x] Complete
 
-Current next phase: **1 — Authentication, authorization, and data isolation**.
+Current next phase: **Phase 1 completion criteria — authorization matrix, Playwright, and CI**.
 
 ## Testing strategy
 
@@ -30,8 +30,8 @@ Non-functional security, accessibility, performance, resilience, responsive-layo
 
 As of June 20, 2026:
 
-- Web unit/component suite: **50 passing tests**.
-- Convex suite: **8 passing tests**.
+- Web unit/component suite: **65 passing tests**.
+- Convex suite: **23 passing tests**.
 - Core helper suite: **7 passing tests** when run manually.
 - Web TypeScript check: passing.
 - Web production build: passing.
@@ -70,47 +70,47 @@ Goal: establish the security boundary that every other feature depends on.
 
 ### 1.1 Authentication routing
 
-- [ ] `AUTH-001` Unauthenticated users are redirected from every protected app page to sign-in.
-- [ ] `AUTH-002` Sign-in and sign-up pages remain public.
-- [ ] `AUTH-003` A valid Clerk session can open the authenticated app shell.
-- [ ] `AUTH-004` Expired or invalid sessions return 401 from protected APIs.
-- [ ] `AUTH-005` Signing out removes access to protected pages without exposing stale user data.
-- [ ] `AUTH-006` Auth loading states do not briefly render protected content.
+- [x] `AUTH-001` Unauthenticated users are redirected from every protected app page to sign-in.
+- [x] `AUTH-002` Sign-in and sign-up pages remain public.
+- [x] `AUTH-003` A valid Clerk session can open the authenticated app shell.
+- [x] `AUTH-004` Expired or invalid sessions return 401 from protected APIs.
+- [x] `AUTH-005` Signing out removes access to protected pages without exposing stale user data.
+- [x] `AUTH-006` Auth loading states do not briefly render protected content.
 
 ### 1.2 Plan authorization
 
-- [ ] `PLAN-001` Free, Starter, and Pro plan values are normalized correctly.
-- [ ] `PLAN-002` Free users cannot access paid-only file uploads or models.
-- [ ] `PLAN-003` Starter users receive Starter access but not Pro-only access.
-- [ ] `PLAN-004` Pro users receive all intended Pro capabilities.
-- [ ] `PLAN-005` Kode remains Pro-only when enabled.
-- [ ] `PLAN-006` Kode displays Coming soon and rejects build requests in production while disabled.
-- [ ] `PLAN-007` UI gates and server-side gates return the same authorization result.
-- [ ] `PLAN-008` Changing or canceling a subscription updates access correctly.
+- [x] `PLAN-001` Free, Starter, and Pro plan values are normalized correctly.
+- [x] `PLAN-002` Free users cannot access paid-only file uploads or models.
+- [x] `PLAN-003` Starter users receive Starter access but not Pro-only access.
+- [x] `PLAN-004` Pro users receive all intended Pro capabilities.
+- [x] `PLAN-005` Kode remains Pro-only when enabled.
+- [x] `PLAN-006` Kode displays Coming soon and rejects build requests in production while disabled.
+- [x] `PLAN-007` UI gates and server-side gates return the same authorization result.
+- [x] `PLAN-008` Changing or canceling a subscription updates access correctly.
 
 ### 1.3 Cross-user isolation
 
 For every owned resource, create it as user A and attempt every read/write operation as user B.
 
-- [ ] `ISO-001` Chats and messages.
-- [ ] `ISO-002` Uploaded files.
-- [ ] `ISO-003` Projects and project chat assignments.
-- [ ] `ISO-004` Tasks and reminders.
-- [ ] `ISO-005` Memories.
-- [ ] `ISO-006` Canvas creations, likes, and credits.
-- [ ] `ISO-007` Import and export jobs.
-- [ ] `ISO-008` Notifications and push subscriptions.
-- [ ] `ISO-009` Connector metadata and encrypted tokens.
-- [ ] `ISO-010` Feedback edits/deletes that require ownership.
-- [ ] `ISO-011` Kode projects, files, messages, builds, and credits.
+- [x] `ISO-001` Chats and messages.
+- [x] `ISO-002` Uploaded files.
+- [x] `ISO-003` Projects and project chat assignments.
+- [x] `ISO-004` Tasks and reminders.
+- [x] `ISO-005` Memories.
+- [x] `ISO-006` Canvas creations, likes, and credits.
+- [x] `ISO-007` Import and export jobs.
+- [x] `ISO-008` Notifications and push subscriptions.
+- [x] `ISO-009` Connector metadata and encrypted tokens.
+- [x] `ISO-010` Feedback edits/deletes that require ownership.
+- [x] `ISO-011` Kode projects, files, messages, builds, and credits.
 
 ### 1.4 Security branch tests
 
-- [ ] Missing authentication returns 401 rather than 500.
-- [ ] Insufficient plan returns 403 with a stable error code.
-- [ ] Missing resources and resources owned by another user do not leak different sensitive details.
-- [ ] Server functions never authorize from a client-supplied user ID.
-- [ ] Shared server secrets are rejected when missing or incorrect.
+- [x] Missing authentication returns 401 rather than 500.
+- [x] Insufficient plan returns 403 with a stable error code.
+- [x] Missing resources and resources owned by another user do not leak different sensitive details.
+- [x] Server functions never authorize from a client-supplied user ID.
+- [x] Shared server secrets are rejected when missing or incorrect.
 
 ### Required levels
 

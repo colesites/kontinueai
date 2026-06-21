@@ -14,9 +14,10 @@ import {
 import { isProModel } from "@repo/ai/lib/model-pricing";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
-import { isPaidTier } from "@repo/core/plan-tier";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { convertToModelMessages, type LanguageModel, streamText } from "ai";
 import { fetchAction } from "convex/nextjs";
+import { PLAN_ERROR_CODES, planDeniedResponse } from "../lib/plan-denial";
 import { classifyChatError } from "./lib/error-classifier";
 import { getGatewayRuntimeConfig } from "./lib/gateway-runtime";
 import { getAiGatewayModelsCached } from "./lib/model-utils";
@@ -94,19 +95,26 @@ export async function POST(req: Request) {
 		// K-AI routes through OpenRouter, which can't use the Vercel-gateway
 		// Perplexity web-search tool, so web search is disabled for it.
 		const webSearchEnabled =
-			!usingOpenRouter && isPaidTier(planTier) && requestedWebSearchEnabled;
-		if (!isPaidTier(planTier) && hasUserFileAttachments(messages)) {
-			return new Response("Starter or Pro plan required for file attachments", {
-				status: 403,
-			});
+			!usingOpenRouter &&
+			canAccessPlanFeature(planTier, "premium-model") &&
+			requestedWebSearchEnabled;
+		if (
+			!canAccessPlanFeature(planTier, "file-upload") &&
+			hasUserFileAttachments(messages)
+		) {
+			return planDeniedResponse(
+				PLAN_ERROR_CODES.FILE_UPLOAD_REQUIRED,
+				"Starter or Pro plan required for file attachments",
+			);
 		}
 
 		// K-AI is free for every tier and is never a "premium" model.
 		const isPremium = usingOpenRouter ? false : isProModel(requestedModel);
-		if (!isPaidTier(planTier) && isPremium) {
-			return new Response("Starter or Pro plan required for this model", {
-				status: 403,
-			});
+		if (!canAccessPlanFeature(planTier, "premium-model") && isPremium) {
+			return planDeniedResponse(
+				PLAN_ERROR_CODES.PREMIUM_MODEL_REQUIRED,
+				"Starter or Pro plan required for this model",
+			);
 		}
 
 		// K-AI has no per-message token in/out caps — only its own monthly request

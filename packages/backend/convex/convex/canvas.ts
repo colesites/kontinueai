@@ -2,13 +2,9 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
+import { consumeVideoCredits, readCreditState } from "./lib/videoCredits";
 
 // ── Helpers ───────────────────────────────────────────────
-
-function currentMonthKey(): string {
-  const d = new Date();
-  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
-}
 
 async function authenticatedUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
@@ -22,28 +18,26 @@ async function authenticatedUser(ctx: QueryCtx | MutationCtx) {
 }
 
 // ── Credits ───────────────────────────────────────────────
-
-// Credits are managed per month (300 total)
-const MONTHLY_CREDITS = 300;
+// Video credits come from two pools: a monthly allowance (Pro only) and a
+// persistent referral-bonus pool (any tier). See lib/videoCredits.ts.
 
 export const getCredits = query({
   args: {},
   handler: async (ctx) => {
     const { user } = await authenticatedUser(ctx);
-    const monthKey = currentMonthKey();
-
-    const record = await ctx.db
-      .query("videoCredits")
-      .withIndex("by_owner_month", (q) =>
-        q.eq("ownerId", user._id).eq("monthKey", monthKey),
-      )
-      .first();
+    const state = await readCreditState(ctx, user);
 
     return {
-      total: MONTHLY_CREDITS,
-      used: record?.usedCredits ?? 0,
-      remaining: MONTHLY_CREDITS - (record?.usedCredits ?? 0),
-      monthKey,
+      // Back-compat top-level fields mirror the monthly allowance.
+      total: state.monthly.total,
+      used: state.monthly.used,
+      remaining: state.monthly.remaining,
+      monthKey: state.monthKey,
+      // Combined view the UI uses for gating + display.
+      isPro: state.isPro,
+      monthly: state.monthly,
+      bonus: state.bonus,
+      available: state.available,
     };
   },
 });
@@ -69,7 +63,6 @@ export const deductCredits = mutation({
     }
 
     const { user } = await authenticatedUser(ctx);
-    const monthKey = currentMonthKey();
 
     // Calculate cost based on model features
     let multiplier = 15; // Default
@@ -89,36 +82,9 @@ export const deductCredits = mutation({
     const cost = seconds * multiplier;
     if (cost === 0) return { remaining: undefined };
 
-    const existing = await ctx.db
-      .query("videoCredits")
-      .withIndex("by_owner_month", (q) =>
-        q.eq("ownerId", user._id).eq("monthKey", monthKey),
-      )
-      .first();
-
-    const currentlyUsed = existing?.usedCredits ?? 0;
-    if (currentlyUsed + cost > MONTHLY_CREDITS) {
-      throw new Error(
-        `Insufficient credits. ${MONTHLY_CREDITS - currentlyUsed} remaining, need ${cost}.`,
-      );
-    }
-
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        usedCredits: currentlyUsed + cost,
-        updatedAt: Date.now(),
-      });
-    } else {
-      await ctx.db.insert("videoCredits", {
-        ownerId: user._id,
-        monthKey,
-        totalCredits: MONTHLY_CREDITS,
-        usedCredits: cost,
-        updatedAt: Date.now(),
-      });
-    }
-
-    return { remaining: MONTHLY_CREDITS - (currentlyUsed + cost) };
+    // Draws from the monthly allowance first (Pro) then the referral-bonus pool;
+    // throws if the user has insufficient credits.
+    return await consumeVideoCredits(ctx, user, cost);
   },
 });
 
@@ -158,6 +124,9 @@ export const publishCreation = mutation({
     const { user } = await authenticatedUser(ctx);
     const creation = await ctx.db.get(creationId);
     if (!creation) throw new Error("Creation not found");
+    if (!creation.isPublished && creation.ownerId !== user._id) {
+      throw new Error("Creation not found");
+    }
     if (creation.ownerId !== user._id) throw new Error("Unauthorized");
 
     await ctx.db.patch(creationId, { isPublished: !creation.isPublished });
@@ -202,7 +171,16 @@ export const listMyCreations = query({
 export const getCreation = query({
   args: { creationId: v.id("canvasCreations") },
   handler: async (ctx, { creationId }) => {
-    return await ctx.db.get(creationId);
+    const creation = await ctx.db.get(creationId);
+    if (!creation || creation.isPublished) return creation;
+
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+      .unique();
+    return user && creation.ownerId === user._id ? creation : null;
   },
 });
 
@@ -215,6 +193,9 @@ export const toggleLike = mutation({
 
     const creation = await ctx.db.get(creationId);
     if (!creation) throw new Error("Creation not found");
+    if (!creation.isPublished && creation.ownerId !== user._id) {
+      throw new Error("Creation not found");
+    }
 
     const existingLike = await ctx.db
       .query("canvasLikes")

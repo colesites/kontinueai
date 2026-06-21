@@ -8,11 +8,16 @@ export default function PricingPage() {
 	const router = useRouter();
 
 	return (
-		<div className="relative min-h-screen overflow-hidden bg-background text-foreground selection:bg-primary/30">
-			{/* Ambient brand glow */}
-			<div className="pointer-events-none absolute left-1/2 top-0 z-0 h-[420px] w-[820px] max-w-[130vw] -translate-x-1/2 rounded-[100%] bg-primary/15 blur-[120px]" />
+		<div className="relative min-h-screen bg-background text-foreground selection:bg-primary/30">
+			{/* Ambient brand glow — clipped to its own layer so it can't cause
+			    horizontal scroll. Layering is by DOM order (glow first = behind),
+			    NOT z-index: an explicit z-index here builds a stacking context that
+			    paints over Clerk's checkout drawer overlay and hides it. */}
+			<div className="pointer-events-none absolute inset-0 overflow-hidden">
+				<div className="absolute left-1/2 top-0 h-[420px] w-[820px] max-w-[130vw] -translate-x-1/2 rounded-[100%] bg-primary/15 blur-[120px]" />
+			</div>
 
-			<div className="relative z-10 mx-auto flex w-full max-w-6xl flex-col px-6 py-10 sm:py-16">
+			<div className="relative mx-auto flex w-full max-w-6xl flex-col px-6 py-10 sm:py-16">
 				{/* Header */}
 				<div className="mb-10 text-center">
 					<button

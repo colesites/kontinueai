@@ -22,7 +22,10 @@ type SidebarSortableChat = {
   updatedAt: number;
 };
 
-function sortChatsForSidebar<T extends SidebarSortableChat>(a: T, b: T): number {
+function sortChatsForSidebar<T extends SidebarSortableChat>(
+  a: T,
+  b: T,
+): number {
   const aPinnedAt =
     typeof a.pinnedAt === "number" && a.pinnedAt > 0 ? a.pinnedAt : null;
   const bPinnedAt =
@@ -74,7 +77,11 @@ function splitMessageContentForStorage(content: string): string[] {
       continue;
     }
 
-    for (let i = 0; i < trimmedParagraph.length; i += IMPORT_MESSAGE_MAX_CHARS) {
+    for (
+      let i = 0;
+      i < trimmedParagraph.length;
+      i += IMPORT_MESSAGE_MAX_CHARS
+    ) {
       const slice = trimmedParagraph
         .slice(i, i + IMPORT_MESSAGE_MAX_CHARS)
         .trim();
@@ -89,10 +96,13 @@ function splitMessageContentForStorage(content: string): string[] {
   return chunks.length > 0 ? chunks : [trimmed];
 }
 
-function expandMessagesForStorage(messages: StoredChatMessage[]): StoredChatMessage[] {
+function expandMessagesForStorage(
+  messages: StoredChatMessage[],
+): StoredChatMessage[] {
   return messages.flatMap((message) => {
     const chunks = splitMessageContentForStorage(message.content);
-    if (chunks.length <= 1) return [{ role: message.role, content: message.content.trim() }];
+    if (chunks.length <= 1)
+      return [{ role: message.role, content: message.content.trim() }];
     return chunks.map((chunk) => ({ role: message.role, content: chunk }));
   });
 }
@@ -105,9 +115,13 @@ export const createChat = mutation({
     importMethod: v.union(v.literal("automatic"), v.literal("manual")),
     messages: v.array(
       v.object({
-        role: v.union(v.literal("system"), v.literal("user"), v.literal("assistant")),
+        role: v.union(
+          v.literal("system"),
+          v.literal("user"),
+          v.literal("assistant"),
+        ),
         content: v.string(),
-      })
+      }),
     ),
   },
   handler: async (ctx, args) => {
@@ -149,15 +163,13 @@ export const createChat = mutation({
           if (planTier === "free") {
             throw new ConvexError({
               code: "FREE_TIER_IMPORT_LIMIT",
-              message:
-                `Free tier monthly import limit reached (${FREE_MONTHLY_AUTOMATIC_IMPORT_LIMIT}/month). Please try again next month or upgrade to Starter or Pro.`,
+              message: `Free tier monthly import limit reached (${FREE_MONTHLY_AUTOMATIC_IMPORT_LIMIT}/month). Please try again next month or upgrade to Starter or Pro.`,
             });
           }
 
           throw new ConvexError({
             code: "STARTER_TIER_IMPORT_LIMIT",
-            message:
-              `Starter plan monthly import limit reached (${STARTER_MONTHLY_AUTOMATIC_IMPORT_LIMIT}/month). Please try again next month or upgrade to Pro.`,
+            message: `Starter plan monthly import limit reached (${STARTER_MONTHLY_AUTOMATIC_IMPORT_LIMIT}/month). Please try again next month or upgrade to Pro.`,
           });
         }
       }
@@ -201,16 +213,20 @@ export const createChat = mutation({
 
     await Promise.all(
       insertedMessageIds.map((messageId) =>
-        ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
-          messageId,
-        }),
+        ctx.scheduler.runAfter(
+          0,
+          internal.memoryWorkers.processMessageEmbedding,
+          {
+            messageId,
+          },
+        ),
       ),
     );
 
     // Fixed message removed in favor of dynamic client-side generation
 
     return chatId;
-  }
+  },
 });
 
 export const appendImportedMessagesToChat = mutation({
@@ -219,7 +235,11 @@ export const appendImportedMessagesToChat = mutation({
     title: v.string(),
     messages: v.array(
       v.object({
-        role: v.union(v.literal("system"), v.literal("user"), v.literal("assistant")),
+        role: v.union(
+          v.literal("system"),
+          v.literal("user"),
+          v.literal("assistant"),
+        ),
         content: v.string(),
       }),
     ),
@@ -283,9 +303,13 @@ export const appendImportedMessagesToChat = mutation({
 
     await Promise.all(
       insertedMessageIds.map((messageId) =>
-        ctx.scheduler.runAfter(0, internal.memoryWorkers.processMessageEmbedding, {
-          messageId,
-        }),
+        ctx.scheduler.runAfter(
+          0,
+          internal.memoryWorkers.processMessageEmbedding,
+          {
+            messageId,
+          },
+        ),
       ),
     );
 
@@ -435,17 +459,13 @@ export const toggleChatPin = mutation({
     }
 
     const chat = await ctx.db.get(args.chatId);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
-
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
-    if (!user || chat.ownerId !== user._id) {
-      throw new Error("Unauthorized");
+    if (!chat || !user || chat.ownerId !== user._id) {
+      throw new Error("Chat not found");
     }
 
     await ctx.db.patch(args.chatId, {
@@ -468,17 +488,13 @@ export const setChatArchived = mutation({
     }
 
     const chat = await ctx.db.get(args.chatId);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
-
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
-    if (!user || chat.ownerId !== user._id) {
-      throw new Error("Unauthorized");
+    if (!chat || !user || chat.ownerId !== user._id) {
+      throw new Error("Chat not found");
     }
 
     await ctx.db.patch(args.chatId, {
@@ -502,17 +518,13 @@ export const updateChatTitle = mutation({
     }
 
     const chat = await ctx.db.get(args.chatId);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
-
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
-    if (!user || chat.ownerId !== user._id) {
-      throw new Error("Unauthorized");
+    if (!chat || !user || chat.ownerId !== user._id) {
+      throw new Error("Chat not found");
     }
 
     await ctx.db.patch(args.chatId, {
@@ -531,17 +543,13 @@ export const deleteChat = mutation({
     }
 
     const chat = await ctx.db.get(args.chatId);
-    if (!chat) {
-      throw new Error("Chat not found");
-    }
-
     const user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
       .unique();
 
-    if (!user || chat.ownerId !== user._id) {
-      throw new Error("Unauthorized");
+    if (!chat || !user || chat.ownerId !== user._id) {
+      throw new Error("Chat not found");
     }
 
     // Delete all messages
@@ -758,7 +766,9 @@ export const searchChats = query({
     // 5. Final sort and return
     const finalResults = Array.from(chatData.values())
       .filter(
-        (data): data is {
+        (
+          data,
+        ): data is {
           chat: Doc<"chats">;
           score: number;
           matchedContent: string[];

@@ -37,7 +37,7 @@ export function KVideoJobProgress({
 		if (job?.status === "completed") {
 			return (
 				<div className="fixed bottom-28 left-1/2 z-50 -translate-x-1/2">
-					<div className="rounded-2xl border border-border/40 bg-background/90 px-5 py-3 text-sm font-medium shadow-2xl backdrop-blur-xl">
+					<div className="rounded-2xl glass px-5 py-3 text-sm font-medium shadow-2xl backdrop-blur-xl">
 						✓ K-Video ready
 					</div>
 				</div>
@@ -50,7 +50,7 @@ export function KVideoJobProgress({
 
 	return (
 		<div className="fixed bottom-28 left-1/2 z-50 w-[min(92vw,420px)] -translate-x-1/2">
-			<div className="relative overflow-hidden rounded-2xl border border-border/40 bg-background/90 p-4 shadow-2xl backdrop-blur-xl">
+			<div className="relative overflow-hidden rounded-2xl glass p-4 shadow-2xl backdrop-blur-xl">
 				<button
 					type="button"
 					onClick={onClose}

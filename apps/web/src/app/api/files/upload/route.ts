@@ -1,7 +1,9 @@
 import { auth } from "@clerk/nextjs/server";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { getUserPlanTier } from "../../chat/lib/plan-limits";
+import { PLAN_ERROR_CODES } from "../../lib/plan-denial";
 
 // Max file size: 5MB
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
@@ -65,14 +67,22 @@ export async function POST(request: Request) {
 		const contentType = blob.type;
 
 		// Reject free plan only if it's NOT an image (allow images for Canvas/Image-to-Video)
-		if (planTier === "free" && !contentType.startsWith("image/")) {
+		if (
+			!canAccessPlanFeature(planTier, "file-upload") &&
+			!contentType.startsWith("image/")
+		) {
 			return NextResponse.json(
 				{
 					code: "FREE_PLAN_UPLOAD_DISABLED",
 					error:
 						"File uploads (except images) are available on Starter and Pro plans. Please upgrade to continue.",
 				},
-				{ status: 403 },
+				{
+					status: 403,
+					headers: {
+						"x-error-code": PLAN_ERROR_CODES.FILE_UPLOAD_REQUIRED,
+					},
+				},
 			);
 		}
 

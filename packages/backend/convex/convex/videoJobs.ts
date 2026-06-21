@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { sharedSecretMatches } from "@repo/core/shared-secret";
 import { mutation, query, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -146,7 +147,7 @@ export const reportProgress = mutation({
   },
   handler: async (ctx, args) => {
     const expected = process.env.AGENT_TASK_SECRET;
-    if (!expected || args.secret !== expected) {
+    if (!sharedSecretMatches(expected, args.secret)) {
       throw new ConvexError({ code: "FORBIDDEN", message: "Invalid secret." });
     }
     const { secret, ...patch } = args;
