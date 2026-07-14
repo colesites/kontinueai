@@ -68,7 +68,7 @@ export function SettingsReferralPanel() {
 
 			<div className="space-y-2">
 				<span className="text-sm font-medium">Your invite link</span>
-				<div className="flex items-center gap-2">
+				<div className="flex flex-col gap-2 sm:flex-row sm:items-center">
 					<input
 						readOnly
 						aria-label="Your invite link"
@@ -80,7 +80,7 @@ export function SettingsReferralPanel() {
 						type="button"
 						onClick={handleCopy}
 						disabled={!inviteLink}
-						className="surface-inset inline-flex items-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-medium text-foreground transition-all duration-150 hover:bg-foreground/8 disabled:opacity-50"
+						className="surface-inset inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-xl px-3.5 py-2 text-[13px] font-medium text-foreground transition-all duration-150 hover:bg-foreground/8 disabled:opacity-50 sm:w-auto"
 					>
 						{copied ? (
 							<Check className="size-4" />
@@ -92,7 +92,7 @@ export function SettingsReferralPanel() {
 				</div>
 			</div>
 
-			<div className="grid grid-cols-2 gap-3">
+			<div className="grid gap-3 min-[360px]:grid-cols-2">
 				<div className="surface-inset rounded-xl p-4">
 					<div className="flex items-center gap-2 text-muted-foreground">
 						<Users className="size-4" />

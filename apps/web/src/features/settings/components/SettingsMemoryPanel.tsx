@@ -49,8 +49,8 @@ export function SettingsMemoryPanel() {
 				</p>
 			</div>
 
-			<div className="surface-inset rounded-2xl p-5 space-y-4">
-				<div className="flex items-start justify-between gap-4">
+			<div className="surface-inset space-y-4 rounded-2xl p-4 sm:p-5">
+				<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
 					<div>
 						<p className="text-sm font-medium">Memory Usage</p>
 						<p className="mt-1 text-xs text-muted-foreground">
@@ -58,7 +58,7 @@ export function SettingsMemoryPanel() {
 						</p>
 					</div>
 					{memoryStatus ? (
-						<div className="text-right text-sm">
+						<div className="text-left text-sm sm:text-right">
 							<div className="font-medium">
 								{memoryStatus.usedBytesLabel} / {memoryStatus.limitBytesLabel}
 							</div>
@@ -80,7 +80,7 @@ export function SettingsMemoryPanel() {
 				) : null}
 			</div>
 
-			<div className="surface-inset rounded-2xl p-5 space-y-4">
+			<div className="surface-inset space-y-4 rounded-2xl p-4 sm:p-5">
 				<div className="space-y-2">
 					<p className="text-sm font-medium">Save Memory Manually</p>
 					<p className="text-xs text-muted-foreground">
@@ -133,7 +133,7 @@ export function SettingsMemoryPanel() {
 				</div>
 			</div>
 
-			<div className="surface-inset rounded-2xl p-5 space-y-4">
+			<div className="surface-inset space-y-4 rounded-2xl p-4 sm:p-5">
 				<div className="flex items-center gap-2">
 					<Search className="h-4 w-4 text-muted-foreground" />
 					<Input
@@ -154,8 +154,8 @@ export function SettingsMemoryPanel() {
 					) : (
 						memories.map((memory) => (
 							<div key={memory._id} className="surface-card rounded-xl p-4">
-								<div className="flex items-start justify-between gap-4">
-									<div className="space-y-2">
+								<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+									<div className="min-w-0 space-y-2">
 										<div className="flex flex-wrap items-center gap-2">
 											<Badge variant={memory.pinned ? "default" : "secondary"}>
 												{memoryTypeLabel(memory.type)}
@@ -172,7 +172,7 @@ export function SettingsMemoryPanel() {
 										</p>
 									</div>
 
-									<div className="flex items-center gap-2">
+									<div className="flex items-center justify-end gap-2">
 										<Button
 											type="button"
 											variant="ghost"

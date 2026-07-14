@@ -57,7 +57,7 @@ export function ChatInputModelSelector({
 					)}
 				</PromptInputButton>
 			</ModelSelectorTrigger>
-			<ModelSelectorContent className="sm:max-w-4xl h-[75vh] sm:h-[620px] p-0 flex flex-col overflow-hidden">
+			<ModelSelectorContent className="h-[min(84dvh,680px)] p-0 sm:max-w-3xl">
 				<SharedModelSelectorContent
 					selectedModelId={model}
 					onModelSelect={(id) => {

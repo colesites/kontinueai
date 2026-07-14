@@ -245,7 +245,7 @@ function ExportRow({
 	};
 
 	return (
-		<div className="surface-card flex items-center justify-between gap-3 rounded-lg px-3 py-2.5">
+		<div className="surface-card flex flex-col gap-3 rounded-lg px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
 			<div className="flex min-w-0 items-center gap-3">
 				<div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-foreground/5 text-foreground/80">
 					<Icon className="size-4" />
@@ -270,7 +270,7 @@ function ExportRow({
 					</div>
 				</div>
 			</div>
-			<div className="flex shrink-0 items-center gap-1.5">
+			<div className="flex w-full shrink-0 items-center justify-end gap-1.5 sm:w-auto">
 				{row.hasFile ? (
 					<Button
 						type="button"
@@ -471,7 +471,7 @@ function ImportSection() {
 				))}
 			</div>
 
-			<div className="rounded-xl border border-dashed border-foreground/15 bg-foreground/[0.02] p-6">
+			<div className="rounded-xl border border-dashed border-foreground/15 bg-foreground/[0.02] p-4 sm:p-6">
 				<div className="flex flex-col items-center gap-3 text-center">
 					<div className="flex size-11 items-center justify-center rounded-full bg-foreground/5 text-foreground/80">
 						<Upload className="size-5" />
@@ -570,10 +570,10 @@ function ImportJobCard({
 	const percent = Math.round((job.progress ?? 0) * 100);
 
 	return (
-		<div className="rounded-xl surface-inset p-4 space-y-3">
-			<div className="flex items-start justify-between gap-3">
-				<div className="space-y-1">
-					<div className="flex items-center gap-2 text-sm font-medium">
+		<div className="surface-inset space-y-3 rounded-xl p-4">
+			<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+				<div className="min-w-0 space-y-1">
+					<div className="flex flex-wrap items-center gap-2 text-sm font-medium">
 						<span>
 							{job.sourceFilename ?? job.provider} · {job.totalConversations}{" "}
 							conversations
@@ -639,7 +639,7 @@ function ImportJobCard({
 				</div>
 			) : null}
 
-			<div className="grid grid-cols-2 gap-3 text-xs">
+			<div className="grid gap-3 text-xs sm:grid-cols-2">
 				<PhaseLine
 					label="Phase 1 (priority)"
 					done={phase1.done}
@@ -683,8 +683,8 @@ function PhaseLine({
 	icon: React.ElementType;
 }) {
 	return (
-		<div className="flex items-center justify-between rounded-md bg-foreground/[0.03] px-2.5 py-1.5">
-			<span className="flex items-center gap-1.5 text-muted-foreground">
+		<div className="flex items-center justify-between gap-2 rounded-md bg-foreground/[0.03] px-2.5 py-1.5">
+			<span className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
 				<Icon className="size-3" />
 				{label}
 			</span>

@@ -9,6 +9,7 @@ import {
 	useRef,
 } from "react";
 import type { MentionItem } from "../hooks/use-connector-mentions";
+import { normalizeEmptyContentEditable } from "../lib/mention-input-dom";
 
 export type MentionInputHandle = {
 	insertMention: (item: MentionItem) => void;
@@ -203,8 +204,15 @@ export const MentionInput = forwardRef<MentionInputHandle, Props>(
 		}, [value, updateEmpty]);
 
 		const handleInput = () => {
-			emit();
 			const root = rootRef.current;
+			// Browsers leave a lone <br> in an emptied contentEditable. Although it
+			// serializes to no visible text, that node keeps the caret after the
+			// pseudo-element placeholder. Remove it and anchor the caret at the true
+			// start so an empty composer behaves like a native textarea.
+			if (root && normalizeEmptyContentEditable(root)) {
+				placeCaret(root, 0);
+			}
+			emit();
 			const match = root ? findMentionAtCaret(root) : null;
 			onMentionQueryChange(match ? match.query : null);
 		};

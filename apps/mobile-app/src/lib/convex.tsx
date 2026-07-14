@@ -47,13 +47,10 @@ export function ConvexClientProvider({
 }: {
   children: React.ReactNode;
 }) {
-  const { sessionId } = useAuth();
-
   if (!convex) return <>{children}</>;
 
   return (
     <ConvexProviderWithClerk
-      key={sessionId ?? "signed-out"}
       client={convex}
       useAuth={useAuth}
     >

@@ -10,7 +10,7 @@ import {
 import { useCopyToClipboard } from "@repo/ui/hooks/use-copy-to-clipboard";
 import { cn } from "@repo/ui/lib/utils";
 import { Check, Copy, Pencil, RefreshCw } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { HiSpeakerWave } from "react-icons/hi2";
 import {
 	ModelSelector,
@@ -53,6 +53,18 @@ export function ChatMessageActions({
 	const [switchModelOpen, setSwitchModelOpen] = useState(false);
 	const { copied, copyToClipboard } = useCopyToClipboard();
 	const { isSpeaking, speechText, handleSpeak } = useTextToSpeech(content);
+	const selectableModelIds = useMemo(() => {
+		if (!modelOptionsByProvider) return undefined;
+		return Object.values(modelOptionsByProvider).reduce<string[]>(
+			(ids, models) => {
+				for (const model of models) {
+					if (!model.disabled) ids.push(model.id);
+				}
+				return ids;
+			},
+			[],
+		);
+	}, [modelOptionsByProvider]);
 
 	const handleCopy = () => copyToClipboard(content);
 
@@ -145,23 +157,20 @@ export function ChatMessageActions({
 						onOpenChange={setSwitchModelOpen}
 					>
 						<ModelSelectorTrigger asChild>
-							<button type="button" className="hidden" />
+							<button
+								type="button"
+								className="hidden"
+								aria-label="Open model selector"
+							/>
 						</ModelSelectorTrigger>
-						<ModelSelectorContent className="sm:max-w-4xl h-[75vh] sm:h-[620px] p-0 flex flex-col overflow-hidden">
+						<ModelSelectorContent className="h-[min(84dvh,680px)] p-0 sm:max-w-3xl">
 							<SharedModelSelectorContent
 								selectedModelId={currentModelId}
 								onModelSelect={(id) => {
 									onSwitchModel?.(id);
 									setSwitchModelOpen(false);
 								}}
-								modelIdsFilter={
-									modelOptionsByProvider
-										? Object.values(modelOptionsByProvider)
-												.flat()
-												.filter((m) => !m.disabled)
-												.map((m) => m.id)
-										: undefined
-								}
+								modelIdsFilter={selectableModelIds}
 							/>
 						</ModelSelectorContent>
 					</ModelSelector>

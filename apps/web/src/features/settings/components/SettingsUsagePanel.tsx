@@ -36,7 +36,7 @@ function KaiUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
 
 	return (
 		<div className="space-y-2">
-			<div className="flex justify-between text-sm">
+			<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
 				<span className="font-medium">K-AI 1.0 Requests</span>
 				<span className="tabular-nums text-muted-foreground">
 					{kaiUsed} / {isUnlimited ? "Unlimited" : kaiLimit}
@@ -62,7 +62,7 @@ function ImportUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
 
 	return (
 		<div className="space-y-2">
-			<div className="flex justify-between text-sm">
+			<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
 				<span className="font-medium">Monthly Imports</span>
 				<span className="tabular-nums text-muted-foreground">
 					{monthlyImportUsed} / {isUnlimited ? "Unlimited" : monthlyImportLimit}
@@ -99,7 +99,7 @@ export function SettingsUsagePanel({
 			<div className="space-y-6">
 				<KaiUsageSection usage={usage} />
 				<div className="space-y-2">
-					<div className="flex justify-between text-sm">
+					<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
 						<span className="font-medium">Free Model Messages</span>
 						<span className="tabular-nums text-muted-foreground">
 							{usage.freeMonthlyUsed} / {usage.freeMonthlyLimit}
@@ -122,7 +122,7 @@ export function SettingsUsagePanel({
 		<div className="space-y-6">
 			<KaiUsageSection usage={usage} />
 			<div className="space-y-2">
-				<div className="flex justify-between text-sm">
+				<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
 					<span className="font-medium">Total Messages</span>
 					<span className="tabular-nums text-muted-foreground">
 						{usage.paidTotalUsed} / {usage.paidTotalLimit}
@@ -135,7 +135,7 @@ export function SettingsUsagePanel({
 			</div>
 
 			<div className="space-y-2">
-				<div className="flex justify-between text-sm">
+				<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
 					<span className="font-medium">Standard Model Messages</span>
 					<span className="tabular-nums text-muted-foreground">
 						{usage.paidStandardUsed} / {usage.paidStandardLimit}
@@ -148,7 +148,7 @@ export function SettingsUsagePanel({
 			</div>
 
 			<div className="space-y-2">
-				<div className="flex justify-between text-sm">
+				<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
 					<span className="font-medium">Premium Model Messages</span>
 					<span className="tabular-nums text-muted-foreground">
 						{usage.paidPremiumUsed} / {usage.paidPremiumLimit}

@@ -76,7 +76,7 @@ function AppShell() {
               contentStyle: { backgroundColor: "transparent" },
             }}
           >
-            <Stack.Protected guard={!!isSignedIn}>
+            <Stack.Protected guard={isAppReady}>
               <Stack.Screen name="index" />
               <Stack.Screen name="tasks" />
               <Stack.Screen name="agents" />
@@ -88,7 +88,7 @@ function AppShell() {
               <Stack.Screen name="project/[id]" />
             </Stack.Protected>
 
-            <Stack.Protected guard={!isSignedIn}>
+            <Stack.Protected guard={!isAppReady}>
               <Stack.Screen name="(auth)/sign-in" />
               <Stack.Screen name="(auth)/sign-up" />
               <Stack.Screen name="(auth)/forgot-password" />

@@ -102,7 +102,7 @@ export function PromptInput({
 
 	return (
 		<PromptInputContext.Provider value={contextValue}>
-			<div className={cn("relative flex flex-col overflow-hidden", className)}>
+			<div className={cn("relative flex flex-col overflow-visible", className)}>
 				{children}
 			</div>
 		</PromptInputContext.Provider>

@@ -6,15 +6,19 @@ import { notFound } from "next/navigation";
 import { PortableTextBody } from "@/components/blog/PortableTextBody";
 import { StoryCard } from "@/components/blog/StoryCard";
 import { ViewTracker } from "@/components/blog/ViewTracker";
+import { CommentsSection } from "@/components/blog/CommentsSection";
+import { TableOfContents } from "@/components/blog/TableOfContents";
 import { formatDate, readingTime } from "@/lib/blog";
+import { extractHeadings } from "@/lib/toc";
 import { sanityFetch } from "@/sanity/lib/fetch";
 import { urlFor } from "@/sanity/lib/image";
 import {
 	POST_QUERY,
 	POST_SLUGS_QUERY,
 	RELATED_POSTS_QUERY,
+	POST_COMMENTS_QUERY,
 } from "@/sanity/lib/queries";
-import type { Post, PostCard } from "@/sanity/lib/types";
+import type { Post, PostCard, PostComment } from "@/sanity/lib/types";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -74,7 +78,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ArticlePage({ params }: Props) {
 	const { slug } = await params;
 
-	const [post, related] = await Promise.all([
+	const [post, related, comments] = await Promise.all([
 		sanityFetch<Post | null>({
 			query: POST_QUERY,
 			params: { slug },
@@ -85,6 +89,11 @@ export default async function ArticlePage({ params }: Props) {
 			params: { slug },
 			tags: ["post"],
 		}),
+		sanityFetch<PostComment[]>({
+			query: POST_COMMENTS_QUERY,
+			params: { slug },
+			tags: [`post-comments:${slug}`],
+		}),
 	]);
 
 	if (!post) notFound();
@@ -92,13 +101,16 @@ export default async function ArticlePage({ params }: Props) {
 	const author = post.author;
 	const category = post.categories?.[0]?.title;
 	const minutes = readingTime(post.body);
+	const tocItems = extractHeadings(post.body);
 
 	return (
 		<article className="relative px-5 pt-32 pb-24 lg:pt-40">
 			<ViewTracker slug={post.slug} />
 
-			<div className="mx-auto max-w-3xl">
-				<Link
+			<div className="mx-auto max-w-[64rem]">
+				{/* Header Section */}
+				<div className="w-full max-w-3xl">
+					<Link
 					href="/blog"
 					className="link-underline inline-flex items-center gap-1.5 text-sm font-medium text-brand-strong"
 				>
@@ -186,8 +198,9 @@ export default async function ArticlePage({ params }: Props) {
 						</div>
 					)}
 				</div>
+			</div>
 
-				{/* hero */}
+			{/* hero */}
 				<div className="mt-10">
 					{post.mainImage ? (
 						<Image
@@ -222,9 +235,9 @@ export default async function ArticlePage({ params }: Props) {
 				</div>
 
 				{/* body */}
-				<div className="mt-12">
-					<PortableTextBody value={post.body} />
-				</div>
+				<div className="mt-12 flex flex-col items-start gap-12 lg:flex-row lg:gap-16">
+					<div className="w-full max-w-3xl flex-1">
+						<PortableTextBody value={post.body} />
 
 				{/* written by */}
 				{author && (
@@ -270,6 +283,16 @@ export default async function ArticlePage({ params }: Props) {
 						</div>
 					</div>
 				)}
+
+				{/* comments section */}
+				<CommentsSection postId={post._id} initialComments={comments} />
+					</div>
+
+					{/* TOC Sidebar (Right) */}
+					<aside className="hidden w-56 shrink-0 lg:sticky lg:top-32 lg:block">
+						<TableOfContents items={tocItems} />
+					</aside>
+				</div>
 			</div>
 
 			{/* keep reading */}

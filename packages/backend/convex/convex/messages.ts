@@ -1,5 +1,7 @@
 import { ConvexError, v } from "convex/values";
+import type { Doc } from "./_generated/dataModel";
 import {
+  type MutationCtx,
   mutation,
   query,
   internalMutation,
@@ -37,6 +39,122 @@ function getPaidPlanLimits(planTier: "starter" | "pro"): {
     premiumLimit: STARTER_PREMIUM_LIMIT,
     standardLimit: STARTER_STANDARD_LIMIT,
   };
+}
+
+async function consumeEditedMessageUsage(
+  ctx: MutationCtx,
+  user: Doc<"users">,
+  model: string | undefined,
+  isPremiumModel: boolean | undefined,
+): Promise<void> {
+  const planTier = getPersistedPlanTier(user.plan);
+  const isPaidPlan = isPersistedPaidPlan(user.plan);
+  const rpmLimit = isPaidPlan ? 10 : 5;
+  const nowMs = Date.now();
+  const minuteBucketStartMs = Math.floor(nowMs / 60_000) * 60_000;
+  const date = new Date(nowMs);
+  const monthBucketStartMs = Date.UTC(
+    date.getUTCFullYear(),
+    date.getUTCMonth(),
+    1,
+  );
+
+  let bucketType: "month" | "month_premium" | "month_standard" | "month_kai";
+  let limit: number;
+  let limitCode: string;
+  let limitMessage: string;
+
+  if (isKaiModel(model)) {
+    bucketType = "month_kai";
+    limit = getKaiMonthlyLimit(planTier);
+    limitCode = "RATE_LIMIT_KAI";
+    limitMessage = `Monthly K-AI 1.0 limit reached (${limit} requests/month on the ${planTier} plan). Upgrade for a higher limit or try again next month.`;
+  } else if (isPaidPlan) {
+    const paidPlanTier = planTier === "pro" ? "pro" : "starter";
+    const limits = getPaidPlanLimits(paidPlanTier);
+    const premium = isPremiumModel ?? false;
+    bucketType = premium ? "month_premium" : "month_standard";
+    limit = premium ? limits.premiumLimit : limits.standardLimit;
+    limitCode =
+      paidPlanTier === "pro"
+        ? premium
+          ? "RATE_LIMIT_PRO_PREMIUM"
+          : "RATE_LIMIT_PRO_STANDARD"
+        : premium
+          ? "RATE_LIMIT_STARTER_PREMIUM"
+          : "RATE_LIMIT_STARTER_STANDARD";
+    limitMessage = premium
+      ? `Monthly premium-model limit reached (${limits.premiumLimit} messages/month on premium models for the ${limits.label} plan). Switch to a standard model or try again next month.`
+      : `Monthly standard-model limit reached (${limits.standardLimit} messages/month on standard models for the ${limits.label} plan). Try again next month.`;
+  } else {
+    bucketType = "month";
+    limit = FREE_MONTHLY_LIMIT;
+    limitCode = "RATE_LIMIT_MONTHLY";
+    limitMessage = `Monthly message limit reached (${FREE_MONTHLY_LIMIT} messages/month). Please try again next month or upgrade to Starter or Pro.`;
+  }
+
+  const [minuteUsage, monthlyUsage] = await Promise.all([
+    ctx.db
+      .query("usage")
+      .withIndex("by_owner_bucket", (q) =>
+        q
+          .eq("ownerId", user._id)
+          .eq("bucketType", "minute")
+          .eq("bucketStartMs", minuteBucketStartMs),
+      )
+      .unique(),
+    ctx.db
+      .query("usage")
+      .withIndex("by_owner_bucket", (q) =>
+        q
+          .eq("ownerId", user._id)
+          .eq("bucketType", bucketType)
+          .eq("bucketStartMs", monthBucketStartMs),
+      )
+      .unique(),
+  ]);
+
+  const minuteCount = minuteUsage?.requestCount ?? 0;
+  const monthlyCount = monthlyUsage?.requestCount ?? 0;
+  if (minuteCount >= rpmLimit) {
+    throw new ConvexError({
+      code: "RATE_LIMIT_RPM",
+      message: `Rate limit reached (${rpmLimit} requests/min). Please wait and try again.`,
+    });
+  }
+  if (Number.isFinite(limit) && monthlyCount >= limit) {
+    throw new ConvexError({ code: limitCode, message: limitMessage });
+  }
+
+  if (minuteUsage) {
+    await ctx.db.patch(minuteUsage._id, {
+      requestCount: minuteCount + 1,
+      updatedAt: nowMs,
+    });
+  } else {
+    await ctx.db.insert("usage", {
+      ownerId: user._id,
+      bucketType: "minute",
+      bucketStartMs: minuteBucketStartMs,
+      requestCount: 1,
+      updatedAt: nowMs,
+    });
+  }
+
+  if (monthlyUsage) {
+    await ctx.db.patch(monthlyUsage._id, {
+      requestCount: monthlyCount + 1,
+      updatedAt: nowMs,
+    });
+  } else {
+    await ctx.db.insert("usage", {
+      ownerId: user._id,
+      bucketType,
+      bucketStartMs: monthBucketStartMs,
+      requestCount: 1,
+      updatedAt: nowMs,
+    });
+  }
 }
 
 export const getMessages = query({
@@ -435,6 +553,8 @@ export const updateMessageContent = mutation({
   args: {
     messageId: v.id("messages"),
     content: v.string(),
+    model: v.optional(v.string()),
+    isPremiumModel: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -452,6 +572,15 @@ export const updateMessageContent = mutation({
 
     if (!message || !chat || !user || chat.ownerId !== user._id) {
       throw new Error("Message not found");
+    }
+
+    if (message.role === "user") {
+      await consumeEditedMessageUsage(
+        ctx,
+        user,
+        args.model,
+        args.isPremiumModel,
+      );
     }
 
     await ctx.db.patch(args.messageId, {

@@ -45,3 +45,9 @@ export interface PostCard {
 export interface Post extends Omit<PostCard, "featured"> {
 	body?: PortableTextBlock[];
 }
+
+export interface PostComment {
+	_id: string;
+	text: string;
+	createdAt: string;
+}

@@ -1,19 +1,12 @@
 const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 const { withNativeWind } = require("nativewind/metro");
-const path = require("path");
-
-const projectRoot = __dirname;
-const monorepoRoot = path.resolve(projectRoot, "../..");
 
 /** @type {import('expo/metro-config').MetroConfig} */
-const config = getSentryExpoConfig(projectRoot);
+const config = getSentryExpoConfig(__dirname);
 
-// Monorepo: watch the whole repo and resolve from both node_modules trees.
-config.watchFolders = [monorepoRoot];
-config.resolver.nodeModulesPaths = [
-  path.resolve(projectRoot, "node_modules"),
-  path.resolve(monorepoRoot, "node_modules"),
-];
+// Expo SDK 56 discovers Bun workspaces automatically. Keeping legacy
+// watchFolders/nodeModulesPaths/extraNodeModules overrides here can bypass
+// Expo's resolver and pull a web workspace's React into the Android bundle.
 // Honor the `exports` maps of workspace packages (e.g. @repo/ai → ./lib/*).
 config.resolver.unstable_enablePackageExports = true;
 

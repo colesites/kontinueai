@@ -22,43 +22,45 @@ export function SettingsProfileSidebar({
 	const isPaidPlan = currentPlanTier !== "free";
 
 	return (
-		<aside className="space-y-4 lg:sticky lg:top-8 lg:self-start">
-			<div className="surface-card relative overflow-hidden rounded-2xl p-6">
+		<aside className="grid gap-4 sm:grid-cols-2 lg:sticky lg:top-8 lg:grid-cols-1 lg:self-start">
+			<div className="surface-card relative overflow-hidden rounded-2xl p-4 sm:p-6">
 				{/* soft top bloom */}
 				<div className="pointer-events-none absolute inset-x-0 -top-16 h-32 bg-primary/10 blur-3xl" />
-				<div className="relative flex flex-col items-center text-center">
+				<div className="relative flex items-center gap-4 text-left sm:flex-col sm:text-center">
 					<span className="rounded-full bg-primary/15 p-1 shadow-[0_0_24px_-6px_color-mix(in_oklch,var(--primary)_55%,transparent)] ring-1 ring-primary/25">
 						{imageUrl ? (
 							<span
-								className="block size-24 rounded-full bg-cover bg-center"
+								className="block size-16 rounded-full bg-cover bg-center sm:size-24"
 								style={{ backgroundImage: `url(${imageUrl})` }}
 							/>
 						) : (
-							<span className="flex size-24 items-center justify-center rounded-full bg-primary/10 text-4xl font-semibold text-primary">
+							<span className="flex size-16 items-center justify-center rounded-full bg-primary/10 text-2xl font-semibold text-primary sm:size-24 sm:text-4xl">
 								{userInitial}
 							</span>
 						)}
 					</span>
-					<p className="mt-4 text-xl font-semibold tracking-tight">
-						{displayName}
-					</p>
-					<p className="mt-1 max-w-full truncate text-sm text-muted-foreground">
-						{userEmail}
-					</p>
-					<span
-						className={`mt-3.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${
-							isPaidPlan
-								? "bg-primary/15 text-primary ring-1 ring-primary/25"
-								: "surface-inset text-muted-foreground"
-						}`}
-					>
-						{isPaidPlan && <Sparkles className="size-3" />}
-						{planLabel(currentPlanTier)} Plan
-					</span>
+					<div className="min-w-0 flex-1 sm:w-full">
+						<p className="text-lg font-semibold tracking-tight sm:mt-4 sm:text-xl">
+							{displayName}
+						</p>
+						<p className="mt-1 max-w-full truncate text-sm text-muted-foreground">
+							{userEmail}
+						</p>
+						<span
+							className={`mt-3.5 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider ${
+								isPaidPlan
+									? "bg-primary/15 text-primary ring-1 ring-primary/25"
+									: "surface-inset text-muted-foreground"
+							}`}
+						>
+							{isPaidPlan && <Sparkles className="size-3" />}
+							{planLabel(currentPlanTier)} Plan
+						</span>
+					</div>
 				</div>
 			</div>
 
-			<div className="surface-card rounded-2xl p-5">
+			<div className="surface-card rounded-2xl p-4 sm:p-5">
 				<p className="text-sm font-semibold text-foreground">Current plan</p>
 				<p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
 					{currentPlanTier === "pro"

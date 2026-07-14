@@ -80,7 +80,7 @@
     ],
     "experiments": {
       "typedRoutes": true,
-      "reactCompiler": true
+      "reactCompiler": false
     },
     "extra": {
       "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "779148953674-bui7t3mfp2en86gn5l34765hq35r37b2.apps.googleusercontent.com",

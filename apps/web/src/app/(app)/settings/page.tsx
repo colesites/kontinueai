@@ -64,14 +64,14 @@ export default function SettingsPage() {
 	}, [selectedLanguage]);
 
 	return (
-		<div className="min-h-screen bg-background text-foreground">
-			<div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+		<div className="min-h-screen overflow-x-hidden bg-background text-foreground">
+			<div className="mx-auto w-full max-w-6xl px-3 pb-8 pt-20 sm:px-6 lg:px-8 lg:py-8">
 				{/* Top bar */}
-				<div className="mb-8 flex items-center justify-between gap-3">
+				<div className="mb-7 flex items-center justify-between gap-2 sm:mb-8 sm:gap-3">
 					<button
 						type="button"
 						onClick={() => back()}
-						className="group surface-inset inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-foreground/8 hover:text-foreground"
+						className="group surface-inset inline-flex min-h-10 items-center gap-2 rounded-full px-3 sm:px-3.5 text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-foreground/8 hover:text-foreground"
 					>
 						<ArrowLeft className="size-4 transition-transform duration-200 group-hover:-translate-x-0.5" />
 						Back to chat
@@ -79,7 +79,7 @@ export default function SettingsPage() {
 					<SignOutButton>
 						<button
 							type="button"
-							className="surface-inset inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-destructive/10 hover:text-destructive"
+							className="surface-inset inline-flex min-h-10 items-center gap-2 rounded-full px-3 sm:px-3.5 text-[13px] font-medium text-muted-foreground transition-all duration-150 hover:bg-destructive/10 hover:text-destructive"
 						>
 							<LogOut className="size-4" />
 							Sign out
@@ -88,9 +88,9 @@ export default function SettingsPage() {
 				</div>
 
 				{/* Page heading */}
-				<div className="mb-8">
+				<div className="mb-6 sm:mb-8">
 					<p className="eyebrow">Settings</p>
-					<h1 className="mt-2 text-3xl font-semibold tracking-tight">
+					<h1 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
 						Your account
 					</h1>
 					<p className="mt-2 text-sm text-muted-foreground">
@@ -98,7 +98,7 @@ export default function SettingsPage() {
 					</p>
 				</div>
 
-				<div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+				<div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
 					<SettingsProfileSidebar
 						imageUrl={user?.imageUrl}
 						userInitial={userInitial}
@@ -107,24 +107,27 @@ export default function SettingsPage() {
 						currentPlanTier={currentPlanTier}
 					/>
 
-					<section className="surface-card rounded-2xl p-6">
+					<section className="surface-card min-w-0 rounded-2xl p-4 sm:p-6">
 						<div className="mb-6">
-							<div className="surface-inset inline-flex gap-0.5 rounded-xl p-1">
-								{TABS.map((tab) => (
-									<button
-										key={tab.id}
-										type="button"
-										onClick={() => setActiveTab(tab.id)}
-										className={cn(
-											"rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-all duration-150",
-											activeTab === tab.id
-												? "bg-card text-foreground shadow-sm ring-1 ring-foreground/10"
-												: "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-										)}
-									>
-										{tab.label}
-									</button>
-								))}
+							<div className="w-full overflow-x-auto overscroll-x-contain pb-1">
+								<div className="surface-inset inline-flex min-w-max gap-0.5 rounded-xl p-1">
+									{TABS.map((tab) => (
+										<button
+											key={tab.id}
+											type="button"
+											aria-pressed={activeTab === tab.id}
+											onClick={() => setActiveTab(tab.id)}
+											className={cn(
+												"min-h-9 rounded-lg px-3.5 py-1.5 text-[13px] font-medium transition-all duration-150",
+												activeTab === tab.id
+													? "bg-card text-foreground shadow-sm ring-1 ring-foreground/10"
+													: "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+											)}
+										>
+											{tab.label}
+										</button>
+									))}
+								</div>
 							</div>
 						</div>
 						{activeTab === "account" ? (

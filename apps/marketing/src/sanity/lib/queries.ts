@@ -48,3 +48,12 @@ export const RELATED_POSTS_QUERY = defineQuery(`
 export const POST_SLUGS_QUERY = defineQuery(`
 	*[_type == "post" && defined(slug.current)]{ "slug": slug.current }
 `);
+
+// Comments for a specific post.
+export const POST_COMMENTS_QUERY = defineQuery(`
+	*[_type == "comment" && post->slug.current == $slug] | order(createdAt desc) {
+		_id,
+		text,
+		createdAt
+	}
+`);

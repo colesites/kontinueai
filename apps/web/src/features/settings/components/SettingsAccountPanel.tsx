@@ -54,7 +54,7 @@ export function SettingsAccountPanel({
 				</p>
 			</div>
 
-			<div className="surface-inset rounded-2xl p-5">
+			<div className="surface-inset rounded-2xl p-4 sm:p-5">
 				<p className="text-sm font-semibold text-foreground">
 					Preferred voice language
 				</p>
@@ -98,7 +98,7 @@ export function SettingsAccountPanel({
 					</p>
 				</div>
 
-				<div className="surface-inset rounded-2xl p-5">
+				<div className="surface-inset rounded-2xl p-4 sm:p-5">
 					<SettingsUsagePanel usage={usage} />
 				</div>
 			</div>

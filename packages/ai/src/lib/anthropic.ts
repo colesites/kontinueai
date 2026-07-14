@@ -2,10 +2,16 @@ import type { ModelOption } from "./models";
 
 export const ANTHROPIC_MODELS: ModelOption[] = [
   {
+    id: "anthropic/claude-sonnet-5",
+    name: "Claude Sonnet 5",
+    provider: "anthropic",
+    description: "Near-Opus agentic performance for coding, tools, and professional work",
+  },
+  {
     id: "anthropic/claude-fable-5",
     name: "Claude Fable 5",
     provider: "anthropic",
-    description: "A Mythos-class model",
+    description: "Frontier reasoning for long-horizon coding, research, and complex work",
   },
   {
     id: "anthropic/claude-opus-4.8",

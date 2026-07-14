@@ -2,6 +2,24 @@ import type { ModelOption } from "./models";
 
 export const OPENAI_MODELS: ModelOption[] = [
   {
+    id: "openai/gpt-5.6-sol",
+    name: "GPT 5.6 Sol",
+    provider: "openai",
+    description: "Flagship reasoning for complex coding, research, and agentic work",
+  },
+  {
+    id: "openai/gpt-5.6-terra",
+    name: "GPT 5.6 Terra",
+    provider: "openai",
+    description: "Balanced intelligence and cost for capable everyday work",
+  },
+  {
+    id: "openai/gpt-5.6-luna",
+    name: "GPT 5.6 Luna",
+    provider: "openai",
+    description: "Fast, cost-efficient intelligence for high-volume tasks",
+  },
+  {
     id: "openai/gpt-5.5-pro",
     name: "GPT 5.5 Pro",
     provider: "openai",

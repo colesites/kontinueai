@@ -5,6 +5,7 @@ import {
 	type PortableTextComponents,
 } from "next-sanity";
 import { urlFor } from "@/sanity/lib/image";
+import { slugify } from "@/lib/toc";
 
 const components: PortableTextComponents = {
 	types: {
@@ -34,21 +35,36 @@ const components: PortableTextComponents = {
 				{children}
 			</p>
 		),
-		h2: ({ children }) => (
-			<h2 className="font-display tracking-tight mt-14 mb-5 text-3xl leading-tight">
-				{children}
-			</h2>
-		),
-		h3: ({ children }) => (
-			<h3 className="font-display tracking-tight mt-10 mb-4 text-2xl leading-tight">
-				{children}
-			</h3>
-		),
-		h4: ({ children }) => (
-			<h4 className="font-display mt-8 mb-3 text-xl leading-tight">
-				{children}
-			</h4>
-		),
+		h2: ({ children, value }) => {
+			const text = (value as PortableTextBlock).children
+				?.map((c) => (c as { text?: string }).text || "")
+				.join("") || "";
+			return (
+				<h2 id={slugify(text)} className="font-display tracking-tight mt-14 mb-5 text-3xl leading-tight scroll-mt-24">
+					{children}
+				</h2>
+			);
+		},
+		h3: ({ children, value }) => {
+			const text = (value as PortableTextBlock).children
+				?.map((c) => (c as { text?: string }).text || "")
+				.join("") || "";
+			return (
+				<h3 id={slugify(text)} className="font-display tracking-tight mt-10 mb-4 text-2xl leading-tight scroll-mt-24">
+					{children}
+				</h3>
+			);
+		},
+		h4: ({ children, value }) => {
+			const text = (value as PortableTextBlock).children
+				?.map((c) => (c as { text?: string }).text || "")
+				.join("") || "";
+			return (
+				<h4 id={slugify(text)} className="font-display mt-8 mb-3 text-xl leading-tight scroll-mt-24">
+					{children}
+				</h4>
+			);
+		},
 		blockquote: ({ children }) => (
 			<blockquote className="my-10 border-l-[3px] border-brand pl-6 text-2xl font-medium leading-snug text-foreground">
 				{children}

@@ -27,6 +27,8 @@ interface UseChatMessagingProps {
 	updateMessageContent: (args: {
 		messageId: Id<"messages">;
 		content: string;
+		model?: string;
+		isPremiumModel?: boolean;
 	}) => Promise<unknown>;
 	deleteMessagesAfter: (args: {
 		messageId: Id<"messages">;
@@ -151,12 +153,22 @@ export function useChatMessaging({
 			// Resolve Convex doc ID for this user message by index — aiMessages
 			// and dbMessages are kept in sync 1:1 by the chat lifecycle.
 			const convexId = dbMessages?.[idx]?._id;
+			if (!convexId) {
+				toast.error(
+					"This message is still syncing. Please try editing it again.",
+				);
+				return;
+			}
+			const state = getState();
 
 			try {
-				if (convexId) {
-					await updateMessageContent({ messageId: convexId, content: trimmed });
-					await deleteMessagesAfter({ messageId: convexId, inclusive: false });
-				}
+				await updateMessageContent({
+					messageId: convexId,
+					content: trimmed,
+					model: state.selectedModel,
+					isPremiumModel: isPremium(state.selectedModel),
+				});
+				await deleteMessagesAfter({ messageId: convexId, inclusive: false });
 			} catch (err) {
 				const convexError = err as ConvexRateLimitError;
 				toast.error(
@@ -185,13 +197,13 @@ export function useChatMessaging({
 				return [...prev.slice(0, at), updated];
 			});
 
-			const state = getState();
 			regenerate({ body: toChatRequestBody(state, chatId) });
 		},
 		[
 			aiMessages,
 			chatId,
 			dbMessages,
+			isPremium,
 			updateMessageContent,
 			deleteMessagesAfter,
 			regenerate,

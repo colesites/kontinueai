@@ -54,7 +54,7 @@ export function ModelSelectorWrapper({
 			</ModelSelectorTrigger>
 			<ModelSelectorContent
 				title="Select Model for Chat"
-				className="sm:max-w-4xl h-[75vh] sm:h-[600px] p-0 flex flex-col overflow-hidden bg-background"
+				className="h-[min(84dvh,680px)] p-0 sm:max-w-3xl"
 			>
 				<SharedModelSelectorContent
 					selectedModelId={selectedModel}
