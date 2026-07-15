@@ -2,70 +2,91 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  deriveCapabilities,
-  fetchAiGatewayModels,
-  type ModelCapability,
+	deriveCapabilities,
+	fetchAiGatewayModels,
+	type ModelCapability,
 } from "./model-capabilities";
-import { isProModel } from "./model-pricing";
+import {
+	getModelAccessClass as classifyModelAccess,
+	isProModel,
+	type ModelAccessClass,
+} from "./model-pricing";
 
 // Kept in sync with @repo/ai/lib/kai (avoids a core→ai package dependency).
 const K_AI_MODEL_ID = "kontinue/k-ai-1.0";
 
 export function useModelCapabilities() {
-  const [capabilitiesById, setCapabilitiesById] = useState<
-    Record<string, ModelCapability[]>
-  >({});
-  const [proModelById, setProModelById] = useState<Record<string, boolean>>({});
+	const [capabilitiesById, setCapabilitiesById] = useState<
+		Record<string, ModelCapability[]>
+	>({});
+	const [proModelById, setProModelById] = useState<Record<string, boolean>>({});
+	const [accessClassById, setAccessClassById] = useState<
+		Record<string, ModelAccessClass>
+	>({});
 
-  useEffect(() => {
-    let cancelled = false;
+	useEffect(() => {
+		let cancelled = false;
 
-    (async () => {
-      try {
-        const models = await fetchAiGatewayModels();
-        if (cancelled) return;
+		(async () => {
+			try {
+				const models = await fetchAiGatewayModels();
+				if (cancelled) return;
 
-        const next: Record<string, ModelCapability[]> = {};
-        const nextProModels: Record<string, boolean> = {};
-        for (const m of models) {
-          next[m.id] = deriveCapabilities(m);
-          nextProModels[m.id] = isProModel(m);
-        }
-        setCapabilitiesById(next);
-        setProModelById(nextProModels);
-      } catch {
-        if (cancelled) return;
-        setCapabilitiesById({});
-        setProModelById({});
-      }
-    })();
+				const next: Record<string, ModelCapability[]> = {};
+				const nextProModels: Record<string, boolean> = {};
+				const nextAccessClasses: Record<string, ModelAccessClass> = {};
+				for (const m of models) {
+					next[m.id] = deriveCapabilities(m);
+					nextProModels[m.id] = isProModel(m);
+					nextAccessClasses[m.id] = classifyModelAccess(m);
+				}
+				setCapabilitiesById(next);
+				setProModelById(nextProModels);
+				setAccessClassById(nextAccessClasses);
+			} catch {
+				if (cancelled) return;
+				setCapabilitiesById({});
+				setProModelById({});
+				setAccessClassById({});
+			}
+		})();
 
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+		return () => {
+			cancelled = true;
+		};
+	}, []);
 
-  return useMemo(
-    () => ({
-      getCapabilities: (modelId: string) => {
-        // K-AI is not a gateway model. Its underlying open-source models
-        // (Gemma, GPT-OSS) support reasoning, tool calling and web search, so
-        // advertise the full capability set.
-        if (modelId === K_AI_MODEL_ID) {
-          // Gemma / GPT-OSS support reasoning and tool calling (tool calling is
-          // not a displayed capability — it's wired in the chat route). Web
-          // search uses K-AI's own server-side pipeline (Tavily→Serper), not the
-          // gateway Perplexity tool, so it's a real capability here.
-          return ["text", "thinking", "web-search"] as ModelCapability[];
-        }
-        return capabilitiesById[modelId] ?? [];
-      },
-      // K-AI is free for everyone — never gate it as a premium/pro model.
-      isProModel: (modelId: string) =>
-        modelId === K_AI_MODEL_ID ? false : (proModelById[modelId] ?? true),
-      capabilitiesById,
-      proModelById,
-    }),
-    [capabilitiesById, proModelById]
-  );
+	return useMemo(
+		() => ({
+			getCapabilities: (modelId: string) => {
+				// K-AI is not a gateway model. Its underlying open-source models
+				// (Gemma, GPT-OSS) support reasoning, tool calling and web search, so
+				// advertise the full capability set.
+				if (modelId === K_AI_MODEL_ID) {
+					// Gemma / GPT-OSS support reasoning and tool calling (tool calling is
+					// not a displayed capability — it's wired in the chat route). Web
+					// search uses K-AI's own server-side pipeline (Tavily→Serper), not the
+					// gateway Perplexity tool, so it's a real capability here.
+					return [
+						"text",
+						"thinking",
+						"web-search",
+						"image-generation",
+					] as ModelCapability[];
+				}
+				return capabilitiesById[modelId] ?? [];
+			},
+			// K-AI is free for everyone — never gate it as a premium/pro model.
+			isProModel: (modelId: string) =>
+				modelId === K_AI_MODEL_ID ? false : (proModelById[modelId] ?? true),
+			getModelAccessClass: (modelId: string): ModelAccessClass =>
+				modelId === K_AI_MODEL_ID
+					? "basic"
+					: (accessClassById[modelId] ?? "frontier"),
+			capabilitiesById,
+			proModelById,
+			accessClassById,
+		}),
+		[accessClassById, capabilitiesById, proModelById],
+	);
 }

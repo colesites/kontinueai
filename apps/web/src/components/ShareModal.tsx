@@ -4,6 +4,7 @@ import { Button } from "@repo/ui/components/ui/button";
 import {
 	Dialog,
 	DialogContent,
+	DialogDescription,
 	DialogHeader,
 	DialogTitle,
 } from "@repo/ui/components/ui/dialog";
@@ -95,9 +96,9 @@ export function ShareModal({
 					<DialogTitle className="text-xl font-semibold tracking-tight">
 						Share {displayTitle}
 					</DialogTitle>
-					<p className="text-sm text-muted-foreground">
+					<DialogDescription className="text-sm text-muted-foreground">
 						Anyone with this link can view this conversation.
-					</p>
+					</DialogDescription>
 				</DialogHeader>
 
 				<div className="space-y-4">

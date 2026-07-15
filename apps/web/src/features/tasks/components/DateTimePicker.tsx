@@ -90,7 +90,13 @@ export function DateTimePicker({
 					)}
 				</button>
 			</PopoverTrigger>
-			<PopoverContent align={align} className="glass w-auto rounded-xl p-3">
+			<PopoverContent
+				align={align}
+				side="top"
+				sideOffset={8}
+				collisionPadding={12}
+				className="glass max-h-[calc(100dvh-1.5rem)] w-[min(21.5rem,calc(100vw-1rem))] overflow-y-auto overscroll-contain rounded-xl p-3"
+			>
 				<Calendar
 					mode="single"
 					selected={current}

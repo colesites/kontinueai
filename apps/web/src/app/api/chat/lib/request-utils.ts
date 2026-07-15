@@ -99,6 +99,19 @@ export function getLastUserContent(messages: UIMessage[]): string {
 	return "";
 }
 
+export function estimateUiMessageTokens(messages: UIMessage[]): number {
+	let characters = 0;
+	for (const message of messages) {
+		characters += message.role.length + 8;
+		for (const part of message.parts ?? []) {
+			if (part.type === "text") characters += part.text.length;
+			else if (part.type === "file") characters += part.filename?.length ?? 32;
+			else characters += 64;
+		}
+	}
+	return Math.ceil(characters / 4);
+}
+
 export function hasUserFileAttachments(messages: UIMessage[]): boolean {
 	return messages.some((message) => {
 		if (message.role !== "user" || !Array.isArray(message.parts)) {

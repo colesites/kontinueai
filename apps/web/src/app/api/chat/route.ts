@@ -11,12 +11,13 @@ import {
 	KODE_MODEL_CHAIN,
 	KODE_PRIMARY_MODEL,
 } from "@repo/ai/lib/kode";
-import { isProModel } from "@repo/ai/lib/model-pricing";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
-import { canAccessPlanFeature } from "@repo/core/plan-access";
+import { getModelAccessClass } from "@repo/core/model-pricing";
+import { canAccessModel, canAccessPlanFeature } from "@repo/core/plan-access";
+import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import { convertToModelMessages, type LanguageModel, streamText } from "ai";
-import { fetchAction } from "convex/nextjs";
+import { fetchAction, fetchMutation } from "convex/nextjs";
 import { PLAN_ERROR_CODES, planDeniedResponse } from "../lib/plan-denial";
 import { classifyChatError } from "./lib/error-classifier";
 import { getGatewayRuntimeConfig } from "./lib/gateway-runtime";
@@ -24,6 +25,7 @@ import { getAiGatewayModelsCached } from "./lib/model-utils";
 import { getTokenLimitsByTier, getUserPlanTier } from "./lib/plan-limits";
 import {
 	createInputTooLongResponse,
+	estimateUiMessageTokens,
 	getLastUserContent,
 	hasUserFileAttachments,
 	logDetailedError,
@@ -92,9 +94,15 @@ export async function POST(req: Request) {
 		}
 
 		const planTier = await getUserPlanTier(userId, hasPlan);
+		if (usingKode && !canAccessPlanFeature(planTier, "kode")) {
+			return planDeniedResponse(
+				PLAN_ERROR_CODES.PREMIUM_MODEL_REQUIRED,
+				"Kode is available on Pro and Max.",
+			);
+		}
 		// K-AI routes through OpenRouter, which can't use the Vercel-gateway
 		// Perplexity web-search tool, so web search is disabled for it.
-		const webSearchEnabled =
+		let webSearchEnabled =
 			!usingOpenRouter &&
 			canAccessPlanFeature(planTier, "premium-model") &&
 			requestedWebSearchEnabled;
@@ -104,39 +112,37 @@ export async function POST(req: Request) {
 		) {
 			return planDeniedResponse(
 				PLAN_ERROR_CODES.FILE_UPLOAD_REQUIRED,
-				"Starter or Pro plan required for file attachments",
+				"File attachments are available on Starter, Plus, Pro, and Max.",
 			);
 		}
 
-		// K-AI is free for every tier and is never a "premium" model.
-		const isPremium = usingOpenRouter ? false : isProModel(requestedModel);
-		if (!canAccessPlanFeature(planTier, "premium-model") && isPremium) {
+		const modelClass = usingKai
+			? "kai"
+			: usingKode
+				? "frontier"
+				: getModelAccessClass(requestedModel);
+		if (
+			modelClass !== "kai" &&
+			!canAccessModel(planTier, requestedModel.id, modelClass)
+		) {
 			return planDeniedResponse(
 				PLAN_ERROR_CODES.PREMIUM_MODEL_REQUIRED,
-				"Starter or Pro plan required for this model",
+				`The ${modelClass} model group is not included in the ${planTier} plan.`,
 			);
 		}
 
-		// K-AI has no per-message token in/out caps — only its own monthly request
-		// budget (enforced in Convex addMessage). Give it a generous output budget
-		// and skip the input-length gate.
 		const tokenLimits = getTokenLimitsByTier({
 			planTier,
-			isPremiumModel: isPremium,
+			modelClass,
 		});
-		const maxOutputTokens = usingOpenRouter
-			? 8192
-			: tokenLimits.maxOutputTokens;
-
-		if (!usingOpenRouter) {
-			const estimatedInputTokens = Math.ceil(lastUserContent.length / 4);
-			if (estimatedInputTokens > tokenLimits.maxInputTokens) {
-				return createInputTooLongResponse({
-					tierLabel: tokenLimits.tierLabel,
-					maxInputTokens: tokenLimits.maxInputTokens,
-					estimatedInputTokens,
-				});
-			}
+		const maxOutputTokens = tokenLimits.maxOutputTokens;
+		const estimatedInputTokens = estimateUiMessageTokens(messages);
+		if (estimatedInputTokens > tokenLimits.maxInputTokens) {
+			return createInputTooLongResponse({
+				tierLabel: tokenLimits.tierLabel,
+				maxInputTokens: tokenLimits.maxInputTokens,
+				estimatedInputTokens,
+			});
 		}
 
 		const gatewayRuntime = getGatewayRuntimeConfig();
@@ -159,6 +165,47 @@ export async function POST(req: Request) {
 		// Resolve the Convex auth token once; reused for memory context fetch and
 		// any authed tool calls (e.g. create_task) below.
 		const convexToken = (await getToken?.({ template: "convex" })) ?? null;
+		if (!convexToken) {
+			return new Response(
+				"Your account could not be verified. Please try again.",
+				{
+					status: 503,
+				},
+			);
+		}
+		try {
+			await fetchMutation(
+				convexApi.messages.consumeChatRequest,
+				{
+					model: modelId,
+					...(modelClass === "kai" ? {} : { modelClass }),
+				},
+				{ token: convexToken },
+			);
+		} catch (error) {
+			const data =
+				typeof error === "object" && error !== null && "data" in error
+					? (error as { data?: { message?: string; code?: string } }).data
+					: undefined;
+			const message =
+				data?.message ??
+				(error instanceof Error ? error.message : "Plan usage limit reached.");
+			return new Response(message, {
+				status: 429,
+				headers: {
+					"Content-Type": "text/plain; charset=utf-8",
+					...(data?.code ? { "x-error-code": data.code } : {}),
+				},
+			});
+		}
+		if (webSearchEnabled && convexToken) {
+			const searchQuota = await fetchMutation(
+				convexApi.webSearch.consumeSearchQuota,
+				{},
+				{ token: convexToken },
+			);
+			webSearchEnabled = searchQuota.allowed;
+		}
 
 		let memoryContextText: string | null = null;
 		if (chatId && lastUserContent.trim() && convexToken) {
@@ -255,6 +302,9 @@ export async function POST(req: Request) {
 			convexToken,
 			chatId: chatId ? (chatId as Id<"chats">) : null,
 			agentId,
+			enableKaiImageGeneration:
+				usingKai && PLAN_DEFINITIONS[planTier].imageGenerations > 0,
+			openRouterKey,
 		});
 
 		const toolRuntime = resolveToolRuntime({

@@ -9,11 +9,13 @@ import {
 	VIDEO_MODELS,
 } from "@repo/ai/lib/canvas-models";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { put } from "@vercel/blob";
 import { experimental_generateVideo as generateVideo } from "ai";
 import { fetchMutation } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { getUserPlanTier } from "../../chat/lib/plan-limits";
+import { PLAN_ERROR_CODES, planDeniedResponse } from "../../lib/plan-denial";
 
 // Veo's practical single-clip max; longer K-Video durations are rendered as a
 // multi-scene job on the Render worker (storyboard → clips → ffmpeg merge).
@@ -37,6 +39,20 @@ export async function POST(req: Request) {
 		const { userId, has, getToken } = await auth();
 		if (!userId) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		}
+		const planTier = await getUserPlanTier(userId, has);
+		if (!canAccessPlanFeature(planTier, "canvas")) {
+			return planDeniedResponse(
+				PLAN_ERROR_CODES.CANVAS_PRO_REQUIRED,
+				"K-Video is available in Canvas on Pro and Max.",
+			);
+		}
+		const convexToken = (await getToken({ template: "convex" })) ?? null;
+		if (!convexToken) {
+			return NextResponse.json(
+				{ error: "Your account could not be verified. Please try again." },
+				{ status: 503 },
+			);
 		}
 
 		const body = (await req.json()) as {
@@ -98,7 +114,6 @@ export async function POST(req: Request) {
 		const aspectRatioStr = body.aspectRatio || "16:9";
 
 		// Plan-based resolution cap for the (hidden) raw models: free → 720p max.
-		const planTier = await getUserPlanTier(userId, has);
 		if (
 			!isKontinueCanvasModel(modelId) &&
 			planTier === "free" &&
@@ -131,7 +146,6 @@ export async function POST(req: Request) {
 			// job (storyboard → per-scene clips → ffmpeg merge). Returns a jobId the
 			// client polls; the worker reports progress via the callback route.
 			if (kDuration > SINGLE_CLIP_MAX_SECONDS) {
-				const convexToken = (await getToken({ template: "convex" })) ?? null;
 				const scraperUrl = process.env.SCRAPER_API_URL?.replace(/\/$/, "");
 				const scraperKey =
 					process.env.SCRAPER_API_KEY ?? process.env.API_KEY ?? "";
@@ -141,18 +155,24 @@ export async function POST(req: Request) {
 				const appUrl =
 					process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin;
 
-				if (
-					!convexToken ||
-					!scraperUrl ||
-					!openRouterKey ||
-					!agentSecret ||
-					!blobToken
-				) {
+				if (!scraperUrl || !openRouterKey || !agentSecret || !blobToken) {
 					return NextResponse.json(
 						{ error: "Long-form video is not fully configured." },
 						{ status: 500 },
 					);
 				}
+
+				await fetchMutation(
+					convexApi.canvas.deductCredits,
+					{
+						mediaType: "video",
+						seconds: kDuration,
+						modelId,
+						resolution: kResolution,
+						quality: body.quality,
+					},
+					{ token: convexToken },
+				);
 
 				const jobId = await fetchMutation(
 					convexApi.videoJobs.createVideoJob,
@@ -236,6 +256,17 @@ export async function POST(req: Request) {
 				access: "public",
 				contentType: mediaType,
 			});
+			await fetchMutation(
+				convexApi.canvas.deductCredits,
+				{
+					mediaType: "video",
+					seconds: kDuration,
+					modelId,
+					resolution: kResolution,
+					quality: body.quality,
+				},
+				{ token: convexToken },
+			);
 			return NextResponse.json({
 				mediaUrl: blob.url,
 				pathname: blob.pathname,
@@ -349,6 +380,17 @@ export async function POST(req: Request) {
 			access: "public",
 			contentType: mediaType,
 		});
+		await fetchMutation(
+			convexApi.canvas.deductCredits,
+			{
+				mediaType: "video",
+				seconds: duration,
+				modelId,
+				resolution: resolutionStr,
+				quality: body.quality,
+			},
+			{ token: convexToken },
+		);
 
 		console.log(
 			"[canvas/generate-video] Successfully generated video:",

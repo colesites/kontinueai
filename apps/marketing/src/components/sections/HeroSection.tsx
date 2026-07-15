@@ -1,12 +1,13 @@
 "use client";
 
-import { Play } from "lucide-react";
-import Link from "next/link";
+import { track } from "@vercel/analytics";
+import { ArrowDown, Check } from "lucide-react";
 import { useRef } from "react";
+import { TrackedLink } from "@/components/marketing/TrackedLink";
 import { Button } from "@/components/ui/button";
+import { appLinks } from "@/data/product";
 import { gsap, useGSAP } from "@/lib/gsap";
 import { scrollToTarget } from "@/lib/scroll";
-import { APP_URL } from "@/lib/structured-data";
 import { HeroWorkspace } from "./HeroWorkspace";
 
 export function HeroSection() {
@@ -23,7 +24,10 @@ export function HeroSection() {
 			);
 			if (underline && !reduced) {
 				const len = underline.getTotalLength();
-				gsap.set(underline, { strokeDasharray: len, strokeDashoffset: len });
+				gsap.set(underline, {
+					strokeDasharray: `${len} ${len}`,
+					strokeDashoffset: len,
+				});
 			}
 
 			const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
@@ -60,7 +64,17 @@ export function HeroSection() {
 			if (underline && !reduced) {
 				tl.to(
 					underline,
-					{ strokeDashoffset: 0, duration: 0.75, ease: "power2.inOut" },
+					{
+						strokeDashoffset: 0,
+						duration: 0.75,
+						ease: "power2.inOut",
+						onComplete: () => {
+							gsap.set(underline, {
+								strokeDasharray: "none",
+								strokeDashoffset: 0,
+							});
+						},
+					},
 					"-=0.8",
 				);
 			}
@@ -97,20 +111,20 @@ export function HeroSection() {
 						className="eyebrow inline-flex items-center gap-2"
 					>
 						<span className="size-1.5 rounded-full bg-brand" />
-						The multi-model AI workspace
+						Built in Africa for the world
 					</p>
 
 					<h1 className="font-display tracking-tightest mt-6 text-[2.75rem] leading-[1.02] sm:text-6xl lg:text-[4.75rem]">
 						<span className="block overflow-hidden pb-[0.05em]">
 							<span data-h="line" data-anim className="block">
-								One <span className="text-brand">workspace</span>
+								One <span className="text-brand">AI platform</span>
 							</span>
 						</span>
 						<span className="block overflow-hidden pb-[0.28em]">
 							<span data-h="line" data-anim className="block">
-								for every{" "}
+								for every model—and every{" "}
 								<span className="relative inline-block whitespace-nowrap">
-									AI model
+									conversation.
 									<svg
 										aria-hidden="true"
 										viewBox="0 0 200 12"
@@ -137,8 +151,9 @@ export function HeroSection() {
 						data-anim
 						className="mx-auto mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl"
 					>
-						Import your chats, switch between ChatGPT, Claude, Gemini and more
-						without losing context, and pay for one plan instead of five.
+						Use K-AI 1.0 or switch between leading AI models from OpenAI,
+						Anthropic, Google, xAI, and more. Import supported conversations and
+						continue from the context already there.
 					</p>
 
 					<div
@@ -146,26 +161,50 @@ export function HeroSection() {
 						data-anim
 						className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
 					>
-						<Button asChild size="lg" className="w-full sm:w-auto">
-							<Link
-								href={`${APP_URL}/sign-up`}
-								target="_blank"
-								rel="noopener noreferrer"
-							>
-								Start free
-							</Link>
-						</Button>
+						<TrackedLink
+							href={appLinks.signUp}
+							target="_blank"
+							rel="noopener noreferrer"
+							eventName="hero_start_free_clicked"
+							eventProperties={{ location: "homepage_hero" }}
+							size="lg"
+							className="w-full sm:w-auto"
+						>
+							Start free
+						</TrackedLink>
 						<Button
 							type="button"
 							variant="outline"
 							size="lg"
 							className="w-full sm:w-auto"
-							onClick={() => scrollToTarget("#demo")}
+							onClick={() => {
+								track("hero_import_demo_clicked", {
+									location: "homepage_hero",
+								});
+								scrollToTarget("#import-conversations");
+							}}
 						>
-							<Play className="size-4 fill-current" />
-							Watch demo
+							<ArrowDown className="size-4" />
+							See how importing works
 						</Button>
 					</div>
+
+					<ul className="mx-auto mt-9 grid max-w-2xl justify-items-center gap-3 text-center text-sm text-muted-foreground sm:grid-cols-2">
+						{[
+							"K-AI 1.0, Kontinue AI’s native option",
+							"Import from supported AI platforms",
+							"Switch models inside one conversation",
+							"Selected models from leading providers",
+						].map((point) => (
+							<li
+								key={point}
+								className="flex items-center justify-center gap-2"
+							>
+								<Check className="size-4 shrink-0 text-brand" />
+								{point}
+							</li>
+						))}
+					</ul>
 				</div>
 
 				<div

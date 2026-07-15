@@ -8,22 +8,35 @@ import {
 	resolveCanvasModelId,
 } from "@repo/ai/lib/canvas-models";
 import { fetchAiGatewayModels } from "@repo/ai/lib/model-capabilities";
+import { api as convexApi } from "@repo/convex/convex/_generated/api";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { put } from "@vercel/blob";
 import {
 	experimental_generateImage as generateImage,
 	generateText,
 	stepCountIs,
+	type ToolSet,
 } from "ai";
+import { fetchMutation } from "convex/nextjs";
 import { NextResponse } from "next/server";
+import { getUserPlanTier } from "../../chat/lib/plan-limits";
 import { toOpenAIImageSize } from "../../chat/lib/request-utils";
+import { PLAN_ERROR_CODES, planDeniedResponse } from "../../lib/plan-denial";
 
 export const maxDuration = 120;
 
 export async function POST(req: Request) {
 	try {
-		const { userId } = await auth();
+		const { userId, has, getToken } = await auth();
 		if (!userId) {
 			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+		}
+		const planTier = await getUserPlanTier(userId, has);
+		if (!canAccessPlanFeature(planTier, "canvas")) {
+			return planDeniedResponse(
+				PLAN_ERROR_CODES.CANVAS_PRO_REQUIRED,
+				"Canvas is available on Pro and Max.",
+			);
 		}
 
 		const body = (await req.json()) as {
@@ -139,7 +152,7 @@ export async function POST(req: Request) {
 							prompt: `Generate a high-quality image based on this prompt: ${body.prompt}. Use the image_generation tool.`,
 						}),
 				tools: {
-					image_generation: imageTool,
+					image_generation: imageTool as unknown as ToolSet[string],
 				},
 				stopWhen: stepCountIs(5),
 				toolChoice: "required",
@@ -257,6 +270,19 @@ export async function POST(req: Request) {
 			mediaUrl = blob.url;
 			pathname = blob.pathname;
 		}
+
+		const convexToken = (await getToken({ template: "convex" })) ?? null;
+		if (!convexToken) {
+			return NextResponse.json(
+				{ error: "Your account could not be verified. Please try again." },
+				{ status: 503 },
+			);
+		}
+		await fetchMutation(
+			convexApi.canvas.deductCredits,
+			{ mediaType: "image", seconds: 0, modelId },
+			{ token: convexToken },
+		);
 
 		return NextResponse.json({
 			mediaUrl,

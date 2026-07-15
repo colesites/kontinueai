@@ -46,7 +46,7 @@ export function ChatClient() {
 
 function ChatClientContent() {
 	const { setChatInfo, clearChatInfo } = useChatContext();
-	const { getCapabilities, isProModel } = useModelCapabilities();
+	const { getCapabilities, getModelAccessClass } = useModelCapabilities();
 	const { state: sidebarState, isMobile: isSidebarMobile } = useSidebar();
 	const params = useParams();
 	const router = useRouter();
@@ -81,7 +81,7 @@ function ChatClientContent() {
 	// 3. Messaging Logic
 	const messaging = useChatMessaging({
 		chatId,
-		isPremium: isProModel,
+		getModelClass: getModelAccessClass,
 		addMessage,
 		updateMessageContent,
 		deleteMessagesAfter,

@@ -11,14 +11,16 @@ import {
 	writeCachedDefaultModel,
 } from "@repo/core/default-model-storage";
 import { consumePendingChatDraft } from "@repo/core/pending-chat-draft";
+import { canAccessModel } from "@repo/core/plan-access";
+import { isPlanAtLeast } from "@repo/core/plan-tier";
 import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useIsProPlan } from "../../../lib/use-plan-tier";
+import { usePlanTier } from "../../../lib/use-plan-tier";
 
 export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
-	const isPaidPlan = useIsProPlan();
-	const { isProModel } = useModelCapabilities();
+	const planTier = usePlanTier();
+	const { getModelAccessClass } = useModelCapabilities();
 	const persistedDefaultModel = useQuery(api.users.getDefaultModel, {});
 	const saveDefaultModel = useMutation(api.users.setDefaultModel);
 
@@ -63,12 +65,12 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
 			localSelectedModel ??
 			validatedPersistedModel ??
 			cachedSelectedModel ??
-			getDefaultModelForPlan(isPaidPlan).id,
+			getDefaultModelForPlan(isPlanAtLeast(planTier, "pro")).id,
 		[
 			localSelectedModel,
 			validatedPersistedModel,
 			cachedSelectedModel,
-			isPaidPlan,
+			planTier,
 		],
 	);
 
@@ -95,12 +97,14 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
 				id: model.id,
 				name: model.name,
 				provider: model.provider,
-				disabled: !isPaidPlan && isProModel(model.id),
+				disabled:
+					!isKaiModel(model.id) &&
+					!canAccessModel(planTier, model.id, getModelAccessClass(model.id)),
 			}));
 		}
 
 		return next;
-	}, [isPaidPlan, isProModel, modelOptionsByProvider]);
+	}, [getModelAccessClass, modelOptionsByProvider, planTier]);
 
 	const consumeDraft = (onSend: (text: string) => void) => {
 		if (hasConsumedPendingDraftRef.current) return;
@@ -114,7 +118,8 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
 		}
 		if (typeof draft.webSearchEnabled === "boolean") {
 			const allowSearch =
-				isPaidPlan || isKaiModel(draft.model ?? selectedModel);
+				isPlanAtLeast(planTier, "plus") ||
+				isKaiModel(draft.model ?? selectedModel);
 			setWebSearchEnabled(allowSearch ? draft.webSearchEnabled : false);
 		}
 		if (draft.imageAspectRatio) {
@@ -135,7 +140,9 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
 		// K-AI's web search is free for all tiers (its own daily quota); only the
 		// gateway models' search is paid-gated.
 		webSearchEnabled:
-			isPaidPlan || isKaiModel(selectedModel) ? webSearchEnabled : false,
+			isPlanAtLeast(planTier, "plus") || isKaiModel(selectedModel)
+				? webSearchEnabled
+				: false,
 		setWebSearchEnabled,
 		imageAspectRatio,
 		setImageAspectRatio,

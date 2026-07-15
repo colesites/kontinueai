@@ -3,21 +3,23 @@
 import { Menu, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { appLinks } from "@/data/product";
 import { getLenis, scrollToTarget } from "@/lib/scroll";
-import { APP_URL } from "@/lib/structured-data";
 
 const navLinks = [
-	{ href: "/#how-it-works", id: "how-it-works", label: "How it works" },
-	{ href: "/#features", id: "features", label: "Features" },
-	{ href: "/#pricing", id: "pricing", label: "Pricing" },
-	{ href: "/blog", id: "blog", label: "Blog" },
-	{ href: "/download", id: "download", label: "Download" },
-	{ href: "/#faq", id: "faq", label: "FAQ" },
+	{ href: "/kontinue-model", label: "K-AI 1.0" },
+	{ href: "/import-ai-conversations", label: "Import" },
+	{ href: "/supported-models", label: "Models" },
+	{ href: "/pricing", label: "Pricing" },
+	{ href: "/blog", label: "Blog" },
+	{ href: "/about", label: "About" },
 ];
 
 export function Header() {
+	const pathname = usePathname();
 	const [scrolled, setScrolled] = useState(false);
 	const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -44,9 +46,21 @@ export function Header() {
 		};
 	}, [mobileOpen]);
 
-	const handleNav = (e: React.MouseEvent<HTMLAnchorElement>, id: string) => {
+	useEffect(() => {
+		if (!mobileOpen) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setMobileOpen(false);
+		};
+		window.addEventListener("keydown", onKeyDown);
+		return () => window.removeEventListener("keydown", onKeyDown);
+	}, [mobileOpen]);
+
+	const handleNav = (e: React.MouseEvent<HTMLAnchorElement>, href: string) => {
+		const id = href.includes("#") ? href.split("#")[1] : undefined;
 		const el =
-			typeof document !== "undefined" ? document.getElementById(id) : null;
+			id && typeof document !== "undefined"
+				? document.getElementById(id)
+				: null;
 		if (el) {
 			e.preventDefault();
 			scrollToTarget(`#${id}`);
@@ -76,7 +90,7 @@ export function Header() {
 						width={120}
 						height={28}
 						className="h-[1.35rem] w-auto object-contain"
-						style={{ filter: "brightness(0)" }}
+						style={{ filter: "brightness(0)", width: "auto" }}
 						priority
 					/>
 				</Link>
@@ -84,10 +98,11 @@ export function Header() {
 				<nav className="hidden items-center gap-9 lg:flex">
 					{navLinks.map((link) => (
 						<Link
-							key={link.id}
+							key={link.href}
 							href={link.href}
-							onClick={(e) => handleNav(e, link.id)}
-							className="link-underline text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+							onClick={(e) => handleNav(e, link.href)}
+							aria-current={pathname === link.href ? "page" : undefined}
+							className={`link-underline text-sm font-medium transition-colors hover:text-foreground ${pathname === link.href ? "text-foreground" : "text-muted-foreground"}`}
 						>
 							{link.label}
 						</Link>
@@ -97,7 +112,7 @@ export function Header() {
 				<div className="hidden items-center gap-2 lg:flex">
 					<Button asChild variant="ghost" size="sm">
 						<Link
-							href={`${APP_URL}/sign-in`}
+							href={appLinks.signIn}
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -106,7 +121,7 @@ export function Header() {
 					</Button>
 					<Button asChild size="sm">
 						<Link
-							href={`${APP_URL}/sign-up`}
+							href={appLinks.signUp}
 							target="_blank"
 							rel="noopener noreferrer"
 						>
@@ -141,10 +156,11 @@ export function Header() {
 					<div className="flex flex-col">
 						{navLinks.map((link) => (
 							<Link
-								key={`m-${link.id}`}
+								key={`m-${link.href}`}
 								href={link.href}
-								onClick={(e) => handleNav(e, link.id)}
-								className="font-display border-b border-border py-5 text-2xl tracking-tight text-foreground transition-colors hover:text-brand"
+								onClick={(e) => handleNav(e, link.href)}
+								aria-current={pathname === link.href ? "page" : undefined}
+								className={`font-display border-b border-border py-5 text-2xl tracking-tight transition-colors hover:text-brand ${pathname === link.href ? "text-brand" : "text-foreground"}`}
 							>
 								{link.label}
 							</Link>
@@ -153,7 +169,7 @@ export function Header() {
 					<div className="mt-auto flex flex-col gap-3 pt-10">
 						<Button asChild variant="outline" size="lg" className="w-full">
 							<Link
-								href={`${APP_URL}/sign-in`}
+								href={appLinks.signIn}
 								target="_blank"
 								rel="noopener noreferrer"
 							>
@@ -162,7 +178,7 @@ export function Header() {
 						</Button>
 						<Button asChild size="lg" className="w-full">
 							<Link
-								href={`${APP_URL}/sign-up`}
+								href={appLinks.signUp}
 								target="_blank"
 								rel="noopener noreferrer"
 							>

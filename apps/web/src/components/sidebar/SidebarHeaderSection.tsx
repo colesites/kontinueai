@@ -1,4 +1,4 @@
-import type { PlanTier } from "@repo/core/plan-tier";
+import { type PlanTier, planLabel } from "@repo/core/plan-tier";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -230,8 +230,8 @@ export function SidebarHeaderSection({
 									<span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">
 										{kodeComingSoon
 											? "Coming soon"
-											: planTier === "pro"
-												? "Pro"
+											: planTier === "pro" || planTier === "max"
+												? planLabel(planTier)
 												: "Locked"}
 									</span>
 								</div>

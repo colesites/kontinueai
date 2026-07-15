@@ -3,10 +3,10 @@ import { Reveal } from "@/components/anim/Reveal";
 import type { UseCase } from "@/data/useCases";
 
 interface UseCasesSectionProps {
-	useCases: UseCase[];
+	items: UseCase[];
 }
 
-export function UseCasesSection({ useCases }: UseCasesSectionProps) {
+export function UseCasesSection({ items }: UseCasesSectionProps) {
 	return (
 		<section id="use-cases" className="bg-background py-24 lg:py-32">
 			<div className="mx-auto max-w-6xl px-5 lg:px-8">
@@ -18,7 +18,7 @@ export function UseCasesSection({ useCases }: UseCasesSectionProps) {
 				</Reveal>
 
 				<div className="mt-14 border-t border-border lg:mt-20">
-					{useCases.map((useCase) => (
+					{items.map((useCase) => (
 						<Reveal
 							key={useCase.id}
 							y={20}

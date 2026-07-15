@@ -24,6 +24,14 @@ export const commentType = defineType({
 			type: "datetime",
 			validation: (rule) => rule.required(),
 		}),
+		defineField({
+			name: "approved",
+			title: "Approved for publication",
+			type: "boolean",
+			initialValue: false,
+			description:
+				"Only approved comments appear on the public marketing website.",
+		}),
 	],
 	preview: {
 		select: {

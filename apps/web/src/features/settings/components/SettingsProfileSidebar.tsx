@@ -63,13 +63,17 @@ export function SettingsProfileSidebar({
 			<div className="surface-card rounded-2xl p-4 sm:p-5">
 				<p className="text-sm font-semibold text-foreground">Current plan</p>
 				<p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
-					{currentPlanTier === "pro"
-						? "You have the highest limits, premium models, and extended token caps."
-						: currentPlanTier === "starter"
-							? "You have access to premium models and increased limits."
-							: "You are on the free plan. Upgrade when you need more limits."}
+					{currentPlanTier === "max"
+						? "You have our highest limits, full Kode, Canvas, and 120 minutes of Live."
+						: currentPlanTier === "pro"
+							? "You have Frontier models, Kode Lite, Canvas, and Kontinue Live."
+							: currentPlanTier === "plus"
+								? "You have the wider Basic and Pro model catalogue."
+								: currentPlanTier === "starter"
+									? "You have three fast Basic models and higher everyday limits."
+									: "You are on Free with K-AI and clear monthly limits."}
 				</p>
-				{currentPlanTier !== "pro" && (
+				{currentPlanTier !== "max" && (
 					<Link
 						href="/pricing"
 						className="glow-button mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-semibold text-primary-foreground transition-transform duration-200 hover:scale-[1.02] active:scale-[0.98]"

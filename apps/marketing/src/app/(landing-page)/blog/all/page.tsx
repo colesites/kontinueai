@@ -2,15 +2,16 @@ import { ArrowLeft } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { AllPostsBrowser } from "@/components/blog/AllPostsBrowser";
+import { pageMetadata } from "@/lib/metadata";
 import { sanityFetch } from "@/sanity/lib/fetch";
 import { POSTS_QUERY } from "@/sanity/lib/queries";
 import type { PostCard } from "@/sanity/lib/types";
 
-export const metadata: Metadata = {
-	title: "All posts",
-	description: "Every story from The Kontinue Journal, newest first.",
-	alternates: { canonical: "/blog/all" },
-};
+export const metadata: Metadata = pageMetadata({
+	title: "All Posts | The Kontinue Journal",
+	description: "Every published story from The Kontinue Journal, newest first.",
+	path: "/blog/all",
+});
 
 export const revalidate = 60;
 

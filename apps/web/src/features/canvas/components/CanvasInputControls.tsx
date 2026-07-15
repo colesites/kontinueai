@@ -188,11 +188,8 @@ export function CanvasInputControls({
 					value: m.id,
 					label: m.name,
 					isFree: m.isFree,
-					// Free models (K-Image/K-Video) are always selectable. Otherwise:
-					// image needs Starter/Pro, video needs Pro.
-					disabled:
-						!m.isFree &&
-						(mode === "image" ? planTier === "free" : planTier !== "pro"),
+					// Canvas generation is available only on Pro and Max.
+					disabled: !isPro,
 				}))}
 			/>
 

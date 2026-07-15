@@ -5,6 +5,7 @@ import schema from "./schema";
 
 const modules = {
 	"./_generated/server.ts": () => import("./_generated/server"),
+	"./memoryWorkers.ts": () => import("../test/memoryWorkers"),
 	"./messages.ts": () => import("./messages"),
 };
 
@@ -50,16 +51,19 @@ async function seedUserMessage(
 	});
 }
 
-describe("edited message usage", () => {
-	test("counts a free-model edit as another monthly request", async () => {
+describe("server-side chat request usage", () => {
+	test("counts a free K-AI request after an edited prompt", async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, userId } = await seedUserMessage(t, "free");
 
 		await t.withIdentity(USER).mutation(api.messages.updateMessageContent, {
 			messageId,
 			content: "Edited prompt",
-			model: "openai/gpt-4.1-mini",
+			model: "kontinue/k-ai-1.0",
 			isPremiumModel: false,
+		});
+		await t.withIdentity(USER).mutation(api.messages.consumeChatRequest, {
+			model: "kontinue/k-ai-1.0",
 		});
 
 		const counts = await t.run(async (ctx) => {
@@ -73,10 +77,10 @@ describe("edited message usage", () => {
 		});
 
 		expect(counts.minute).toBe(1);
-		expect(counts.month).toBe(1);
+		expect(counts.month_kai).toBe(1);
 	});
 
-	test("uses the premium bucket for a paid-model edit", async () => {
+	test("uses the Pro bucket and shared credits for a paid-model request", async () => {
 		const t = convexTest(schema, modules);
 		const { messageId, userId } = await seedUserMessage(t, "pro_plan");
 
@@ -85,6 +89,11 @@ describe("edited message usage", () => {
 			content: "Edited premium prompt",
 			model: "anthropic/claude-sonnet-4",
 			isPremiumModel: true,
+			modelClass: "pro",
+		});
+		await t.withIdentity(USER).mutation(api.messages.consumeChatRequest, {
+			model: "anthropic/claude-sonnet-4",
+			modelClass: "pro",
 		});
 
 		const premiumUsage = await t.run(async (ctx) => {
@@ -97,5 +106,14 @@ describe("edited message usage", () => {
 		});
 
 		expect(premiumUsage?.requestCount).toBe(1);
+		const creditUsage = await t.run(async (ctx) =>
+			ctx.db
+				.query("usage")
+				.withIndex("by_owner_bucket", (q) =>
+					q.eq("ownerId", userId).eq("bucketType", "month_ai_credits"),
+				)
+				.unique(),
+		);
+		expect(creditUsage?.requestCount).toBe(6);
 	});
 });

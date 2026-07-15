@@ -14,6 +14,7 @@ export type SanityImage = SanityImageSource & {
 };
 
 export interface Author {
+	_id?: string;
 	name: string;
 	role?: string;
 	image?: SanityImage;
@@ -37,13 +38,25 @@ export interface PostCard {
 	featured?: boolean;
 	views?: number;
 	readMins?: number;
+	modifiedAt?: string;
 	mainImage?: SanityImage;
+	seo?: {
+		title?: string;
+		description?: string;
+		image?: SanityImage;
+		noIndex?: boolean;
+	};
 	author?: Author;
 	categories?: Category[];
 }
 
 export interface Post extends Omit<PostCard, "featured"> {
 	body?: PortableTextBlock[];
+}
+
+export interface AuthorPage extends Author {
+	_id: string;
+	posts: PostCard[];
 }
 
 export interface PostComment {

@@ -9,12 +9,10 @@ export function ViewTracker({ slug }: { slug: string }) {
 		const key = `viewed:${slug}`;
 		if (sessionStorage.getItem(key)) return;
 		sessionStorage.setItem(key, "1");
-		fetch("/api/blog/view", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ slug }),
-			keepalive: true,
-		}).catch(() => {});
+		const payload = new Blob([JSON.stringify({ slug })], {
+			type: "application/json",
+		});
+		navigator.sendBeacon("/api/blog/view", payload);
 	}, [slug]);
 
 	return null;

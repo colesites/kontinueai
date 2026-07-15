@@ -1,13 +1,22 @@
 import { gateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { type AgentId, getAgent } from "@repo/ai/lib/agents";
+import {
+	K_IMAGE_MODEL_ID,
+	resolveCanvasModelId,
+} from "@repo/ai/lib/canvas-models";
 import { isKaiModel, K_AI_DISPLAY_NAME } from "@repo/ai/lib/kai";
 import { isKodeModel, KODE_DISPLAY_NAME } from "@repo/ai/lib/kode";
 import { deriveCapabilities } from "@repo/ai/lib/model-capabilities";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { markdownToBlocks } from "@tryfabric/martian";
-import { type ToolSet, tool } from "ai";
+import {
+	experimental_generateImage as generateImage,
+	type ToolSet,
+	tool,
+} from "ai";
 import { fetchMutation } from "convex/nextjs";
 import { z } from "zod";
 import { type ConnectorTokens, userConnectorTokens } from "./connector-tokens";
@@ -16,6 +25,43 @@ import { toOpenAIImageSize } from "./request-utils";
 import type { AiGatewayModel, OpenAIImageSize } from "./types";
 
 const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+function makeKaiImageTool(options: {
+	convexToken: string;
+	openRouterKey: string;
+	aspectRatio?: string | null;
+}) {
+	return tool({
+		description:
+			"Generate one K-Image from a detailed visual prompt. Use this when the user asks to create, draw, illustrate, render, or generate an image.",
+		inputSchema: z.object({
+			prompt: z.string().min(3).max(4_000),
+		}),
+		execute: async ({ prompt }) => {
+			const openrouter = createOpenRouter({ apiKey: options.openRouterKey });
+			const aspectRatio = /^\d+:\d+$/.test(options.aspectRatio ?? "")
+				? options.aspectRatio
+				: "1:1";
+			const result = await generateImage({
+				model: openrouter.imageModel(resolveCanvasModelId(K_IMAGE_MODEL_ID), {
+					extraBody: { modalities: ["image"] },
+				}),
+				prompt,
+				aspectRatio: aspectRatio as `${number}:${number}`,
+				n: 1,
+			});
+			const image = result.images[0];
+			if (!image) throw new Error("K-Image did not return an image.");
+
+			await fetchMutation(
+				convexApi.canvas.deductCredits,
+				{ mediaType: "image", seconds: 0, modelId: K_IMAGE_MODEL_ID },
+				{ token: options.convexToken },
+			);
+			return { result: Buffer.from(image.uint8Array).toString("base64") };
+		},
+	});
+}
 
 /**
  * Build the create_task tool. The assistant calls this when the user clearly
@@ -414,14 +460,24 @@ function makeGithubTool(tokens: ConnectorTokens) {
 						connected: true,
 						repo,
 						// The issues endpoint also returns PRs; filter them out.
-						issues: issues
-							.filter((i) => !i.pull_request)
-							.map((i) => ({
-								number: i.number,
-								title: i.title,
-								url: i.html_url,
-								state: i.state,
-							})),
+						issues: issues.reduce<
+							Array<{
+								number: number;
+								title: string;
+								url: string;
+								state: string;
+							}>
+						>((result, issue) => {
+							if (!issue.pull_request) {
+								result.push({
+									number: issue.number,
+									title: issue.title,
+									url: issue.html_url,
+									state: issue.state,
+								});
+							}
+							return result;
+						}, []),
 					};
 				}
 
@@ -1876,7 +1932,7 @@ function makeTodoistTool(tokens: ConnectorTokens) {
  */
 function isValidTimezone(tz: string): boolean {
 	try {
-		new Intl.DateTimeFormat("en-US", { timeZone: tz });
+		Intl.DateTimeFormat("en-US", { timeZone: tz });
 		return true;
 	} catch {
 		return false;
@@ -1889,7 +1945,7 @@ function isValidTimezone(tz: string): boolean {
  * +3_600_000 for UTC+1). Used to interpret an offset-less wall-clock datetime.
  */
 function tzOffsetMs(timeZone: string, instant: number): number {
-	const dtf = new Intl.DateTimeFormat("en-US", {
+	const dtf = Intl.DateTimeFormat("en-US", {
 		timeZone,
 		hour12: false,
 		year: "numeric",
@@ -2612,6 +2668,8 @@ export function buildToolsAndPrompt(options: {
 	convexToken?: string | null;
 	chatId?: Id<"chats"> | null;
 	agentId?: AgentId | null;
+	enableKaiImageGeneration?: boolean;
+	openRouterKey?: string | null;
 }): ToolsConfigResult {
 	const {
 		requestedModel,
@@ -2629,10 +2687,18 @@ export function buildToolsAndPrompt(options: {
 		convexToken,
 		chatId,
 		agentId,
+		enableKaiImageGeneration = false,
+		openRouterKey,
 	} = options;
 
 	const capabilities = deriveCapabilities(requestedModel);
-	const hasImageGen = capabilities.includes("image-generation");
+	const hasKaiImageGen =
+		enableKaiImageGeneration &&
+		isKaiModel(modelId) &&
+		!!convexToken &&
+		!!openRouterKey;
+	const hasImageGen =
+		capabilities.includes("image-generation") || hasKaiImageGen;
 	const hasWebSearch = capabilities.includes("web-search");
 	const supportsTools = modelSupportsTools(requestedModel);
 	const provider = modelId.split("/")[0] ?? "";
@@ -2714,6 +2780,13 @@ export function buildToolsAndPrompt(options: {
 			outputFormat: "webp",
 			quality: "high",
 			size: size === "auto" ? "auto" : size,
+		}) as unknown as ToolSet[string];
+	}
+	if (hasKaiImageGen && convexToken && openRouterKey) {
+		tools.image_generation = makeKaiImageTool({
+			convexToken,
+			openRouterKey,
+			aspectRatio: imageAspectRatio,
 		});
 	}
 
@@ -2770,7 +2843,7 @@ export function buildToolsAndPrompt(options: {
 		const tz =
 			userTimezone && isValidTimezone(userTimezone) ? userTimezone : undefined;
 		try {
-			const formatted = new Intl.DateTimeFormat("en-US", {
+			const formatted = Intl.DateTimeFormat("en-US", {
 				timeZone: tz,
 				weekday: "long",
 				year: "numeric",
@@ -2817,7 +2890,7 @@ export function buildToolsAndPrompt(options: {
 
 	const forceImageTool =
 		hasImageGen &&
-		provider === "openai" &&
+		(provider === "openai" || provider === "kontinue") &&
 		!!tools.image_generation &&
 		isLikelyImageRequest(lastUserContent);
 	const forceWebSearchTool =

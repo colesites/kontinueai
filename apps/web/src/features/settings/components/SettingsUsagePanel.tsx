@@ -15,6 +15,8 @@ type MonthlyUsage = {
 	paidPremiumLimit: number;
 	paidStandardUsed: number;
 	paidStandardLimit: number;
+	frontierUsed: number;
+	frontierLimit: number;
 	paidTotalUsed: number;
 	paidTotalLimit: number;
 	monthlyImportUsed: number;
@@ -23,6 +25,9 @@ type MonthlyUsage = {
 
 type SettingsUsagePanelProps = {
 	usage: MonthlyUsage | undefined;
+	aiUsage:
+		| { used: number; limit: number; remaining: number; tier: PlanTier }
+		| undefined;
 };
 
 function toProgress(used: number, limit: number): number {
@@ -31,7 +36,6 @@ function toProgress(used: number, limit: number): number {
 
 function KaiUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
 	const kaiUsed = usage.kaiUsed ?? 0;
-	const isUnlimited = usage.kaiLimit === null;
 	const kaiLimit = typeof usage.kaiLimit === "number" ? usage.kaiLimit : 0;
 
 	return (
@@ -39,16 +43,13 @@ function KaiUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
 			<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
 				<span className="font-medium">K-AI 1.0 Requests</span>
 				<span className="tabular-nums text-muted-foreground">
-					{kaiUsed} / {isUnlimited ? "Unlimited" : kaiLimit}
+					{kaiUsed} / {kaiLimit}
 				</span>
 			</div>
-			{!isUnlimited && (
-				<Progress value={toProgress(kaiUsed, kaiLimit)} className="h-2" />
-			)}
+			<Progress value={toProgress(kaiUsed, kaiLimit)} className="h-2" />
 			<p className="text-[11px] leading-relaxed text-muted-foreground">
-				{isUnlimited
-					? "Pro plan includes unlimited K-AI 1.0 requests per month."
-					: "K-AI 1.0 has its own monthly request budget, separate from other models. Resets at the start of each UTC month."}
+				K-AI has its own request ceiling. Shared AI usage credits apply only
+				when a metered tool or paid fallback is used.
 			</p>
 		</div>
 	);
@@ -76,7 +77,7 @@ function ImportUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
 			)}
 			<p className="text-[11px] leading-relaxed text-muted-foreground">
 				{isUnlimited
-					? "Pro plan includes unlimited imports per month."
+					? "Unlimited under fair use; abuse-protection soft caps still apply."
 					: "Monthly import limits reset at the start of each UTC month."}
 			</p>
 		</div>
@@ -85,8 +86,9 @@ function ImportUsageSection({ usage }: { usage: NonNullable<MonthlyUsage> }) {
 
 export function SettingsUsagePanel({
 	usage,
+	aiUsage,
 }: SettingsUsagePanelProps): React.JSX.Element {
-	if (!usage) {
+	if (!usage || !aiUsage) {
 		return (
 			<div className="flex items-center justify-center py-4">
 				<div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
@@ -97,22 +99,23 @@ export function SettingsUsagePanel({
 	if (!usage.isPaid) {
 		return (
 			<div className="space-y-6">
-				<KaiUsageSection usage={usage} />
 				<div className="space-y-2">
-					<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
-						<span className="font-medium">Free Model Messages</span>
+					<div className="flex justify-between gap-3 text-sm">
+						<span className="font-medium">AI usage credits</span>
 						<span className="tabular-nums text-muted-foreground">
-							{usage.freeMonthlyUsed} / {usage.freeMonthlyLimit}
+							{aiUsage.used} / {aiUsage.limit}
 						</span>
 					</div>
 					<Progress
-						value={toProgress(usage.freeMonthlyUsed, usage.freeMonthlyLimit)}
+						value={toProgress(aiUsage.used, aiUsage.limit)}
 						className="h-2"
 					/>
 					<p className="text-[11px] leading-relaxed text-muted-foreground">
-						Upgrade to Starter or Pro for higher limits and premium models.
+						Shared by metered search, media, Live, Canvas AI actions, Kode AI
+						runs, and paid-model work. Opening Canvas or Kode uses no credits.
 					</p>
 				</div>
+				<KaiUsageSection usage={usage} />
 				<ImportUsageSection usage={usage} />
 			</div>
 		);
@@ -120,10 +123,26 @@ export function SettingsUsagePanel({
 
 	return (
 		<div className="space-y-6">
+			<div className="space-y-2">
+				<div className="flex justify-between gap-3 text-sm">
+					<span className="font-medium">AI usage credits</span>
+					<span className="tabular-nums text-muted-foreground">
+						{aiUsage.used} / {aiUsage.limit}
+					</span>
+				</div>
+				<Progress
+					value={toProgress(aiUsage.used, aiUsage.limit)}
+					className="h-2"
+				/>
+				<p className="text-[11px] leading-relaxed text-muted-foreground">
+					{aiUsage.remaining.toLocaleString()} credits remain across chat,
+					search, media, Live, Canvas AI actions, and Kode AI runs.
+				</p>
+			</div>
 			<KaiUsageSection usage={usage} />
 			<div className="space-y-2">
 				<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
-					<span className="font-medium">Total Messages</span>
+					<span className="font-medium">External model requests</span>
 					<span className="tabular-nums text-muted-foreground">
 						{usage.paidTotalUsed} / {usage.paidTotalLimit}
 					</span>
@@ -136,7 +155,7 @@ export function SettingsUsagePanel({
 
 			<div className="space-y-2">
 				<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
-					<span className="font-medium">Standard Model Messages</span>
+					<span className="font-medium">Basic-model requests</span>
 					<span className="tabular-nums text-muted-foreground">
 						{usage.paidStandardUsed} / {usage.paidStandardLimit}
 					</span>
@@ -147,23 +166,42 @@ export function SettingsUsagePanel({
 				/>
 			</div>
 
-			<div className="space-y-2">
-				<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
-					<span className="font-medium">Premium Model Messages</span>
-					<span className="tabular-nums text-muted-foreground">
-						{usage.paidPremiumUsed} / {usage.paidPremiumLimit}
-					</span>
+			{usage.paidPremiumLimit > 0 ? (
+				<div className="space-y-2">
+					<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
+						<span className="font-medium text-violet-300">
+							Pro-model requests
+						</span>
+						<span className="tabular-nums text-muted-foreground">
+							{usage.paidPremiumUsed} / {usage.paidPremiumLimit}
+						</span>
+					</div>
+					<Progress
+						value={toProgress(usage.paidPremiumUsed, usage.paidPremiumLimit)}
+						className="h-2 bg-violet-500/15 shadow-[0_0_14px_rgba(139,92,246,0.35)] [&_[data-slot=progress-indicator]]:bg-violet-400"
+					/>
+					<p className="text-[11px] leading-relaxed text-muted-foreground">
+						Current plan: {planLabel(usage.planTier)}.
+					</p>
 				</div>
-				<Progress
-					value={toProgress(usage.paidPremiumUsed, usage.paidPremiumLimit)}
-					className="h-2 shadow-[0_0_10px_-2px_color-mix(in_oklch,var(--primary)_45%,transparent)]"
-				/>
-				<p className="text-[11px] leading-relaxed text-muted-foreground">
-					Premium models include image generation, web search, and reasoning.
-					Current paid tier:{" "}
-					{planLabel(usage.planTier === "pro" ? "pro" : "starter")} Plan.
-				</p>
-			</div>
+			) : null}
+
+			{usage.frontierLimit > 0 ? (
+				<div className="space-y-2">
+					<div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-sm">
+						<span className="font-medium text-amber-300">
+							Frontier-model requests
+						</span>
+						<span className="tabular-nums text-muted-foreground">
+							{usage.frontierUsed} / {usage.frontierLimit}
+						</span>
+					</div>
+					<Progress
+						value={toProgress(usage.frontierUsed, usage.frontierLimit)}
+						className="h-2 bg-amber-400/15 shadow-[0_0_14px_rgba(251,191,36,0.3)] [&_[data-slot=progress-indicator]]:bg-amber-400"
+					/>
+				</div>
+			) : null}
 
 			<ImportUsageSection usage={usage} />
 		</div>

@@ -1,6 +1,10 @@
 import { clerkClient } from "@clerk/nextjs/server";
+import type { ModelAccessClass } from "@repo/core/model-pricing";
+import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import {
 	type BillingUserLike,
+	MAX_PLAN_ID,
+	PLUS_PLAN_ID,
 	type PlanTier,
 	PRO_PLAN_ID,
 	resolvePlanTierFromBillingSignals,
@@ -11,12 +15,14 @@ export async function getUserPlanTier(
 	clerkUserId: string,
 	hasPlan?: (args: { plan: string }) => boolean,
 ): Promise<PlanTier> {
-	const hasStarterPlan =
-		typeof hasPlan === "function" ? hasPlan({ plan: STARTER_PLAN_ID }) : false;
-	const hasProPlan =
-		typeof hasPlan === "function" ? hasPlan({ plan: PRO_PLAN_ID }) : false;
+	const hasStarterPlan = hasPlan?.({ plan: STARTER_PLAN_ID }) ?? false;
+	const hasPlusPlan = hasPlan?.({ plan: PLUS_PLAN_ID }) ?? false;
+	const hasProPlan = hasPlan?.({ plan: PRO_PLAN_ID }) ?? false;
+	const hasMaxPlan = hasPlan?.({ plan: MAX_PLAN_ID }) ?? false;
 
+	if (hasMaxPlan) return "max";
 	if (hasProPlan) return "pro";
+	if (hasPlusPlan) return "plus";
 	if (hasStarterPlan) return "starter";
 
 	const client = await clerkClient();
@@ -24,48 +30,22 @@ export async function getUserPlanTier(
 
 	return resolvePlanTierFromBillingSignals({
 		hasStarterPlan,
+		hasPlusPlan,
 		hasProPlan,
+		hasMaxPlan,
 		billingUser: user as unknown as BillingUserLike,
 	});
 }
 
 export function getTokenLimitsByTier(options: {
 	planTier: PlanTier;
-	isPremiumModel: boolean;
+	modelClass: "kai" | ModelAccessClass;
 }): { maxInputTokens: number; maxOutputTokens: number; tierLabel: string } {
-	const { planTier, isPremiumModel } = options;
-
-	if (planTier === "pro") {
-		return isPremiumModel
-			? {
-					maxInputTokens: 1400,
-					maxOutputTokens: 1400,
-					tierLabel: "Pro users on premium models",
-				}
-			: {
-					maxInputTokens: 900,
-					maxOutputTokens: 900,
-					tierLabel: "Pro users on standard models",
-				};
-	}
-
-	if (planTier === "starter") {
-		return isPremiumModel
-			? {
-					maxInputTokens: 100,
-					maxOutputTokens: 500,
-					tierLabel: "Starter users on premium models",
-				}
-			: {
-					maxInputTokens: 200,
-					maxOutputTokens: 500,
-					tierLabel: "Starter users on standard models",
-				};
-	}
-
+	const { planTier, modelClass } = options;
+	const plan = PLAN_DEFINITIONS[planTier];
 	return {
-		maxInputTokens: 100,
-		maxOutputTokens: 200,
-		tierLabel: "Free users",
+		maxInputTokens: plan.contextTokens[modelClass],
+		maxOutputTokens: plan.maxOutputTokens[modelClass],
+		tierLabel: `${plan.name} users on ${modelClass === "kai" ? "K-AI" : `${modelClass} models`}`,
 	};
 }

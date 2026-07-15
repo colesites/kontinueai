@@ -19,20 +19,22 @@ export const K_AI_FALLBACK_MODELS = ["openai/gpt-oss-120b:free"];
 export const K_AI_MODEL_CHAIN = [K_AI_PRIMARY_MODEL, ...K_AI_FALLBACK_MODELS];
 
 export function isKaiModel(modelId: string | null | undefined): boolean {
-  return modelId === K_AI_MODEL_ID;
+	return modelId === K_AI_MODEL_ID;
 }
 
 // Per-plan monthly REQUEST limits for K-AI 1.0. These are independent of the
 // raw-model message quotas — K-AI has no per-message token in/out caps, only
 // this monthly request budget. Pro is unlimited.
 export const K_AI_MONTHLY_LIMITS = {
-  free: 1000,
-  starter: 2000,
-  pro: Number.POSITIVE_INFINITY,
+	free: 1000,
+	starter: 2000,
+	plus: 3000,
+	pro: 5000,
+	max: 10000,
 } as const;
 
 export type KaiPlanTier = keyof typeof K_AI_MONTHLY_LIMITS;
 
 export function getKaiMonthlyLimit(tier: KaiPlanTier): number {
-  return K_AI_MONTHLY_LIMITS[tier];
+	return K_AI_MONTHLY_LIMITS[tier];
 }

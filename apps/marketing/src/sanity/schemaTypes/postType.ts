@@ -45,8 +45,13 @@ export const postType = defineType({
 				defineArrayMember({ type: "reference", to: [{ type: "category" }] }),
 			],
 		}),
-		// No manual "published at" — the date is taken automatically from
-		// Sanity's built-in `_createdAt` timestamp (see queries).
+		defineField({
+			name: "publishedAt",
+			title: "Published at",
+			type: "datetime",
+			description:
+				"The public publication date. Falls back to the document creation date when empty.",
+		}),
 		defineField({
 			name: "featured",
 			title: "Featured",
@@ -68,6 +73,7 @@ export const postType = defineType({
 			name: "body",
 			type: "blockContent",
 		}),
+		defineField({ name: "seo", type: "seo" }),
 	],
 	preview: {
 		select: { title: "title", author: "author.name", media: "mainImage" },

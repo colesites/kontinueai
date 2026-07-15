@@ -2,6 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
+import type { ModelAccessClass } from "@repo/core/model-pricing";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { useCallback, useMemo } from "react";
 import { toast } from "sonner";
@@ -16,12 +17,13 @@ import {
 
 interface UseChatMessagingProps {
 	chatId: Id<"chats">;
-	isPremium: (modelId: string) => boolean;
+	getModelClass: (modelId: string) => ModelAccessClass;
 	addMessage: (args: {
 		chatId: Id<"chats">;
 		role: "user" | "assistant";
 		content: string;
 		isPremiumModel?: boolean;
+		modelClass?: ModelAccessClass;
 		model?: string;
 	}) => Promise<Id<"messages">>;
 	updateMessageContent: (args: {
@@ -29,6 +31,7 @@ interface UseChatMessagingProps {
 		content: string;
 		model?: string;
 		isPremiumModel?: boolean;
+		modelClass?: ModelAccessClass;
 	}) => Promise<unknown>;
 	deleteMessagesAfter: (args: {
 		messageId: Id<"messages">;
@@ -48,15 +51,28 @@ type ConvexRateLimitError = {
 	data?: { code?: string; message?: string };
 };
 
+type ChatHelpers = ReturnType<typeof useChat>;
+
+interface UseChatMessagingResult {
+	aiMessages: ChatHelpers["messages"];
+	status: ChatHelpers["status"];
+	stop: ChatHelpers["stop"];
+	setMessages: ChatHelpers["setMessages"];
+	handleSend: (content: string, files?: File[]) => Promise<void>;
+	handleRetry: (id: string, modelOverride?: string) => void;
+	handleEdit: (aiMessageId: string, newContent: string) => Promise<void>;
+	sendMessage: ChatHelpers["sendMessage"];
+}
+
 export function useChatMessaging({
 	chatId,
-	isPremium,
+	getModelClass,
 	addMessage,
 	updateMessageContent,
 	deleteMessagesAfter,
 	dbMessages,
 	getState,
-}: UseChatMessagingProps) {
+}: UseChatMessagingProps): UseChatMessagingResult {
 	const transport = useMemo(
 		() => new DefaultChatTransport({ api: "/api/chat" }),
 		[],
@@ -94,7 +110,8 @@ export function useChatMessaging({
 					role: "user",
 					content,
 					model: state.selectedModel,
-					isPremiumModel: isPremium(state.selectedModel),
+					isPremiumModel: getModelClass(state.selectedModel) !== "basic",
+					modelClass: getModelClass(state.selectedModel),
 				});
 				const requestBody = toChatRequestBody(state, chatId);
 				const imageFileParts = await toImageFileUIParts(files);
@@ -118,7 +135,7 @@ export function useChatMessaging({
 				throw err;
 			}
 		},
-		[addMessage, chatId, isPremium, sendMessage, getState],
+		[addMessage, chatId, getModelClass, sendMessage, getState],
 	);
 
 	const handleRetry = useCallback(
@@ -166,7 +183,8 @@ export function useChatMessaging({
 					messageId: convexId,
 					content: trimmed,
 					model: state.selectedModel,
-					isPremiumModel: isPremium(state.selectedModel),
+					isPremiumModel: getModelClass(state.selectedModel) !== "basic",
+					modelClass: getModelClass(state.selectedModel),
 				});
 				await deleteMessagesAfter({ messageId: convexId, inclusive: false });
 			} catch (err) {
@@ -203,7 +221,7 @@ export function useChatMessaging({
 			aiMessages,
 			chatId,
 			dbMessages,
-			isPremium,
+			getModelClass,
 			updateMessageContent,
 			deleteMessagesAfter,
 			regenerate,

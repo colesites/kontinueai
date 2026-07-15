@@ -10,6 +10,16 @@ export const categoryType = defineType({
 		defineField({
 			name: "title",
 			type: "string",
+			options: {
+				list: [
+					"Product",
+					"Engineering",
+					"AI Models",
+					"Tutorials",
+					"Research",
+					"Company",
+				],
+			},
 			validation: (rule) => rule.required(),
 		}),
 		defineField({

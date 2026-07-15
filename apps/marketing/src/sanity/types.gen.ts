@@ -22,6 +22,39 @@ export type SanityImageAssetReference = {
   [internalGroqTypeReferenceTo]?: "sanity.imageAsset";
 };
 
+export type Seo = {
+  _type: "seo";
+  title?: string;
+  description?: string;
+  image?: {
+    asset?: SanityImageAssetReference;
+    media?: unknown;
+    hotspot?: SanityImageHotspot;
+    crop?: SanityImageCrop;
+    _type: "image";
+  };
+  noIndex?: boolean;
+};
+
+export type PostReference = {
+  _ref: string;
+  _type: "reference";
+  _weak?: boolean;
+  [internalGroqTypeReferenceTo]?: "post";
+};
+
+export type Comment = {
+  _id: string;
+  _type: "comment";
+  _createdAt: string;
+  _updatedAt: string;
+  _rev: string;
+  post?: PostReference;
+  text?: string;
+  createdAt?: string;
+  approved?: boolean;
+};
+
 export type BlockContent = Array<
   | {
       children?: Array<{
@@ -59,7 +92,13 @@ export type Category = {
   _createdAt: string;
   _updatedAt: string;
   _rev: string;
-  title?: string;
+  title?:
+    | "Product"
+    | "Engineering"
+    | "AI Models"
+    | "Tutorials"
+    | "Research"
+    | "Company";
   slug?: Slug;
   description?: string;
 };
@@ -109,7 +148,9 @@ export type Post = {
   >;
   publishedAt?: string;
   featured?: boolean;
+  views?: number;
   body?: BlockContent;
+  seo?: Seo;
 };
 
 export type SanityImageCrop = {
@@ -145,6 +186,8 @@ export type Author = {
   };
   role?: string;
   bio?: string;
+  x?: string;
+  linkedin?: string;
 };
 
 export type SanityImagePaletteSwatch = {
@@ -246,6 +289,9 @@ export type Geopoint = {
 
 export type AllSanitySchemaTypes =
   | SanityImageAssetReference
+  | Seo
+  | PostReference
+  | Comment
   | BlockContent
   | Category
   | Slug
@@ -266,14 +312,17 @@ export type AllSanitySchemaTypes =
 
 // Source: src/sanity/lib/queries.ts
 // Variable: POSTS_QUERY
-// Query: *[_type == "post" && defined(slug.current)] | order(publishedAt desc) {			_id,	title,	"slug": slug.current,	excerpt,	publishedAt,	featured,	mainImage,	"author": author->{ name, role, image, "slug": slug.current },	"categories": categories[]->{ title, "slug": slug.current }	}
+// Query: *[_type == "post" && defined(slug.current)] | order(_createdAt desc) {			_id,	title,	"slug": slug.current,	excerpt,	"publishedAt": coalesce(publishedAt, _createdAt),	"modifiedAt": _updatedAt,	featured,	"views": coalesce(views, 0),	"readMins": round(length(pt::text(body)) / 1200),	mainImage{ ..., "lqip": asset->metadata.lqip },	seo,	"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },	"categories": categories[]->{ title, "slug": slug.current }	}
 export type POSTS_QUERY_RESULT = Array<{
   _id: string;
   title: string | null;
   slug: string | null;
   excerpt: string | null;
-  publishedAt: string | null;
+  publishedAt: string;
+  modifiedAt: string;
   featured: boolean | null;
+  views: number | 0;
+  readMins: number;
   mainImage: {
     asset?: SanityImageAssetReference;
     media?: unknown;
@@ -281,7 +330,9 @@ export type POSTS_QUERY_RESULT = Array<{
     crop?: SanityImageCrop;
     alt?: string;
     _type: "image";
+    lqip: string | null;
   } | null;
+  seo: Seo | null;
   author: {
     name: string | null;
     role: string | null;
@@ -292,23 +343,34 @@ export type POSTS_QUERY_RESULT = Array<{
       crop?: SanityImageCrop;
       _type: "image";
     } | null;
+    bio: string | null;
+    x: string | null;
+    linkedin: string | null;
     slug: string | null;
   } | null;
   categories: Array<{
-    title: string | null;
+    title:
+      | "AI Models"
+      | "Company"
+      | "Engineering"
+      | "Product"
+      | "Research"
+      | "Tutorials"
+      | null;
     slug: string | null;
   }> | null;
 }>;
 
 // Source: src/sanity/lib/queries.ts
 // Variable: POST_QUERY
-// Query: *[_type == "post" && slug.current == $slug][0]{		_id,		title,		"slug": slug.current,		excerpt,		publishedAt,		mainImage,		body,		"author": author->{ name, role, image, bio, "slug": slug.current },		"categories": categories[]->{ title, "slug": slug.current }	}
+// Query: *[_type == "post" && slug.current == $slug][0]{		_id,		title,		"slug": slug.current,		excerpt,		"publishedAt": coalesce(publishedAt, _createdAt),		"modifiedAt": _updatedAt,		mainImage{ ..., "lqip": asset->metadata.lqip },		"seo": {			"title": coalesce(seo.title, title),			"description": coalesce(seo.description, excerpt),			"image": coalesce(seo.image, mainImage),			"noIndex": seo.noIndex == true		},		body,		"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },		"categories": categories[]->{ title, "slug": slug.current }	}
 export type POST_QUERY_RESULT = {
   _id: string;
   title: string | null;
   slug: string | null;
   excerpt: string | null;
-  publishedAt: string | null;
+  publishedAt: string;
+  modifiedAt: string;
   mainImage: {
     asset?: SanityImageAssetReference;
     media?: unknown;
@@ -316,7 +378,30 @@ export type POST_QUERY_RESULT = {
     crop?: SanityImageCrop;
     alt?: string;
     _type: "image";
+    lqip: string | null;
   } | null;
+  seo: {
+    title: string | null;
+    description: string | null;
+    image:
+      | {
+          asset?: SanityImageAssetReference;
+          media?: unknown;
+          hotspot?: SanityImageHotspot;
+          crop?: SanityImageCrop;
+          alt?: string;
+          _type: "image";
+        }
+      | {
+          asset?: SanityImageAssetReference;
+          media?: unknown;
+          hotspot?: SanityImageHotspot;
+          crop?: SanityImageCrop;
+          _type: "image";
+        }
+      | null;
+    noIndex: boolean | false;
+  };
   body: BlockContent | null;
   author: {
     name: string | null;
@@ -329,24 +414,36 @@ export type POST_QUERY_RESULT = {
       _type: "image";
     } | null;
     bio: string | null;
+    x: string | null;
+    linkedin: string | null;
     slug: string | null;
   } | null;
   categories: Array<{
-    title: string | null;
+    title:
+      | "AI Models"
+      | "Company"
+      | "Engineering"
+      | "Product"
+      | "Research"
+      | "Tutorials"
+      | null;
     slug: string | null;
   }> | null;
 } | null;
 
 // Source: src/sanity/lib/queries.ts
 // Variable: RELATED_POSTS_QUERY
-// Query: *[_type == "post" && defined(slug.current) && slug.current != $slug]		| order(publishedAt desc)[0...3] {			_id,	title,	"slug": slug.current,	excerpt,	publishedAt,	featured,	mainImage,	"author": author->{ name, role, image, "slug": slug.current },	"categories": categories[]->{ title, "slug": slug.current }	}
+// Query: *[_type == "post" && defined(slug.current) && slug.current != $slug && count((categories[]._ref)[@ in *[_type == "post" && slug.current == $slug][0].categories[]._ref]) > 0]		| order(_createdAt desc)[0...3] {			_id,	title,	"slug": slug.current,	excerpt,	"publishedAt": coalesce(publishedAt, _createdAt),	"modifiedAt": _updatedAt,	featured,	"views": coalesce(views, 0),	"readMins": round(length(pt::text(body)) / 1200),	mainImage{ ..., "lqip": asset->metadata.lqip },	seo,	"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },	"categories": categories[]->{ title, "slug": slug.current }	}
 export type RELATED_POSTS_QUERY_RESULT = Array<{
   _id: string;
   title: string | null;
   slug: string | null;
   excerpt: string | null;
-  publishedAt: string | null;
+  publishedAt: string;
+  modifiedAt: string;
   featured: boolean | null;
+  views: number | 0;
+  readMins: number;
   mainImage: {
     asset?: SanityImageAssetReference;
     media?: unknown;
@@ -354,7 +451,9 @@ export type RELATED_POSTS_QUERY_RESULT = Array<{
     crop?: SanityImageCrop;
     alt?: string;
     _type: "image";
+    lqip: string | null;
   } | null;
+  seo: Seo | null;
   author: {
     name: string | null;
     role: string | null;
@@ -365,10 +464,20 @@ export type RELATED_POSTS_QUERY_RESULT = Array<{
       crop?: SanityImageCrop;
       _type: "image";
     } | null;
+    bio: string | null;
+    x: string | null;
+    linkedin: string | null;
     slug: string | null;
   } | null;
   categories: Array<{
-    title: string | null;
+    title:
+      | "AI Models"
+      | "Company"
+      | "Engineering"
+      | "Product"
+      | "Research"
+      | "Tutorials"
+      | null;
     slug: string | null;
   }> | null;
 }>;
@@ -380,13 +489,121 @@ export type POST_SLUGS_QUERY_RESULT = Array<{
   slug: string | null;
 }>;
 
+// Source: src/sanity/lib/queries.ts
+// Variable: AUTHORS_QUERY
+// Query: *[_type == "author" && defined(slug.current)] | order(name asc) {		_id, name, role, bio, x, linkedin, image, "slug": slug.current	}
+export type AUTHORS_QUERY_RESULT = Array<{
+  _id: string;
+  name: string | null;
+  role: string | null;
+  bio: string | null;
+  x: string | null;
+  linkedin: string | null;
+  image: {
+    asset?: SanityImageAssetReference;
+    media?: unknown;
+    hotspot?: SanityImageHotspot;
+    crop?: SanityImageCrop;
+    _type: "image";
+  } | null;
+  slug: string | null;
+}>;
+
+// Source: src/sanity/lib/queries.ts
+// Variable: AUTHOR_QUERY
+// Query: *[_type == "author" && slug.current == $slug][0] {		_id, name, role, bio, x, linkedin, image, "slug": slug.current,		"posts": *[_type == "post" && author._ref == ^._id && defined(slug.current)] | order(coalesce(publishedAt, _createdAt) desc) {				_id,	title,	"slug": slug.current,	excerpt,	"publishedAt": coalesce(publishedAt, _createdAt),	"modifiedAt": _updatedAt,	featured,	"views": coalesce(views, 0),	"readMins": round(length(pt::text(body)) / 1200),	mainImage{ ..., "lqip": asset->metadata.lqip },	seo,	"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },	"categories": categories[]->{ title, "slug": slug.current }		}	}
+export type AUTHOR_QUERY_RESULT = {
+  _id: string;
+  name: string | null;
+  role: string | null;
+  bio: string | null;
+  x: string | null;
+  linkedin: string | null;
+  image: {
+    asset?: SanityImageAssetReference;
+    media?: unknown;
+    hotspot?: SanityImageHotspot;
+    crop?: SanityImageCrop;
+    _type: "image";
+  } | null;
+  slug: string | null;
+  posts: Array<{
+    _id: string;
+    title: string | null;
+    slug: string | null;
+    excerpt: string | null;
+    publishedAt: string;
+    modifiedAt: string;
+    featured: boolean | null;
+    views: number | 0;
+    readMins: number;
+    mainImage: {
+      asset?: SanityImageAssetReference;
+      media?: unknown;
+      hotspot?: SanityImageHotspot;
+      crop?: SanityImageCrop;
+      alt?: string;
+      _type: "image";
+      lqip: string | null;
+    } | null;
+    seo: Seo | null;
+    author: {
+      name: string | null;
+      role: string | null;
+      image: {
+        asset?: SanityImageAssetReference;
+        media?: unknown;
+        hotspot?: SanityImageHotspot;
+        crop?: SanityImageCrop;
+        _type: "image";
+      } | null;
+      bio: string | null;
+      x: string | null;
+      linkedin: string | null;
+      slug: string | null;
+    } | null;
+    categories: Array<{
+      title:
+        | "AI Models"
+        | "Company"
+        | "Engineering"
+        | "Product"
+        | "Research"
+        | "Tutorials"
+        | null;
+      slug: string | null;
+    }> | null;
+  }>;
+} | null;
+
+// Source: src/sanity/lib/queries.ts
+// Variable: SITEMAP_POSTS_QUERY
+// Query: *[_type == "post" && defined(slug.current) && seo.noIndex != true] {		"slug": slug.current,		_updatedAt	}
+export type SITEMAP_POSTS_QUERY_RESULT = Array<{
+  slug: string | null;
+  _updatedAt: string;
+}>;
+
+// Source: src/sanity/lib/queries.ts
+// Variable: POST_COMMENTS_QUERY
+// Query: *[_type == "comment" && approved == true && post->slug.current == $slug] | order(createdAt desc) {		_id,		text,		createdAt	}
+export type POST_COMMENTS_QUERY_RESULT = Array<{
+  _id: string;
+  text: string | null;
+  createdAt: string | null;
+}>;
+
 // Query TypeMap
 import "@sanity/client";
 declare module "@sanity/client" {
   interface SanityQueries {
-    '\n\t*[_type == "post" && defined(slug.current)] | order(publishedAt desc) {\n\t\t\n\t_id,\n\ttitle,\n\t"slug": slug.current,\n\texcerpt,\n\tpublishedAt,\n\tfeatured,\n\tmainImage,\n\t"author": author->{ name, role, image, "slug": slug.current },\n\t"categories": categories[]->{ title, "slug": slug.current }\n\n\t}\n': POSTS_QUERY_RESULT;
-    '\n\t*[_type == "post" && slug.current == $slug][0]{\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\tpublishedAt,\n\t\tmainImage,\n\t\tbody,\n\t\t"author": author->{ name, role, image, bio, "slug": slug.current },\n\t\t"categories": categories[]->{ title, "slug": slug.current }\n\t}\n': POST_QUERY_RESULT;
-    '\n\t*[_type == "post" && defined(slug.current) && slug.current != $slug]\n\t\t| order(publishedAt desc)[0...3] {\n\t\t\n\t_id,\n\ttitle,\n\t"slug": slug.current,\n\texcerpt,\n\tpublishedAt,\n\tfeatured,\n\tmainImage,\n\t"author": author->{ name, role, image, "slug": slug.current },\n\t"categories": categories[]->{ title, "slug": slug.current }\n\n\t}\n': RELATED_POSTS_QUERY_RESULT;
+    '\n\t*[_type == "post" && defined(slug.current)] | order(_createdAt desc) {\n\t\t\n\t_id,\n\ttitle,\n\t"slug": slug.current,\n\texcerpt,\n\t"publishedAt": coalesce(publishedAt, _createdAt),\n\t"modifiedAt": _updatedAt,\n\tfeatured,\n\t"views": coalesce(views, 0),\n\t"readMins": round(length(pt::text(body)) / 1200),\n\tmainImage{ ..., "lqip": asset->metadata.lqip },\n\tseo,\n\t"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },\n\t"categories": categories[]->{ title, "slug": slug.current }\n\n\t}\n': POSTS_QUERY_RESULT;
+    '\n\t*[_type == "post" && slug.current == $slug][0]{\n\t\t_id,\n\t\ttitle,\n\t\t"slug": slug.current,\n\t\texcerpt,\n\t\t"publishedAt": coalesce(publishedAt, _createdAt),\n\t\t"modifiedAt": _updatedAt,\n\t\tmainImage{ ..., "lqip": asset->metadata.lqip },\n\t\t"seo": {\n\t\t\t"title": coalesce(seo.title, title),\n\t\t\t"description": coalesce(seo.description, excerpt),\n\t\t\t"image": coalesce(seo.image, mainImage),\n\t\t\t"noIndex": seo.noIndex == true\n\t\t},\n\t\tbody,\n\t\t"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },\n\t\t"categories": categories[]->{ title, "slug": slug.current }\n\t}\n': POST_QUERY_RESULT;
+    '\n\t*[_type == "post" && defined(slug.current) && slug.current != $slug && count((categories[]._ref)[@ in *[_type == "post" && slug.current == $slug][0].categories[]._ref]) > 0]\n\t\t| order(_createdAt desc)[0...3] {\n\t\t\n\t_id,\n\ttitle,\n\t"slug": slug.current,\n\texcerpt,\n\t"publishedAt": coalesce(publishedAt, _createdAt),\n\t"modifiedAt": _updatedAt,\n\tfeatured,\n\t"views": coalesce(views, 0),\n\t"readMins": round(length(pt::text(body)) / 1200),\n\tmainImage{ ..., "lqip": asset->metadata.lqip },\n\tseo,\n\t"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },\n\t"categories": categories[]->{ title, "slug": slug.current }\n\n\t}\n': RELATED_POSTS_QUERY_RESULT;
     '\n\t*[_type == "post" && defined(slug.current)]{ "slug": slug.current }\n': POST_SLUGS_QUERY_RESULT;
+    '\n\t*[_type == "author" && defined(slug.current)] | order(name asc) {\n\t\t_id, name, role, bio, x, linkedin, image, "slug": slug.current\n\t}\n': AUTHORS_QUERY_RESULT;
+    '\n\t*[_type == "author" && slug.current == $slug][0] {\n\t\t_id, name, role, bio, x, linkedin, image, "slug": slug.current,\n\t\t"posts": *[_type == "post" && author._ref == ^._id && defined(slug.current)] | order(coalesce(publishedAt, _createdAt) desc) {\n\t\t\t\n\t_id,\n\ttitle,\n\t"slug": slug.current,\n\texcerpt,\n\t"publishedAt": coalesce(publishedAt, _createdAt),\n\t"modifiedAt": _updatedAt,\n\tfeatured,\n\t"views": coalesce(views, 0),\n\t"readMins": round(length(pt::text(body)) / 1200),\n\tmainImage{ ..., "lqip": asset->metadata.lqip },\n\tseo,\n\t"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },\n\t"categories": categories[]->{ title, "slug": slug.current }\n\n\t\t}\n\t}\n': AUTHOR_QUERY_RESULT;
+    '\n\t*[_type == "post" && defined(slug.current) && seo.noIndex != true] {\n\t\t"slug": slug.current,\n\t\t_updatedAt\n\t}\n': SITEMAP_POSTS_QUERY_RESULT;
+    '\n\t*[_type == "comment" && approved == true && post->slug.current == $slug] | order(createdAt desc) {\n\t\t_id,\n\t\ttext,\n\t\tcreatedAt\n\t}\n': POST_COMMENTS_QUERY_RESULT;
   }
 }

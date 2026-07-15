@@ -66,8 +66,8 @@ export function FeaturesSection() {
 						More than a model switcher
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						Voice, images and video live in the same place as your chats, so a
-						whole project stays in one tab.
+						Voice, images, video, projects, and connectors extend the same AI
+						platform beyond text chat. Availability varies by feature and plan.
 					</p>
 				</Reveal>
 

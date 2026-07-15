@@ -15,7 +15,7 @@ export function ModelStrip() {
 		>
 			<div className="mx-auto max-w-6xl px-5 lg:px-8">
 				<p className="eyebrow mb-8 text-center">
-					Bring your conversations from the models you already use
+					Start with K-AI 1.0, then choose from supported AI providers
 				</p>
 				<div className="marquee mask-fade-x overflow-hidden">
 					<div className="marquee-track flex w-max items-center gap-12 pr-12">

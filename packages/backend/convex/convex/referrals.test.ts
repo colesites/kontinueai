@@ -153,62 +153,53 @@ describe("referral attribution + reward", () => {
 });
 
 describe("video credit spend order", () => {
-	test("Pro draws the monthly allowance before the bonus pool", async () => {
+	test("Pro draws the monthly video allowance before the bonus pool", async () => {
 		const t = convexTest(schema, modules);
 		const asP = t.withIdentity(identity("user_p"));
 		await asP.mutation(api.users.getOrCreateUser, { email: "p@test", ...PRO });
-		await seedBonus(t, await userIdFor(t, "user_p"), 100);
+		await seedBonus(t, await userIdFor(t, "user_p"), 400);
 
-		// modelId avoids free (wan/flash/lite) + kling; 480p → x10 multiplier.
-		// cost 250 (25s) comes entirely from the 300 monthly allowance.
+		// Pro includes 60 seconds, represented by a 900-credit monthly video pool.
+		// 25 seconds at 480p costs 250 and comes entirely from that pool.
 		await asP.mutation(api.canvas.deductCredits, {
 			seconds: 25,
 			modelId: "veo3",
 			resolution: "480p",
 		});
 		let credits = await asP.query(api.canvas.getCredits, {});
-		expect(credits.monthly.remaining).toBe(50);
-		expect(credits.bonus.remaining).toBe(100);
+		expect(credits.monthly.remaining).toBe(650);
+		expect(credits.bonus.remaining).toBe(400);
 
-		// cost 120 (12s) → 50 from monthly, overflow 70 from bonus.
+		// The remaining 35 seconds at 1080p cost 700: 650 monthly + 50 bonus.
 		await asP.mutation(api.canvas.deductCredits, {
-			seconds: 12,
+			seconds: 35,
 			modelId: "veo3",
-			resolution: "480p",
+			resolution: "1080p",
 		});
 		credits = await asP.query(api.canvas.getCredits, {});
 		expect(credits.monthly.remaining).toBe(0);
-		expect(credits.bonus.remaining).toBe(30);
-		expect(credits.available).toBe(30);
+		expect(credits.bonus.remaining).toBe(350);
+		expect(credits.available).toBe(350);
 	});
 
-	test("non-Pro spends bonus only and throws when insufficient", async () => {
+	test("Free cannot generate video even when referral credits are available", async () => {
 		const t = convexTest(schema, modules);
 		const asF = t.withIdentity(identity("user_f"));
 		await asF.mutation(api.users.getOrCreateUser, { email: "f@test", ...FREE });
 		await seedBonus(t, await userIdFor(t, "user_f"), 50);
 
-		// Free user: monthly allowance is not spendable, only the 50 bonus.
+		// Shared or bonus credits never override a plan's product-specific cap.
 		const credits0 = await asF.query(api.canvas.getCredits, {});
 		expect(credits0.available).toBe(50);
 
-		// cost 30 (3s @ 480p) → drawn from bonus.
-		await asF.mutation(api.canvas.deductCredits, {
-			seconds: 3,
-			modelId: "veo3",
-			resolution: "480p",
-		});
-		const credits1 = await asF.query(api.canvas.getCredits, {});
-		expect(credits1.bonus.remaining).toBe(20);
-		expect(credits1.available).toBe(20);
-
-		// cost 30 > 20 available → rejected.
 		await expect(
 			asF.mutation(api.canvas.deductCredits, {
 				seconds: 3,
 				modelId: "veo3",
 				resolution: "480p",
 			}),
-		).rejects.toThrow();
+		).rejects.toThrow("Free K-Video limit reached");
+		const credits1 = await asF.query(api.canvas.getCredits, {});
+		expect(credits1.bonus.remaining).toBe(50);
 	});
 });

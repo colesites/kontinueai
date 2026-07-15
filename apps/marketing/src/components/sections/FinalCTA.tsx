@@ -18,11 +18,11 @@ export function FinalCTA() {
 								Stop starting over
 							</p>
 							<h2 className="font-display tracking-tightest mx-auto mt-5 max-w-2xl text-4xl leading-[1.05] text-background sm:text-6xl">
-								Bring your chats. Switch models. Pay once.
+								Bring the context. Choose the next model. Keep moving.
 							</h2>
 							<p className="mx-auto mt-6 max-w-md text-lg leading-relaxed text-background/70">
-								One workspace for every AI model. Get started free, no card
-								required.
+								Start with K-AI 1.0, import supported conversations, and access
+								selected models from leading providers.
 							</p>
 							<div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
 								<Button

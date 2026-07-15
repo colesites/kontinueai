@@ -31,23 +31,44 @@ export function RotatingWord({
 			).matches;
 			if (reduced) return;
 
-			const tl = gsap.timeline({ repeat: -1 });
-			for (let n = 0; n < items.length; n++) {
-				const current = items[n % items.length];
-				const next = items[(n + 1) % items.length];
-				tl.to({}, { duration: 1.8 });
-				tl.to(
-					current,
-					{ autoAlpha: 0, y: -6, duration: 0.45, ease: "power2.in" },
-					">",
-				);
-				tl.fromTo(
-					next,
-					{ autoAlpha: 0, y: 6 },
-					{ autoAlpha: 1, y: 0, duration: 0.45, ease: "power2.out" },
-					"<0.12",
-				);
-			}
+			let activeIndex = 0;
+			let cancelled = false;
+			let cycle: ReturnType<typeof gsap.timeline> | undefined;
+
+			const rotate = () => {
+				if (cancelled) return;
+
+				const nextIndex = (activeIndex + 1) % items.length;
+				const current = items[activeIndex];
+				const next = items[nextIndex];
+
+				cycle = gsap.timeline({
+					delay: 1.8,
+					onComplete: () => {
+						activeIndex = nextIndex;
+						rotate();
+					},
+				});
+				cycle
+					.to(current, {
+						autoAlpha: 0,
+						y: -6,
+						duration: 0.35,
+						ease: "power2.in",
+					})
+					.fromTo(
+						next,
+						{ autoAlpha: 0, y: 6 },
+						{ autoAlpha: 1, y: 0, duration: 0.35, ease: "power2.out" },
+					);
+			};
+
+			rotate();
+
+			return () => {
+				cancelled = true;
+				cycle?.kill();
+			};
 		},
 		{ scope: ref },
 	);

@@ -10,6 +10,8 @@ import {
 	KODE_WEB_MONTHLY_CREDITS,
 	KODE_WEB_PLAN_CREDIT_RESERVATION,
 } from "@repo/core/kode-web";
+import { AI_USAGE_CREDIT_COSTS } from "@repo/core/ai-usage-credits";
+import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import { ConvexError, v } from "convex/values";
 import { getPersistedPlanTier } from "../lib/plan";
 import { internal } from "./_generated/api";
@@ -21,6 +23,10 @@ import {
 	mutation,
 	query,
 } from "./_generated/server";
+import {
+	consumeAiUsageCredits,
+	refundAiUsageCredits,
+} from "./lib/aiUsageCredits";
 
 const ALLOWED_FILE_PATHS = new Set<string>(KODE_WEB_FILE_PATHS);
 
@@ -52,11 +58,16 @@ async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
 	return user;
 }
 
-function requirePro(user: Doc<"users">): void {
-	if (getPersistedPlanTier(user.plan) !== "pro") {
+function hasKode(user: Doc<"users">): boolean {
+	const tier = getPersistedPlanTier(user.plan);
+	return tier === "pro" || tier === "max";
+}
+
+function requireKode(user: Doc<"users">): void {
+	if (!hasKode(user)) {
 		throw new ConvexError({
 			code: "PRO_REQUIRED",
-			message: "Kode is available exclusively on the Pro plan.",
+			message: "Kode is available on Pro and Max.",
 		});
 	}
 }
@@ -92,6 +103,7 @@ function projectTitleFromPrompt(prompt: string): string {
 async function getCreditState(
 	ctx: QueryCtx | MutationCtx,
 	ownerId: Id<"users">,
+	planTier: ReturnType<typeof getPersistedPlanTier>,
 	now: number,
 ) {
 	const monthKey = getKodeWebMonthKey(now);
@@ -102,14 +114,33 @@ async function getCreditState(
 		)
 		.unique();
 	const used = row?.used ?? 0;
+	const allowance = KODE_WEB_MONTHLY_CREDITS[planTier];
 	return {
 		row,
 		monthKey,
-		allowance: KODE_WEB_MONTHLY_CREDITS,
+		allowance,
 		used,
-		remaining: Math.max(0, KODE_WEB_MONTHLY_CREDITS - used),
+		remaining: Math.max(0, allowance - used),
 		resetAt: getKodeWebNextResetAt(now),
 	};
+}
+
+async function getMonthlyBuildCount(
+	ctx: QueryCtx | MutationCtx,
+	ownerId: Id<"users">,
+	limit: number,
+	now: number,
+): Promise<number> {
+	if (limit <= 0) return 0;
+	const date = new Date(now);
+	const monthStart = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+	const builds = await ctx.db
+		.query("kodeWebBuilds")
+		.withIndex("by_owner_mode_created", (q) =>
+			q.eq("ownerId", ownerId).eq("mode", "build").gte("createdAt", monthStart),
+		)
+		.take(limit);
+	return builds.length;
 }
 
 export const getCredits = query({
@@ -117,10 +148,22 @@ export const getCredits = query({
 	handler: async (ctx) => {
 		const user = await getUserOrNull(ctx);
 		if (!user) return null;
-		const isPro = getPersistedPlanTier(user.plan) === "pro";
-		const state = await getCreditState(ctx, user._id, Date.now());
+		const tier = getPersistedPlanTier(user.plan);
+		const isPro = hasKode(user);
+		const now = Date.now();
+		const [state, buildsUsed] = await Promise.all([
+			getCreditState(ctx, user._id, tier, now),
+			getMonthlyBuildCount(
+				ctx,
+				user._id,
+				PLAN_DEFINITIONS[tier].kodeBuilds,
+				now,
+			),
+		]);
 		return {
 			isPro,
+			buildLimit: isPro ? PLAN_DEFINITIONS[tier].kodeBuilds : 0,
+			buildsUsed: isPro ? buildsUsed : 0,
 			allowance: isPro ? state.allowance : 0,
 			used: isPro ? state.used : 0,
 			remaining: isPro ? state.remaining : 0,
@@ -133,7 +176,7 @@ export const listProjects = query({
 	args: { limit: v.optional(v.number()) },
 	handler: async (ctx, args) => {
 		const user = await getUserOrNull(ctx);
-		if (!user || getPersistedPlanTier(user.plan) !== "pro") return [];
+		if (!user || !hasKode(user)) return [];
 		const limit = Math.max(1, Math.min(50, Math.floor(args.limit ?? 24)));
 		return await ctx.db
 			.query("kodeWebProjects")
@@ -147,7 +190,7 @@ export const createProject = mutation({
 	args: { prompt: v.string() },
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
-		requirePro(user);
+		requireKode(user);
 		const prompt = args.prompt.trim();
 		if (prompt.length < 3 || prompt.length > 8_000) {
 			throw new ConvexError({
@@ -173,7 +216,7 @@ export const getWorkspace = query({
 	args: { projectId: v.id("kodeWebProjects") },
 	handler: async (ctx, args) => {
 		const user = await getUserOrNull(ctx);
-		if (!user || getPersistedPlanTier(user.plan) !== "pro") return null;
+		if (!user || !hasKode(user)) return null;
 		const project = await ctx.db.get(args.projectId);
 		if (!project || project.ownerId !== user._id) return null;
 
@@ -201,7 +244,12 @@ export const getWorkspace = query({
 				)
 				.order("desc")
 				.take(20),
-			getCreditState(ctx, user._id, Date.now()),
+			getCreditState(
+				ctx,
+				user._id,
+				getPersistedPlanTier(user.plan),
+				Date.now(),
+			),
 		]);
 
 		return {
@@ -228,7 +276,7 @@ export const startBuild = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
-		requirePro(user);
+		requireKode(user);
 		const project = await requireOwnedProject(ctx, args.projectId, user._id);
 		const prompt = args.prompt.trim();
 		if (prompt.length < 3 || prompt.length > 8_000) {
@@ -252,7 +300,23 @@ export const startBuild = mutation({
 		}
 
 		const now = Date.now();
-		const credits = await getCreditState(ctx, user._id, now);
+		const planTier = getPersistedPlanTier(user.plan);
+		const credits = await getCreditState(ctx, user._id, planTier, now);
+		const buildLimit = PLAN_DEFINITIONS[planTier].kodeBuilds;
+		if (args.mode === "build") {
+			const buildsUsed = await getMonthlyBuildCount(
+				ctx,
+				user._id,
+				buildLimit,
+				now,
+			);
+			if (buildsUsed >= buildLimit) {
+				throw new ConvexError({
+					code: "KODE_BUILD_LIMIT_REACHED",
+					message: `${PLAN_DEFINITIONS[planTier].name} includes ${buildLimit} Kode builds per month.`,
+				});
+			}
+		}
 		const reservation =
 			args.mode === "build"
 				? KODE_WEB_BUILD_CREDIT_RESERVATION
@@ -266,10 +330,15 @@ export const startBuild = mutation({
 						: "You have used all Kode credits for this month.",
 			});
 		}
+		await consumeAiUsageCredits(
+			ctx,
+			user,
+			reservation * AI_USAGE_CREDIT_COSTS.kodeCredit,
+		);
 
 		if (credits.row) {
 			await ctx.db.patch(credits.row._id, {
-				allowance: KODE_WEB_MONTHLY_CREDITS,
+				allowance: credits.allowance,
 				used: credits.used + reservation,
 				updatedAt: now,
 			});
@@ -277,7 +346,7 @@ export const startBuild = mutation({
 			await ctx.db.insert("kodeWebCredits", {
 				ownerId: user._id,
 				monthKey: credits.monthKey,
-				allowance: KODE_WEB_MONTHLY_CREDITS,
+				allowance: credits.allowance,
 				used: reservation,
 				updatedAt: now,
 			});
@@ -493,6 +562,14 @@ export const completeWorkerBuild = internalMutation({
 				updatedAt: now,
 			});
 		}
+		const owner = await ctx.db.get(build.ownerId);
+		if (owner && build.creditCost > chargedCredits) {
+			await refundAiUsageCredits(
+				ctx,
+				owner,
+				(build.creditCost - chargedCredits) * AI_USAGE_CREDIT_COSTS.kodeCredit,
+			);
+		}
 
 		await ctx.db.patch(build._id, {
 			status: "completed",
@@ -558,6 +635,14 @@ export const failWorkerBuild = internalMutation({
 				updatedAt: now,
 			});
 		}
+		const owner = await ctx.db.get(build.ownerId);
+		if (owner) {
+			await refundAiUsageCredits(
+				ctx,
+				owner,
+				build.creditCost * AI_USAGE_CREDIT_COSTS.kodeCredit,
+			);
+		}
 		return null;
 	},
 });
@@ -570,7 +655,7 @@ export const updateFile = mutation({
 	},
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
-		requirePro(user);
+		requireKode(user);
 		const project = await requireOwnedProject(ctx, args.projectId, user._id);
 		if (!ALLOWED_FILE_PATHS.has(args.path) || project.activeVersion < 1) {
 			throw new ConvexError({
@@ -615,7 +700,7 @@ export const renameProject = mutation({
 	args: { projectId: v.id("kodeWebProjects"), title: v.string() },
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
-		requirePro(user);
+		requireKode(user);
 		const project = await requireOwnedProject(ctx, args.projectId, user._id);
 		const title = args.title.trim();
 		if (!title || title.length > 100) {
@@ -633,7 +718,7 @@ export const toggleStar = mutation({
 	args: { projectId: v.id("kodeWebProjects") },
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
-		requirePro(user);
+		requireKode(user);
 		const project = await requireOwnedProject(ctx, args.projectId, user._id);
 		const starred = !project.starred;
 		await ctx.db.patch(project._id, { starred, updatedAt: Date.now() });
@@ -645,7 +730,7 @@ export const deleteProject = mutation({
 	args: { projectId: v.id("kodeWebProjects") },
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
-		requirePro(user);
+		requireKode(user);
 		const project = await requireOwnedProject(ctx, args.projectId, user._id);
 		const [messages, files, builds] = await Promise.all([
 			ctx.db

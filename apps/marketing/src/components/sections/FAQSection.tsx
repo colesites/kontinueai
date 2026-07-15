@@ -3,8 +3,9 @@
 import { Minus, Plus } from "lucide-react";
 import { useState } from "react";
 import { Reveal } from "@/components/anim/Reveal";
+import { JsonLd } from "@/components/marketing/JsonLd";
 import { faqs } from "@/data/faqs";
-import { faqSchema, JsonLd } from "@/lib/structured-data";
+import { faqSchema } from "@/lib/structured-data";
 
 export function FAQSection() {
 	const [open, setOpen] = useState<number | null>(0);

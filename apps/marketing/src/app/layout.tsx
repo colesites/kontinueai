@@ -7,14 +7,11 @@ import {
 	JetBrains_Mono,
 } from "next/font/google";
 import { BottomBlur } from "@/components/BottomBlur";
+import { JsonLd } from "@/components/marketing/JsonLd";
 import { SmoothScroll } from "@/components/SmoothScroll";
-import {
-	JsonLd,
-	organizationSchema,
-	SITE_URL,
-	softwareSchema,
-	websiteSchema,
-} from "@/lib/structured-data";
+import { product } from "@/data/product";
+import { DEFAULT_OG_IMAGE, SITE_URL } from "@/lib/metadata";
+import { organizationSchema, websiteSchema } from "@/lib/structured-data";
 import "./globals.css";
 
 const display = Bricolage_Grotesque({
@@ -36,9 +33,9 @@ const mono = JetBrains_Mono({
 	display: "swap",
 });
 
-const siteTitle = "Kontinue AI: One workspace for every AI model";
+const siteTitle = "Kontinue AI | African-Built Multi-Model AI Platform";
 const siteDescription =
-	"Import your chats from ChatGPT, Claude, Gemini, Perplexity, Grok and more, switch models without losing context, and pay for one plan instead of five.";
+	"Use Kontinue AI’s own native intelligence layer, access leading AI models and import existing conversations with their context. Built in Africa for the world.";
 
 export const metadata: Metadata = {
 	metadataBase: new URL(SITE_URL),
@@ -48,7 +45,7 @@ export const metadata: Metadata = {
 	},
 	description: siteDescription,
 	applicationName: "Kontinue AI",
-	authors: [{ name: "Kontinue AI" }],
+	authors: [{ name: product.company.name }],
 	creator: "Kontinue AI",
 	publisher: "Kontinue AI",
 	category: "technology",
@@ -58,13 +55,13 @@ export const metadata: Metadata = {
 	keywords: [
 		"Kontinue AI",
 		"kontinueai",
-		"multi model AI workspace",
-		"AI model switcher",
-		"import ChatGPT chat",
-		"import Claude chat",
-		"one plan for every AI model",
+		"African-built AI platform",
+		"Nigerian AI company",
+		"K-AI 1.0",
+		"import AI conversations",
+		"multi-model AI platform",
 		"continue AI conversation after limit",
-		"compare AI models",
+		"portable AI conversations",
 	],
 	openGraph: {
 		title: siteTitle,
@@ -73,10 +70,10 @@ export const metadata: Metadata = {
 		siteName: "Kontinue AI",
 		images: [
 			{
-				url: "/og.png?v=2",
+				url: DEFAULT_OG_IMAGE,
 				width: 1200,
 				height: 630,
-				alt: "Kontinue AI: one workspace for every AI model",
+				alt: "Kontinue AI — built in Africa for the world",
 				type: "image/png",
 			},
 		],
@@ -87,7 +84,7 @@ export const metadata: Metadata = {
 		card: "summary_large_image",
 		title: siteTitle,
 		description: siteDescription,
-		images: ["/og.png?v=2"],
+		images: [DEFAULT_OG_IMAGE],
 	},
 	icons: {
 		icon: "/favicon.ico",
@@ -129,10 +126,9 @@ export default function RootLayout({
 						__html: "document.documentElement.classList.add('gsap')",
 					}}
 				/>
-				<GoogleTagManager gtmId={process.env.GTM || ""} />
+				{process.env.GTM ? <GoogleTagManager gtmId={process.env.GTM} /> : null}
 				<JsonLd data={organizationSchema} />
 				<JsonLd data={websiteSchema} />
-				<JsonLd data={softwareSchema} />
 				<SmoothScroll>{children}</SmoothScroll>
 				<BottomBlur />
 				<Analytics />

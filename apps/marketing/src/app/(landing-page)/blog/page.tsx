@@ -6,25 +6,22 @@ import { BlogSearch, type SearchItem } from "@/components/blog/BlogSearch";
 import { NewsletterForm } from "@/components/blog/NewsletterForm";
 import { StoryCard } from "@/components/blog/StoryCard";
 import { StripeField } from "@/components/blog/StripeField";
+import { JsonLd } from "@/components/marketing/JsonLd";
 import { formatDate } from "@/lib/blog";
+import { pageMetadata } from "@/lib/metadata";
+import { blogSchema, breadcrumbSchema } from "@/lib/structured-data";
 import { cn } from "@/lib/utils";
 import { sanityFetch } from "@/sanity/lib/fetch";
 import { urlFor } from "@/sanity/lib/image";
 import { POSTS_QUERY } from "@/sanity/lib/queries";
 import type { PostCard, SanityImage } from "@/sanity/lib/types";
 
-export const metadata: Metadata = {
-	title: "The Kontinue Journal",
+export const metadata: Metadata = pageMetadata({
+	title: "The Kontinue Journal | Product, AI Models and Engineering",
 	description:
-		"Field notes from the multi-model frontier. How we build, switch, and reason across every major AI model.",
-	alternates: { canonical: "/blog" },
-	openGraph: {
-		title: "The Kontinue Journal",
-		description:
-			"Field notes from the multi-model frontier. How we build, switch, and reason across every major AI model.",
-		url: "/blog",
-	},
-};
+		"Product notes, engineering stories, AI model guides, tutorials, research and company updates from Kontinue AI.",
+	path: "/blog",
+});
 
 export const revalidate = 60;
 
@@ -290,6 +287,13 @@ export default async function BlogIndexPage() {
 
 	return (
 		<section className="relative px-5 pt-32 pb-24 lg:px-8 lg:pt-40 lg:pb-28">
+			<JsonLd data={blogSchema()} />
+			<JsonLd
+				data={breadcrumbSchema([
+					{ name: "Home", href: "/" },
+					{ name: "Blog", href: "/blog" },
+				])}
+			/>
 			<div className="mx-auto max-w-6xl">
 				{/* ===== Masthead ===== */}
 				<header>
@@ -307,13 +311,13 @@ export default async function BlogIndexPage() {
 					</div>
 
 					<h1 className="font-display tracking-tightest mt-10 max-w-4xl text-[clamp(2.75rem,8vw,5.5rem)] leading-[0.95]">
-						Field notes from the <span className="text-brand">multi-model</span>{" "}
-						frontier.
+						Field notes from an{" "}
+						<span className="text-brand">African-built</span> AI platform.
 					</h1>
 
 					<p className="mt-9 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-						How we build, switch, and reason across every major AI model, and
-						why we think the frontier belongs in one place.
+						Product notes, engineering stories, model guides, tutorials,
+						research, and company updates from the team building Kontinue AI.
 					</p>
 
 					<Link
@@ -443,7 +447,7 @@ export default async function BlogIndexPage() {
 								<Link
 									href={
 										focusAuthor.slug
-											? `/blog/all?author=${focusAuthor.slug}`
+											? `/authors/${focusAuthor.slug}`
 											: "/blog/all"
 									}
 									className="link-underline mt-8 inline-flex items-center gap-1.5 font-medium text-brand-strong"
@@ -465,14 +469,14 @@ export default async function BlogIndexPage() {
 					<div className="relative flex flex-col gap-9 lg:flex-row lg:items-end lg:justify-between">
 						<div className="max-w-xl">
 							<p className="font-mono text-[0.72rem] font-medium uppercase tracking-[0.22em] text-[oklch(0.72_0.16_295)]">
-								The multi-model memo
+								The Kontinue memo
 							</p>
 							<h2 className="font-display mt-4 text-3xl leading-tight text-white sm:text-4xl">
-								One email. Every model that matters.
+								One email. Product work worth following.
 							</h2>
 							<p className="mt-3 text-white/60">
-								A monthly dispatch on shipping, switching, and reasoning across
-								AI.
+								A monthly dispatch on building Kontinue AI, portable
+								conversations, and thoughtful model use.
 							</p>
 						</div>
 						<NewsletterForm />

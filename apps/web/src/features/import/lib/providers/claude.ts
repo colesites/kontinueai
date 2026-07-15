@@ -2,6 +2,101 @@ import * as cheerio from "cheerio";
 import type { NormalizedMessage, NormalizedTranscript } from "../../types";
 import type { ProviderParser } from "./types";
 
+type JsonRecord = Record<string, unknown>;
+
+function asRecord(value: unknown): JsonRecord | null {
+	return value !== null && typeof value === "object" && !Array.isArray(value)
+		? (value as JsonRecord)
+		: null;
+}
+
+function artifactFenceLanguage(mediaType: string): string {
+	const normalized = mediaType.toLowerCase();
+	if (normalized.includes("html") || /\.html?$/.test(normalized)) return "html";
+	if (
+		normalized.includes("react") ||
+		normalized.includes("jsx") ||
+		/\.[jt]sx$/.test(normalized)
+	)
+		return "jsx";
+	if (normalized.includes("svg") || /\.svg$/.test(normalized)) return "svg";
+	if (normalized.includes("mermaid")) return "mermaid";
+	if (normalized.includes("markdown") || /\.md$/.test(normalized))
+		return "markdown";
+	if (normalized.includes("json") || /\.json$/.test(normalized)) return "json";
+	if (normalized.includes("javascript") || /\.m?js$/.test(normalized))
+		return "javascript";
+	if (normalized.includes("typescript") || /\.ts$/.test(normalized))
+		return "typescript";
+	return "text";
+}
+
+function formatArtifact(record: JsonRecord): string | null {
+	const input = asRecord(record.input);
+	const source = input ?? record;
+	const recordType = typeof record.type === "string" ? record.type : "";
+	const recordName = typeof record.name === "string" ? record.name : "";
+	const sourceType = typeof source.type === "string" ? source.type : "";
+	const sourceMediaType =
+		typeof source.mime_type === "string"
+			? source.mime_type
+			: typeof source.media_type === "string"
+				? source.media_type
+				: sourceType;
+	const isArtifact =
+		/artifact/i.test(recordType) ||
+		/artifact/i.test(recordName) ||
+		recordName === "create_file" ||
+		(Boolean(input) &&
+			/(?:text\/(?:html|markdown)|image\/svg|react|jsx|mermaid)/i.test(
+				sourceMediaType,
+			));
+	if (!isArtifact || typeof source.content !== "string") return null;
+
+	const content = source.content.trim();
+	if (!content) return null;
+	const title =
+		typeof source.title === "string" && source.title.trim()
+			? source.title.trim()
+			: typeof source.filename === "string" && source.filename.trim()
+				? source.filename.trim()
+				: "Untitled";
+	const language = artifactFenceLanguage(
+		sourceMediaType ||
+			(typeof source.filename === "string" ? source.filename : "") ||
+			recordType,
+	);
+	return `### Claude Artifact: ${title}\n\n\`\`\`${language}\n${content}\n\`\`\``;
+}
+
+export function normalizeClaudeMessageContent(value: unknown): string {
+	if (typeof value === "string") return value.trim();
+	if (Array.isArray(value)) {
+		return value
+			.flatMap((item) => {
+				const content = normalizeClaudeMessageContent(item);
+				return content ? [content] : [];
+			})
+			.join("\n\n")
+			.trim();
+	}
+
+	const record = asRecord(value);
+	if (!record) return "";
+	const artifact = formatArtifact(record);
+	if (artifact) return artifact;
+
+	const parts: string[] = [];
+	if (typeof record.text === "string" && record.text.trim()) {
+		parts.push(record.text.trim());
+	}
+	if (record.content !== undefined) {
+		const content = normalizeClaudeMessageContent(record.content);
+		if (content) parts.push(content);
+	}
+	return Array.from(new Set(parts)).join("\n\n").trim();
+}
+
 export const claudeParser: ProviderParser = {
 	name: "claude",
 
@@ -49,19 +144,17 @@ export const claudeParser: ProviderParser = {
 						if (data.messages && Array.isArray(data.messages)) {
 							type ClaudeMessageData = {
 								role?: string;
-								content?: string | { text?: string; [key: string]: unknown };
+								content?: unknown;
 							};
 							data.messages.forEach((msg: ClaudeMessageData, i: number) => {
-								if (msg.role && msg.content) {
+								const content = normalizeClaudeMessageContent(msg.content);
+								if (msg.role && content) {
 									messages.push({
 										role:
 											msg.role === "human" || msg.role === "user"
 												? "user"
 												: "assistant",
-										content:
-											typeof msg.content === "string"
-												? msg.content
-												: msg.content?.text || JSON.stringify(msg.content),
+										content,
 										order: i,
 									});
 								}

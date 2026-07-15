@@ -8,9 +8,9 @@ export interface HowItWorksStep {
 export const howItWorksSteps: HowItWorksStep[] = [
 	{
 		index: "01",
-		title: "Import any chat",
+		title: "Import a supported conversation",
 		description:
-			"Paste a share link or bring your history from ChatGPT, Claude, Gemini and more. Your messages and context arrive intact.",
+			"Paste a supported shared-conversation link or upload an available export. Supported messages are prepared in sequence for the next model.",
 		image:
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229188/import_d8xvho.jpg",
 	},
@@ -18,7 +18,7 @@ export const howItWorksSteps: HowItWorksStep[] = [
 		index: "02",
 		title: "Switch models in one click",
 		description:
-			"Continue the same thread on a different model whenever you want. The context follows you, so nothing resets.",
+			"Continue the same thread with K-AI 1.0 or another supported model. The available conversation history stays in the thread.",
 		image:
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229140/anymodel_vdvx4h.jpg",
 	},
@@ -26,7 +26,7 @@ export const howItWorksSteps: HowItWorksStep[] = [
 		index: "03",
 		title: "One plan, every model",
 		description:
-			"Reach the top tier of each major model for a single price. No more stacking subscriptions you barely use.",
+			"Use selected models and Kontinue tools from one account. Model availability and usage limits depend on your plan.",
 		image:
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229062/lessmoney_umvfhq.jpg",
 	},
@@ -44,9 +44,9 @@ export interface FeatureBlock {
 export const featureBlocks: FeatureBlock[] = [
 	{
 		eyebrow: "Voice",
-		title: "Talk in any language",
+		title: "Use voice across supported languages",
 		description:
-			"Record a voice note and get an accurate transcript that keeps the meaning, in the language you spoke. Useful for quick notes, interviews and ideas on the move.",
+			"Record a voice note and turn it into text for quick prompts, notes, and ideas. Language support and transcription quality can vary.",
 		image:
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781228978/audio_li1rdo.jpg",
 	},
@@ -54,7 +54,7 @@ export const featureBlocks: FeatureBlock[] = [
 		eyebrow: "Images",
 		title: "Generate images in the chat",
 		description:
-			"Create images from a prompt without leaving the conversation, from product shots to character art. Iterate on a result until it is right.",
+			"Create and iterate on images from a prompt without leaving the Kontinue workspace. Model availability can vary by plan.",
 		images: [
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229272/woman-in-urban_hxvo2q.jpg",
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229285/cute-face_lnxue9.webp",
@@ -64,7 +64,7 @@ export const featureBlocks: FeatureBlock[] = [
 		eyebrow: "Video",
 		title: "Turn a prompt into video",
 		description:
-			"Generate short, coherent video clips from a description and download them when you are happy. Available on the Pro plan.",
+			"Generate short video clips from a description inside Canvas. Available models, duration, and resolution can vary by plan.",
 		videos: [
 			"https://res.cloudinary.com/dqovfvo29/video/upload/q_auto/f_auto/v1781229447/pricess-knight_q3duzd.mp4",
 			"https://res.cloudinary.com/dqovfvo29/video/upload/q_auto/f_auto/v1781229380/model_op05uz.mp4",

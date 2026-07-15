@@ -35,6 +35,7 @@ export default function SettingsPage() {
 	const searchParams = useSearchParams();
 	const { user } = useUser();
 	const usage = useQuery(api.messages.getMonthlyUsage, {});
+	const aiUsage = useQuery(api.aiUsage.getUsage, {});
 	const currentPlanTier = usePlanTier();
 	const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
 		// Allow deep-linking to a tab, e.g. /settings?tab=invite from the sidebar CTA.
@@ -139,6 +140,7 @@ export default function SettingsPage() {
 									setSelectedLanguage(saved);
 								}}
 								usage={usage}
+								aiUsage={aiUsage}
 							/>
 						) : activeTab === "invite" ? (
 							<SettingsReferralPanel />

@@ -14,6 +14,21 @@ describe("AI model catalog", () => {
 		);
 	});
 
+	test("registers realtime voice models outside the text-chat surface", () => {
+		expect(OPENAI_MODELS).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: "openai/gpt-realtime-1.5",
+					modality: "realtime",
+				}),
+				expect.objectContaining({
+					id: "openai/gpt-realtime-2.1",
+					modality: "realtime",
+				}),
+			]),
+		);
+	});
+
 	test("includes Sonnet 5 and keeps Fable 5", () => {
 		expect(ANTHROPIC_MODELS.map((model) => model.id)).toEqual(
 			expect.arrayContaining([

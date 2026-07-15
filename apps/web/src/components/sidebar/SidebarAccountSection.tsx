@@ -34,7 +34,7 @@ export function SidebarAccountSection({
 	onNavigate,
 }: SidebarAccountSectionProps) {
 	const isPaid = planTier !== "free";
-	const isTopTier = planTier === "pro";
+	const isTopTier = planTier === "max";
 	const feedbackHref = "/feedback";
 
 	return (
@@ -180,7 +180,7 @@ export function SidebarAccountSection({
 										<Sparkles className="size-3" />
 									</span>
 									<span className="flex-1 text-[13px] font-semibold text-primary">
-										{planTier === "starter" ? "Upgrade to Pro" : "Upgrade"}
+										Upgrade plan
 									</span>
 									<span className="text-primary/60">→</span>
 								</Link>

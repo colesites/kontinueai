@@ -1,9 +1,3 @@
-"use client";
-
-import { useState, useTransition } from "react";
-import { Button } from "@/components/ui/button";
-import { createComment } from "@/app/actions/comments";
-
 interface Comment {
 	_id: string;
 	text: string;
@@ -11,92 +5,52 @@ interface Comment {
 }
 
 interface CommentsSectionProps {
-	postId: string;
 	initialComments: Comment[];
 }
 
-export function CommentsSection({ postId, initialComments }: CommentsSectionProps) {
-	const [comments, setComments] = useState<Comment[]>(initialComments);
-	const [newComment, setNewComment] = useState("");
-	const [isPending, startTransition] = useTransition();
+const commentDateFormatter = new Intl.DateTimeFormat("en-US", {
+	month: "short",
+	day: "numeric",
+	year: "numeric",
+	timeZone: "UTC",
+});
 
-	const handleSubmit = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!newComment.trim() || isPending) return;
+function formatCommentDate(dateString: string) {
+	return commentDateFormatter.format(new Date(dateString));
+}
 
-		const commentText = newComment.trim();
-		setNewComment(""); // Optimistically clear input
-
-		// Optimistic update
-		const tempId = `temp-${Date.now()}`;
-		const optimisticComment: Comment = {
-			_id: tempId,
-			text: commentText,
-			createdAt: new Date().toISOString(),
-		};
-		setComments([optimisticComment, ...comments]);
-
-		startTransition(async () => {
-			const result = await createComment(postId, commentText);
-			if (!result.success) {
-				// Revert on failure
-				setComments((prev) => prev.filter((c) => c._id !== tempId));
-				setNewComment(commentText);
-				alert("Failed to post comment. Please try again.");
-			}
-		});
-	};
-
-	const formatDate = (dateString: string) => {
-		const date = new Date(dateString);
-		return new Intl.DateTimeFormat("en-US", {
-			month: "short",
-			day: "numeric",
-			year: "numeric",
-			hour: "numeric",
-			minute: "2-digit",
-		}).format(date);
-	};
-
+export function CommentsSection({ initialComments }: CommentsSectionProps) {
 	return (
 		<div className="mt-16 border-t border-border pt-12">
-			<h3 className="font-display mb-8 text-2xl">
-				Comments ({comments.length})
+			<h3 className="font-display mb-3 text-2xl">
+				Published comments ({initialComments.length})
 			</h3>
+			<p className="mb-10 max-w-2xl text-sm leading-relaxed text-muted-foreground">
+				Comments are published only after editorial review. Public anonymous
+				submissions are disabled while Kontinue AI designs an authenticated
+				discussion experience.
+			</p>
 
-			{/* Comment Form */}
-			<form onSubmit={handleSubmit} className="mb-12">
-				<textarea
-					value={newComment}
-					onChange={(e) => setNewComment(e.target.value)}
-					placeholder="Leave a comment..."
-					className="focus-visible:ring-ring min-h-[100px] w-full resize-none rounded-xl border border-input bg-transparent px-4 py-3 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:opacity-50"
-					disabled={isPending}
-				/>
-				<div className="mt-3 flex justify-end">
-					<Button
-						type="submit"
-						disabled={!newComment.trim() || isPending}
-						className="hover-lift"
-					>
-						{isPending ? "Posting..." : "Post Comment"}
-					</Button>
-				</div>
-			</form>
-
-			{/* Comments List */}
 			<div className="space-y-6">
-				{comments.length === 0 ? (
-					<p className="text-muted-foreground text-sm">No comments yet. Be the first to share your thoughts!</p>
+				{initialComments.length === 0 ? (
+					<p className="text-muted-foreground text-sm">
+						No published comments yet.
+					</p>
 				) : (
-					comments.map((comment) => (
-						<div key={comment._id} className="rounded-xl border border-border bg-card p-5 shadow-sm">
+					initialComments.map((comment) => (
+						<div
+							key={comment._id}
+							className="rounded-xl border border-border bg-card p-5 shadow-sm"
+						>
 							<p className="text-sm leading-relaxed text-foreground">
 								{comment.text}
 							</p>
-							<p className="mt-3 text-xs text-muted-foreground">
-								{formatDate(comment.createdAt)}
-							</p>
+							<time
+								dateTime={comment.createdAt}
+								className="mt-3 block text-xs text-muted-foreground"
+							>
+								{formatCommentDate(comment.createdAt)}
+							</time>
 						</div>
 					))
 				)}

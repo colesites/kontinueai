@@ -1,30 +1,33 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ParticleWordmark } from "@/components/ParticleWordmark";
-import { APP_URL } from "@/lib/structured-data";
+import { appLinks, product } from "@/data/product";
 
 const columns = [
 	{
 		title: "Product",
 		links: [
-			{ href: "/#how-it-works", label: "How it works" },
-			{ href: "/#features", label: "Features" },
-			{ href: "/#pricing", label: "Pricing" },
-			{ href: "/#faq", label: "FAQ" },
+			{ href: "/kontinue-model", label: "K-AI 1.0" },
+			{ href: "/import-ai-conversations", label: "Import conversations" },
+			{ href: "/supported-models", label: "Supported models" },
+			{ href: "/pricing", label: "Pricing" },
+		],
+	},
+	{
+		title: "Company",
+		links: [
+			{ href: "/about", label: "About" },
+			{ href: "/blog", label: "Blog" },
+			{ href: "/press", label: "Press" },
+			{ href: "/security", label: "Security & privacy" },
 		],
 	},
 	{
 		title: "Get started",
 		links: [
-			{ href: "/download", label: "Download app" },
-			{ href: `${APP_URL}/sign-up`, label: "Create account", external: true },
-			{ href: `${APP_URL}/sign-in`, label: "Sign in", external: true },
-			{ href: "mailto:support@kontinueai.com", label: "Contact support" },
-		],
-	},
-	{
-		title: "Legal",
-		links: [
+			{ href: "/download", label: "Download" },
+			{ href: appLinks.signUp, label: "Create account", external: true },
+			{ href: appLinks.signIn, label: "Sign in", external: true },
 			{ href: "/legal/privacy-policy", label: "Privacy policy" },
 			{ href: "/legal/terms-of-service", label: "Terms of service" },
 		],
@@ -35,7 +38,7 @@ export function Footer() {
 	return (
 		<footer className="relative overflow-hidden border-t border-border bg-background">
 			<div className="relative z-10 mx-auto max-w-6xl px-5 pt-16 lg:px-8 lg:pt-20">
-				<div className="grid gap-12 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
+				<div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-[1.45fr_repeat(4,minmax(0,1fr))]">
 					<div className="max-w-xs">
 						<Image
 							src="/kontinueai.svg"
@@ -43,11 +46,10 @@ export function Footer() {
 							width={128}
 							height={30}
 							className="h-6 w-auto object-contain"
-							style={{ filter: "brightness(0)" }}
+							style={{ filter: "brightness(0)", width: "auto" }}
 						/>
 						<p className="mt-5 text-sm leading-relaxed text-muted-foreground">
-							Every AI chat in one workspace. Switch models without losing your
-							place, and pay for one plan.
+							{product.positioning.short} {product.company.originStatement}.
 						</p>
 					</div>
 
@@ -71,12 +73,44 @@ export function Footer() {
 							</ul>
 						</div>
 					))}
+
+					<div>
+						<h2 className="eyebrow mb-5">Contact</h2>
+						<a
+							href={`mailto:${product.company.email.general}`}
+							className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+						>
+							{product.company.email.general}
+						</a>
+						<div className="mt-5 flex items-center gap-2">
+							{product.company.socialLinks.map((social) => (
+								<a
+									key={social.name}
+									href={social.href}
+									target="_blank"
+									rel="noopener noreferrer"
+									aria-label={`Follow Kontinue AI on ${social.name}`}
+									title={social.name}
+									className="inline-flex size-9 items-center justify-center rounded-full border border-border text-muted-foreground transition hover:border-foreground/25 hover:bg-accent hover:text-foreground"
+								>
+									<Image
+										aria-hidden
+										src={social.icon}
+										alt=""
+										width={18}
+										height={18}
+										className="size-[1.1rem] object-contain"
+									/>
+								</a>
+							))}
+						</div>
+					</div>
 				</div>
 
 				<div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-border pt-8 text-xs text-muted-foreground sm:flex-row sm:items-center">
 					<p>© {new Date().getFullYear()} Kontinue AI. All rights reserved.</p>
 					<p className="font-mono uppercase tracking-widest">
-						One workspace for every model
+						Built in Africa for the world
 					</p>
 				</div>
 			</div>

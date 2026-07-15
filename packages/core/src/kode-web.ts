@@ -1,7 +1,17 @@
-export const KODE_WEB_MONTHLY_CREDITS = 100;
-export const KODE_WEB_TOKENS_PER_CREDIT = 25_000;
+import { PLAN_DEFINITIONS } from "./plan-config";
+import type { PlanTier } from "./plan-tier";
+
 export const KODE_WEB_PLAN_CREDIT_RESERVATION = 1;
 export const KODE_WEB_BUILD_CREDIT_RESERVATION = 4;
+
+export const KODE_WEB_MONTHLY_CREDITS: Record<PlanTier, number> = {
+	free: 0,
+	starter: 0,
+	plus: 0,
+	pro: PLAN_DEFINITIONS.pro.kodeBuilds * KODE_WEB_BUILD_CREDIT_RESERVATION,
+	max: PLAN_DEFINITIONS.max.kodeBuilds * KODE_WEB_BUILD_CREDIT_RESERVATION,
+};
+export const KODE_WEB_TOKENS_PER_CREDIT = 25_000;
 export const KODE_WEB_MODEL_ID = "zai/glm-5.2";
 export const KODE_WEB_MAX_PROJECT_FILES = 8;
 export const KODE_WEB_MAX_FILE_BYTES = 180_000;

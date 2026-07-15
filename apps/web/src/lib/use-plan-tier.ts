@@ -6,6 +6,8 @@ import { api } from "@repo/convex/convex/_generated/api";
 import {
 	type BillingUserLike,
 	isPaidTier,
+	MAX_PLAN_ID,
+	PLUS_PLAN_ID,
 	type PlanTier,
 	PRO_PLAN_ID,
 	resolvePlanTierFromBillingSignals,
@@ -26,10 +28,20 @@ export function usePlanTier(): PlanTier {
 		isAuthLoaded && typeof has === "function"
 			? has({ plan: STARTER_PLAN_ID })
 			: false;
+	const hasPlusPlan =
+		isAuthLoaded && typeof has === "function"
+			? has({ plan: PLUS_PLAN_ID })
+			: false;
+	const hasMaxPlan =
+		isAuthLoaded && typeof has === "function"
+			? has({ plan: MAX_PLAN_ID })
+			: false;
 
 	return resolvePlanTierFromBillingSignals({
 		hasStarterPlan,
+		hasPlusPlan,
 		hasProPlan,
+		hasMaxPlan,
 		billingUser: user as unknown as BillingUserLike | null | undefined,
 		persistedPlan: currentUser?.plan,
 	});

@@ -27,10 +27,11 @@ export function extractHeadings(blocks: PortableTextBlock[] = []): TOCItem[] {
 			block.style &&
 			["h2", "h3"].includes(block.style)
 		) {
-			const text = block.children
-				?.map((child: { _type?: string; text?: string }) => child.text || "")
-				.join("") || "";
-			
+			const text =
+				block.children
+					?.map((child: { _type?: string; text?: string }) => child.text || "")
+					.join("") || "";
+
 			if (text) {
 				headings.push({
 					title: text,

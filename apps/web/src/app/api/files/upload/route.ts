@@ -1,12 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
+import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import { canAccessPlanFeature } from "@repo/core/plan-access";
+import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import { put } from "@vercel/blob";
+import { fetchQuery } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { getUserPlanTier } from "../../chat/lib/plan-limits";
 import { PLAN_ERROR_CODES } from "../../lib/plan-denial";
-
-// Max file size: 5MB
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
 // Allowed MIME types
 const ALLOWED_TYPES = [
@@ -66,16 +66,12 @@ export async function POST(request: Request) {
 		const blob = await request.blob();
 		const contentType = blob.type;
 
-		// Reject free plan only if it's NOT an image (allow images for Canvas/Image-to-Video)
-		if (
-			!canAccessPlanFeature(planTier, "file-upload") &&
-			!contentType.startsWith("image/")
-		) {
+		if (!canAccessPlanFeature(planTier, "file-upload")) {
 			return NextResponse.json(
 				{
 					code: "FREE_PLAN_UPLOAD_DISABLED",
 					error:
-						"File uploads (except images) are available on Starter and Pro plans. Please upgrade to continue.",
+						"Chat file uploads are available on Starter, Plus, Pro, and Max.",
 				},
 				{
 					status: 403,
@@ -87,9 +83,12 @@ export async function POST(request: Request) {
 		}
 
 		// Validate file size
-		if (blob.size > MAX_FILE_SIZE) {
+		const maxFileSize = PLAN_DEFINITIONS[planTier].maxChatUploadBytes;
+		if (blob.size > maxFileSize) {
 			return NextResponse.json(
-				{ error: "File size exceeds 5MB limit" },
+				{
+					error: `File size exceeds the ${Math.round(maxFileSize / (1024 * 1024))}MB limit for ${PLAN_DEFINITIONS[planTier].name}`,
+				},
 				{ status: 400 },
 			);
 		}
@@ -104,6 +103,26 @@ export async function POST(request: Request) {
 					allowedTypes: ALLOWED_TYPES,
 				},
 				{ status: 400 },
+			);
+		}
+
+		const convexToken =
+			(await authResult.getToken?.({ template: "convex" })) ?? null;
+		if (!convexToken) {
+			return NextResponse.json(
+				{ error: "Your account could not be verified. Please try again." },
+				{ status: 503 },
+			);
+		}
+		const allowance = await fetchQuery(
+			convexApi.files.getUploadAllowance,
+			{ size: blob.size },
+			{ token: convexToken },
+		);
+		if (!allowance.allowed) {
+			return NextResponse.json(
+				{ error: allowance.reason ?? "Upload limit reached." },
+				{ status: 429 },
 			);
 		}
 

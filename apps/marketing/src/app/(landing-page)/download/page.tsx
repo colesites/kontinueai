@@ -4,20 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { Reveal } from "@/components/anim/Reveal";
 import { Button } from "@/components/ui/button";
+import { pageMetadata } from "@/lib/metadata";
 import { APP_URL } from "@/lib/structured-data";
 
-export const metadata: Metadata = {
-	title: "Download the app",
+export const metadata: Metadata = pageMetadata({
+	title: "Download Kontinue AI | Mobile Apps Coming Soon",
 	description:
-		"Kontinue AI for Android, iPhone and iPad is coming soon. Keep using it on the web in the meantime.",
-	alternates: { canonical: "/download" },
-	openGraph: {
-		title: "Download Kontinue AI",
-		description:
-			"Kontinue AI for Android, iPhone and iPad is coming soon. Use it on the web in the meantime.",
-		url: "/download",
-	},
-};
+		"Kontinue AI for Android, iPhone and iPad is coming soon. Use the web app in the meantime.",
+	path: "/download",
+});
 
 export default function DownloadPage() {
 	return (
@@ -67,8 +62,8 @@ export default function DownloadPage() {
 							</span>
 						</div>
 						<p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-							The Android build is in the works. Use the web app in the meantime,
-							it works great on Android.
+							The Android build is in the works. Use the web app in the
+							meantime, it works great on Android.
 						</p>
 
 						<div className="grow" />

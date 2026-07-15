@@ -27,7 +27,7 @@ export function ProblemSection() {
 					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
 						Five subscriptions, one big{" "}
 						<RotatingWord
-							words={["headache", "mess", "hassle", "bill"]}
+							words={["mess", "hassle", "bill", "headache"]}
 							className="text-brand"
 						/>
 					</h2>
@@ -99,7 +99,7 @@ export function ProblemSection() {
 								One workspace
 							</span>
 							<span className="w-20 text-right text-sm font-semibold tabular-nums">
-								from $8.99<span className="opacity-70">/mo</span>
+								from $4.99<span className="opacity-70">/mo</span>
 							</span>
 						</div>
 					</div>

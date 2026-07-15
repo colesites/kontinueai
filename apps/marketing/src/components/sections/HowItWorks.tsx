@@ -8,18 +8,67 @@ import { gsap, ScrollTrigger, useGSAP } from "@/lib/gsap";
 
 export function HowItWorks() {
 	const root = useRef<HTMLElement>(null);
+	const media = useRef<HTMLDivElement>(null);
+	const mediaIndex = useRef(0);
+	const mediaTransition = useRef<ReturnType<typeof gsap.timeline> | null>(null);
 	const [active, setActive] = useState(0);
+	const [mediaActive, setMediaActive] = useState(0);
 
 	useGSAP(
 		() => {
 			const steps = gsap.utils.toArray<HTMLElement>("[data-step]");
+			const images = gsap.utils.toArray<HTMLElement>(
+				"[data-step-image]",
+				media.current,
+			);
+			const reducedMotion = window.matchMedia(
+				"(prefers-reduced-motion: reduce)",
+			).matches;
+
+			const showMedia = (index: number) => {
+				if (index === mediaIndex.current || !images[index]) return;
+
+				mediaTransition.current?.kill();
+				const incoming = images[index];
+				const outgoing = images.filter((_, itemIndex) => itemIndex !== index);
+				mediaIndex.current = index;
+
+				if (reducedMotion) {
+					gsap.set(outgoing, { autoAlpha: 0, scale: 1 });
+					gsap.set(incoming, { autoAlpha: 1, scale: 1 });
+					setMediaActive(index);
+					return;
+				}
+
+				gsap.set(incoming, { autoAlpha: 0, scale: 1.025 });
+				mediaTransition.current = gsap
+					.timeline()
+					.to(outgoing, {
+						autoAlpha: 0,
+						scale: 0.985,
+						duration: 0.28,
+						ease: "power2.in",
+						overwrite: true,
+					})
+					.call(() => setMediaActive(index))
+					.to(incoming, {
+						autoAlpha: 1,
+						scale: 1,
+						duration: 0.42,
+						ease: "power2.out",
+					});
+			};
+
 			steps.forEach((step, i) => {
 				ScrollTrigger.create({
 					trigger: step,
 					start: "top 62%",
 					end: "bottom 62%",
 					onToggle: (self) => {
-						if (self.isActive) setActive(i);
+						if (self.isActive) {
+							setActive(i);
+							showMedia(i);
+						}
 					},
 				});
 			});
@@ -45,7 +94,7 @@ export function HowItWorks() {
 					</p>
 				</Reveal>
 
-				<div className="mt-16 grid gap-12 lg:mt-24 lg:grid-cols-2 lg:gap-20">
+				<div className="mt-16 grid gap-12 lg:mt-24 lg:grid-cols-2 lg:items-start lg:gap-20">
 					{/* Steps */}
 					<div>
 						{howItWorksSteps.map((step, i) => (
@@ -90,31 +139,29 @@ export function HowItWorks() {
 					</div>
 
 					{/* Sticky media for large screens */}
-					<div className="hidden lg:block">
-						<div className="sticky top-[16vh]">
-							<div className="relative aspect-[4/3] overflow-hidden rounded-[1.4rem] border border-border bg-secondary card-shadow">
-								{howItWorksSteps.map((step, i) => (
-									<Image
-										key={step.index}
-										src={step.image}
-										alt={step.title}
-										fill
-										sizes="50vw"
-										className={`object-cover transition-all duration-700 ease-out ${
-											active === i
-												? "scale-100 opacity-100"
-												: "scale-105 opacity-0"
-										}`}
-									/>
-								))}
-								<div className="pointer-events-none absolute bottom-0 left-0 right-0 flex items-center gap-3 bg-gradient-to-t from-foreground/70 to-transparent p-5">
-									<span className="font-mono text-xs text-background/90">
-										{howItWorksSteps[active].index}
-									</span>
-									<span className="text-sm font-medium text-background">
-										{howItWorksSteps[active].title}
-									</span>
-								</div>
+					<div className="sticky top-[16vh] hidden self-start lg:block">
+						<div
+							ref={media}
+							className="relative aspect-[4/3] overflow-hidden rounded-[1.4rem] border border-border bg-secondary card-shadow"
+						>
+							{howItWorksSteps.map((step, i) => (
+								<Image
+									key={step.index}
+									data-step-image
+									src={step.image}
+									alt={step.title}
+									fill
+									sizes="50vw"
+									className={`object-cover ${i === 0 ? "opacity-100" : "opacity-0"}`}
+								/>
+							))}
+							<div className="pointer-events-none absolute bottom-0 left-0 right-0 flex items-center gap-3 bg-gradient-to-t from-foreground/70 to-transparent p-5">
+								<span className="font-mono text-xs text-background/90">
+									{howItWorksSteps[mediaActive].index}
+								</span>
+								<span className="text-sm font-medium text-background">
+									{howItWorksSteps[mediaActive].title}
+								</span>
 							</div>
 						</div>
 					</div>

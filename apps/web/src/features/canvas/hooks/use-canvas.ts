@@ -3,6 +3,7 @@
 import { IMAGE_MODELS, VIDEO_MODELS } from "@repo/ai/lib/canvas-models";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { usePlanTier } from "@web/lib/use-plan-tier";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useSearchParams } from "next/navigation";
@@ -18,20 +19,17 @@ export function useCanvas() {
 	const planTier = usePlanTier();
 	const searchParams = useSearchParams();
 	const shareId = searchParams.get("id");
-	const isPro = planTier === "pro";
-	const isStarter = planTier === "starter";
-	const canGenerateImages = isPro || isStarter;
+	const isPro = canAccessPlanFeature(planTier, "canvas");
+	const canGenerateImages = isPro;
 
 	const [isGenerating, setIsGenerating] = useState(false);
 	const [publishingIds, setPublishingIds] = useState<
 		Set<Id<"canvasCreations">>
 	>(new Set());
-	const [expandedCreation, setExpandedCreation] = useState<CreationData | null>(
-		null,
+	const [expandedCreationId, setExpandedCreationId] = useState<string | null>(
+		() => shareId,
 	);
 	const { tab, setTab } = useCanvasContext();
-	const [pendingNewId, setPendingNewId] =
-		useState<Id<"canvasCreations"> | null>(null);
 	// Active long-form K-Video render job (drives the progress loader).
 	const [activeVideoJobId, setActiveVideoJobId] =
 		useState<Id<"videoJobs"> | null>(null);
@@ -60,16 +58,17 @@ export function useCanvas() {
 	const publishedCreations = publishedResults as CreationData[] | undefined;
 	const myCreations = myResults as CreationData[] | undefined;
 
-	// Auto-expand new creation
-	useMemo(() => {
-		if (pendingNewId && myCreations) {
-			const found = myCreations.find((c) => c._id === pendingNewId);
-			if (found) {
-				setExpandedCreation(found as CreationData);
-				setPendingNewId(null);
-			}
-		}
-	}, [pendingNewId, myCreations]);
+	const expandedCreation = useMemo(() => {
+		if (!expandedCreationId) return null;
+		return (
+			publishedCreations?.find((item) => item._id === expandedCreationId) ??
+			myCreations?.find((item) => item._id === expandedCreationId) ??
+			null
+		);
+	}, [expandedCreationId, publishedCreations, myCreations]);
+	const setExpandedCreation = useCallback((creation: CreationData | null) => {
+		setExpandedCreationId(creation?._id ?? null);
+	}, []);
 
 	const credits = useQuery(api.canvas.getCredits);
 	const myLikesRaw = useQuery(api.canvas.getMyLikes);
@@ -84,7 +83,6 @@ export function useCanvas() {
 	const createCreation = useMutation(api.canvas.createCreation);
 	const toggleLikeMutation = useMutation(api.canvas.toggleLike);
 	const publishMutation = useMutation(api.canvas.publishCreation);
-	const deductCreditsMutation = useMutation(api.canvas.deductCredits);
 
 	const myLikes = useMemo(() => {
 		return myLikesRaw
@@ -96,25 +94,11 @@ export function useCanvas() {
 			: new Set<Id<"canvasCreations">>();
 	}, [myLikesRaw]);
 
-	// Handle auto-expansion from URL ?id=... (Deep Linking)
-	useEffect(() => {
-		if (shareId) {
-			const allItems = [...(publishedCreations || []), ...(myCreations || [])];
-			const found = allItems.find((c) => c._id === shareId);
-			// Only set if we found it and it's not already expanded
-			if (found && found._id !== expandedCreation?._id) {
-				setExpandedCreation(found as CreationData);
-			}
-		}
-		// We intentionally exclude expandedCreation from dependencies to avoid re-opening loops
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, [shareId, publishedCreations, myCreations, expandedCreation?._id]);
-
 	// Sync expandedCreation state back to the URL (using replaceState to avoid flickering)
 	useEffect(() => {
 		const params = new URLSearchParams(window.location.search);
 		const currentId = params.get("id");
-		const newId = expandedCreation?._id;
+		const newId = expandedCreationId;
 
 		if (newId !== currentId) {
 			if (newId) {
@@ -129,7 +113,7 @@ export function useCanvas() {
 				newUrl,
 			);
 		}
-	}, [expandedCreation]);
+	}, [expandedCreationId]);
 
 	const handleGenerate = useCallback(
 		async (opts: {
@@ -214,29 +198,10 @@ export function useCanvas() {
 				// Long-form K-Video renders asynchronously on the worker. The finished
 				// clip lands in the gallery automatically when the job completes.
 				if (data.async) {
-					// Charge credits up front (same pricing as a normal video) — the job
-					// is now committed to the paid Veo render on OpenRouter.
-					if (opts.mode === "video" && opts.duration && !isFree) {
-						await deductCreditsMutation({
-							seconds: opts.duration,
-							modelId: opts.model,
-							resolution: opts.resolution,
-							quality: opts.quality as "standard" | "pro" | undefined,
-						});
-					}
 					if (data.jobId) setActiveVideoJobId(data.jobId as Id<"videoJobs">);
 					setTab("mine");
 					setIsGenerating(false);
 					return;
-				}
-
-				if (opts.mode === "video" && opts.duration && !isFree) {
-					await deductCreditsMutation({
-						seconds: opts.duration,
-						modelId: opts.model,
-						resolution: opts.resolution,
-						quality: opts.quality as "standard" | "pro" | undefined,
-					});
 				}
 
 				if (!data.mediaUrl || !data.pathname) {
@@ -262,7 +227,7 @@ export function useCanvas() {
 
 				// Take user to their creations and open the new one
 				setTab("mine");
-				if (newId) setPendingNewId(newId);
+				if (newId) setExpandedCreationId(newId);
 			} catch (error) {
 				toast.error(
 					error instanceof Error ? error.message : "Generation failed",
@@ -275,7 +240,6 @@ export function useCanvas() {
 			isGenerating,
 			credits,
 			createCreation,
-			deductCreditsMutation,
 			canGenerateImages,
 			canGenerateVideos,
 			setTab,

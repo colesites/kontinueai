@@ -9,6 +9,7 @@
  */
 
 import type * as agentTasks from "../agentTasks.js";
+import type * as aiUsage from "../aiUsage.js";
 import type * as canvas from "../canvas.js";
 import type * as chats from "../chats.js";
 import type * as connectors from "../connectors.js";
@@ -24,6 +25,7 @@ import type * as importsWorker from "../importsWorker.js";
 import type * as kode from "../kode.js";
 import type * as kodeWeb from "../kodeWeb.js";
 import type * as kodeWebWorker from "../kodeWebWorker.js";
+import type * as lib_aiUsageCredits from "../lib/aiUsageCredits.js";
 import type * as lib_encryption from "../lib/encryption.js";
 import type * as lib_videoCredits from "../lib/videoCredits.js";
 import type * as memories from "../memories.js";
@@ -33,6 +35,7 @@ import type * as notifications from "../notifications.js";
 import type * as projects from "../projects.js";
 import type * as push from "../push.js";
 import type * as r2 from "../r2.js";
+import type * as realtimeVoice from "../realtimeVoice.js";
 import type * as referrals from "../referrals.js";
 import type * as reminderDelivery from "../reminderDelivery.js";
 import type * as tasks from "../tasks.js";
@@ -50,6 +53,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   agentTasks: typeof agentTasks;
+  aiUsage: typeof aiUsage;
   canvas: typeof canvas;
   chats: typeof chats;
   connectors: typeof connectors;
@@ -65,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   kode: typeof kode;
   kodeWeb: typeof kodeWeb;
   kodeWebWorker: typeof kodeWebWorker;
+  "lib/aiUsageCredits": typeof lib_aiUsageCredits;
   "lib/encryption": typeof lib_encryption;
   "lib/videoCredits": typeof lib_videoCredits;
   memories: typeof memories;
@@ -74,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   projects: typeof projects;
   push: typeof push;
   r2: typeof r2;
+  realtimeVoice: typeof realtimeVoice;
   referrals: typeof referrals;
   reminderDelivery: typeof reminderDelivery;
   tasks: typeof tasks;

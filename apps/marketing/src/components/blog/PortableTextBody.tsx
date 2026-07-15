@@ -4,8 +4,8 @@ import {
 	type PortableTextBlock,
 	type PortableTextComponents,
 } from "next-sanity";
-import { urlFor } from "@/sanity/lib/image";
 import { slugify } from "@/lib/toc";
+import { urlFor } from "@/sanity/lib/image";
 
 const components: PortableTextComponents = {
 	types: {
@@ -36,31 +36,43 @@ const components: PortableTextComponents = {
 			</p>
 		),
 		h2: ({ children, value }) => {
-			const text = (value as PortableTextBlock).children
-				?.map((c) => (c as { text?: string }).text || "")
-				.join("") || "";
+			const text =
+				(value as PortableTextBlock).children
+					?.map((c) => (c as { text?: string }).text || "")
+					.join("") || "";
 			return (
-				<h2 id={slugify(text)} className="font-display tracking-tight mt-14 mb-5 text-3xl leading-tight scroll-mt-24">
+				<h2
+					id={slugify(text)}
+					className="font-display tracking-tight mt-14 mb-5 text-3xl leading-tight scroll-mt-24"
+				>
 					{children}
 				</h2>
 			);
 		},
 		h3: ({ children, value }) => {
-			const text = (value as PortableTextBlock).children
-				?.map((c) => (c as { text?: string }).text || "")
-				.join("") || "";
+			const text =
+				(value as PortableTextBlock).children
+					?.map((c) => (c as { text?: string }).text || "")
+					.join("") || "";
 			return (
-				<h3 id={slugify(text)} className="font-display tracking-tight mt-10 mb-4 text-2xl leading-tight scroll-mt-24">
+				<h3
+					id={slugify(text)}
+					className="font-display tracking-tight mt-10 mb-4 text-2xl leading-tight scroll-mt-24"
+				>
 					{children}
 				</h3>
 			);
 		},
 		h4: ({ children, value }) => {
-			const text = (value as PortableTextBlock).children
-				?.map((c) => (c as { text?: string }).text || "")
-				.join("") || "";
+			const text =
+				(value as PortableTextBlock).children
+					?.map((c) => (c as { text?: string }).text || "")
+					.join("") || "";
 			return (
-				<h4 id={slugify(text)} className="font-display mt-8 mb-3 text-xl leading-tight scroll-mt-24">
+				<h4
+					id={slugify(text)}
+					className="font-display mt-8 mb-3 text-xl leading-tight scroll-mt-24"
+				>
 					{children}
 				</h4>
 			);

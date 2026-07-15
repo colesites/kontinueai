@@ -29,6 +29,7 @@ import { useSpeechInput } from "../hooks/use-speech-input";
 import type { ChatInputProps } from "../types";
 import { ChatInputBodyExtras } from "./ChatInputBodyExtras";
 import { ChatInputTools } from "./ChatInputTools";
+import { LiveVoiceDialog } from "./LiveVoiceDialog";
 import { MentionInput, type MentionInputHandle } from "./MentionInput";
 import { MentionMenu } from "./MentionMenu";
 
@@ -130,6 +131,7 @@ export function ChatInput({
 		!!selectedModelData &&
 		getCapabilities(selectedModelData.id).includes("web-search");
 	const canGenerateImage =
+		canUsePaidFeatures &&
 		!!selectedModelData &&
 		getCapabilities(selectedModelData.id).includes("image-generation");
 
@@ -236,33 +238,39 @@ export function ChatInput({
 						/>
 						<div className="flex items-center gap-1.5 shrink-0">
 							{footerAccessory}
-							<Tooltip>
-								<TooltipTrigger asChild>
-									<PromptInputButton
-										type="button"
-										onClick={toggleListening}
-										className={cn(
-											"h-8 w-8 rounded-full transition-all duration-200",
-											isListening
-												? "bg-primary/15 text-primary ring-1 ring-primary/30 animate-pulse-soft hover:bg-primary/25"
-												: "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
-										)}
-										aria-label={
-											isListening ? "Stop voice input" : "Start voice input"
-										}
-									>
-										<IoMicOutline className="h-4 w-4" />
-									</PromptInputButton>
-								</TooltipTrigger>
-								<TooltipContent sideOffset={6}>
-									{isListening
-										? "Voice input is active. Click to stop."
-										: speechSupported
-											? "Use your microphone to dictate."
-											: "Speech recognition is not supported in this browser."}
-								</TooltipContent>
-							</Tooltip>
-							<PromptInputSubmit onStop={onStop} />
+							{inputValue.trim() || isLoading ? (
+								<>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<PromptInputButton
+												type="button"
+												onClick={toggleListening}
+												className={cn(
+													"h-8 w-8 rounded-full transition-all duration-200",
+													isListening
+														? "bg-primary/15 text-primary ring-1 ring-primary/30 animate-pulse-soft hover:bg-primary/25"
+														: "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+												)}
+												aria-label={
+													isListening ? "Stop voice input" : "Start voice input"
+												}
+											>
+												<IoMicOutline className="h-4 w-4" />
+											</PromptInputButton>
+										</TooltipTrigger>
+										<TooltipContent sideOffset={6}>
+											{isListening
+												? "Voice input is active. Click to stop."
+												: speechSupported
+													? "Use your microphone to dictate."
+													: "Speech recognition is not supported in this browser."}
+										</TooltipContent>
+									</Tooltip>
+									<PromptInputSubmit onStop={onStop} />
+								</>
+							) : (
+								<LiveVoiceDialog />
+							)}
 						</div>
 					</PromptInputFooter>
 				</PromptInput>

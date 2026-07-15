@@ -30,12 +30,17 @@ type SettingsAccountPanelProps = {
 				paidPremiumLimit: number;
 				paidStandardUsed: number;
 				paidStandardLimit: number;
+				frontierUsed: number;
+				frontierLimit: number;
 				paidTotalUsed: number;
 				paidTotalLimit: number;
 				monthlyImportUsed: number;
 				monthlyImportLimit: number | null;
 		  }
 		| null
+		| undefined;
+	aiUsage:
+		| { used: number; limit: number; remaining: number; tier: PlanTier }
 		| undefined;
 };
 
@@ -44,6 +49,7 @@ export function SettingsAccountPanel({
 	selectedLanguageLabel,
 	onLanguageChange,
 	usage,
+	aiUsage,
 }: SettingsAccountPanelProps) {
 	return (
 		<div className="space-y-8">
@@ -99,7 +105,7 @@ export function SettingsAccountPanel({
 				</div>
 
 				<div className="surface-inset rounded-2xl p-4 sm:p-5">
-					<SettingsUsagePanel usage={usage} />
+					<SettingsUsagePanel usage={usage} aiUsage={aiUsage} />
 				</div>
 			</div>
 		</div>

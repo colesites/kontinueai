@@ -5,33 +5,38 @@ export interface Faq {
 
 export const faqs: Faq[] = [
 	{
-		question: "Can I import chats from ChatGPT, Claude and Gemini?",
+		question: "What is Kontinue AI?",
 		answer:
-			"Yes. Bring conversations from the major AI apps into Kontinue AI and continue them in one place. Your messages and context come across so you do not start over.",
+			"Kontinue AI is an African-built AI platform with K-AI 1.0, access to selected models from leading providers, and technology for importing and continuing supported AI conversations.",
 	},
 	{
-		question: "Do I need a separate subscription for each model?",
+		question: "Does Kontinue AI have its own model?",
 		answer:
-			"No. One Kontinue AI plan gives you access to many models, so you can stop paying for several apps at once.",
+			"Yes. K-AI 1.0 is Kontinue AI’s native intelligence and orchestration layer. It works with underlying open-source models and Kontinue product capabilities; it is not presented as a foundation model trained from scratch.",
 	},
 	{
-		question: "What happens to my context when I switch models?",
+		question: "Can I import conversations from ChatGPT, Claude, or Gemini?",
 		answer:
-			"Your context carries over. Continue the same thread on a different model and it picks up where the last one left off, with no reset.",
+			"Kontinue AI supports public shared-conversation links from ChatGPT, Claude, and Gemini. ChatGPT data-export files are also supported. Provider access controls or page changes can affect shared-link imports.",
 	},
 	{
-		question: "How does Kontinue AI help when a model is wrong?",
+		question: "Can I switch models in the same conversation?",
 		answer:
-			"Send the same question to another model and compare answers side by side in the same conversation. It is the fastest way to catch a mistake.",
+			"Yes. You can choose another supported model for the next response while keeping the conversation history in the same thread. Availability depends on your plan.",
 	},
 	{
 		question: "Which models can I use?",
 		answer:
-			"Kontinue AI supports models from OpenAI, Anthropic, Google, xAI, Meta, Mistral, Perplexity and more, with new ones added over time.",
+			"K-AI 1.0 appears first, alongside selected models from providers including OpenAI, Anthropic, Google, xAI, DeepSeek, Perplexity, Mistral, and others. The catalogue can change.",
 	},
 	{
 		question: "Is there a free plan?",
 		answer:
-			"Yes. The Free plan lets you try the workspace with a limited number of chats and imports. Upgrade to Starter or Pro for higher limits and more models.",
+			"Yes. Free includes K-AI 1.0, 10 conversation imports, K-AI web search, and a small AI-memory allowance. Starter, Plus, Pro, and Max add higher limits, more model groups, and additional tools.",
+	},
+	{
+		question: "Is Kontinue AI an African company?",
+		answer:
+			"Kontinue AI was built in Nigeria and is designed as a global AI platform for users around the world.",
 	},
 ];

@@ -1,9 +1,10 @@
 import { AVAILABLE_MODELS } from "@repo/ai/models";
+import { canAccessModel } from "@repo/core/plan-access";
 import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 import { cn } from "@repo/ui/lib/utils";
 import { CheckIcon, LayoutGridIcon, SlidersHorizontal } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useIsProPlan } from "../../lib/use-plan-tier";
+import { usePlanTier } from "../../lib/use-plan-tier";
 import { ModelCapabilityIcons } from "./model-capability-icons";
 import {
 	ModelSelectorEmpty,
@@ -45,15 +46,15 @@ export function SharedModelSelectorContent({
 	modelIdsFilter?: string[];
 }) {
 	const [activeProvider, setActiveProvider] = useState<string | null>(null);
-	const { getCapabilities, isProModel } = useModelCapabilities();
-	const isPro = useIsProPlan();
+	const { getCapabilities, getModelAccessClass } = useModelCapabilities();
+	const planTier = usePlanTier();
 
 	const modelsToDisplay = useMemo(() => {
 		if (modelIdsFilter) {
 			const allowedIds = new Set(modelIdsFilter);
 			return AVAILABLE_MODELS.filter((model) => allowedIds.has(model.id));
 		}
-		return AVAILABLE_MODELS;
+		return AVAILABLE_MODELS.filter((model) => model.modality !== "realtime");
 	}, [modelIdsFilter]);
 
 	const groupedModels = useMemo(() => {
@@ -157,8 +158,10 @@ export function SharedModelSelectorContent({
 					>
 						<div className="space-y-1.5">
 							{(groupedModels[provider] ?? []).map((model) => {
-								const proModel = isProModel(model.id);
-								const disabledByPlan = !isPro && proModel;
+								const modelClass = getModelAccessClass(model.id);
+								const isKai = model.provider === "kontinue";
+								const disabledByPlan =
+									!isKai && !canAccessModel(planTier, model.id, modelClass);
 								const isSelected = selectedModelId === model.id;
 								const capabilities = getCapabilities(model.id);
 
@@ -170,7 +173,7 @@ export function SharedModelSelectorContent({
 											if (!disabledByPlan) onModelSelect(model.id);
 										}}
 										value={`${model.name} ${getProviderLabel(model.provider)} ${model.description}`}
-										aria-label={`${model.name}. ${model.description}${proModel ? ". Pro model" : ""}`}
+										aria-label={`${model.name}. ${model.description}. ${isKai ? "K-AI" : `${modelClass} model`}`}
 										className={cn(
 											"grid min-h-[76px] cursor-pointer grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-transparent px-3 py-2.5 text-left transition-colors duration-150 [&>svg:last-child]:hidden sm:min-h-[80px] sm:px-4",
 											"bg-foreground/[0.025] hover:border-foreground/10 hover:bg-foreground/[0.055] data-[selected=true]:border-foreground/12 data-[selected=true]:bg-foreground/[0.06]",
@@ -198,10 +201,11 @@ export function SharedModelSelectorContent({
 												<ModelSelectorName className="min-w-0 truncate text-[13.5px] font-semibold text-foreground sm:text-sm">
 													{model.name}
 												</ModelSelectorName>
-												{proModel ? (
+												{!isKai ? (
 													<span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-semibold text-primary ring-1 ring-primary/15">
 														<PremiumModelBadge className="size-3 border-0 bg-transparent shadow-none ring-0" />
-														Pro
+														{modelClass.charAt(0).toUpperCase() +
+															modelClass.slice(1)}
 													</span>
 												) : null}
 											</div>

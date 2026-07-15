@@ -5,11 +5,13 @@ const postCardFields = /* groq */ `
 	title,
 	"slug": slug.current,
 	excerpt,
-	"publishedAt": _createdAt,
+	"publishedAt": coalesce(publishedAt, _createdAt),
+	"modifiedAt": _updatedAt,
 	featured,
 	"views": coalesce(views, 0),
 	"readMins": round(length(pt::text(body)) / 1200),
 	mainImage{ ..., "lqip": asset->metadata.lqip },
+	seo,
 	"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },
 	"categories": categories[]->{ title, "slug": slug.current }
 `;
@@ -28,8 +30,15 @@ export const POST_QUERY = defineQuery(`
 		title,
 		"slug": slug.current,
 		excerpt,
-		"publishedAt": _createdAt,
+		"publishedAt": coalesce(publishedAt, _createdAt),
+		"modifiedAt": _updatedAt,
 		mainImage{ ..., "lqip": asset->metadata.lqip },
+		"seo": {
+			"title": coalesce(seo.title, title),
+			"description": coalesce(seo.description, excerpt),
+			"image": coalesce(seo.image, mainImage),
+			"noIndex": seo.noIndex == true
+		},
 		body,
 		"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },
 		"categories": categories[]->{ title, "slug": slug.current }
@@ -38,7 +47,7 @@ export const POST_QUERY = defineQuery(`
 
 // Other recent posts to surface at the end of an article.
 export const RELATED_POSTS_QUERY = defineQuery(`
-	*[_type == "post" && defined(slug.current) && slug.current != $slug]
+	*[_type == "post" && defined(slug.current) && slug.current != $slug && count((categories[]._ref)[@ in *[_type == "post" && slug.current == $slug][0].categories[]._ref]) > 0]
 		| order(_createdAt desc)[0...3] {
 		${postCardFields}
 	}
@@ -49,9 +58,31 @@ export const POST_SLUGS_QUERY = defineQuery(`
 	*[_type == "post" && defined(slug.current)]{ "slug": slug.current }
 `);
 
+export const AUTHORS_QUERY = defineQuery(`
+	*[_type == "author" && defined(slug.current)] | order(name asc) {
+		_id, name, role, bio, x, linkedin, image, "slug": slug.current
+	}
+`);
+
+export const AUTHOR_QUERY = defineQuery(`
+	*[_type == "author" && slug.current == $slug][0] {
+		_id, name, role, bio, x, linkedin, image, "slug": slug.current,
+		"posts": *[_type == "post" && author._ref == ^._id && defined(slug.current)] | order(coalesce(publishedAt, _createdAt) desc) {
+			${postCardFields}
+		}
+	}
+`);
+
+export const SITEMAP_POSTS_QUERY = defineQuery(`
+	*[_type == "post" && defined(slug.current) && seo.noIndex != true] {
+		"slug": slug.current,
+		_updatedAt
+	}
+`);
+
 // Comments for a specific post.
 export const POST_COMMENTS_QUERY = defineQuery(`
-	*[_type == "comment" && post->slug.current == $slug] | order(createdAt desc) {
+	*[_type == "comment" && approved == true && post->slug.current == $slug] | order(createdAt desc) {
 		_id,
 		text,
 		createdAt

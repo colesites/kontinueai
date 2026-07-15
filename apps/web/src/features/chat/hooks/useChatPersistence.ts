@@ -28,7 +28,9 @@ export function useChatPersistence({
 
 	const compressGeneratedImageBlob = useCallback(async (blob: Blob) => {
 		if (!blob.type.startsWith("image/")) return blob;
-		const targetMaxBytes = 9 * 1024 * 1024;
+		// Keep generated chat images below Starter's 5 MB per-file ceiling so the
+		// same K-Image result can be persisted on every plan that includes it.
+		const targetMaxBytes = 4 * 1024 * 1024;
 		if (blob.size <= targetMaxBytes && blob.type === "image/webp") return blob;
 
 		const objectUrl = URL.createObjectURL(blob);
@@ -122,35 +124,38 @@ export function useChatPersistence({
 					!savedGeneratedImagesByAssistantIdRef.current.has(lastMessage.id)
 				) {
 					savedGeneratedImagesByAssistantIdRef.current.add(lastMessage.id);
-					const persistedUrls: string[] = [];
-
-					for (const [index, source] of displayMessage.imageParts.entries()) {
-						try {
-							const res = await fetch(source);
-							const blob = await res.blob();
-							const compressed = await compressGeneratedImageBlob(blob);
-							const file = new File(
-								[compressed],
-								`gen-${Date.now()}-${index}.webp`,
-								{ type: "image/webp" },
-							);
-							const uploaded = await uploadFile(file);
-							persistedUrls.push(uploaded.url);
-
-							await createFileRecord({
-								chatId,
-								messageId: persistedMessageId,
-								blobUrl: uploaded.url,
-								pathname: uploaded.pathname,
-								filename: uploaded.filename,
-								contentType: uploaded.contentType,
-								size: uploaded.size,
-								fileType: "generated-image",
-							});
-						} catch (e) {
-							console.error("failed to persist image", e);
-						}
-					}
+					const persistedResults = await Promise.all(
+						displayMessage.imageParts.map(async (source, index) => {
+							try {
+								const res = await fetch(source);
+								const blob = await res.blob();
+								const compressed = await compressGeneratedImageBlob(blob);
+								const file = new File(
+									[compressed],
+									`gen-${Date.now()}-${index}.webp`,
+									{ type: "image/webp" },
+								);
+								const uploaded = await uploadFile(file);
+								await createFileRecord({
+									chatId,
+									messageId: persistedMessageId,
+									blobUrl: uploaded.url,
+									pathname: uploaded.pathname,
+									filename: uploaded.filename,
+									contentType: uploaded.contentType,
+									size: uploaded.size,
+									fileType: "generated-image",
+								});
+								return uploaded.url;
+							} catch (e) {
+								console.error("failed to persist image", e);
+								return null;
+							}
+						}),
+					);
+					const persistedUrls = persistedResults.filter(
+						(url): url is string => url !== null,
+					);
 					if (persistedUrls.length) onImagesPersisted(persistedUrls);
 				}
 			} catch (e) {

@@ -1,119 +1,147 @@
 export type AiGatewayModel = {
-  id: string;
-  type?: "language" | "embedding" | "image" | "video" | string;
-  tags?: string[];
-  pricing?: Record<string, unknown>;
+	id: string;
+	type?: "language" | "embedding" | "image" | "video" | string;
+	tags?: string[];
+	pricing?: Record<string, unknown>;
 };
 
 type PricingTier = {
-  cost?: string | number;
-  min?: number;
-  max?: number;
+	cost?: string | number;
+	min?: number;
+	max?: number;
 };
 
 export const FREE_MODEL_INPUT_TOKENS = 100;
 export const FREE_MODEL_OUTPUT_TOKENS = 200;
 export const PRO_MODEL_INPUT_PRICE_PER_MILLION_USD = 2;
 export const PRO_MODEL_OUTPUT_PRICE_PER_MILLION_USD = 6;
+export const FRONTIER_MODEL_INPUT_PRICE_PER_MILLION_USD = 10;
+export const FRONTIER_MODEL_OUTPUT_PRICE_PER_MILLION_USD = 30;
+
+export type ModelAccessClass = "basic" | "pro" | "frontier";
+
+export const STARTER_BASIC_MODEL_IDS = new Set([
+	"openai/gpt-5.4-mini",
+	"google/gemini-3-flash",
+	"google/gemini-3.1-flash-lite-preview",
+]);
 
 function parsePricePerToken(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
-    return value;
-  }
+	if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+		return value;
+	}
 
-  if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
+	if (typeof value === "string") {
+		const trimmed = value.trim();
+		if (!trimmed) return null;
 
-    const parsed = Number(trimmed);
-    if (Number.isFinite(parsed) && parsed >= 0) {
-      return parsed;
-    }
-  }
+		const parsed = Number(trimmed);
+		if (Number.isFinite(parsed) && parsed >= 0) {
+			return parsed;
+		}
+	}
 
-  return null;
+	return null;
 }
 
 function toPricePerMillion(pricePerToken: number): number {
-  return pricePerToken * 1_000_000;
+	return pricePerToken * 1_000_000;
 }
 
 function hasImageGenerationCapability(model: AiGatewayModel): boolean {
-  if (Array.isArray(model.tags) && model.tags.includes("image-generation")) {
-    return true;
-  }
+	if (Array.isArray(model.tags) && model.tags.includes("image-generation")) {
+		return true;
+	}
 
-  const pricing = model.pricing;
-  if (!pricing || typeof pricing !== "object") return false;
+	const pricing = model.pricing;
+	if (!pricing || typeof pricing !== "object") return false;
 
-  return "image" in pricing || "image_output" in pricing;
+	return "image" in pricing || "image_output" in pricing;
 }
 
 function isPricingTier(value: unknown): value is PricingTier {
-  return typeof value === "object" && value !== null;
+	return typeof value === "object" && value !== null;
 }
 
 function getTieredPricePerToken(
-  tiers: unknown,
-  tokenCount: number,
+	tiers: unknown,
+	tokenCount: number,
 ): number | null {
-  if (!Array.isArray(tiers)) return null;
+	if (!Array.isArray(tiers)) return null;
 
-  for (const tier of tiers) {
-    if (!isPricingTier(tier)) continue;
+	for (const tier of tiers) {
+		if (!isPricingTier(tier)) continue;
 
-    const min = typeof tier.min === "number" ? tier.min : 0;
-    const max = typeof tier.max === "number" ? tier.max : Infinity;
+		const min = typeof tier.min === "number" ? tier.min : 0;
+		const max = typeof tier.max === "number" ? tier.max : Infinity;
 
-    if (tokenCount >= min && tokenCount < max) {
-      return parsePricePerToken(tier.cost);
-    }
-  }
+		if (tokenCount >= min && tokenCount < max) {
+			return parsePricePerToken(tier.cost);
+		}
+	}
 
-  return null;
+	return null;
 }
 
 function getPricePerToken(
-  pricing: Record<string, unknown>,
-  baseKey: string,
-  tierKeys: string[],
-  tokenCount: number,
+	pricing: Record<string, unknown>,
+	baseKey: string,
+	tierKeys: string[],
+	tokenCount: number,
 ): number | null {
-  for (const tierKey of tierKeys) {
-    const tierPrice = getTieredPricePerToken(pricing[tierKey], tokenCount);
-    if (tierPrice !== null) return tierPrice;
-  }
+	for (const tierKey of tierKeys) {
+		const tierPrice = getTieredPricePerToken(pricing[tierKey], tokenCount);
+		if (tierPrice !== null) return tierPrice;
+	}
 
-  return parsePricePerToken(pricing[baseKey]);
+	return parsePricePerToken(pricing[baseKey]);
 }
 
 export function isProModel(model: AiGatewayModel): boolean {
-  if (hasImageGenerationCapability(model)) return true;
-  if (model.type !== "language") return false;
+	return getModelAccessClass(model) !== "basic";
+}
 
-  const pricing = model.pricing;
-  if (!pricing || typeof pricing !== "object") return true;
+export function getModelAccessClass(model: AiGatewayModel): ModelAccessClass {
+	if (STARTER_BASIC_MODEL_IDS.has(model.id)) return "basic";
+	if (hasImageGenerationCapability(model)) return "frontier";
+	if (model.type !== "language") return "frontier";
 
-  const inputPricePerToken = getPricePerToken(
-    pricing,
-    "input",
-    ["input_tiers", "inputTiers"],
-    FREE_MODEL_INPUT_TOKENS,
-  );
-  const outputPricePerToken = getPricePerToken(
-    pricing,
-    "output",
-    ["output_tiers", "outputTiers"],
-    FREE_MODEL_OUTPUT_TOKENS,
-  );
+	const pricing = model.pricing;
+	if (!pricing || typeof pricing !== "object") return "frontier";
 
-  if (inputPricePerToken === null || outputPricePerToken === null) {
-    return true;
-  }
+	const inputPricePerToken = getPricePerToken(
+		pricing,
+		"input",
+		["input_tiers", "inputTiers"],
+		FREE_MODEL_INPUT_TOKENS,
+	);
+	const outputPricePerToken = getPricePerToken(
+		pricing,
+		"output",
+		["output_tiers", "outputTiers"],
+		FREE_MODEL_OUTPUT_TOKENS,
+	);
 
-  return (
-    toPricePerMillion(inputPricePerToken) > PRO_MODEL_INPUT_PRICE_PER_MILLION_USD ||
-    toPricePerMillion(outputPricePerToken) >
-      PRO_MODEL_OUTPUT_PRICE_PER_MILLION_USD
-  );
+	if (inputPricePerToken === null || outputPricePerToken === null) {
+		return "frontier";
+	}
+
+	const inputPricePerMillion = toPricePerMillion(inputPricePerToken);
+	const outputPricePerMillion = toPricePerMillion(outputPricePerToken);
+
+	if (
+		inputPricePerMillion > FRONTIER_MODEL_INPUT_PRICE_PER_MILLION_USD ||
+		outputPricePerMillion > FRONTIER_MODEL_OUTPUT_PRICE_PER_MILLION_USD
+	) {
+		return "frontier";
+	}
+
+	if (
+		inputPricePerMillion > PRO_MODEL_INPUT_PRICE_PER_MILLION_USD ||
+		outputPricePerMillion > PRO_MODEL_OUTPUT_PRICE_PER_MILLION_USD
+	) {
+		return "pro";
+	}
+
+	return "basic";
 }

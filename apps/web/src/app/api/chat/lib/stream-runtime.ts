@@ -42,7 +42,7 @@ export function resolveToolRuntime(options: ToolRuntimeOptions): ToolRuntime {
 		(!requestedToolNames.includes("perplexity_search") ||
 			shouldAttachWebSearchTool) &&
 		(!requestedToolNames.includes("image_generation") ||
-			(hasImageGen && provider === "openai"));
+			(hasImageGen && (provider === "openai" || provider === "kontinue")));
 
 	const shouldDisableTools = hasTools && !supportsRequestedTools;
 	if (shouldDisableTools) {
