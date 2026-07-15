@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Suspense } from "react";
@@ -85,6 +86,7 @@ export default function RootLayout({
 					</Suspense>
 					<Toaster richColors theme="system" />
 				</ThemeProvider>
+				<Analytics />
 			</body>
 		</html>
 	);
