@@ -28,16 +28,21 @@ export function PricingCard({
 					: "border border-border bg-card"
 			}`}
 		>
-			<div className="mb-4 flex h-6 items-center">
-				{highlighted && (
+			{highlighted ? (
+				<div className="mb-4 flex h-6 items-center">
 					<span className="rounded-full bg-brand px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-brand-foreground">
 						Most popular
 					</span>
-				)}
-			</div>
+				</div>
+			) : tier.audience === "personal" ? (
+				<div className="mb-4 h-6" aria-hidden="true" />
+			) : null}
 
 			<h3 className="font-display text-xl tracking-tight">{tier.name}</h3>
-			<p className="mt-2 min-h-[2.75rem] text-sm leading-relaxed text-muted-foreground">
+			<p className="mt-2 text-sm font-semibold leading-snug text-foreground">
+				{tier.bestFor}
+			</p>
+			<p className="mt-1.5 min-h-[2.75rem] text-sm leading-relaxed text-muted-foreground">
 				{tier.tagline}
 			</p>
 

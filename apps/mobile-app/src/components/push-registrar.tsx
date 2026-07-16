@@ -1,11 +1,16 @@
 import { useEffect } from "react";
-import { Platform } from "react-native";
+import { DeviceEventEmitter, Platform } from "react-native";
 import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { useRouter, type Href } from "expo-router";
 import { useMutation } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
+import * as Sentry from "@sentry/react-native";
+
+import {
+  isPushEnabled,
+  PUSH_PERMISSION_CHANGED_EVENT,
+} from "@/lib/push-notifications";
 
 /**
  * Registers this device for push notifications and stores the Expo token in
@@ -18,29 +23,32 @@ export function PushRegistrar() {
   const saveExpoPushToken = useMutation(api.push.saveExpoPushToken);
 
   useEffect(() => {
-    try {
-      // Show alerts for pushes that arrive while the app is open.
-      Notifications.setNotificationHandler({
-        handleNotification: async () => ({
-          shouldShowBanner: true,
-          shouldShowList: true,
-          shouldPlaySound: false,
-          shouldSetBadge: true,
-        }),
-      });
-    } catch (error) {
-      console.warn("[push] notification handler skipped:", error);
-    }
-  }, []);
-
-  useEffect(() => {
     let cancelled = false;
-    const timeout = setTimeout(() => {
-      void register();
-    }, 3000);
+    let responseSubscription: { remove: () => void } | undefined;
 
     async function register() {
       try {
+        if (!(await isPushEnabled()) || cancelled) return;
+        const Notifications = await import("expo-notifications");
+
+        // Show alerts for pushes that arrive while the app is open.
+        Notifications.setNotificationHandler({
+          handleNotification: async () => ({
+            shouldShowBanner: true,
+            shouldShowList: true,
+            shouldPlaySound: false,
+            shouldSetBadge: true,
+          }),
+        });
+
+        responseSubscription ??=
+          Notifications.addNotificationResponseReceivedListener((response) => {
+            const url = response.notification.request.content.data?.url;
+            if (typeof url === "string" && url.startsWith("/")) {
+              router.push(url as Href);
+            }
+          });
+
         if (!Device.isDevice) return; // simulators can't receive remote push
 
         if (Platform.OS === "android") {
@@ -51,12 +59,7 @@ export function PushRegistrar() {
         }
 
         const existing = await Notifications.getPermissionsAsync();
-        let status = existing.status;
-        if (status !== "granted") {
-          const requested = await Notifications.requestPermissionsAsync();
-          status = requested.status;
-        }
-        if (status !== "granted" || cancelled) return;
+        if (existing.status !== "granted" || cancelled) return;
 
         const projectId =
           Constants.expoConfig?.extra?.eas?.projectId ??
@@ -74,27 +77,29 @@ export function PushRegistrar() {
       } catch (error) {
         // Expected in Expo Go (no push module) — never block the app on this.
         console.warn("[push] registration skipped:", error);
+        if (!__DEV__) {
+          Sentry.captureException(error, {
+            tags: { subsystem: "push-registration" },
+          });
+        }
       }
     }
+
+    const timeout = setTimeout(() => void register(), 1200);
+    const permissionSubscription = DeviceEventEmitter.addListener(
+      PUSH_PERMISSION_CHANGED_EVENT,
+      (enabled: boolean) => {
+        if (enabled) void register();
+      },
+    );
 
     return () => {
       cancelled = true;
       clearTimeout(timeout);
+      permissionSubscription.remove();
+      responseSubscription?.remove();
     };
-  }, [saveExpoPushToken]);
-
-  // Tapping a notification deep-links into the screen it points at.
-  useEffect(() => {
-    const sub = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
-        const url = response.notification.request.content.data?.url;
-        if (typeof url === "string" && url.startsWith("/")) {
-          router.push(url as Href);
-        }
-      },
-    );
-    return () => sub.remove();
-  }, [router]);
+  }, [router, saveExpoPushToken]);
 
   return null;
 }

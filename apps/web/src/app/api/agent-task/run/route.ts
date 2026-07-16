@@ -71,7 +71,7 @@ export async function POST(req: Request) {
 
 		const system = [
 			"You are K-AI 1.0, Kontinue AI's intelligence layer, running a SCHEDULED autonomous task for the user (they are NOT present to answer questions).",
-			"Carry out the instruction end-to-end using your connected tools (gmail, google_calendar, google_drive, notion, github, vercel) — actually call them to read/act on the user's accounts.",
+			"Carry out the instruction end-to-end using your connected tools (gmail, google_calendar, google_drive, google_sheets, notion, github, vercel, todoist) — actually call them to read/act on the user's accounts.",
 			"If a tool reports the connector isn't connected, note that in your result. Never ask the user a question — make reasonable assumptions and proceed.",
 			"Produce a clear, self-contained result the user can read later. After any tool call, summarize what you found or did.",
 			agentContext,

@@ -22,6 +22,11 @@ const READ_ONLY_ACTIONS: Record<string, ReadonlySet<string>> = {
 	gmail: new Set(["search", "read"]),
 	google_calendar: new Set(["list"]),
 	google_drive: new Set(["search", "read"]),
+	google_sheets: new Set([
+		"list_spreadsheets",
+		"get_spreadsheet",
+		"read_range",
+	]),
 	todoist: new Set(["list_tasks", "list_projects"]),
 };
 

@@ -21,6 +21,7 @@ const KNOWN_PROVIDERS = [
   "gmail",
   "google_calendar",
   "google_drive",
+  "google_sheets",
 ] as const;
 type Provider = (typeof KNOWN_PROVIDERS)[number];
 

@@ -1,18 +1,17 @@
 import { useMemo, useState } from "react";
 import {
   Alert,
-  Dimensions,
   Modal,
   Pressable,
   ScrollView,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useRouter, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { useUser, useClerk } from "@clerk/expo";
 import { useMutation, useQuery } from "convex/react";
@@ -25,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
+  Code2,
   Folder,
   FolderInput,
   FolderMinus,
@@ -79,6 +79,7 @@ type SidebarContentProps = {
 };
 
 export function SidebarContent({ onNavigate }: SidebarContentProps) {
+  const { width: windowWidth } = useWindowDimensions();
   const router = useRouter();
   const { user } = useUser();
   const { signOut } = useClerk();
@@ -113,12 +114,12 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
   const [renameChatId, setRenameChatId] = useState<Id<"chats"> | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [projectModal, setProjectModal] = useState<
-    | { mode: "create" }
-    | { mode: "rename"; projectId: Id<"projects"> }
-    | null
+    { mode: "create" } | { mode: "rename"; projectId: Id<"projects"> } | null
   >(null);
   const [projectName, setProjectName] = useState("");
-  const [menuProjectId, setMenuProjectId] = useState<Id<"projects"> | null>(null);
+  const [menuProjectId, setMenuProjectId] = useState<Id<"projects"> | null>(
+    null,
+  );
 
   const closeChatMenu = () => {
     chatMenu.close();
@@ -251,7 +252,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
   };
 
   // Matches the drawer panel: 86% of screen, capped at 340.
-  const sidebarWidth = Math.min(Dimensions.get("window").width * 0.86, 340);
+  const sidebarWidth = Math.min(windowWidth * 0.86, 340);
 
   const initial = getInitial(user);
   const displayName = getDisplayName(user, "Account");
@@ -302,14 +303,21 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             onPress={() => setSearch("")}
             className="h-6 w-6 items-center justify-center rounded-full active:bg-foreground/8"
           >
-            <Icon as={X} size={12} strokeWidth={2.5} className="text-muted-foreground/70" />
+            <Icon
+              as={X}
+              size={12}
+              strokeWidth={2.5}
+              className="text-muted-foreground/70"
+            />
           </Pressable>
         ) : (
           <View
             className="h-5 items-center justify-center border border-foreground/8 bg-foreground/5 px-1.5"
             style={{ borderRadius: 6 }}
           >
-            <Text className="font-mono text-[10px] font-medium text-muted-foreground/60">⌘K</Text>
+            <Text className="font-mono text-[10px] font-medium text-muted-foreground/60">
+              ⌘K
+            </Text>
           </View>
         )}
       </View>
@@ -347,15 +355,23 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
               borderColor: `${primary}4D`,
             }}
           >
-            <Icon as={MessageSquarePlus} size={16} className="text-primary-foreground" />
-            <Text className="text-[13.5px] font-semibold text-primary-foreground">New chat</Text>
+            <Icon
+              as={MessageSquarePlus}
+              size={16}
+              className="text-primary-foreground"
+            />
+            <Text className="text-[13.5px] font-semibold text-primary-foreground">
+              New chat
+            </Text>
           </LinearGradient>
         </Pressable>
 
         <Pressable
           onPress={() => go("/canvas")}
           accessibilityLabel="Open Canvas"
-          style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.96 : 1 }] }]}
+          style={({ pressed }) => [
+            { transform: [{ scale: pressed ? 0.96 : 1 }] },
+          ]}
           className="h-10 w-10 items-center justify-center self-center rounded-xl border border-foreground/5 bg-foreground/4 active:bg-foreground/8"
         >
           <Icon as={Palette} size={15} className="text-muted-foreground" />
@@ -368,12 +384,21 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         <NavTile icon={Bot} label="Agents" onPress={() => go("/agents")} />
       </View>
 
-      {/* Row 3: Connectors */}
-      <View className="mx-3 mb-3 flex-row">
-        <NavTile icon={Plug} label="Connectors" onPress={() => go("/connectors")} />
+      {/* Row 3: Kode + Connectors */}
+      <View className="mx-3 mb-3 flex-row gap-2">
+        <NavTile icon={Code2} label="Kode" onPress={() => go("/kode")} />
+        <NavTile
+          icon={Plug}
+          label="Connectors"
+          onPress={() => go("/connectors")}
+        />
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerClassName="px-3 pb-4" showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerClassName="px-3 pb-4"
+        showsVerticalScrollIndicator={false}
+      >
         {/* Projects */}
         <SectionHeader
           label="Projects"
@@ -394,11 +419,21 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
                 }}
                 className="h-11 flex-row items-center gap-3 rounded-lg px-2 active:bg-accent"
               >
-                <Icon as={Folder} size={16} color={p.color ?? undefined} className={p.color ? undefined : "text-muted-foreground"} />
-                <Text numberOfLines={1} className="flex-1 text-[14px] text-foreground/90">
+                <Icon
+                  as={Folder}
+                  size={16}
+                  color={p.color ?? undefined}
+                  className={p.color ? undefined : "text-muted-foreground"}
+                />
+                <Text
+                  numberOfLines={1}
+                  className="flex-1 text-[14px] text-foreground/90"
+                >
                   {p.name}
                 </Text>
-                <Text className="text-[11px] text-muted-foreground/70">{p.chatCount}</Text>
+                <Text className="text-[11px] text-muted-foreground/70">
+                  {p.chatCount}
+                </Text>
               </Pressable>
             ))}
           </View>
@@ -426,9 +461,15 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           </View>
         ) : filteredChats.length === 0 ? (
           <View className="items-center px-3 py-6">
-            <Icon as={MessageSquarePlus} size={20} className="text-muted-foreground/60" />
+            <Icon
+              as={MessageSquarePlus}
+              size={20}
+              className="text-muted-foreground/60"
+            />
             <Text className="mt-2 text-center text-[13px] text-muted-foreground">
-              {search ? "No chats match your search" : "Start a chat and it will show up here"}
+              {search
+                ? "No chats match your search"
+                : "Start a chat and it will show up here"}
             </Text>
           </View>
         ) : (
@@ -461,16 +502,23 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
                     className={color ? undefined : "text-muted-foreground"}
                   />
                 </View>
-                <Text numberOfLines={1} className="flex-1 text-[14px] text-foreground/90">
+                <Text
+                  numberOfLines={1}
+                  className="flex-1 text-[14px] text-foreground/90"
+                >
                   {c.title}
                 </Text>
-                {pinned ? <Icon as={Pin} size={13} className="text-primary/70" /> : null}
+                {pinned ? (
+                  <Icon as={Pin} size={13} className="text-primary/70" />
+                ) : null}
                 <Pressable
                   hitSlop={8}
                   onPress={openMenu}
                   className="h-7 w-7 items-center justify-center rounded-md active:bg-foreground/10"
                 >
-                  <Text className="text-[16px] leading-none text-muted-foreground">⋯</Text>
+                  <Text className="text-[16px] leading-none text-muted-foreground">
+                    ⋯
+                  </Text>
                 </Pressable>
               </Pressable>
             );
@@ -497,10 +545,15 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             />
           ) : (
             <View className="h-7 w-7 items-center justify-center rounded-full border border-primary/25 bg-primary/15">
-              <Text className="text-[11px] font-semibold text-primary">{initial}</Text>
+              <Text className="text-[11px] font-semibold text-primary">
+                {initial}
+              </Text>
             </View>
           )}
-          <Text numberOfLines={1} className="flex-1 text-[13px] font-medium text-foreground">
+          <Text
+            numberOfLines={1}
+            className="flex-1 text-[13px] font-medium text-foreground"
+          >
             {displayName}
           </Text>
           <View className="rounded-full border border-primary/25 bg-primary/12 px-1.5 py-0.5">
@@ -513,12 +566,19 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
       </View>
 
       {/* Chat actions dropdown — mirrors web SidebarChatActionsMenu */}
-      <Dropdown visible={chatMenu.visible} anchor={chatMenu.anchor} onClose={closeChatMenu} width={176}>
+      <Dropdown
+        visible={chatMenu.visible}
+        anchor={chatMenu.anchor}
+        onClose={closeChatMenu}
+        width={176}
+      >
         {chatMenuView === "root" ? (
           <>
             <DropdownItem
               icon={menuChat?.pinnedAt && menuChat.pinnedAt > 0 ? PinOff : Pin}
-              label={menuChat?.pinnedAt && menuChat.pinnedAt > 0 ? "Unpin" : "Pin"}
+              label={
+                menuChat?.pinnedAt && menuChat.pinnedAt > 0 ? "Unpin" : "Pin"
+              }
               onPress={handleTogglePin}
             />
             <DropdownItem icon={Pencil} label="Rename" onPress={openRename} />
@@ -528,11 +588,20 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
               label="Move to project"
               onPress={() => setChatMenuView("move")}
               trailing={
-                <Icon as={ChevronRight} size={14} className="text-muted-foreground/60" />
+                <Icon
+                  as={ChevronRight}
+                  size={14}
+                  className="text-muted-foreground/60"
+                />
               }
             />
             <DropdownSeparator />
-            <DropdownItem icon={Trash2} label="Delete" destructive onPress={handleDelete} />
+            <DropdownItem
+              icon={Trash2}
+              label="Delete"
+              destructive
+              onPress={handleDelete}
+            />
           </>
         ) : (
           <>
@@ -551,7 +620,9 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             ) : null}
             {(projects ?? []).length === 0 ? (
               <View className="px-2.5 py-2">
-                <Text className="text-[13px] text-muted-foreground">No projects yet</Text>
+                <Text className="text-[13px] text-muted-foreground">
+                  No projects yet
+                </Text>
               </View>
             ) : (
               (projects ?? []).map((p) => (
@@ -590,7 +661,12 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           }}
         />
         <DropdownSeparator />
-        <DropdownItem icon={Trash2} label="Delete" destructive onPress={handleProjectDelete} />
+        <DropdownItem
+          icon={Trash2}
+          label="Delete"
+          destructive
+          onPress={handleProjectDelete}
+        />
       </Dropdown>
 
       {/* Create / rename project dialog */}
@@ -610,7 +686,9 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             className="w-full max-w-md rounded-2xl border border-border bg-popover p-5"
           >
             <Text className="mb-3 text-[16px] font-semibold text-foreground">
-              {projectModal?.mode === "rename" ? "Rename project" : "New project"}
+              {projectModal?.mode === "rename"
+                ? "Rename project"
+                : "New project"}
             </Text>
             <TextInput
               value={projectName}
@@ -625,7 +703,9 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
                 onPress={() => setProjectModal(null)}
                 className="rounded-full px-4 py-2.5 active:bg-accent"
               >
-                <Text className="text-[13px] font-medium text-muted-foreground">Cancel</Text>
+                <Text className="text-[13px] font-medium text-muted-foreground">
+                  Cancel
+                </Text>
               </Pressable>
               <Pressable
                 disabled={!projectName.trim()}
@@ -661,7 +741,9 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             onPress={(e) => e.stopPropagation()}
             className="w-full max-w-md rounded-2xl border border-border bg-popover p-5"
           >
-            <Text className="mb-3 text-[16px] font-semibold text-foreground">Rename chat</Text>
+            <Text className="mb-3 text-[16px] font-semibold text-foreground">
+              Rename chat
+            </Text>
             <TextInput
               value={renameValue}
               onChangeText={setRenameValue}
@@ -673,7 +755,9 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
                 onPress={() => setRenameChatId(null)}
                 className="rounded-full px-4 py-2.5 active:bg-accent"
               >
-                <Text className="text-[13px] font-medium text-muted-foreground">Cancel</Text>
+                <Text className="text-[13px] font-medium text-muted-foreground">
+                  Cancel
+                </Text>
               </Pressable>
               <Pressable
                 disabled={!renameValue.trim()}
@@ -684,7 +768,9 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
                     : "rounded-full bg-primary/40 px-4 py-2.5"
                 }
               >
-                <Text className="text-[13px] font-semibold text-primary-foreground">Save</Text>
+                <Text className="text-[13px] font-semibold text-primary-foreground">
+                  Save
+                </Text>
               </Pressable>
             </View>
           </Pressable>
@@ -709,14 +795,22 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             />
           ) : (
             <View className="h-9 w-9 items-center justify-center rounded-full bg-primary">
-              <Text className="text-[14px] font-bold text-primary-foreground">{initial}</Text>
+              <Text className="text-[14px] font-bold text-primary-foreground">
+                {initial}
+              </Text>
             </View>
           )}
           <View className="flex-1">
-            <Text numberOfLines={1} className="text-[13px] font-semibold text-foreground">
+            <Text
+              numberOfLines={1}
+              className="text-[13px] font-semibold text-foreground"
+            >
               {displayName}
             </Text>
-            <Text numberOfLines={1} className="text-[11.5px] text-muted-foreground">
+            <Text
+              numberOfLines={1}
+              className="text-[11.5px] text-muted-foreground"
+            >
               {user?.primaryEmailAddress?.emailAddress ?? ""}
             </Text>
           </View>
@@ -734,7 +828,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           label="Feedback"
           onPress={() => {
             accountMenu.close();
-            void Linking.openURL(`${API_BASE_URL}/feedback`);
+            go("/feedback");
           }}
         />
         <DropdownItem
@@ -778,12 +872,20 @@ function NavTile({
       className="flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-foreground/5 bg-foreground/4 px-4 py-2.5 active:bg-foreground/8"
     >
       <Icon as={icon} size={15} className="text-muted-foreground" />
-      <Text className="text-[13px] font-medium text-muted-foreground">{label}</Text>
+      <Text className="text-[13px] font-medium text-muted-foreground">
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
-function SectionHeader({ label, onAction }: { label: string; onAction?: () => void }) {
+function SectionHeader({
+  label,
+  onAction,
+}: {
+  label: string;
+  onAction?: () => void;
+}) {
   return (
     <View className="mb-2 flex-row items-center justify-between px-2 pt-1">
       <Text className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">

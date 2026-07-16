@@ -90,7 +90,7 @@ async function requireOwnedProject(
 function projectTitleFromPrompt(prompt: string): string {
 	const cleaned = prompt
 		.replace(
-			/@(github|notion|vercel|gmail|google_calendar|google_drive|todoist)\b/gi,
+			/@(github|notion|vercel|gmail|google_calendar|google_drive|google_sheets|todoist)\b/gi,
 			"",
 		)
 		.replace(/\s+/g, " ")

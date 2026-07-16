@@ -279,7 +279,7 @@ const TODOIST: OAuthProvider = {
 };
 
 // ── Google ───────────────────────────────────────────────────────────────────
-// Gmail, Calendar and Drive are separate connectors but share ONE Google Cloud
+// Gmail, Calendar, Drive and Sheets are separate connectors but share ONE Google Cloud
 // OAuth app (GOOGLE_CLIENT_ID/SECRET). Each requests only the scopes it needs.
 // `access_type=offline` + `prompt=consent` are required to receive a refresh
 // token (Google access tokens expire after ~1h); the chat tools refresh on the
@@ -385,6 +385,13 @@ const GOOGLE_CALENDAR = makeGoogleProvider("google_calendar", [
 const GOOGLE_DRIVE = makeGoogleProvider("google_drive", [
 	"https://www.googleapis.com/auth/drive.readonly",
 ]);
+const GOOGLE_SHEETS = makeGoogleProvider("google_sheets", [
+	// Full Sheets access is required for reading, writing, creating and managing
+	// spreadsheets. Drive metadata access lets the assistant discover Sheets by
+	// name without granting it access to edit non-Sheets Drive files.
+	"https://www.googleapis.com/auth/spreadsheets",
+	"https://www.googleapis.com/auth/drive.metadata.readonly",
+]);
 
 const REGISTRY: Record<string, OAuthProvider> = {
 	github: GITHUB,
@@ -394,6 +401,7 @@ const REGISTRY: Record<string, OAuthProvider> = {
 	gmail: GMAIL,
 	google_calendar: GOOGLE_CALENDAR,
 	google_drive: GOOGLE_DRIVE,
+	google_sheets: GOOGLE_SHEETS,
 };
 
 export function getOAuthProvider(provider: string): OAuthProvider | null {

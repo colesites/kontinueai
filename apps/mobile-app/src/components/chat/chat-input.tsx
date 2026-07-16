@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
+import { useQuery } from "convex/react";
+import { api } from "@repo/convex/convex/_generated/api";
 import {
   Bot,
   Check,
@@ -37,6 +39,17 @@ import { useTheme } from "@/components/theme-provider";
 import type { PendingAttachment } from "@/lib/chat-attachments";
 
 const PLACEHOLDER_COLOR = { light: "#9b8893", dark: "#7c6c77" } as const;
+
+const CONNECTOR_NAMES: Record<string, string> = {
+  github: "GitHub",
+  notion: "Notion",
+  vercel: "Vercel",
+  gmail: "Gmail",
+  google_calendar: "Google Calendar",
+  google_drive: "Google Drive",
+  google_sheets: "Google Sheets",
+  todoist: "Todoist",
+};
 
 type ChatInputProps = {
   placeholder?: string;
@@ -86,14 +99,21 @@ export function ChatInput({
   const [internalValue, setInternalValue] = useState("");
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   // Drill-in navigation inside the "+" menu, mirroring web's ChatInputTools.
-  const [menuView, setMenuView] = useState<"root" | "agents">("root");
+  const [menuView, setMenuView] = useState<"root" | "agents" | "connectors">(
+    "root",
+  );
   const plusMenu = useDropdown();
+  const connectors = useQuery(api.connectors.listConnectors, {});
 
   const value = controlledValue ?? internalValue;
   const setValue = onChangeText ?? setInternalValue;
   const canSend =
     (value.trim().length > 0 || attachments.length > 0) && !disabled;
   const activeAgent = AGENTS.find((a) => a.id === agentId) ?? null;
+  const connectedConnectors =
+    connectors?.filter(
+      (connector) => connector.connected && CONNECTOR_NAMES[connector.provider],
+    ) ?? [];
 
   const submit = () => {
     if (!canSend) return;
@@ -106,6 +126,18 @@ export function ChatInput({
     setMenuView("root");
   };
 
+  const insertConnectorMention = (provider: string) => {
+    const mention = `@${provider}`;
+    const hasMention = new RegExp(`(^|\\s)${mention}(?=\\s|$)`, "i").test(
+      value,
+    );
+    if (!hasMention) {
+      const spacer = value.length > 0 && !value.endsWith(" ") ? " " : "";
+      setValue(`${value}${spacer}${mention} `);
+    }
+    closeMenu();
+  };
+
   return (
     // Mirrors the web dock: `glass bg-background/40 backdrop-blur-3xl
     // rounded-3xl p-3` with the home page's primary glow blob rendered as a
@@ -113,11 +145,7 @@ export function ChatInput({
     <View
       style={{
         borderRadius: 24,
-        shadowColor: primary,
-        shadowOpacity: 0.45,
-        shadowRadius: 32,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: 14,
+        boxShadow: `0 6px 32px ${primary}73`,
       }}
     >
       <GlassView
@@ -135,7 +163,7 @@ export function ChatInput({
         {attachments.length > 0 ? (
           <View className="mb-2 flex-row flex-wrap gap-2 px-1">
             {attachments.map((attachment, index) => (
-              <View key={`${attachment.uri}-${index}`} className="relative">
+              <View key={attachment.uri} className="relative">
                 {attachment.kind === "image" ? (
                   <Image
                     source={{ uri: attachment.uri }}
@@ -158,7 +186,9 @@ export function ChatInput({
                   </View>
                 )}
                 <Pressable
-                  hitSlop={6}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${attachment.filename}`}
+                  hitSlop={12}
                   onPress={() => onRemoveAttachment?.(index)}
                   className="absolute -right-1.5 -top-1.5 h-5 w-5 items-center justify-center rounded-full bg-foreground/80"
                 >
@@ -174,7 +204,9 @@ export function ChatInput({
           <View className="mb-1 flex-row px-1">
             <Pressable
               onPress={() => onAgentChange?.(null)}
-              className="flex-row items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-2.5 py-1 active:opacity-80"
+              accessibilityRole="button"
+              accessibilityLabel={`Remove ${activeAgent.name} agent`}
+              className="min-h-11 flex-row items-center gap-1.5 rounded-full border border-primary/25 bg-primary/10 px-3 active:opacity-80"
             >
               <Icon as={Bot} size={11} className="text-primary" />
               <Text className="text-[11px] font-medium text-primary">
@@ -201,7 +233,7 @@ export function ChatInput({
               accessibilityRole="button"
               accessibilityLabel="Add attachment or tools"
               onPress={plusMenu.open}
-              className="h-8 w-8 items-center justify-center rounded-full active:bg-foreground/5"
+              className="h-11 w-11 items-center justify-center rounded-full active:bg-foreground/5"
             >
               <Icon as={Plus} size={17} className="text-muted-foreground" />
             </Pressable>
@@ -221,7 +253,7 @@ export function ChatInput({
               }
               onPress={onMicPress}
               className={cn(
-                "h-8 w-8 items-center justify-center rounded-full active:bg-foreground/5",
+                "h-11 w-11 items-center justify-center rounded-full active:bg-foreground/5",
                 isListening && "bg-primary/15",
               )}
             >
@@ -240,7 +272,7 @@ export function ChatInput({
               disabled={!canSend}
               onPress={submit}
               className={cn(
-                "h-9 w-9 items-center justify-center rounded-full",
+                "h-11 w-11 items-center justify-center rounded-full",
                 canSend ? "bg-primary active:opacity-90" : "bg-foreground/8",
               )}
               style={
@@ -300,11 +332,28 @@ export function ChatInput({
               ) : null}
               <DropdownItem
                 icon={Plug}
-                label="Connectors"
+                label={
+                  connectedConnectors.length > 0
+                    ? `Connectors (${connectedConnectors.length})`
+                    : "Connectors"
+                }
                 onPress={() => {
-                  closeMenu();
-                  router.push("/connectors" as Href);
+                  if (connectedConnectors.length > 0) {
+                    setMenuView("connectors");
+                  } else {
+                    closeMenu();
+                    router.push("/connectors" as Href);
+                  }
                 }}
+                trailing={
+                  connectedConnectors.length > 0 ? (
+                    <Icon
+                      as={ChevronRight}
+                      size={14}
+                      className="text-muted-foreground/60"
+                    />
+                  ) : undefined
+                }
               />
               {onAgentChange ? (
                 <DropdownItem
@@ -361,6 +410,45 @@ export function ChatInput({
                   }
                 />
               ))}
+            </>
+          ) : null}
+          {plusMenu.visible && menuView === "connectors" ? (
+            <>
+              <DropdownItem
+                icon={ChevronLeft}
+                label="Back"
+                onPress={() => setMenuView("root")}
+              />
+              <DropdownSeparator />
+              {connectedConnectors.map((connector) => (
+                <DropdownItem
+                  key={connector.provider}
+                  icon={Plug}
+                  label={
+                    CONNECTOR_NAMES[connector.provider] ?? connector.provider
+                  }
+                  onPress={() => insertConnectorMention(connector.provider)}
+                  trailing={
+                    connector.accountLabel ? (
+                      <Text
+                        numberOfLines={1}
+                        className="max-w-28 text-[11px] text-muted-foreground"
+                      >
+                        {connector.accountLabel}
+                      </Text>
+                    ) : undefined
+                  }
+                />
+              ))}
+              <DropdownSeparator />
+              <DropdownItem
+                icon={Plug}
+                label="Manage connectors"
+                onPress={() => {
+                  closeMenu();
+                  router.push("/connectors" as Href);
+                }}
+              />
             </>
           ) : null}
         </Dropdown>

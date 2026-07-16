@@ -20,6 +20,7 @@ import {
 import { fetchMutation } from "convex/nextjs";
 import { z } from "zod";
 import { type ConnectorTokens, userConnectorTokens } from "./connector-tokens";
+import { makeGoogleSheetsTool } from "./google-sheets-tool";
 import { modelSupportsTools } from "./model-utils";
 import { toOpenAIImageSize } from "./request-utils";
 import type { AiGatewayModel, OpenAIImageSize } from "./types";
@@ -2029,7 +2030,7 @@ function resolveDueDate(
 // missing/expired, exchanges the refresh token for a new one (and persists it).
 export async function getGoogleAccessToken(
 	tokens: ConnectorTokens,
-	provider: "gmail" | "google_calendar" | "google_drive",
+	provider: "gmail" | "google_calendar" | "google_drive" | "google_sheets",
 ): Promise<{ accessToken: string } | { error: string }> {
 	const tokenSet = await tokens.getRefreshableToken(provider);
 	if (!tokenSet) {
@@ -2154,6 +2155,10 @@ export function buildAutonomousConnectorTools(
 		gmail: makeGmailTool(tokens),
 		google_calendar: makeGoogleCalendarTool(tokens),
 		google_drive: makeGoogleDriveTool(tokens),
+		google_sheets: makeGoogleSheetsTool({
+			getAccessToken: () => getGoogleAccessToken(tokens, "google_sheets"),
+			apiError: googleApiError,
+		}),
 		todoist: makeTodoistTool(tokens),
 	};
 }
@@ -2733,6 +2738,10 @@ export function buildToolsAndPrompt(options: {
 		tools.gmail = makeGmailTool(tokens);
 		tools.google_calendar = makeGoogleCalendarTool(tokens);
 		tools.google_drive = makeGoogleDriveTool(tokens);
+		tools.google_sheets = makeGoogleSheetsTool({
+			getAccessToken: () => getGoogleAccessToken(tokens, "google_sheets"),
+			apiError: googleApiError,
+		});
 		tools.todoist = makeTodoistTool(tokens);
 	}
 
@@ -2809,7 +2818,7 @@ export function buildToolsAndPrompt(options: {
 		? "\n\nEMAIL: When the user asks to write, draft, compose or send an email, call the compose_email tool with recipients, a subject, and a complete body in the user's voice — this renders an editable email card with a Send button that the user clicks to actually send via their Gmail. Do NOT write the email as plain chat text, and do NOT claim you sent it — the user reviews and sends it themselves. If they ask you to email someone but you don't know the address, draft it with `to` empty so they can fill it in."
 		: "";
 	const connectorToolContext = tools.github
-		? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list ALL repos with accurate count, read repos/files/commits/branches, search code, create/update/close/reopen/comment issues, commit files, create branches and pull requests), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email; to write or send a message use the compose_email tool), google_calendar (list and create events), google_drive (search and read files), and todoist (list, create and complete tasks). These tools are NOT read-only where actions exist: when the user asks you to create an event, create a page, comment, close, redeploy, or add a Todoist task, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@gmail', '@google_calendar', '@google_drive', '@todoist') or naturally ('my calendar', 'my email', 'my drive', 'my todoist'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'You have 3 unread emails: …'). Never end your turn with only a tool call and no text."
+		? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list ALL repos with accurate count, read repos/files/commits/branches, search code, create/update/close/reopen/comment issues, commit files, create branches and pull requests), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email; to write or send a message use the compose_email tool), google_calendar (list and create events), google_drive (search and read files), google_sheets (find, inspect, read, create and modify spreadsheets, tabs, rows, values and formatting), and todoist (list, create and complete tasks). These tools are NOT read-only where actions exist: when the user asks you to create an event, edit a spreadsheet, create a page, comment, close, redeploy, or add a Todoist task, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@gmail', '@google_calendar', '@google_drive', '@google_sheets', '@todoist') or naturally ('my calendar', 'my email', 'my drive', 'my spreadsheet', 'my todoist'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'Updated 12 cells in “Budget”'). Never end your turn with only a tool call and no text."
 		: "";
 
 	// When the user explicitly @-mentions a connected connector, force the model to
@@ -2819,7 +2828,7 @@ export function buildToolsAndPrompt(options: {
 				new Set(
 					(
 						lastUserContent.match(
-							/@(github|notion|vercel|gmail|google_calendar|google_drive|todoist)\b/gi,
+							/@(github|notion|vercel|gmail|google_calendar|google_drive|google_sheets|todoist)\b/gi,
 						) ?? []
 					).map((s) => s.slice(1).toLowerCase()),
 				),

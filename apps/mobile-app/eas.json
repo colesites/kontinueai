@@ -4,7 +4,12 @@
     "appVersionSource": "remote"
   },
   "build": {
+    "base": {
+      "node": "22.22.2",
+      "bun": "1.3.13"
+    },
     "development": {
+      "extends": "base",
       "developmentClient": true,
       "distribution": "internal",
       "android": {
@@ -22,6 +27,7 @@
       }
     },
     "preview": {
+      "extends": "base",
       "environment": "preview",
       "distribution": "internal",
       "android": {
@@ -41,6 +47,7 @@
       }
     },
     "production": {
+      "extends": "base",
       "environment": "production",
       "autoIncrement": true,
       "android": {

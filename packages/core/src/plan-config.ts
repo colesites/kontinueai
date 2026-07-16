@@ -158,7 +158,11 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 	},
 };
 
+export type PlanAudience = "personal" | "professional";
+
 export type PlanCardPresentation = {
+	audience: PlanAudience;
+	bestFor: string;
 	description: string;
 	cta: string;
 	highlighted?: boolean;
@@ -166,24 +170,36 @@ export type PlanCardPresentation = {
 
 export const PLAN_CARD_PRESENTATION: Record<PlanTier, PlanCardPresentation> = {
 	free: {
-		description: "Try K-AI and bring your first conversations with you.",
+		audience: "personal",
+		bestFor: "Best for trying Kontinue AI",
+		description: "Explore K-AI and import your first conversations.",
 		cta: "Start free",
 	},
 	starter: {
-		description: "Affordable everyday AI with selected fast models.",
+		audience: "personal",
+		bestFor: "Best for casual AI users",
+		description: "Affordable access to basic models for everyday questions.",
 		cta: "Get Starter",
 	},
 	plus: {
-		description: "More models and room for daily work across them.",
+		audience: "personal",
+		bestFor: "Best for regular AI users",
+		description: "Use multiple models daily with more requests and imports.",
 		cta: "Get Plus",
 		highlighted: true,
 	},
 	pro: {
-		description: "Live, Canvas and Kode Lite for advanced workflows.",
+		audience: "professional",
+		bestFor: "Best for developers and creators",
+		description:
+			"Advanced models, Kode, Canvas and Live for serious workflows.",
 		cta: "Get Pro",
 	},
 	max: {
-		description: "Our highest limits and complete professional toolset.",
+		audience: "professional",
+		bestFor: "Best for AI power users",
+		description:
+			"Maximum limits, premium models and the complete professional toolset.",
 		cta: "Get Max",
 	},
 };

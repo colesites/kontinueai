@@ -2,6 +2,7 @@ import {
 	getPlanCardHighlights,
 	PLAN_CARD_PRESENTATION,
 	PLAN_DEFINITIONS,
+	type PlanAudience,
 } from "@repo/core/plan-config";
 import {
 	getImportUploadLimitBytes,
@@ -19,6 +20,8 @@ export interface ProductPlan {
 	monthlyPriceUsd: number;
 	annualPriceUsd: number;
 	annualMonthlyPriceUsd: number;
+	audience: PlanAudience;
+	bestFor: string;
 	description: string;
 	cta: string;
 	highlighted?: boolean;

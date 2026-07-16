@@ -47,16 +47,13 @@ export function ConvexClientProvider({
 }: {
   children: React.ReactNode;
 }) {
-  if (!convex) return <>{children}</>;
+  if (!convex) {
+    throw new Error("EXPO_PUBLIC_CONVEX_URL is missing from this build.");
+  }
 
   return (
-    <ConvexProviderWithClerk
-      client={convex}
-      useAuth={useAuth}
-    >
+    <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
       <AuthAwareBoundary>{children}</AuthAwareBoundary>
     </ConvexProviderWithClerk>
   );
 }
-
-export { convex };

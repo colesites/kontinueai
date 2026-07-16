@@ -6,6 +6,7 @@ mock.module("ai", () => ({
 	experimental_generateImage: () => undefined,
 	experimental_generateVideo: () => undefined,
 	generateText: () => undefined,
+	tool: <T>(definition: T) => definition,
 }));
 
 mock.module("@ai-sdk/gateway", () => ({

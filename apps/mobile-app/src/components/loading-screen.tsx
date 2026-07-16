@@ -1,43 +1,66 @@
-import { useEffect, useState } from "react";
-import { Animated, View } from "react-native";
+import { useEffect } from "react";
+import { Pressable, View } from "react-native";
+import Animated, {
+  cancelAnimation,
+  ReduceMotion,
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 
 import { KontinueLogo } from "@/components/ui/kontinue-logo";
+import { Text } from "@/components/ui/text";
 import { useTheme } from "@/components/theme-provider";
 
 /** Single bouncing dot with a staggered start. */
 function Dot({ delay, color }: { delay: number; color: string }) {
-  // Lazy useState (not useRef) so the animated value is created once without
-  // reading a ref during render, which React Compiler forbids.
-  const [y] = useState(() => new Animated.Value(0));
+  const y = useSharedValue(0);
 
   useEffect(() => {
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.delay(delay),
-        Animated.timing(y, { toValue: -7, duration: 280, useNativeDriver: true }),
-        Animated.timing(y, { toValue: 0, duration: 280, useNativeDriver: true }),
-        Animated.delay(560 - delay),
-      ]),
+    y.value = withRepeat(
+      withSequence(
+        withDelay(delay, withTiming(-7, { duration: 280 })),
+        withTiming(0, { duration: 280 }),
+        withDelay(560 - delay, withTiming(0, { duration: 0 })),
+      ),
+      -1,
+      false,
+      undefined,
+      ReduceMotion.System,
     );
-    anim.start();
-    return () => anim.stop();
+    return () => cancelAnimation(y);
   }, [delay, y]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: y.value }],
+  }));
 
   return (
     <Animated.View
-      style={{
-        width: 7,
-        height: 7,
-        borderRadius: 4,
-        backgroundColor: color,
-        transform: [{ translateY: y }],
-      }}
+      style={[
+        {
+          width: 7,
+          height: 7,
+          borderRadius: 4,
+          backgroundColor: color,
+        },
+        animatedStyle,
+      ]}
     />
   );
 }
 
 /** Full-screen branded loading state — Kontinue logo with bouncing dots. */
-export function LoadingScreen() {
+export function LoadingScreen({
+  stalled = false,
+  onRecover,
+}: {
+  stalled?: boolean;
+  onRecover?: () => void;
+}) {
   const { primary } = useTheme();
   return (
     <View
@@ -50,6 +73,26 @@ export function LoadingScreen() {
         <Dot delay={140} color={primary} />
         <Dot delay={280} color={primary} />
       </View>
+      {stalled ? (
+        <View className="mt-8 max-w-72 items-center px-5">
+          <Text className="text-center text-[14px] font-medium text-foreground">
+            Sign-in is taking longer than expected
+          </Text>
+          <Text className="mt-2 text-center text-[12px] leading-5 text-muted-foreground">
+            Your session is safe. You can sign out and try again instead of
+            being stuck on this screen.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onRecover}
+            className="mt-4 min-h-11 items-center justify-center rounded-xl border border-border bg-secondary px-5 active:bg-accent"
+          >
+            <Text className="text-[13px] font-semibold text-foreground">
+              Sign out and recover
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }

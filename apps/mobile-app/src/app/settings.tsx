@@ -1,15 +1,20 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
+  Linking,
+  Modal,
   Pressable,
   ScrollView,
+  Share,
   TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
+import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import * as WebBrowser from "expo-web-browser";
@@ -19,19 +24,32 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { planLabel } from "@repo/core/plan-tier";
-import { formatBytes, memoryTypeLabel, type MemoryType } from "@repo/core/memory";
+import {
+  SPEECH_LANGUAGE_OPTIONS,
+  type SpeechLanguageOption,
+} from "@repo/core/speech-settings";
+import {
+  formatBytes,
+  memoryTypeLabel,
+  type MemoryType,
+} from "@repo/core/memory";
 import {
   ChevronRight,
+  Check,
+  Copy,
   Download,
   FileArchive,
   FileJson,
   FileText,
   LogOut,
+  Mail,
+  MessageSquare,
   Pin,
   PinOff,
   Plug,
   Search,
   Sparkles,
+  UserPlus,
   Trash2,
   Upload,
 } from "lucide-react-native";
@@ -44,13 +62,19 @@ import { Text } from "@/components/ui/text";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { cn } from "@/lib/utils";
 import { getDisplayName, getInitial } from "@/lib/user-display";
+import {
+  getMobileSpeechLanguage,
+  setMobileSpeechLanguage,
+} from "@/lib/speech-settings";
 
-type SettingsTab = "account" | "memory" | "data";
+type SettingsTab = "account" | "invite" | "memory" | "data" | "contact";
 
 const TABS: { id: SettingsTab; label: string }[] = [
   { id: "account", label: "Account" },
+  { id: "invite", label: "Invite" },
   { id: "memory", label: "Memory" },
   { id: "data", label: "Data" },
+  { id: "contact", label: "Contact" },
 ];
 
 export default function SettingsScreen() {
@@ -80,12 +104,21 @@ export default function SettingsScreen() {
               style={{ width: 72, height: 72, borderRadius: 36 }}
             />
           ) : (
-            <View className="h-18 w-18 items-center justify-center rounded-full bg-primary" style={{ width: 72, height: 72 }}>
-              <Text className="text-[26px] font-bold text-primary-foreground">{initial}</Text>
+            <View
+              className="h-18 w-18 items-center justify-center rounded-full bg-primary"
+              style={{ width: 72, height: 72 }}
+            >
+              <Text className="text-[26px] font-bold text-primary-foreground">
+                {initial}
+              </Text>
             </View>
           )}
-          <Text className="mt-4 text-[19px] font-bold text-foreground">{displayName}</Text>
-          <Text className="mt-1 text-[13px] text-muted-foreground">{email}</Text>
+          <Text className="mt-4 text-[19px] font-bold text-foreground">
+            {displayName}
+          </Text>
+          <Text className="mt-1 text-[13px] text-muted-foreground">
+            {email}
+          </Text>
           <View className="mt-3 rounded-lg bg-secondary px-3 py-1.5">
             <Text className="text-[12px] font-semibold text-foreground">
               {planLabel(planTier)} Plan
@@ -95,28 +128,40 @@ export default function SettingsScreen() {
 
         {/* Current plan */}
         <View className="rounded-2xl border border-border bg-card p-4">
-          <Text className="text-[15px] font-semibold text-foreground">Current plan</Text>
+          <Text className="text-[15px] font-semibold text-foreground">
+            Current plan
+          </Text>
           <Text className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
             {planTier === "free"
               ? "You are on the free plan. Upgrade when you need more limits."
               : `You are on the ${planLabel(planTier)} plan.`}
           </Text>
           <Pressable
-            onPress={() => void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`)}
+            onPress={() =>
+              void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`)
+            }
             className="mt-3 self-start rounded-lg border border-primary/40 bg-primary/10 px-3.5 py-2 active:opacity-80"
           >
-            <Text className="text-[13px] font-semibold text-primary">View pricing</Text>
+            <Text className="text-[13px] font-semibold text-primary">
+              View pricing
+            </Text>
           </Pressable>
         </View>
 
         {/* Tabs */}
-        <View className="flex-row gap-1 rounded-xl bg-secondary p-1">
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerClassName="gap-1 rounded-xl bg-secondary p-1"
+        >
           {TABS.map((t) => (
             <Pressable
               key={t.id}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: tab === t.id }}
               onPress={() => setTab(t.id)}
               className={cn(
-                "h-9 flex-1 items-center justify-center rounded-lg",
+                "min-h-11 min-w-20 items-center justify-center rounded-lg px-3",
                 tab === t.id && "bg-background",
               )}
             >
@@ -130,11 +175,15 @@ export default function SettingsScreen() {
               </Text>
             </Pressable>
           ))}
-        </View>
+        </ScrollView>
 
-        {tab === "account" ? <AccountPanel planTier={planTier} /> : null}
+        {tab === "account" ? <AccountPanel /> : null}
+        {tab === "invite" ? <InvitePanel /> : null}
         {tab === "memory" ? <MemoryPanel /> : null}
         {tab === "data" ? <DataPanel /> : null}
+        {tab === "contact" ? (
+          <ContactPanel onFeedback={() => router.push("/feedback" as Href)} />
+        ) : null}
 
         {/* Footer actions */}
         <View>
@@ -143,16 +192,26 @@ export default function SettingsScreen() {
             className="flex-row items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 active:opacity-80"
           >
             <Icon as={Plug} size={18} className="text-muted-foreground" />
-            <Text className="flex-1 text-[14px] text-foreground">Connectors</Text>
-            <Icon as={ChevronRight} size={18} className="text-muted-foreground/50" />
+            <Text className="flex-1 text-[14px] text-foreground">
+              Connectors
+            </Text>
+            <Icon
+              as={ChevronRight}
+              size={18}
+              className="text-muted-foreground/50"
+            />
           </Pressable>
           {planTier === "free" ? (
             <Pressable
-              onPress={() => void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`)}
+              onPress={() =>
+                void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`)
+              }
               className="mt-2 flex-row items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3.5 active:opacity-80"
             >
               <Icon as={Sparkles} size={18} className="text-primary" />
-              <Text className="flex-1 text-[14px] font-medium text-primary">Upgrade</Text>
+              <Text className="flex-1 text-[14px] font-medium text-primary">
+                Upgrade
+              </Text>
               <Icon as={ChevronRight} size={18} className="text-primary/60" />
             </Pressable>
           ) : null}
@@ -161,7 +220,9 @@ export default function SettingsScreen() {
             className="mt-2 flex-row items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 active:opacity-80"
           >
             <Icon as={LogOut} size={18} className="text-destructive" />
-            <Text className="flex-1 text-[14px] text-destructive">Sign out</Text>
+            <Text className="flex-1 text-[14px] text-destructive">
+              Sign out
+            </Text>
           </Pressable>
         </View>
       </ScrollView>
@@ -171,19 +232,31 @@ export default function SettingsScreen() {
 
 // ── Account: usage ───────────────────────────────────────────────────────────
 
-function AccountPanel({ planTier }: { planTier: string }) {
+function AccountPanel() {
   const usage = useQuery(api.messages.getMonthlyUsage, {});
+  const aiUsage = useQuery(api.aiUsage.getUsage, {});
+  const [language, setLanguage] = useState("auto");
+  const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
+
+  useEffect(() => {
+    void getMobileSpeechLanguage().then(setLanguage);
+  }, []);
+
+  const selectedLanguage = useMemo(
+    () => SPEECH_LANGUAGE_OPTIONS.find((option) => option.value === language),
+    [language],
+  );
 
   return (
     <View className="gap-3">
       <View>
         <Text className="text-[16px] font-semibold text-foreground">Usage</Text>
         <Text className="mt-1 text-[13px] text-muted-foreground">
-          Track monthly message and import usage.
+          Track shared AI credits, requests, and imports.
         </Text>
       </View>
       <View className="gap-5 rounded-2xl border border-border bg-card p-4">
-        {usage === undefined ? (
+        {usage === undefined || aiUsage === undefined ? (
           <View className="gap-3">
             {[1, 2, 3].map((i) => (
               <View key={i} className="h-8 rounded-lg bg-foreground/5" />
@@ -195,6 +268,12 @@ function AccountPanel({ planTier }: { planTier: string }) {
           </Text>
         ) : (
           <>
+            <UsageBar
+              label="AI usage credits"
+              used={aiUsage.used}
+              limit={aiUsage.limit}
+              note={`${aiUsage.remaining.toLocaleString()} credits remain across chat, search, media, Live, Canvas AI actions, and Kode AI runs.`}
+            />
             <UsageBar
               label="K-AI 1.0 Requests"
               used={usage.kaiUsed}
@@ -231,7 +310,343 @@ function AccountPanel({ planTier }: { planTier: string }) {
           </>
         )}
       </View>
-      {planTier !== "free" ? null : null}
+
+      <View className="rounded-2xl border border-border bg-card p-4">
+        <Text className="text-[14px] font-medium text-foreground">
+          Voice input language
+        </Text>
+        <Text className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
+          Choose the recognition language used by the microphone in chat.
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setLanguagePickerOpen(true)}
+          className="mt-3 min-h-12 flex-row items-center rounded-xl border border-border bg-secondary px-3.5 active:bg-accent"
+        >
+          <Text
+            numberOfLines={1}
+            className="flex-1 text-[13.5px] text-foreground"
+          >
+            {selectedLanguage?.label ?? "Auto detect (Recommended)"}
+          </Text>
+          <Icon as={ChevronRight} size={16} className="text-muted-foreground" />
+        </Pressable>
+      </View>
+
+      <SpeechLanguagePicker
+        visible={languagePickerOpen}
+        selected={language}
+        onClose={() => setLanguagePickerOpen(false)}
+        onSelect={(value) => {
+          void setMobileSpeechLanguage(value)
+            .then(setLanguage)
+            .catch(() =>
+              Alert.alert("Couldn't save language", "Please try again."),
+            );
+          setLanguagePickerOpen(false);
+        }}
+      />
+    </View>
+  );
+}
+
+function SpeechLanguagePicker({
+  visible,
+  selected,
+  onClose,
+  onSelect,
+}: {
+  visible: boolean;
+  selected: string;
+  onClose: () => void;
+  onSelect: (value: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const options = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return SPEECH_LANGUAGE_OPTIONS;
+    return SPEECH_LANGUAGE_OPTIONS.filter((option) =>
+      `${option.label} ${option.nativeLabel ?? ""}`
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [search]);
+
+  const renderOption = useCallback(
+    ({ item }: { item: SpeechLanguageOption }) => (
+      <SpeechLanguageRow
+        option={item}
+        selected={selected === item.value}
+        onSelect={onSelect}
+      />
+    ),
+    [onSelect, selected],
+  );
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <View className="flex-1 justify-end bg-black/55">
+        <View className="max-h-[85%] rounded-t-3xl border-t border-border bg-background px-4 pb-8 pt-4">
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="text-[18px] font-semibold text-foreground">
+              Voice language
+            </Text>
+            <Pressable
+              onPress={onClose}
+              className="min-h-11 justify-center px-2"
+            >
+              <Text className="text-[13px] font-semibold text-primary">
+                Done
+              </Text>
+            </Pressable>
+          </View>
+          <View className="mb-3 min-h-11 flex-row items-center rounded-xl border border-border bg-secondary px-3">
+            <Icon as={Search} size={15} className="text-muted-foreground" />
+            <TextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search languages"
+              placeholderTextColor="#7c6c77"
+              className="ml-2 flex-1 text-[14px] text-foreground"
+            />
+          </View>
+          <FlatList
+            data={options}
+            keyExtractor={(option) => option.value}
+            showsVerticalScrollIndicator={false}
+            renderItem={renderOption}
+          />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SpeechLanguageRow({
+  option,
+  selected,
+  onSelect,
+}: {
+  option: SpeechLanguageOption;
+  selected: boolean;
+  onSelect: (value: string) => void;
+}) {
+  const handlePress = useCallback(
+    () => onSelect(option.value),
+    [onSelect, option.value],
+  );
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      className="min-h-12 flex-row items-center gap-3 rounded-xl px-3 active:bg-accent"
+    >
+      <View className="flex-1">
+        <Text className="text-[13.5px] text-foreground">{option.label}</Text>
+        {option.nativeLabel ? (
+          <Text className="mt-0.5 text-[11px] text-muted-foreground">
+            {option.nativeLabel}
+          </Text>
+        ) : null}
+      </View>
+      {selected ? <Icon as={Check} size={17} className="text-primary" /> : null}
+    </Pressable>
+  );
+}
+
+function InvitePanel() {
+  const summary = useQuery(api.referrals.getReferralSummary, {});
+  const ensureCode = useMutation(api.referrals.ensureReferralCode);
+  const [creating, setCreating] = useState(false);
+  const code = summary?.code ?? null;
+  const inviteUrl = code ? `${API_BASE_URL}/invite/${code}` : null;
+
+  const createCode = async () => {
+    setCreating(true);
+    try {
+      await ensureCode({});
+    } catch (error) {
+      Alert.alert(
+        "Couldn't create invite",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const copyInvite = async () => {
+    if (!inviteUrl) return;
+    await Clipboard.setStringAsync(inviteUrl);
+    Alert.alert(
+      "Invite copied",
+      "Share it with someone you want to bring to Kontinue.",
+    );
+  };
+
+  return (
+    <View className="gap-3">
+      <View>
+        <Text className="text-[16px] font-semibold text-foreground">
+          Invite friends
+        </Text>
+        <Text className="mt-1 text-[13px] leading-5 text-muted-foreground">
+          Share Kontinue and track successful invites and bonus credits.
+        </Text>
+      </View>
+      <View className="rounded-2xl border border-border bg-card p-4">
+        {summary === undefined ? (
+          <ActivityIndicator size="small" />
+        ) : inviteUrl ? (
+          <>
+            <Text className="text-[11px] font-semibold uppercase tracking-widest text-primary">
+              Your invite link
+            </Text>
+            <View className="mt-3 rounded-xl border border-border bg-secondary p-3">
+              <Text
+                selectable
+                numberOfLines={2}
+                className="text-[12.5px] leading-5 text-foreground"
+              >
+                {inviteUrl}
+              </Text>
+            </View>
+            <View className="mt-3 flex-row gap-2">
+              <Pressable
+                onPress={() => void copyInvite()}
+                className="min-h-11 flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-border active:bg-accent"
+              >
+                <Icon as={Copy} size={15} className="text-foreground" />
+                <Text className="text-[13px] font-medium text-foreground">
+                  Copy
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void Share.share({ message: inviteUrl })}
+                className="min-h-11 flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-primary active:opacity-90"
+              >
+                <Icon
+                  as={UserPlus}
+                  size={15}
+                  className="text-primary-foreground"
+                />
+                <Text className="text-[13px] font-semibold text-primary-foreground">
+                  Share
+                </Text>
+              </Pressable>
+            </View>
+          </>
+        ) : (
+          <Pressable
+            disabled={creating}
+            onPress={() => void createCode()}
+            className="min-h-12 flex-row items-center justify-center gap-2 rounded-xl bg-primary active:opacity-90"
+          >
+            {creating ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Icon
+                as={UserPlus}
+                size={17}
+                className="text-primary-foreground"
+              />
+            )}
+            <Text className="text-[13.5px] font-semibold text-primary-foreground">
+              {creating ? "Creating…" : "Create invite link"}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+      {summary ? (
+        <View className="flex-row gap-2">
+          <InviteStat label="Invited" value={summary.invitedCount} />
+          <InviteStat label="Converted" value={summary.convertedCount} />
+          <InviteStat label="Bonus left" value={summary.bonusRemaining} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+function InviteStat({ label, value }: { label: string; value: number }) {
+  return (
+    <View className="flex-1 rounded-2xl border border-border bg-card px-2 py-4">
+      <Text className="text-center text-[18px] font-semibold text-foreground">
+        {value}
+      </Text>
+      <Text className="mt-1 text-center text-[10.5px] text-muted-foreground">
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function ContactPanel({ onFeedback }: { onFeedback: () => void }) {
+  const actions = [
+    { label: "Send feedback", icon: MessageSquare, onPress: onFeedback },
+    {
+      label: "Email support",
+      icon: Mail,
+      onPress: () => void Linking.openURL("mailto:support@kontinueai.com"),
+    },
+    {
+      label: "Privacy policy",
+      icon: FileText,
+      onPress: () =>
+        void WebBrowser.openBrowserAsync(
+          `${API_BASE_URL}/settings/privacy-policy`,
+        ),
+    },
+    {
+      label: "Terms of service",
+      icon: FileText,
+      onPress: () =>
+        void WebBrowser.openBrowserAsync(
+          `${API_BASE_URL}/settings/terms-of-service`,
+        ),
+    },
+  ];
+  return (
+    <View className="gap-3">
+      <View>
+        <Text className="text-[16px] font-semibold text-foreground">
+          Contact & legal
+        </Text>
+        <Text className="mt-1 text-[13px] leading-5 text-muted-foreground">
+          Get help, shape the product, and review policy information.
+        </Text>
+      </View>
+      <View className="overflow-hidden rounded-2xl border border-border bg-card">
+        {actions.map((action, index) => (
+          <Pressable
+            key={action.label}
+            onPress={action.onPress}
+            className={cn(
+              "min-h-14 flex-row items-center gap-3 px-4 active:bg-accent",
+              index > 0 && "border-t border-border",
+            )}
+          >
+            <Icon
+              as={action.icon}
+              size={17}
+              className="text-muted-foreground"
+            />
+            <Text className="flex-1 text-[13.5px] text-foreground">
+              {action.label}
+            </Text>
+            <Icon
+              as={ChevronRight}
+              size={16}
+              className="text-muted-foreground/60"
+            />
+          </Pressable>
+        ))}
+      </View>
     </View>
   );
 }
@@ -289,7 +704,9 @@ function MemoryPanel() {
   return (
     <View className="gap-3">
       <View>
-        <Text className="text-[16px] font-semibold text-foreground">Memory</Text>
+        <Text className="text-[16px] font-semibold text-foreground">
+          Memory
+        </Text>
         <Text className="mt-1 text-[13px] leading-5 text-muted-foreground">
           Review what Kontinue AI keeps, pin important context, and free up
           space when storage reaches your plan limit.
@@ -299,14 +716,17 @@ function MemoryPanel() {
       {/* Quota */}
       <View className="rounded-2xl border border-border bg-card p-4">
         <View className="flex-row items-start justify-between">
-          <Text className="text-[14px] font-medium text-foreground">Memory Usage</Text>
+          <Text className="text-[14px] font-medium text-foreground">
+            Memory Usage
+          </Text>
           {memoryStatus ? (
             <View className="items-end">
               <Text className="text-[13px] font-medium text-foreground">
                 {memoryStatus.usedBytesLabel} / {memoryStatus.limitBytesLabel}
               </Text>
               <Text className="text-[11px] text-muted-foreground">
-                {memoryStatus.memoryCount} memories, {memoryStatus.summaryCount} summaries
+                {memoryStatus.memoryCount} memories, {memoryStatus.summaryCount}{" "}
+                summaries
               </Text>
             </View>
           ) : null}
@@ -314,17 +734,23 @@ function MemoryPanel() {
         <View className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
           <View
             className="h-full rounded-full bg-primary"
-            style={{ width: `${Math.min(100, memoryStatus?.usagePercent ?? 0)}%` }}
+            style={{
+              width: `${Math.min(100, memoryStatus?.usagePercent ?? 0)}%`,
+            }}
           />
         </View>
         {memoryStatus?.warning ? (
-          <Text className="mt-2 text-[12px] text-amber-500">{memoryStatus.warning}</Text>
+          <Text className="mt-2 text-[12px] text-amber-500">
+            {memoryStatus.warning}
+          </Text>
         ) : null}
       </View>
 
       {/* Manual save */}
       <View className="rounded-2xl border border-border bg-card p-4">
-        <Text className="text-[14px] font-medium text-foreground">Save Memory Manually</Text>
+        <Text className="text-[14px] font-medium text-foreground">
+          Save Memory Manually
+        </Text>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -344,7 +770,9 @@ function MemoryPanel() {
               <Text
                 className={cn(
                   "text-[12px] font-medium",
-                  manualType === type ? "text-primary" : "text-muted-foreground",
+                  manualType === type
+                    ? "text-primary"
+                    : "text-muted-foreground",
                 )}
               >
                 {memoryTypeLabel(type)}
@@ -401,13 +829,18 @@ function MemoryPanel() {
       ) : memories.length === 0 ? (
         <View className="items-center rounded-2xl border border-dashed border-border px-4 py-8">
           <Text className="text-center text-[13px] text-muted-foreground">
-            {search ? "No memories match your search." : "No memories yet — they build up as you chat."}
+            {search
+              ? "No memories match your search."
+              : "No memories yet — they build up as you chat."}
           </Text>
         </View>
       ) : (
         <View className="gap-2">
           {memories.map((memory) => (
-            <View key={memory._id} className="rounded-2xl border border-border bg-card p-3.5">
+            <View
+              key={memory._id}
+              className="rounded-2xl border border-border bg-card p-3.5"
+            >
               <View className="flex-row items-center gap-2">
                 <View className="rounded-full bg-secondary px-2 py-0.5">
                   <Text className="text-[10.5px] font-medium text-muted-foreground">
@@ -421,8 +854,11 @@ function MemoryPanel() {
                 <Pressable
                   hitSlop={8}
                   onPress={() =>
-                    pinMemory({ memoryId: memory._id, pinned: !memory.pinned }).catch(
-                      () => Alert.alert("Couldn't update pin", "Please try again."),
+                    pinMemory({
+                      memoryId: memory._id,
+                      pinned: !memory.pinned,
+                    }).catch(() =>
+                      Alert.alert("Couldn't update pin", "Please try again."),
                     )
                   }
                   className="h-7 w-7 items-center justify-center rounded-md active:bg-accent"
@@ -456,22 +892,42 @@ function MemoryPanel() {
 
 type ExportFormat = "json" | "markdown" | "zip";
 
-const FORMAT_OPTIONS: { value: ExportFormat; label: string; icon: typeof FileJson }[] = [
+const FORMAT_OPTIONS: {
+  value: ExportFormat;
+  label: string;
+  icon: typeof FileJson;
+}[] = [
   { value: "zip", label: "ZIP archive", icon: FileArchive },
   { value: "json", label: "JSON", icon: FileJson },
   { value: "markdown", label: "Markdown", icon: FileText },
 ];
 
-const IMPORT_PROVIDERS: { value: "chatgpt" | "kontinue"; label: string; hint: string }[] = [
-  { value: "chatgpt", label: "ChatGPT", hint: "conversations.json from your OpenAI data export" },
-  { value: "kontinue", label: "Kontinue", hint: "a JSON file previously exported from Kontinue AI" },
+const IMPORT_PROVIDERS: {
+  value: "chatgpt" | "kontinue";
+  label: string;
+  hint: string;
+}[] = [
+  {
+    value: "chatgpt",
+    label: "ChatGPT",
+    hint: "conversations.json from your OpenAI data export",
+  },
+  {
+    value: "kontinue",
+    label: "Kontinue",
+    hint: "a JSON file previously exported from Kontinue AI",
+  },
 ];
 
 function DataPanel() {
   const [exportFormat, setExportFormat] = useState<ExportFormat>("zip");
   const [isExporting, setIsExporting] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<Id<"dataExports"> | null>(null);
-  const [importProvider, setImportProvider] = useState<"chatgpt" | "kontinue">("chatgpt");
+  const [downloadingId, setDownloadingId] = useState<Id<"dataExports"> | null>(
+    null,
+  );
+  const [importProvider, setImportProvider] = useState<"chatgpt" | "kontinue">(
+    "chatgpt",
+  );
   const [isUploading, setIsUploading] = useState(false);
 
   const exports = useQuery(api.exports.listExports, {});
@@ -496,18 +952,25 @@ function DataPanel() {
       await requestExport({ format: exportFormat });
     } catch (err) {
       const data = (err as { data?: { message?: string } })?.data;
-      Alert.alert("Couldn't start export", data?.message ?? "Please try again.");
+      Alert.alert(
+        "Couldn't start export",
+        data?.message ?? "Please try again.",
+      );
     } finally {
       setIsExporting(false);
     }
   };
 
-  const handleDownload = async (exportId: Id<"dataExports">, format: ExportFormat) => {
+  const handleDownload = async (
+    exportId: Id<"dataExports">,
+    format: ExportFormat,
+  ) => {
     if (downloadingId) return;
     setDownloadingId(exportId);
     try {
       const { url } = await getDownloadUrl({ exportId });
-      const extension = format === "zip" ? "zip" : format === "json" ? "json" : "md";
+      const extension =
+        format === "zip" ? "zip" : format === "json" ? "json" : "md";
       // exportId is unique per export — keeps the compiler's purity rule happy
       // (no Date.now() in component scope) and avoids filename collisions.
       const localUri = `${FileSystem.cacheDirectory}kontinue-export-${exportId}.${extension}`;
@@ -569,7 +1032,8 @@ function DataPanel() {
       const data = (err as { data?: { message?: string } })?.data;
       Alert.alert(
         "Import failed",
-        data?.message ?? (err instanceof Error ? err.message : "Please try again."),
+        data?.message ??
+          (err instanceof Error ? err.message : "Please try again."),
       );
     } finally {
       setIsUploading(false);
@@ -588,7 +1052,9 @@ function DataPanel() {
 
       {/* Export */}
       <View className="rounded-2xl border border-border bg-card p-4">
-        <Text className="text-[14px] font-medium text-foreground">Export your data</Text>
+        <Text className="text-[14px] font-medium text-foreground">
+          Export your data
+        </Text>
         <View className="mt-3 flex-row gap-1.5">
           {FORMAT_OPTIONS.map((option) => (
             <Pressable
@@ -604,12 +1070,18 @@ function DataPanel() {
               <Icon
                 as={option.icon}
                 size={16}
-                className={exportFormat === option.value ? "text-primary" : "text-muted-foreground"}
+                className={
+                  exportFormat === option.value
+                    ? "text-primary"
+                    : "text-muted-foreground"
+                }
               />
               <Text
                 className={cn(
                   "text-[11.5px] font-medium",
-                  exportFormat === option.value ? "text-primary" : "text-muted-foreground",
+                  exportFormat === option.value
+                    ? "text-primary"
+                    : "text-muted-foreground",
                 )}
               >
                 {option.label}
@@ -643,7 +1115,8 @@ function DataPanel() {
                     {row.format}
                     {row.byteSize ? (
                       <Text className="text-[12px] font-normal text-muted-foreground">
-                        {"  "}{formatBytes(row.byteSize)}
+                        {"  "}
+                        {formatBytes(row.byteSize)}
                       </Text>
                     ) : null}
                   </Text>
@@ -652,7 +1125,7 @@ function DataPanel() {
                       ? "Preparing…"
                       : row.status === "ready"
                         ? new Date(row.createdAt).toLocaleString()
-                        : row.errorMessage ?? "Failed"}
+                        : (row.errorMessage ?? "Failed")}
                   </Text>
                 </View>
                 {row.status === "processing" ? (
@@ -660,13 +1133,17 @@ function DataPanel() {
                 ) : row.status === "ready" && row.hasFile ? (
                   <Pressable
                     disabled={downloadingId !== null}
-                    onPress={() => void handleDownload(row._id, row.format as ExportFormat)}
+                    onPress={() =>
+                      void handleDownload(row._id, row.format as ExportFormat)
+                    }
                     className="rounded-full bg-primary/15 px-3 py-1.5 active:opacity-80"
                   >
                     {downloadingId === row._id ? (
                       <ActivityIndicator size="small" />
                     ) : (
-                      <Text className="text-[12px] font-semibold text-primary">Download</Text>
+                      <Text className="text-[12px] font-semibold text-primary">
+                        Download
+                      </Text>
                     )}
                   </Pressable>
                 ) : null}
@@ -674,12 +1151,19 @@ function DataPanel() {
                   hitSlop={8}
                   onPress={() =>
                     void deleteExport({ exportId: row._id }).catch(() =>
-                      Alert.alert("Couldn't delete export", "Please try again."),
+                      Alert.alert(
+                        "Couldn't delete export",
+                        "Please try again.",
+                      ),
                     )
                   }
                   className="h-7 w-7 items-center justify-center rounded-md active:bg-accent"
                 >
-                  <Icon as={Trash2} size={14} className="text-muted-foreground" />
+                  <Icon
+                    as={Trash2}
+                    size={14}
+                    className="text-muted-foreground"
+                  />
                 </Pressable>
               </View>
             ))}
@@ -689,7 +1173,9 @@ function DataPanel() {
 
       {/* Import */}
       <View className="rounded-2xl border border-border bg-card p-4">
-        <Text className="text-[14px] font-medium text-foreground">Import history</Text>
+        <Text className="text-[14px] font-medium text-foreground">
+          Import history
+        </Text>
         <View className="mt-3 flex-row gap-1.5">
           {IMPORT_PROVIDERS.map((provider) => (
             <Pressable
@@ -705,7 +1191,9 @@ function DataPanel() {
               <Text
                 className={cn(
                   "text-[12.5px] font-medium",
-                  importProvider === provider.value ? "text-primary" : "text-muted-foreground",
+                  importProvider === provider.value
+                    ? "text-primary"
+                    : "text-muted-foreground",
                 )}
               >
                 {provider.label}
@@ -714,8 +1202,11 @@ function DataPanel() {
           ))}
         </View>
         <Text className="mt-2 text-[11.5px] leading-4 text-muted-foreground">
-          Upload {IMPORT_PROVIDERS.find((p) => p.value === importProvider)?.hint}.
-          {uploadLimit ? ` Up to ${formatBytes(uploadLimit.limitBytes)} on your plan.` : ""}
+          Upload{" "}
+          {IMPORT_PROVIDERS.find((p) => p.value === importProvider)?.hint}.
+          {uploadLimit
+            ? ` Up to ${formatBytes(uploadLimit.limitBytes)} on your plan.`
+            : ""}
         </Text>
 
         {activeImport ? (
@@ -723,13 +1214,16 @@ function DataPanel() {
             <View className="flex-row items-center gap-2">
               <ActivityIndicator size="small" />
               <Text className="flex-1 text-[12.5px] text-foreground">
-                Importing… {activeImport.processedConversations}/{activeImport.totalConversations || "?"} conversations
+                Importing… {activeImport.processedConversations}/
+                {activeImport.totalConversations || "?"} conversations
               </Text>
             </View>
             <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
               <View
                 className="h-full rounded-full bg-primary"
-                style={{ width: `${Math.round((activeImport.progress ?? 0) * 100)}%` }}
+                style={{
+                  width: `${Math.round((activeImport.progress ?? 0) * 100)}%`,
+                }}
               />
             </View>
           </View>
@@ -739,7 +1233,9 @@ function DataPanel() {
             onPress={() => void handleImport()}
             className={cn(
               "mt-3 h-10 flex-row items-center justify-center gap-2 rounded-xl border",
-              isUploading ? "border-border bg-secondary" : "border-border active:bg-accent",
+              isUploading
+                ? "border-border bg-secondary"
+                : "border-border active:bg-accent",
             )}
           >
             {isUploading ? (
@@ -769,22 +1265,32 @@ function UsageBar({
   note?: string;
 }) {
   const unlimited = limit == null;
-  const pct = unlimited || limit === 0 ? 0 : Math.min(100, Math.round((used / limit) * 100));
+  const pct =
+    unlimited || limit === 0
+      ? 0
+      : Math.min(100, Math.round((used / limit) * 100));
   return (
     <View>
       <View className="mb-1.5 flex-row justify-between">
-        <Text className="text-[13.5px] font-medium text-foreground">{label}</Text>
+        <Text className="text-[13.5px] font-medium text-foreground">
+          {label}
+        </Text>
         <Text className="text-[13.5px] text-muted-foreground">
           {used} / {unlimited ? "Unlimited" : limit}
         </Text>
       </View>
       {!unlimited ? (
         <View className="h-2 overflow-hidden rounded-full bg-secondary">
-          <View className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} />
+          <View
+            className="h-full rounded-full bg-primary"
+            style={{ width: `${pct}%` }}
+          />
         </View>
       ) : null}
       {note ? (
-        <Text className="mt-1.5 text-[11.5px] leading-4 text-muted-foreground/80">{note}</Text>
+        <Text className="mt-1.5 text-[11.5px] leading-4 text-muted-foreground/80">
+          {note}
+        </Text>
       ) : null}
     </View>
   );

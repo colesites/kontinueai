@@ -61,9 +61,10 @@ export const CONNECTORS: ConnectorDef[] = [
 	{
 		provider: "google_sheets",
 		name: "Google Sheets",
-		description: "Read and update your spreadsheets.",
+		description: "Read, create and update spreadsheets from chat.",
 		logo: { kind: "single", src: `${BASE}/google-sheets.svg` },
-		status: "coming_soon",
+		status: "available",
+		startPath: "/api/connectors/google_sheets/start",
 	},
 	{
 		provider: "notion",

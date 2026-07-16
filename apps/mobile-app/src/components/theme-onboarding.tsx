@@ -30,14 +30,17 @@ export function ThemeOnboarding() {
 
   useEffect(() => {
     let active = true;
-    SecureStore.getItemAsync(ONBOARDING_KEY).then((done) => {
-      if (active && !done) {
-        const t = setTimeout(() => setOpen(true), 500);
-        return () => clearTimeout(t);
-      }
-    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    SecureStore.getItemAsync(ONBOARDING_KEY)
+      .then((done) => {
+        if (active && !done) timer = setTimeout(() => setOpen(true), 500);
+      })
+      .catch((error) => {
+        console.warn("[theme-onboarding] preference unavailable", error);
+      });
     return () => {
       active = false;
+      if (timer) clearTimeout(timer);
     };
   }, []);
 
@@ -53,7 +56,13 @@ export function ThemeOnboarding() {
   };
 
   return (
-    <Modal visible={open} transparent animationType="fade" statusBarTranslucent onRequestClose={finish}>
+    <Modal
+      visible={open}
+      transparent
+      animationType="fade"
+      statusBarTranslucent
+      onRequestClose={finish}
+    >
       <View className="flex-1 items-center justify-center bg-black/60 px-6">
         <View className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-popover">
           <View className="h-px bg-primary/50" />
@@ -65,8 +74,8 @@ export function ThemeOnboarding() {
               Choose your theme
             </Text>
             <Text className="mt-2 text-[13px] leading-5 text-muted-foreground">
-              Pick a color palette that feels like you. You can change this anytime from the theme
-              menu.
+              Pick a color palette that feels like you. You can change this
+              anytime from the theme menu.
             </Text>
 
             <View className="mt-5 gap-1.5">
@@ -83,7 +92,10 @@ export function ThemeOnboarding() {
                         : "border border-border active:bg-accent",
                     )}
                   >
-                    <View className="h-9 w-9 rounded-full" style={{ backgroundColor: THEME_SWATCH[t] }} />
+                    <View
+                      className="h-9 w-9 rounded-full"
+                      style={{ backgroundColor: THEME_SWATCH[t] }}
+                    />
                     <View className="flex-1">
                       <Text className="text-[14px] font-medium text-foreground">
                         {THEME_LABELS[t]}
@@ -94,7 +106,12 @@ export function ThemeOnboarding() {
                     </View>
                     {isSelected ? (
                       <View className="h-6 w-6 items-center justify-center rounded-full bg-primary">
-                        <Icon as={Check} size={13} strokeWidth={3} className="text-primary-foreground" />
+                        <Icon
+                          as={Check}
+                          size={13}
+                          strokeWidth={3}
+                          className="text-primary-foreground"
+                        />
                       </View>
                     ) : null}
                   </Pressable>
@@ -106,7 +123,9 @@ export function ThemeOnboarding() {
               onPress={finish}
               className="mt-6 h-12 items-center justify-center rounded-xl bg-primary active:opacity-90"
             >
-              <Text className="text-[15px] font-semibold text-primary-foreground">Continue</Text>
+              <Text className="text-[15px] font-semibold text-primary-foreground">
+                Continue
+              </Text>
             </Pressable>
           </View>
         </View>

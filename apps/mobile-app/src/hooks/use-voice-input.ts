@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 
+import { getMobileSpeechLanguage } from "@/lib/speech-settings";
+
 type SpeechModule = typeof import("expo-speech-recognition");
 
 // Lazy-load so the app still runs in Expo Go (the native module only exists
@@ -22,7 +24,9 @@ function getSpeechModule(): SpeechModule | null {
  * Voice input via the platform speech recognizer. `onTranscript` receives the
  * live transcript (interim while speaking, final on end).
  */
-export function useVoiceInput(onTranscript: (text: string, isFinal: boolean) => void) {
+export function useVoiceInput(
+  onTranscript: (text: string, isFinal: boolean) => void,
+) {
   const [isListening, setIsListening] = useState(false);
   const onTranscriptRef = useRef(onTranscript);
   useEffect(() => {
@@ -71,11 +75,16 @@ export function useVoiceInput(onTranscript: (text: string, isFinal: boolean) => 
     const permission =
       await speech.ExpoSpeechRecognitionModule.requestPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert("Microphone needed", "Allow microphone access to use voice input.");
+      Alert.alert(
+        "Microphone needed",
+        "Allow microphone access to use voice input.",
+      );
       return;
     }
     setIsListening(true);
+    const language = await getMobileSpeechLanguage();
     speech.ExpoSpeechRecognitionModule.start({
+      lang: language === "auto" ? undefined : language,
       interimResults: true,
       continuous: false,
     });
