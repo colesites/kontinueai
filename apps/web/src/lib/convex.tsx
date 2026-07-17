@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { ConvexReactClient } from "convex/react";
+import { ConvexProvider, ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import React from "react";
 
@@ -69,6 +69,18 @@ export function ConvexClientProvider({
 			<AuthAwareBoundary>{children}</AuthAwareBoundary>
 		</ConvexProviderWithClerk>
 	);
+}
+
+export function PublicConvexClientProvider({
+	children,
+}: {
+	children: React.ReactNode;
+}) {
+	if (!convex) {
+		return <>{children}</>;
+	}
+
+	return <ConvexProvider client={convex}>{children}</ConvexProvider>;
 }
 
 export { convex };

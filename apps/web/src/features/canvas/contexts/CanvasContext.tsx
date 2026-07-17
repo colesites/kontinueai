@@ -1,6 +1,12 @@
 "use client";
 
-import { createContext, type ReactNode, useContext, useState } from "react";
+import {
+	createContext,
+	type ReactNode,
+	useContext,
+	useMemo,
+	useState,
+} from "react";
 
 interface CanvasContextValue {
 	tab: "community" | "mine";
@@ -11,11 +17,10 @@ const CanvasContext = createContext<CanvasContextValue | undefined>(undefined);
 
 export function CanvasProvider({ children }: { children: ReactNode }) {
 	const [tab, setTab] = useState<"community" | "mine">("community");
+	const value = useMemo(() => ({ tab, setTab }), [tab]);
 
 	return (
-		<CanvasContext.Provider value={{ tab, setTab }}>
-			{children}
-		</CanvasContext.Provider>
+		<CanvasContext.Provider value={value}>{children}</CanvasContext.Provider>
 	);
 }
 

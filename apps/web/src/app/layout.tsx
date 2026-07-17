@@ -3,11 +3,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
 import { Suspense } from "react";
-import { Toaster } from "sonner";
-import { ThemeProvider } from "../components/theme-provider";
-import { Providers } from "./providers";
 import "./globals.css";
-import LoadingFallback from "../components/LoadingFallback";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://kontinueai.com";
 const siteTitle = "Kontinue AI";
@@ -76,19 +72,11 @@ export default function RootLayout({
 				</Script>
 			</head>
 			<body className="antialiased bg-background text-foreground">
-				<ThemeProvider
-					attribute="class"
-					defaultTheme="system"
-					enableSystem
-					disableTransitionOnChange
-				>
-					<Suspense fallback={<LoadingFallback />}>
-						<Providers>{children}</Providers>
-					</Suspense>
-					<Toaster richColors theme="system" />
-				</ThemeProvider>
-				<Analytics />
-				<SpeedInsights />
+				{children}
+				<Suspense fallback={null}>
+					<Analytics />
+					<SpeedInsights />
+				</Suspense>
 			</body>
 		</html>
 	);

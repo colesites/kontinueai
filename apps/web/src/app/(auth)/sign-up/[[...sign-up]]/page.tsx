@@ -1,13 +1,16 @@
 import { SignUp } from "@clerk/nextjs";
+import { AuthScaffold } from "../../../../components/AuthScaffold";
 
 export default function SignUpPage() {
 	return (
-		<SignUp
-			appearance={{
-				elements: {
-					rootBox: "mx-auto",
-				},
-			}}
-		/>
+		<AuthScaffold subtitle="Create an account to get started">
+			<SignUp
+				appearance={{
+					elements: {
+						rootBox: "mx-auto",
+					},
+				}}
+			/>
+		</AuthScaffold>
 	);
 }

@@ -1,40 +1,49 @@
 import { auth } from "@clerk/nextjs/server";
 import type { Metadata } from "next";
-import { cookies, headers } from "next/headers";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
-import LoadingFallback from "../../components/LoadingFallback";
+import { AppRouteFallback } from "../../components/RouteLoadingFallbacks";
 import { isKodeComingSoon } from "../../features/kode/lib/availability";
 import { protectedAppRedirect } from "../../lib/auth-routing";
+import { AppProviders } from "../data-providers";
+import { Providers } from "../providers";
 import { AppShell } from "./AppShell";
 
 export const metadata: Metadata = {
 	title: "Kontinue AI - Chat",
 };
 
-export default async function AppLayout({
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+	return (
+		<Suspense fallback={<AppRouteFallback />}>
+			<AuthenticatedAppLayout>{children}</AuthenticatedAppLayout>
+		</Suspense>
+	);
+}
+
+async function AuthenticatedAppLayout({
 	children,
 }: {
 	children: React.ReactNode;
 }) {
-	// Check auth at page level - more secure than proxy
-	const { userId } = await auth();
+	// These request APIs are independent. Starting them together removes a
+	// request-time waterfall on every authenticated page.
+	const [authState, cookieStore] = await Promise.all([auth(), cookies()]);
 
-	const authRedirect = protectedAppRedirect(userId);
+	const authRedirect = protectedAppRedirect(authState.userId);
 	if (authRedirect) redirect(authRedirect);
 
-	const headerList = await headers();
-	const host = headerList.get("host") || "";
-
-	const cookieStore = await cookies();
 	const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
-	const kodeComingSoon = isKodeComingSoon(host);
+	const kodeComingSoon = isKodeComingSoon(null);
 
 	return (
-		<Suspense fallback={<LoadingFallback />}>
-			<AppShell defaultOpen={defaultOpen} kodeComingSoon={kodeComingSoon}>
-				{children}
-			</AppShell>
-		</Suspense>
+		<Providers>
+			<AppProviders>
+				<AppShell defaultOpen={defaultOpen} kodeComingSoon={kodeComingSoon}>
+					{children}
+				</AppShell>
+			</AppProviders>
+		</Providers>
 	);
 }

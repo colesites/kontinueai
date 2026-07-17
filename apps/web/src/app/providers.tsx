@@ -2,13 +2,9 @@
 
 import { ClerkProvider } from "@clerk/nextjs";
 import { dark } from "@clerk/themes";
-import { QueryProvider } from "@repo/core/query-provider";
-import { TooltipProvider } from "@repo/ui/components/ui/tooltip";
+import { Toaster } from "sonner";
 import { useClerkTheme } from "../components/ClerkThemeProvider";
-import { ThemeInit } from "../components/ThemeInit";
-import { ThemeOnboarding } from "../components/ThemeOnboarding";
-import { CanvasProvider } from "../features/canvas/contexts/CanvasContext";
-import { ConvexClientProvider } from "../lib/convex";
+import { ThemeProvider } from "../components/theme-provider";
 
 function ClerkWrapper({ children }: { children: React.ReactNode }) {
 	const clerkTheme = useClerkTheme();
@@ -28,18 +24,22 @@ function ClerkWrapper({ children }: { children: React.ReactNode }) {
 
 export function Providers({ children }: { children: React.ReactNode }) {
 	return (
-		<ClerkWrapper>
-			<QueryProvider>
-				<ConvexClientProvider>
-					<TooltipProvider>
-						<CanvasProvider>
-							<ThemeInit />
-							<ThemeOnboarding />
-							{children}
-						</CanvasProvider>
-					</TooltipProvider>
-				</ConvexClientProvider>
-			</QueryProvider>
-		</ClerkWrapper>
+		<ThemeProviders>
+			<ClerkWrapper>{children}</ClerkWrapper>
+		</ThemeProviders>
+	);
+}
+
+export function ThemeProviders({ children }: { children: React.ReactNode }) {
+	return (
+		<ThemeProvider
+			attribute="class"
+			defaultTheme="system"
+			enableSystem
+			disableTransitionOnChange
+		>
+			{children}
+			<Toaster richColors theme="system" />
+		</ThemeProvider>
 	);
 }

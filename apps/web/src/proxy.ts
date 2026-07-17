@@ -49,9 +49,11 @@ export async function proxy(request: NextRequest, event: NextFetchEvent) {
 
 export const config = {
 	matcher: [
-		// Standard Next.js/Clerk recommended matcher
-		"/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+		// Public auth screens do not call server-side auth(). Keep them on the
+		// static/CDN path instead of invoking Clerk middleware before every load.
+		"/((?!_next|sign-in(?:/|$)|sign-up(?:/|$)|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
 		"/(api|trpc)(.*)",
+		"/__clerk/(.*)",
 		"/api-proxy/:path*",
 	],
 };

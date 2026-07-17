@@ -3,7 +3,9 @@
 import React, {
 	createContext,
 	type ReactNode,
+	useCallback,
 	useContext,
+	useMemo,
 	useState,
 } from "react";
 
@@ -24,23 +26,22 @@ export function ChatProvider({
 	const [chatId, setChatId] = useState<string | null>(null);
 	const [chatTitle, setChatTitle] = useState<string | null>(null);
 
-	const setChatInfo = (id: string, title: string) => {
+	const setChatInfo = useCallback((id: string, title: string) => {
 		setChatId(id);
 		setChatTitle(title);
-	};
+	}, []);
 
-	const clearChatInfo = () => {
+	const clearChatInfo = useCallback(() => {
 		setChatId(null);
 		setChatTitle(null);
-	};
+	}, []);
 
-	return (
-		<ChatContext.Provider
-			value={{ chatId, chatTitle, setChatInfo, clearChatInfo }}
-		>
-			{children}
-		</ChatContext.Provider>
+	const value = useMemo(
+		() => ({ chatId, chatTitle, setChatInfo, clearChatInfo }),
+		[chatId, chatTitle, setChatInfo, clearChatInfo],
 	);
+
+	return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
 
 export function useChatContext() {

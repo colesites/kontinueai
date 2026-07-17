@@ -1,6 +1,4 @@
 "use client";
-
-import { useUser } from "@clerk/nextjs";
 import {
 	SidebarInset,
 	SidebarProvider,
@@ -12,13 +10,22 @@ import { Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import LoadingFallback from "../../components/LoadingFallback";
 import { ModeToggle } from "../../components/ModeToggle";
 import { ShareButton } from "../../components/ShareButton";
 import { Sidebar as AppSidebar } from "../../components/Sidebar";
 import { UserSync } from "../../components/UserSync";
 import { PushNotificationsProvider } from "../../features/tasks/hooks/usePushNotifications";
 import { ChatProvider, useChatContext } from "../../providers/ChatProvider";
+
+function focusSidebarSearch() {
+	const input = document.getElementById(
+		"sidebar-thread-search",
+	) as HTMLInputElement | null;
+	if (!input) return;
+	input.focus();
+	const valueLength = input.value.length;
+	input.setSelectionRange(valueLength, valueLength);
+}
 
 export function AppShell({
 	children,
@@ -29,12 +36,6 @@ export function AppShell({
 	defaultOpen?: boolean;
 	kodeComingSoon?: boolean;
 }) {
-	const { isLoaded } = useUser();
-
-	if (!isLoaded) {
-		return <LoadingFallback />;
-	}
-
 	return (
 		<ChatProvider>
 			<UserSync />
@@ -78,16 +79,6 @@ function ShellLayout({
 
 	const toolbarButtonClasses =
 		"inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground transition-all duration-150 hover:bg-foreground/8 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40";
-
-	const focusSidebarSearch = () => {
-		const input = document.getElementById(
-			"sidebar-thread-search",
-		) as HTMLInputElement | null;
-		if (!input) return;
-		input.focus();
-		const valueLength = input.value.length;
-		input.setSelectionRange(valueLength, valueLength);
-	};
 
 	const handleSearchClick = () => {
 		if (isMobile && !openMobile) {
