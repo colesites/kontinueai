@@ -17,7 +17,6 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import * as WebBrowser from "expo-web-browser";
 import { useRouter, type Href } from "expo-router";
 import { useClerk, useUser } from "@clerk/expo";
 import { useAction, useMutation, useQuery } from "convex/react";
@@ -34,6 +33,7 @@ import {
   type MemoryType,
 } from "@repo/core/memory";
 import {
+  ArrowLeft,
   ChevronRight,
   Check,
   Copy,
@@ -54,7 +54,7 @@ import {
   Upload,
 } from "lucide-react-native";
 
-import { ScreenHeader } from "@/components/screen-header";
+import { useTheme } from "@/components/theme-provider";
 import { API_BASE_URL } from "@/lib/chat-api";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Icon } from "@/components/ui/icon";
@@ -90,39 +90,67 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
-      <ScreenHeader title="Settings" right={<ModeToggle />} />
+      <View className="flex-row items-center justify-between gap-2 px-4 py-3">
+        <Pressable
+          onPress={() => router.back()}
+          className="min-h-11 flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/4 px-3.5 active:bg-foreground/8"
+        >
+          <Icon as={ArrowLeft} size={16} className="text-muted-foreground" />
+          <Text className="text-[13px] font-medium text-muted-foreground">Back to chat</Text>
+        </Pressable>
+        <View className="flex-row items-center gap-1">
+          <ModeToggle />
+          <Pressable
+            onPress={() => void signOut()}
+            className="min-h-11 flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/4 px-3.5 active:bg-destructive/10"
+          >
+            <Icon as={LogOut} size={15} className="text-destructive" />
+            <Text className="text-[13px] font-medium text-destructive">Sign out</Text>
+          </Pressable>
+        </View>
+      </View>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerClassName="px-4 pb-10 gap-5"
         showsVerticalScrollIndicator={false}
       >
+        <View className="pb-1 pt-2">
+          <Text className="text-[10.5px] font-semibold uppercase tracking-[2.5px] text-primary">Settings</Text>
+          <Text className="mt-2 text-[26px] font-semibold tracking-tight text-foreground">Your account</Text>
+          <Text className="mt-1.5 text-[13.5px] text-muted-foreground">Manage your profile, usage, memory, and data.</Text>
+        </View>
+
         {/* Profile card */}
-        <View className="items-center rounded-2xl border border-border bg-card px-4 py-6">
+        <View className="relative flex-row items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card px-4 py-5">
+          <View className="absolute -top-10 left-0 right-0 h-24 bg-primary/8" />
           {user?.imageUrl ? (
             <Image
               source={{ uri: user.imageUrl }}
-              style={{ width: 72, height: 72, borderRadius: 36 }}
+              style={{ width: 64, height: 64, borderRadius: 32 }}
             />
           ) : (
             <View
-              className="h-18 w-18 items-center justify-center rounded-full bg-primary"
-              style={{ width: 72, height: 72 }}
+              className="items-center justify-center rounded-full border border-primary/25 bg-primary/15"
+              style={{ width: 64, height: 64 }}
             >
-              <Text className="text-[26px] font-bold text-primary-foreground">
+              <Text className="text-[23px] font-semibold text-primary">
                 {initial}
               </Text>
             </View>
           )}
-          <Text className="mt-4 text-[19px] font-bold text-foreground">
-            {displayName}
-          </Text>
-          <Text className="mt-1 text-[13px] text-muted-foreground">
-            {email}
-          </Text>
-          <View className="mt-3 rounded-lg bg-secondary px-3 py-1.5">
-            <Text className="text-[12px] font-semibold text-foreground">
-              {planLabel(planTier)} Plan
+          <View className="min-w-0 flex-1">
+            <Text numberOfLines={1} className="text-[18px] font-semibold tracking-tight text-foreground">
+              {displayName}
             </Text>
+            <Text numberOfLines={1} className="mt-1 text-[13px] text-muted-foreground">
+              {email}
+            </Text>
+            <View className="mt-3 self-start flex-row items-center gap-1.5 rounded-full border border-primary/20 bg-primary/12 px-2.5 py-1">
+              {planTier !== "free" ? <Icon as={Sparkles} size={11} className="text-primary" /> : null}
+              <Text className="text-[10.5px] font-semibold uppercase tracking-wider text-primary">
+                {planLabel(planTier)} Plan
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -132,18 +160,22 @@ export default function SettingsScreen() {
             Current plan
           </Text>
           <Text className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
-            {planTier === "free"
-              ? "You are on the free plan. Upgrade when you need more limits."
-              : `You are on the ${planLabel(planTier)} plan.`}
+            {planTier === "max"
+              ? "You have our highest limits, full Kode, Canvas, and 120 minutes of Live."
+              : planTier === "pro"
+                ? "You have Frontier models, Kode Lite, Canvas, and Kontinue Live."
+                : planTier === "plus"
+                  ? "You have the wider Basic and Pro model catalogue."
+                  : planTier === "starter"
+                    ? "You have three fast Basic models and higher everyday limits."
+                    : "You are on Free with K-AI and clear monthly limits."}
           </Text>
           <Pressable
-            onPress={() =>
-              void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`)
-            }
+            onPress={() => router.push("/pricing" as Href)}
             className="mt-3 self-start rounded-lg border border-primary/40 bg-primary/10 px-3.5 py-2 active:opacity-80"
           >
             <Text className="text-[13px] font-semibold text-primary">
-              View pricing
+              {planTier === "max" ? "View plans" : "Upgrade plan"}
             </Text>
           </Pressable>
         </View>
@@ -203,9 +235,7 @@ export default function SettingsScreen() {
           </Pressable>
           {planTier === "free" ? (
             <Pressable
-              onPress={() =>
-                void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`)
-              }
+              onPress={() => router.push("/pricing" as Href)}
               className="mt-2 flex-row items-center gap-3 rounded-2xl border border-primary/40 bg-primary/10 px-4 py-3.5 active:opacity-80"
             >
               <Icon as={Sparkles} size={18} className="text-primary" />
@@ -361,6 +391,7 @@ function SpeechLanguagePicker({
   onClose: () => void;
   onSelect: (value: string) => void;
 }) {
+  const { mutedForeground } = useTheme();
   const [search, setSearch] = useState("");
   const options = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -411,7 +442,7 @@ function SpeechLanguagePicker({
               value={search}
               onChangeText={setSearch}
               placeholder="Search languages"
-              placeholderTextColor="#7c6c77"
+              placeholderTextColor={mutedForeground}
               className="ml-2 flex-1 text-[14px] text-foreground"
             />
           </View>
@@ -460,6 +491,7 @@ function SpeechLanguageRow({
 }
 
 function InvitePanel() {
+  const { primaryForeground } = useTheme();
   const summary = useQuery(api.referrals.getReferralSummary, {});
   const ensureCode = useMutation(api.referrals.ensureReferralCode);
   const [creating, setCreating] = useState(false);
@@ -548,7 +580,7 @@ function InvitePanel() {
             className="min-h-12 flex-row items-center justify-center gap-2 rounded-xl bg-primary active:opacity-90"
           >
             {creating ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <ActivityIndicator size="small" color={primaryForeground} />
             ) : (
               <Icon
                 as={UserPlus}
@@ -587,6 +619,7 @@ function InviteStat({ label, value }: { label: string; value: number }) {
 }
 
 function ContactPanel({ onFeedback }: { onFeedback: () => void }) {
+  const router = useRouter();
   const actions = [
     { label: "Send feedback", icon: MessageSquare, onPress: onFeedback },
     {
@@ -597,18 +630,12 @@ function ContactPanel({ onFeedback }: { onFeedback: () => void }) {
     {
       label: "Privacy policy",
       icon: FileText,
-      onPress: () =>
-        void WebBrowser.openBrowserAsync(
-          `${API_BASE_URL}/settings/privacy-policy`,
-        ),
+      onPress: () => router.push("/legal/privacy" as Href),
     },
     {
       label: "Terms of service",
       icon: FileText,
-      onPress: () =>
-        void WebBrowser.openBrowserAsync(
-          `${API_BASE_URL}/settings/terms-of-service`,
-        ),
+      onPress: () => router.push("/legal/terms" as Href),
     },
   ];
   return (
@@ -654,6 +681,7 @@ function ContactPanel({ onFeedback }: { onFeedback: () => void }) {
 // ── Memory ───────────────────────────────────────────────────────────────────
 
 function MemoryPanel() {
+  const { mutedForeground, primaryForeground } = useTheme();
   const [search, setSearch] = useState("");
   const [manualContent, setManualContent] = useState("");
   const [manualType, setManualType] = useState<MemoryType>("context");
@@ -785,7 +813,7 @@ function MemoryPanel() {
           onChangeText={setManualContent}
           multiline
           placeholder="Example: My startup is Kontinue AI and I want the assistant to remember that."
-          placeholderTextColor="#7c6c77"
+          placeholderTextColor={mutedForeground}
           className="min-h-20 rounded-xl border border-border bg-secondary px-3.5 py-3 text-[14px] text-foreground"
         />
         <Pressable
@@ -799,7 +827,7 @@ function MemoryPanel() {
           )}
         >
           {saving ? (
-            <ActivityIndicator size="small" color="#fff" />
+            <ActivityIndicator size="small" color={primaryForeground} />
           ) : (
             <Text className="text-[13.5px] font-semibold text-primary-foreground">
               Save memory
@@ -815,7 +843,7 @@ function MemoryPanel() {
           value={search}
           onChangeText={setSearch}
           placeholder="Search memories…"
-          placeholderTextColor="#7c6c77"
+          placeholderTextColor={mutedForeground}
           className="flex-1 text-[14px] text-foreground"
         />
       </View>
@@ -939,6 +967,7 @@ function DataPanel() {
   const uploadLimit = useQuery(api.imports.getUploadLimit, {});
   const prepareImport = useMutation(api.imports.prepareImport);
   const confirmImportUpload = useMutation(api.imports.confirmImportUpload);
+  const cancelImport = useMutation(api.imports.cancelImport);
   const createUploadUrl = useAction(api.importsWorker.createUploadUrl);
 
   const activeImport = importJobs?.find(
@@ -1226,6 +1255,19 @@ function DataPanel() {
                 }}
               />
             </View>
+            <Pressable
+              accessibilityLabel="Cancel import"
+              onPress={() =>
+                void cancelImport({ jobId: activeImport._id }).catch(() =>
+                  Alert.alert("Couldn't cancel import", "Please try again."),
+                )
+              }
+              className="mt-2 min-h-10 self-end justify-center px-2"
+            >
+              <Text className="text-[12px] font-semibold text-destructive">
+                Cancel import
+              </Text>
+            </Pressable>
           </View>
         ) : (
           <Pressable
@@ -1248,7 +1290,75 @@ function DataPanel() {
             </Text>
           </Pressable>
         )}
+
+        {(importJobs ?? []).length ? (
+          <View className="mt-3 gap-2">
+            {(importJobs ?? []).map((job) => (
+              <ImportJobRow key={job._id} jobId={job._id} />
+            ))}
+          </View>
+        ) : null}
       </View>
+    </View>
+  );
+}
+
+function ImportJobRow({ jobId }: { jobId: Id<"importJobs"> }) {
+  const detail = useQuery(api.imports.getImportJob, { jobId });
+  if (!detail) return null;
+
+  const { job, phase1, phase2, currentChunk } = detail;
+  const active = job.status === "queued" || job.status === "processing";
+  const percent = Math.round((job.progress ?? 0) * 100);
+  const statusColor =
+    job.status === "completed"
+      ? "#10b981"
+      : job.status === "failed"
+        ? "#ef4444"
+        : job.status === "canceled"
+          ? "#94a3b8"
+          : "#f59e0b";
+
+  return (
+    <View className="rounded-xl border border-border bg-secondary/40 p-3">
+      <View className="flex-row items-start justify-between gap-3">
+        <View className="min-w-0 flex-1">
+          <Text numberOfLines={1} className="text-[12.5px] font-medium text-foreground">
+            {job.sourceFilename ?? job.provider}
+          </Text>
+          <Text className="mt-0.5 text-[10.5px] capitalize" style={{ color: statusColor }}>
+            {active ? (job.currentStage ?? "Processing") : job.status}
+          </Text>
+        </View>
+        <Text className="text-[10.5px] tabular-nums text-muted-foreground">
+          {percent}%
+        </Text>
+      </View>
+      <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-background">
+        <View
+          className="h-full rounded-full"
+          style={{ width: `${percent}%`, backgroundColor: statusColor }}
+        />
+      </View>
+      <View className="mt-2 flex-row justify-between gap-3">
+        <Text className="text-[10.5px] text-muted-foreground">
+          Priority {phase1.done}/{phase1.total || 0} · Background {phase2.done}/
+          {phase2.total || 0}
+        </Text>
+        <Text className="text-[10.5px] text-muted-foreground">
+          {job.processedConversations}/{job.totalConversations || 0}
+        </Text>
+      </View>
+      {currentChunk && active ? (
+        <Text className="mt-1.5 text-[10.5px] italic text-muted-foreground">
+          Importing {currentChunk.chunkType} batch · {currentChunk.conversationCount} chats
+        </Text>
+      ) : null}
+      {job.status === "failed" && job.errorMessage ? (
+        <Text className="mt-2 text-[11px] leading-4 text-destructive">
+          {job.errorMessage}
+        </Text>
+      ) : null}
     </View>
   );
 }

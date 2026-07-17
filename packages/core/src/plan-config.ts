@@ -57,9 +57,9 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 	},
 	starter: {
 		name: "Starter",
-		priceMonthlyCents: 499,
-		priceAnnualCents: 4_800,
-		priceAnnualMonthlyCents: 400,
+		priceMonthlyCents: 599,
+		priceAnnualCents: 6_000,
+		priceAnnualMonthlyCents: 500,
 		monthlyRequests: { kai: 2_000, basic: 100, pro: 0, frontier: 0 },
 		contextTokens: { kai: 16_000, basic: 8_000, pro: 0, frontier: 0 },
 		maxOutputTokens: { kai: 2_000, basic: 1_000, pro: 0, frontier: 0 },

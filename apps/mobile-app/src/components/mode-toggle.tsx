@@ -34,7 +34,7 @@ function lighten(hex: string, ratio: number): string {
  * colored drop shadow. The radial highlight (top-left) and a soft white
  * specular blob give it depth that a flat fill can't.
  */
-function GlossySwatch({ id, color }: { id: string; color: string }) {
+export function GlossySwatch({ id, color }: { id: string; color: string }) {
   const fillId = `swatch-fill-${id}`;
   const sheenId = `swatch-sheen-${id}`;
   return (
@@ -43,11 +43,7 @@ function GlossySwatch({ id, color }: { id: string; color: string }) {
         width: 24,
         height: 24,
         borderRadius: 12,
-        shadowColor: color,
-        shadowOpacity: 0.5,
-        shadowRadius: 5,
-        shadowOffset: { width: 0, height: 2 },
-        elevation: 3,
+        boxShadow: `0 2px 5px ${color}80`,
       }}
     >
       <Svg width={24} height={24}>
@@ -80,10 +76,7 @@ function CheckPill({ active }: { active: boolean }) {
       style={{
         width: 20,
         height: 20,
-        shadowColor: "#000",
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-        shadowOffset: { width: 0, height: 2 },
+        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
       }}
     >
       <Icon as={Check} size={12} strokeWidth={3} className="text-primary-foreground" />

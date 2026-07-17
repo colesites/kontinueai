@@ -205,7 +205,7 @@ export function PlanCards() {
 							Annual
 						</span>
 						<span className="text-[10px] font-bold uppercase tracking-wide text-primary">
-							Save up to 20%
+							Save with annual
 						</span>
 					</div>
 				</fieldset>

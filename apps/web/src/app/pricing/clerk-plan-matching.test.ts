@@ -11,9 +11,9 @@ const plans = [
 		id: "cplan_starter",
 		slug: "starter_plan",
 		name: "Starter Plan",
-		fee: { amount: 499 },
-		annualFee: { amount: 4_800 },
-		annualMonthlyFee: { amount: 400 },
+		fee: { amount: 599 },
+		annualFee: { amount: 6_000 },
+		annualMonthlyFee: { amount: 500 },
 	},
 	{
 		id: "cplan_plus",
@@ -51,17 +51,17 @@ describe("Clerk pricing plan matching", () => {
 
 	test("requires Clerk's monthly amount to match the product price", () => {
 		const starter = findClerkPlanForTier(plans, "starter");
-		expect(clerkPlanMatchesMonthlyPrice(starter, 499)).toBe(true);
-		expect(clerkPlanMatchesMonthlyPrice(starter, 500)).toBe(false);
-		expect(clerkPlanMatchesMonthlyPrice(undefined, 499)).toBe(false);
+		expect(clerkPlanMatchesMonthlyPrice(starter, 599)).toBe(true);
+		expect(clerkPlanMatchesMonthlyPrice(starter, 499)).toBe(false);
+		expect(clerkPlanMatchesMonthlyPrice(undefined, 599)).toBe(false);
 	});
 
 	test("requires both Clerk annual amounts to match the product price", () => {
 		const starter = findClerkPlanForTier(plans, "starter");
-		expect(clerkPlanMatchesAnnualPrice(starter, 4_800, 400)).toBe(true);
-		expect(clerkPlanMatchesAnnualPrice(starter, 4_900, 400)).toBe(false);
-		expect(clerkPlanMatchesAnnualPrice(starter, 4_800, 401)).toBe(false);
-		expect(clerkPlanMatchesAnnualPrice(undefined, 4_800, 400)).toBe(false);
+		expect(clerkPlanMatchesAnnualPrice(starter, 6_000, 500)).toBe(true);
+		expect(clerkPlanMatchesAnnualPrice(starter, 4_800, 500)).toBe(false);
+		expect(clerkPlanMatchesAnnualPrice(starter, 6_000, 400)).toBe(false);
+		expect(clerkPlanMatchesAnnualPrice(undefined, 6_000, 500)).toBe(false);
 	});
 
 	test("validates the selected billing period", () => {

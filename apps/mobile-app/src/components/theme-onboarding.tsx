@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { Modal, Pressable, View } from "react-native";
 import * as SecureStore from "expo-secure-store";
-import { Check } from "lucide-react-native";
+import { Check, X } from "lucide-react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { useTheme } from "@/components/theme-provider";
+import { GlossySwatch } from "@/components/mode-toggle";
 import { THEMES, THEME_LABELS, THEME_SWATCH, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
@@ -65,8 +67,19 @@ export function ThemeOnboarding() {
     >
       <View className="flex-1 items-center justify-center bg-black/60 px-6">
         <View className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-popover">
-          <View className="h-px bg-primary/50" />
-          <View className="p-6">
+          <LinearGradient
+            colors={["transparent", THEME_SWATCH[selected], "transparent"]}
+            className="h-px"
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Close theme picker"
+            onPress={finish}
+            className="absolute right-4 top-4 z-10 h-11 w-11 items-center justify-center rounded-full border border-foreground/8 bg-foreground/5 active:bg-foreground/10"
+          >
+            <Icon as={X} size={16} className="text-muted-foreground" />
+          </Pressable>
+          <View className="px-7 pb-6 pt-7">
             <Text className="text-[11px] font-semibold uppercase tracking-widest text-primary">
               Personalize
             </Text>
@@ -92,10 +105,9 @@ export function ThemeOnboarding() {
                         : "border border-border active:bg-accent",
                     )}
                   >
-                    <View
-                      className="h-9 w-9 rounded-full"
-                      style={{ backgroundColor: THEME_SWATCH[t] }}
-                    />
+                    <View className={isSelected ? "rounded-full border-2 border-primary/40 p-1" : "p-1"}>
+                      <GlossySwatch id={`onboarding-${t}`} color={THEME_SWATCH[t]} />
+                    </View>
                     <View className="flex-1">
                       <Text className="text-[14px] font-medium text-foreground">
                         {THEME_LABELS[t]}
@@ -121,7 +133,7 @@ export function ThemeOnboarding() {
 
             <Pressable
               onPress={finish}
-              className="mt-6 h-12 items-center justify-center rounded-xl bg-primary active:opacity-90"
+              className="mt-7 h-12 items-center justify-center rounded-full bg-primary active:opacity-90"
             >
               <Text className="text-[15px] font-semibold text-primary-foreground">
                 Continue

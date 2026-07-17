@@ -1,10 +1,5 @@
 import { type ReactNode } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  View,
-} from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme } from "@/components/theme-provider";
@@ -47,17 +42,17 @@ export function AuthScaffold({
       />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1"
       >
         <ScrollView
-          contentContainerClassName="flex-grow justify-center px-6 py-14"
+          contentContainerClassName="flex-grow justify-center px-5 py-12"
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
           <FadeInUp>
-            <View className="items-center gap-3 mb-7">
-              <KontinueLogo height={32} />
+            <View className="mb-8 items-center gap-3.5">
+              <KontinueLogo height={34} />
               <View className="items-center gap-1.5">
                 <Text className="text-2xl font-semibold tracking-tight text-center">
                   {title}
@@ -74,13 +69,10 @@ export function AuthScaffold({
           <FadeInUp delay={80}>
             {/* Halo wrapper carries the primary glow shadow around the card. */}
             <View
+              className="w-full max-w-md self-center"
               style={{
                 borderRadius: 24,
-                shadowColor: primary,
-                shadowOpacity: isDark ? 0.28 : 0.18,
-                shadowRadius: 28,
-                shadowOffset: { width: 0, height: 8 },
-                elevation: 12,
+                boxShadow: `0 12px 36px ${primary}${isDark ? "38" : "24"}`,
               }}
             >
               <GlassView
@@ -89,22 +81,22 @@ export function AuthScaffold({
                   borderRadius: 24,
                   borderWidth: 1,
                   borderColor: isDark
-                    ? "rgba(255,255,255,0.10)"
-                    : "rgba(0,0,0,0.08)",
+                    ? "rgba(255,255,255,0.13)"
+                    : "rgba(15,23,42,0.10)",
                   backgroundColor: isDark
-                    ? "rgba(18,14,18,0.72)"
-                    : "rgba(255,251,253,0.78)",
+                    ? "rgba(18,14,18,0.86)"
+                    : "rgba(255,251,253,0.90)",
                 }}
               >
                 <AccentBar />
-                <View className="p-6 gap-5">{children}</View>
+                <View className="gap-[18px] p-5.5">{children}</View>
               </GlassView>
             </View>
           </FadeInUp>
 
           {footer ? (
             <FadeInUp delay={140}>
-              <View className="mt-6 items-center">{footer}</View>
+              <View className="mt-7 items-center">{footer}</View>
             </FadeInUp>
           ) : null}
         </ScrollView>

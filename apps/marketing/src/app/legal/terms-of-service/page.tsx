@@ -157,7 +157,7 @@ function TermsProductAndBilling() {
 					Paid Plans:
 				</h3>
 				<p>
-					Our current paid plans are Starter ($4.99/month), Plus ($19.99/month),
+					Our current paid plans are Starter ($5.99/month), Plus ($19.99/month),
 					Pro ($59.99/month), and Max ($149.99/month). They provide different
 					features and usage limits. By subscribing to a paid plan:
 				</p>

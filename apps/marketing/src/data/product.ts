@@ -100,6 +100,11 @@ export const product = {
 		socialLinks: [
 			{ name: "X", href: "https://x.com/kontinueai", icon: "/x.svg" },
 			{
+				name: "LinkedIn",
+				href: "https://www.linkedin.com/company/kontinue-ai/",
+				icon: "/linkedin.svg",
+			},
+			{
 				name: "Instagram",
 				href: "https://www.instagram.com/kontinueai/",
 				icon: "/instagram-icon.svg",

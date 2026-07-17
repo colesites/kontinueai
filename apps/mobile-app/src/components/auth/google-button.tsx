@@ -17,9 +17,13 @@ export function GoogleButton({
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       onPress={onPress}
       disabled={disabled}
-      className="h-12 flex-row items-center justify-center gap-3 rounded-xl border border-border bg-white active:opacity-90"
+      className="h-[52px] flex-row items-center justify-center gap-3 rounded-[14px] border border-[#d8dadd] bg-white active:opacity-90"
+      style={{ opacity: disabled ? 0.55 : 1 }}
     >
       {loading ? (
         <ActivityIndicator color="#1f1f1f" />

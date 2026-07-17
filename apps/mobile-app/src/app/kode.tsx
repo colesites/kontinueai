@@ -11,13 +11,20 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as WebBrowser from "expo-web-browser";
+import { useAuth } from "@clerk/expo";
+import { type Href, useRouter } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
+import type { Id } from "@repo/convex/convex/_generated/dataModel";
+import {
+  KODE_WEB_BUILD_CREDIT_RESERVATION,
+  KODE_WEB_PLAN_CREDIT_RESERVATION,
+} from "@repo/core/kode-web";
 import {
   Code2,
   ExternalLink,
   FileCode2,
+  Paperclip,
   Plus,
   Sparkles,
   Star,
@@ -25,9 +32,15 @@ import {
 } from "lucide-react-native";
 
 import { ScreenHeader } from "@/components/screen-header";
+import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { API_BASE_URL } from "@/lib/chat-api";
+import {
+  appendKodeAttachments,
+  pickKodeAttachments,
+  type KodeAttachment,
+} from "@/lib/kode-attachments";
 import { cn } from "@/lib/utils";
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
@@ -38,29 +51,51 @@ const STATUS_META: Record<string, { label: string; color: string }> = {
 };
 
 export default function KodeScreen() {
+  const { mutedForeground, primaryForeground } = useTheme();
+  const router = useRouter();
+  const { getToken } = useAuth();
   const projects = useQuery(api.kodeWeb.listProjects, { limit: 30 });
   const credits = useQuery(api.kodeWeb.getCredits, {});
   const createProject = useMutation(api.kodeWeb.createProject);
   const [composerOpen, setComposerOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [creating, setCreating] = useState(false);
+  const [mode, setMode] = useState<"build" | "plan">("build");
+  const [attachments, setAttachments] = useState<KodeAttachment[]>([]);
 
-  const openWorkspace = (projectId?: string) => {
-    const url = projectId
-      ? `${API_BASE_URL}/kode/${projectId}`
-      : `${API_BASE_URL}/kode`;
-    void WebBrowser.openBrowserAsync(url);
+  const openWorkspace = (projectId: Id<"kodeWebProjects">) => {
+    router.push(`/kode/${projectId}` as Href);
   };
 
   const create = async () => {
     const value = prompt.trim();
     if (value.length < 3 || creating) return;
     setCreating(true);
+    let projectId: Id<"kodeWebProjects"> | null = null;
     try {
-      const projectId = await createProject({ prompt: value });
+      projectId = await createProject({ prompt: value });
+      const token = await getToken();
+      if (!token) throw new Error("Your session could not be verified.");
+
+      const formData = new FormData();
+      formData.append("projectId", projectId);
+      formData.append("prompt", value);
+      formData.append("mode", mode);
+      appendKodeAttachments(formData, attachments);
+      const response = await fetch(`${API_BASE_URL}/api/kode/build`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+      const result = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        throw new Error(result.error ?? "Kode could not queue the project.");
+      }
+
       setPrompt("");
+      setAttachments([]);
       setComposerOpen(false);
-      openWorkspace(String(projectId));
+      openWorkspace(projectId);
     } catch (error) {
       const data = (error as { data?: { message?: string } })?.data;
       Alert.alert(
@@ -68,8 +103,19 @@ export default function KodeScreen() {
         data?.message ??
           (error instanceof Error ? error.message : "Please try again."),
       );
+      if (projectId) openWorkspace(projectId);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const attachFiles = async () => {
+    const result = await pickKodeAttachments(attachments.length);
+    if (result.rejected.length) {
+      Alert.alert("Some files weren't added", result.rejected.join("\n"));
+    }
+    if (result.attachments.length) {
+      setAttachments((current) => [...current, ...result.attachments]);
     }
   };
 
@@ -107,8 +153,8 @@ export default function KodeScreen() {
                 Build with Kode
               </Text>
               <Text className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
-                Start projects and follow builds from mobile. The full editor
-                opens in the web workspace.
+                Build, preview, edit, download, and refine complete web projects
+                without leaving the app.
               </Text>
             </View>
           </View>
@@ -130,9 +176,7 @@ export default function KodeScreen() {
               Upgrade to create and iterate on complete web projects with K-AI.
             </Text>
             <Pressable
-              onPress={() =>
-                void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`)
-              }
+              onPress={() => router.push("/pricing" as Href)}
               className="mt-5 min-h-11 flex-row items-center gap-2 rounded-xl bg-primary px-4 active:opacity-90"
             >
               <Text className="text-[13px] font-semibold text-primary-foreground">
@@ -158,16 +202,12 @@ export default function KodeScreen() {
             <View>
               <View className="mb-3 flex-row items-center justify-between">
                 <Text className="text-[15px] font-semibold text-foreground">
-                  Projects
+                  Your projects
                 </Text>
-                <Pressable
-                  onPress={() => openWorkspace()}
-                  className="min-h-11 justify-center px-2"
-                >
-                  <Text className="text-[12px] font-semibold text-primary">
-                    Open web Kode
-                  </Text>
-                </Pressable>
+                <Text className="text-[11.5px] text-muted-foreground">
+                  {projects?.length ?? 0} project
+                  {projects?.length === 1 ? "" : "s"}
+                </Text>
               </View>
               {projects === undefined ? (
                 <View className="gap-2">
@@ -250,7 +290,7 @@ export default function KodeScreen() {
                           </View>
                         </View>
                         <Icon
-                          as={ExternalLink}
+                          as={Code2}
                           size={16}
                           className="text-muted-foreground/60"
                         />
@@ -271,7 +311,7 @@ export default function KodeScreen() {
         onRequestClose={() => setComposerOpen(false)}
       >
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1 justify-end bg-black/55"
         >
           <View className="rounded-t-3xl border-t border-border bg-background px-5 pb-10 pt-4">
@@ -297,9 +337,83 @@ export default function KodeScreen() {
               multiline
               maxLength={8000}
               placeholder="Describe the app or site you want to build…"
-              placeholderTextColor="#7c6c77"
+              placeholderTextColor={mutedForeground}
               className="min-h-32 rounded-2xl border border-border bg-secondary px-4 py-3 text-[14px] leading-5 text-foreground"
             />
+            <View className="mt-3 flex-row flex-wrap items-center gap-2">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Attach code or text files"
+                onPress={() => void attachFiles()}
+                className="min-h-11 flex-row items-center gap-2 rounded-xl border border-border bg-secondary px-3"
+              >
+                <Icon
+                  as={Paperclip}
+                  size={15}
+                  className="text-muted-foreground"
+                />
+                <Text className="text-[12px] font-medium text-foreground">
+                  Attach files
+                </Text>
+              </Pressable>
+              {attachments.map((attachment) => (
+                <View
+                  key={attachment.uri}
+                  className="min-h-11 max-w-48 flex-row items-center gap-1.5 rounded-xl bg-primary/10 px-3"
+                >
+                  <Text
+                    numberOfLines={1}
+                    className="max-w-32 text-[11px] text-primary"
+                  >
+                    {attachment.name}
+                  </Text>
+                  <Pressable
+                    accessibilityLabel={`Remove ${attachment.name}`}
+                    hitSlop={8}
+                    onPress={() =>
+                      setAttachments((current) =>
+                        current.filter((item) => item.uri !== attachment.uri),
+                      )
+                    }
+                    className="h-7 w-7 items-center justify-center"
+                  >
+                    <Icon as={X} size={13} className="text-primary" />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+            <View className="mt-3 flex-row gap-2">
+              {(["build", "plan"] as const).map((option) => {
+                const selected = mode === option;
+                const cost =
+                  option === "build"
+                    ? KODE_WEB_BUILD_CREDIT_RESERVATION
+                    : KODE_WEB_PLAN_CREDIT_RESERVATION;
+                return (
+                  <Pressable
+                    key={option}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    onPress={() => setMode(option)}
+                    className={cn(
+                      "min-h-11 flex-1 items-center justify-center rounded-xl border px-3",
+                      selected
+                        ? "border-primary bg-primary/10"
+                        : "border-border bg-secondary",
+                    )}
+                  >
+                    <Text
+                      className={cn(
+                        "text-[12.5px] font-semibold capitalize",
+                        selected ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {option} · {cost} credits
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
             <Pressable
               disabled={prompt.trim().length < 3 || creating}
               onPress={() => void create()}
@@ -311,7 +425,7 @@ export default function KodeScreen() {
               )}
             >
               {creating ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={primaryForeground} />
               ) : (
                 <Icon
                   as={Sparkles}
@@ -320,7 +434,13 @@ export default function KodeScreen() {
                 />
               )}
               <Text className="text-[13.5px] font-semibold text-primary-foreground">
-                {creating ? "Creating…" : "Create and open workspace"}
+                {creating
+                  ? mode === "build"
+                    ? "Queueing build…"
+                    : "Queueing plan…"
+                  : mode === "build"
+                    ? "Build project"
+                    : "Create project plan"}
               </Text>
             </Pressable>
           </View>

@@ -6,6 +6,7 @@ import {
 } from "react";
 import { View } from "react-native";
 import { useColorScheme as useNativewindColorScheme, vars } from "nativewind";
+import * as SecureStore from "expo-secure-store";
 
 import {
   THEME_SWATCH,
@@ -22,15 +23,63 @@ type ThemeContextValue = {
   isDark: boolean;
   /** Active primary color (hex) for inline styles (icons, dots, glows). */
   primary: string;
+  primaryForeground: string;
+  background: string;
+  foreground: string;
+  mutedForeground: string;
+  border: string;
+  destructive: string;
 };
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
+const THEME_KEY = "kontinue-color-theme";
+const MODE_KEY = "kontinue-appearance-mode";
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const { colorScheme, setColorScheme } = useNativewindColorScheme();
   // Kontinue is dark-first.
   const [mode, setModeState] = useState<Mode>("dark");
   const [theme, setTheme] = useState<Theme>("default");
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      SecureStore.getItemAsync(MODE_KEY),
+      SecureStore.getItemAsync(THEME_KEY),
+    ])
+      .then(([savedMode, savedTheme]) => {
+        if (!active) return;
+        if (savedMode === "light" || savedMode === "dark" || savedMode === "system") {
+          setModeState(savedMode);
+        }
+        if (
+          savedTheme === "default" ||
+          savedTheme === "emerald" ||
+          savedTheme === "chelsea" ||
+          savedTheme === "amethyst" ||
+          savedTheme === "normal"
+        ) {
+          setTheme(savedTheme);
+        }
+      })
+      .catch(() => {
+        // Secure storage can be unavailable in a restricted development shell;
+        // keep the in-memory theme usable in that case.
+      })
+      .finally(() => {
+        if (active) setHydrated(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    void SecureStore.setItemAsync(MODE_KEY, mode);
+    void SecureStore.setItemAsync(THEME_KEY, theme);
+  }, [hydrated, mode, theme]);
 
   useEffect(() => {
     // nativewind accepts "system" at runtime even though its type omits it.
@@ -39,6 +88,21 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const isDark = mode === "system" ? colorScheme !== "light" : mode !== "light";
   const { primary, primaryForeground } = themePrimary(theme, isDark);
+  const surfaces = isDark
+    ? {
+        background: "#181217",
+        foreground: "#f5f1f3",
+        mutedForeground: "#b692a8",
+        border: "#49303e",
+        destructive: "#ef5350",
+      }
+    : {
+        background: "#ffffff",
+        foreground: "#251f23",
+        mutedForeground: "#765c6b",
+        border: "#d8c6d0",
+        destructive: "#d9363e",
+      };
 
   // No manual useMemo: React Compiler memoizes this (and couldn't preserve
   // the hand-written dependency list, which failed its lint).
@@ -49,6 +113,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setTheme,
     isDark,
     primary: theme === "default" ? THEME_SWATCH.default : primary,
+    primaryForeground,
+    ...surfaces,
   };
 
   return (

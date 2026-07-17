@@ -1,11 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import {
   Bot,
+  AudioLines,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +25,7 @@ import {
   Plug,
   Plus,
   SendHorizontal,
+  Square,
   X,
 } from "lucide-react-native";
 import { AGENTS } from "@repo/ai/lib/agents";
@@ -38,8 +47,6 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import type { PendingAttachment } from "@/lib/chat-attachments";
 
-const PLACEHOLDER_COLOR = { light: "#9b8893", dark: "#7c6c77" } as const;
-
 const CONNECTOR_NAMES: Record<string, string> = {
   github: "GitHub",
   notion: "Notion",
@@ -55,6 +62,8 @@ type ChatInputProps = {
   placeholder?: string;
   onSend?: (text: string) => void;
   disabled?: boolean;
+  isLoading?: boolean;
+  onStop?: () => void;
   /** Controlled value (used by voice input); falls back to internal state. */
   value?: string;
   onChangeText?: (text: string) => void;
@@ -79,6 +88,8 @@ export function ChatInput({
   placeholder = "Ask anything...",
   onSend,
   disabled = false,
+  isLoading = false,
+  onStop,
   value: controlledValue,
   onChangeText,
   selectedModel,
@@ -94,10 +105,14 @@ export function ChatInput({
   agentId = null,
   onAgentChange,
 }: ChatInputProps) {
-  const { isDark, primary } = useTheme();
+  const { isDark, primary, mutedForeground } = useTheme();
   const router = useRouter();
   const [internalValue, setInternalValue] = useState("");
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
+  const actionScale = useSharedValue(1);
+  const actionStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: actionScale.value }],
+  }));
   // Drill-in navigation inside the "+" menu, mirroring web's ChatInputTools.
   const [menuView, setMenuView] = useState<"root" | "agents" | "connectors">(
     "root",
@@ -109,6 +124,7 @@ export function ChatInput({
   const setValue = onChangeText ?? setInternalValue;
   const canSend =
     (value.trim().length > 0 || attachments.length > 0) && !disabled;
+  const showSubmitAction = value.trim().length > 0 || attachments.length > 0 || isLoading;
   const activeAgent = AGENTS.find((a) => a.id === agentId) ?? null;
   const connectedConnectors =
     connectors?.filter(
@@ -125,6 +141,13 @@ export function ChatInput({
     plusMenu.close();
     setMenuView("root");
   };
+
+  useEffect(() => {
+    actionScale.set(withSequence(
+      withTiming(0.82, { duration: 90 }),
+      withSpring(1, { damping: 15, stiffness: 240, mass: 0.55 }),
+    ));
+  }, [actionScale, showSubmitAction]);
 
   const insertConnectorMention = (provider: string) => {
     const mention = `@${provider}`;
@@ -144,20 +167,20 @@ export function ChatInput({
     // colored halo shadow around the card.
     <View
       style={{
-        borderRadius: 24,
+        borderRadius: 26,
         boxShadow: `0 6px 32px ${primary}73`,
       }}
     >
       <GlassView
         intensity={32}
         style={{
-          borderRadius: 24,
+          borderRadius: 26,
           borderWidth: 1,
           borderColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
           backgroundColor: isDark
             ? "rgba(12,9,12,0.40)"
             : "rgba(255,251,253,0.40)",
-          padding: 12,
+          padding: 10,
         }}
       >
         {attachments.length > 0 ? (
@@ -221,7 +244,7 @@ export function ChatInput({
           value={value}
           onChangeText={setValue}
           placeholder={isListening ? "Listening…" : placeholder}
-          placeholderTextColor={PLACEHOLDER_COLOR[isDark ? "dark" : "light"]}
+          placeholderTextColor={mutedForeground}
           multiline
           className="max-h-40 min-h-12 px-2 py-1.5 text-[16px] leading-6 text-foreground"
         />
@@ -244,57 +267,84 @@ export function ChatInput({
             />
           </View>
 
-          {/* Right: mic + send */}
+          {/* Web parity: Live is the default action. It morphs into the
+              dictation + submit/stop controls as soon as content exists. */}
           <View className="flex-row items-center gap-1.5">
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={
-                isListening ? "Stop voice input" : "Voice input"
-              }
-              onPress={onMicPress}
-              className={cn(
-                "h-11 w-11 items-center justify-center rounded-full active:bg-foreground/5",
-                isListening && "bg-primary/15",
-              )}
-            >
-              <Icon
-                as={isListening ? MicOff : Mic}
-                size={17}
-                className={
-                  isListening ? "text-primary" : "text-muted-foreground"
-                }
-              />
-            </Pressable>
+            {showSubmitAction ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={isListening ? "Stop voice input" : "Start voice input"}
+                onPress={onMicPress}
+                className={cn(
+                  "h-11 w-11 items-center justify-center rounded-full active:bg-foreground/5",
+                  isListening && "bg-primary/15",
+                )}
+              >
+                <Icon
+                  as={isListening ? MicOff : Mic}
+                  size={17}
+                  className={isListening ? "text-primary" : "text-muted-foreground"}
+                />
+              </Pressable>
+            ) : null}
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Send"
-              disabled={!canSend}
-              onPress={submit}
-              className={cn(
-                "h-11 w-11 items-center justify-center rounded-full",
-                canSend ? "bg-primary active:opacity-90" : "bg-foreground/8",
-              )}
-              style={
-                canSend
-                  ? {
-                      shadowColor: "#ec4899",
-                      shadowOpacity: 0.4,
-                      shadowRadius: 8,
-                      shadowOffset: { width: 0, height: 4 },
-                      elevation: 4,
-                    }
-                  : undefined
-              }
-            >
-              <Icon
-                as={SendHorizontal}
-                size={16}
-                className={
-                  canSend ? "text-primary-foreground" : "text-muted-foreground"
+            <Animated.View style={actionStyle}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={
+                  showSubmitAction
+                    ? isLoading
+                      ? "Stop generating"
+                      : "Send message"
+                    : "Start Kontinue Live"
                 }
-              />
-            </Pressable>
+                disabled={showSubmitAction && !isLoading && !canSend}
+                onPress={
+                  showSubmitAction
+                    ? isLoading
+                      ? onStop
+                      : submit
+                    : () => router.push("/live" as Href)
+                }
+                className={cn(
+                  "h-11 w-11 items-center justify-center rounded-full border",
+                  showSubmitAction
+                    ? canSend || isLoading
+                      ? "border-primary/30 bg-primary active:opacity-90"
+                      : "border-foreground/8 bg-foreground/8"
+                    : "border-primary/20 bg-primary/10 active:bg-primary/15",
+                )}
+                style={
+                  showSubmitAction && (canSend || isLoading)
+                    ? {
+                        shadowColor: primary,
+                        shadowOpacity: 0.4,
+                        shadowRadius: 8,
+                        shadowOffset: { width: 0, height: 4 },
+                        elevation: 4,
+                      }
+                    : undefined
+                }
+              >
+                <Icon
+                  as={
+                    showSubmitAction
+                      ? isLoading
+                        ? Square
+                        : SendHorizontal
+                      : AudioLines
+                  }
+                  size={showSubmitAction && isLoading ? 13 : 17}
+                  className={
+                    showSubmitAction
+                      ? canSend || isLoading
+                        ? "text-primary-foreground"
+                        : "text-muted-foreground"
+                      : "text-primary"
+                  }
+                />
+              </Pressable>
+            </Animated.View>
           </View>
         </View>
 

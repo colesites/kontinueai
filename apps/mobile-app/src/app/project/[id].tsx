@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter, type Href } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
-import { FolderOpen, MessageSquare, Pin, X } from "lucide-react-native";
+import { FolderOpen, MessageSquare, Pin, Trash2, X } from "lucide-react-native";
 
 import { ScreenHeader } from "@/components/screen-header";
 import { Icon } from "@/components/ui/icon";
@@ -18,6 +18,28 @@ export default function ProjectScreen() {
   const project = useQuery(api.projects.getProject, projectId ? { projectId } : "skip");
   const chats = useQuery(api.projects.listProjectChats, projectId ? { projectId } : "skip");
   const assignChatToProject = useMutation(api.projects.assignChatToProject);
+  const deleteProject = useMutation(api.projects.deleteProject);
+
+  const removeProject = () => {
+    Alert.alert(
+      "Delete project?",
+      "The project will be deleted. Its chats will remain in your chat history.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void deleteProject({ projectId })
+              .then(() => router.replace("/" as Href))
+              .catch(() =>
+                Alert.alert("Couldn't delete project", "Please try again."),
+              );
+          },
+        },
+      ],
+    );
+  };
 
   const removeFromProject = (chatId: Id<"chats">, title: string) => {
     Alert.alert("Remove from project?", `"${title}" will move back to your unfiled chats.`, [
@@ -35,7 +57,21 @@ export default function ProjectScreen() {
 
   return (
     <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
-      <ScreenHeader title={project?.name ?? "Project"} leading="back" />
+      <ScreenHeader
+        title={project?.name ?? "Project"}
+        leading="back"
+        right={
+          project ? (
+            <Pressable
+              accessibilityLabel="Delete project"
+              onPress={removeProject}
+              className="h-11 w-11 items-center justify-center rounded-xl active:bg-destructive/10"
+            >
+              <Icon as={Trash2} size={18} className="text-destructive" />
+            </Pressable>
+          ) : null
+        }
+      />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerClassName="px-4 pb-10"
@@ -45,6 +81,19 @@ export default function ProjectScreen() {
           <Text className="mb-4 text-[13.5px] leading-5 text-muted-foreground">
             {project.description}
           </Text>
+        ) : null}
+
+        {project ? (
+          <View className="mb-5 flex-row items-center gap-2">
+            <View className="rounded-full border border-border bg-secondary px-2.5 py-1">
+              <Text className="text-[10.5px] font-medium capitalize text-muted-foreground">
+                {project.status.replace("_", " ")}
+              </Text>
+            </View>
+            <Text className="text-[11px] text-muted-foreground">
+              {project.chatCount} chat{project.chatCount === 1 ? "" : "s"}
+            </Text>
+          </View>
         ) : null}
 
         <Text className="mb-2 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">

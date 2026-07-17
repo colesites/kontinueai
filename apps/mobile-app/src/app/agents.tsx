@@ -16,6 +16,7 @@ import {
 import { AGENTS, type AgentDefinition } from "@repo/ai/lib/agents";
 
 import { ScreenHeader } from "@/components/screen-header";
+import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { savePendingChatDraft } from "@/lib/pending-chat-draft";
@@ -29,6 +30,7 @@ const ICONS: Record<string, LucideIcon> = {
 };
 
 export default function AgentsScreen() {
+  const { primary } = useTheme();
   const router = useRouter();
   const createChat = useMutation(api.chats.createChat);
   const [startingAgentId, setStartingAgentId] = useState<string | null>(null);
@@ -69,15 +71,19 @@ export default function AgentsScreen() {
       >
         {/* Header — mirrors AgentsClient */}
         <View className="mb-8">
-          <View className="flex-row items-center gap-2.5">
-            <View className="h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
+          <Text className="text-[10.5px] font-semibold uppercase tracking-[2.5px] text-primary">Agents</Text>
+          <View className="mt-2 flex-row items-center gap-3">
+            <View
+              className="h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/12"
+              style={{ boxShadow: `0 4px 10px ${primary}59` }}
+            >
               <Icon as={Bot} size={18} className="text-primary" />
             </View>
-            <Text className="text-[22px] font-semibold tracking-tight text-foreground">
+            <Text className="text-[27px] font-semibold tracking-tight text-foreground">
               Agents
             </Text>
           </View>
-          <Text className="mt-2 text-[13.5px] leading-5 text-muted-foreground">
+          <Text className="mt-3 text-[13.5px] leading-5 text-muted-foreground">
             Specialized AI agents that share your memory, projects, and tasks.
             Pick one to start a focused conversation.
           </Text>

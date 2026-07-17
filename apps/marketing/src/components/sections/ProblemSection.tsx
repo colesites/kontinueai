@@ -99,7 +99,7 @@ export function ProblemSection() {
 								One workspace
 							</span>
 							<span className="w-20 text-right text-sm font-semibold tabular-nums">
-								from $4.99<span className="opacity-70">/mo</span>
+								from $5.99<span className="opacity-70">/mo</span>
 							</span>
 						</div>
 					</div>

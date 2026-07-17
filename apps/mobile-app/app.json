@@ -2,10 +2,10 @@
   "expo": {
     "name": "Kontinue AI",
     "slug": "mobile-app",
-    "version": "1.0.0",
+    "version": "1.2.0",
     "orientation": "portrait",
     "icon": "./assets/images/kontinue-icon.png",
-    "scheme": "mobileapp",
+    "scheme": ["mobileapp", "com.kontinueai.app"],
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.kontinueai.app",
@@ -14,9 +14,7 @@
         "foregroundImage": "./assets/images/kontinue-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "permissions": ["android.permission.RECORD_AUDIO"]
     },
     "ios": {
       "bundleIdentifier": "com.kontinueai.app",
@@ -66,7 +64,7 @@
       [
         "expo-notifications",
         {
-          "color": "#ec4899"
+          "color": "#737373"
         }
       ],
       [
@@ -76,14 +74,15 @@
           "organization": "c-tech-4m",
           "project": "kontinue-mobile"
         }
-      ]
+      ],
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": false
     },
     "extra": {
-      "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "779148953674-bui7t3mfp2en86gn5l34765hq35r37b2.apps.googleusercontent.com",
+      "EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID": "309168072626-bebpj58g84cqsffa3f6e1j50spabumha.apps.googleusercontent.com",
       "EXPO_PUBLIC_CLERK_GOOGLE_ANDROID_CLIENT_ID": "309168072626-job6db4ids0fj0q8brklbql51tssp71r.apps.googleusercontent.com",
       "router": {},
       "eas": {

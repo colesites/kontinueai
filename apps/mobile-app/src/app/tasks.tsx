@@ -444,6 +444,7 @@ function TaskCard({
   onToggle: (task: Task) => void;
   onDelete: (task: Task) => void;
 }) {
+  const { primary } = useTheme();
   const done = task.status === "done";
   const priority = PRIORITY_META[task.priority];
   return (
@@ -499,7 +500,7 @@ function TaskCard({
           ) : null}
           {task.recurring ? <TaskMeta icon={Repeat} label="Repeats" /> : null}
           {task.isAgentTask ? (
-            <TaskMeta icon={Bot} label="K-AI" color="#ec4899" />
+            <TaskMeta icon={Bot} label="K-AI" color={primary} />
           ) : null}
         </View>
       </Pressable>
@@ -761,7 +762,7 @@ function TaskComposerForm({
   onClose: () => void;
   onSave: (draft: TaskDraft) => Promise<void>;
 }) {
-  const { primary, isDark } = useTheme();
+  const { primary, isDark, mutedForeground, primaryForeground } = useTheme();
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
   const [priority, setPriority] = useState<TaskPriority>(
@@ -830,7 +831,7 @@ function TaskComposerForm({
       onRequestClose={onClose}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1 justify-end bg-black/55"
       >
         <View className="max-h-[92%] rounded-t-3xl border-t border-border bg-background">
@@ -868,7 +869,7 @@ function TaskComposerForm({
                 autoFocus
                 maxLength={200}
                 placeholder="What needs to happen?"
-                placeholderTextColor="#7c6c77"
+                placeholderTextColor={mutedForeground}
                 className="min-h-12 rounded-xl border border-border bg-secondary px-3.5 text-[15px] text-foreground"
               />
             </View>
@@ -883,7 +884,7 @@ function TaskComposerForm({
                 multiline
                 maxLength={2000}
                 placeholder="Add context (optional)"
-                placeholderTextColor="#7c6c77"
+                placeholderTextColor={mutedForeground}
                 className="min-h-24 rounded-xl border border-border bg-secondary px-3.5 py-3 text-[14px] leading-5 text-foreground"
               />
             </View>
@@ -1034,7 +1035,7 @@ function TaskComposerForm({
                   multiline
                   maxLength={2000}
                   placeholder="Example: Summarize today's AI news and notify me"
-                  placeholderTextColor="#7c6c77"
+                  placeholderTextColor={mutedForeground}
                   className="min-h-24 rounded-xl border border-primary/25 bg-primary/5 px-3.5 py-3 text-[14px] leading-5 text-foreground"
                 />
               </View>
@@ -1052,7 +1053,7 @@ function TaskComposerForm({
               )}
             >
               {saving ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={primaryForeground} />
               ) : (
                 <Icon
                   as={task ? Pencil : Plus}

@@ -59,7 +59,7 @@ function RootLayout() {
 export default Sentry.wrap(RootLayout);
 
 function AppShell() {
-  const { isDark } = useTheme();
+  const { isDark, background } = useTheme();
   const { signOut } = useClerk();
   const { isLoaded, isSignedIn, sessionId } = useAuth();
   const { isLoading: isConvexLoading, isAuthenticated: isConvexAuthenticated } =
@@ -100,15 +100,34 @@ function AppShell() {
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: "transparent" },
+            // Every route is opaque during transitions so the previous screen
+            // cannot bleed through and appear joined to the next screen.
+            contentStyle: { backgroundColor: background },
+            // Product pages swap cleanly like the web router. Disabling the
+            // native push transition also removes Android's two-screen overlap
+            // artifact; modal surfaces opt into their own animation below.
+            animation: "none",
           }}
         >
+          <Stack.Screen name="callback" />
+          <Stack.Screen name="sso-callback" />
           <Stack.Protected guard={isAppReady}>
             <Stack.Screen name="index" />
             <Stack.Screen name="tasks" />
             <Stack.Screen name="agents" />
             <Stack.Screen name="canvas" />
             <Stack.Screen name="kode" />
+            <Stack.Screen name="kode/[id]" />
+            <Stack.Screen name="pricing" />
+            <Stack.Screen
+              name="live"
+              options={{
+                presentation: "transparentModal",
+                animation: "fade",
+                contentStyle: { backgroundColor: "transparent" },
+              }}
+            />
+            <Stack.Screen name="legal/[document]" />
             <Stack.Screen name="settings" />
             <Stack.Screen name="connectors" />
             <Stack.Screen name="notifications" />
@@ -122,6 +141,8 @@ function AppShell() {
             <Stack.Screen name="(auth)/sign-up" />
             <Stack.Screen name="(auth)/forgot-password" />
           </Stack.Protected>
+
+          <Stack.Screen name="share/[id]" />
         </Stack>
 
         {/* Drawer + first-visit theme picker only matter once authenticated. */}

@@ -12,7 +12,6 @@ import { useRouter, type Href } from "expo-router";
 import * as Clipboard from "expo-clipboard";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
-import * as WebBrowser from "expo-web-browser";
 import { useUser, useClerk } from "@clerk/expo";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
@@ -33,6 +32,7 @@ import {
   MessageCircle,
   MessageSquare,
   MessageSquarePlus,
+  MoreHorizontal,
   Palette,
   PanelLeft,
   Pencil,
@@ -84,11 +84,12 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const planTier = usePlanTier();
-  const { primary } = useTheme();
+  const { primary, mutedForeground } = useTheme();
 
   const chats = useQuery(api.chats.getUserChats, {});
   const projects = useQuery(api.projects.listProjects, {});
   const [search, setSearch] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
   const searchTerm = search.trim();
   // Server-side search matches message content too, not just titles.
   const searchResults = useQuery(
@@ -106,6 +107,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
 
   // Anchored dropdowns — mirror the web's DropdownMenu (no bottom sheets).
   const accountMenu = useDropdown();
+  const productMenu = useDropdown();
   const chatMenu = useDropdown();
   const projectMenu = useDropdown();
   const [menuChatId, setMenuChatId] = useState<Id<"chats"> | null>(null);
@@ -288,14 +290,32 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
       </View>
 
       {/* Search — surface-inset, mirrors SidebarHeaderSection */}
-      <View className="mx-3 mb-3 h-10 flex-row items-center gap-2 rounded-xl border border-foreground/5 bg-foreground/4 px-3">
+      <View
+        className={
+          searchFocused
+            ? "mx-3 mb-3 h-10 flex-row items-center gap-2 rounded-xl border border-primary/30 bg-foreground/6 px-3"
+            : "mx-3 mb-3 h-10 flex-row items-center gap-2 rounded-xl border border-foreground/8 bg-foreground/4 px-3"
+        }
+        style={
+          searchFocused
+            ? {
+                shadowColor: primary,
+                shadowOpacity: 0.28,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 0 },
+              }
+            : undefined
+        }
+      >
         <Icon as={Search} size={14} className="text-muted-foreground/70" />
         <TextInput
           value={search}
           onChangeText={setSearch}
+          onFocus={() => setSearchFocused(true)}
+          onBlur={() => setSearchFocused(false)}
           placeholder="Search threads…"
-          placeholderTextColor="#7c6c77"
-          className="flex-1 text-[13px] text-foreground"
+          placeholderTextColor={mutedForeground}
+          className="h-full min-w-0 flex-1 text-[13px] text-foreground"
         />
         {search.length > 0 ? (
           <Pressable
@@ -384,15 +404,45 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         <NavTile icon={Bot} label="Agents" onPress={() => go("/agents")} />
       </View>
 
-      {/* Row 3: Kode + Connectors */}
-      <View className="mx-3 mb-3 flex-row gap-2">
-        <NavTile icon={Code2} label="Kode" onPress={() => go("/kode")} />
-        <NavTile
+      {/* Row 3: same expandable product menu used by web. */}
+      <Pressable
+        onPress={productMenu.open}
+        className="mx-3 mb-3 min-h-10 flex-row items-center justify-center gap-2 rounded-xl border border-foreground/5 bg-foreground/4 px-4 active:bg-foreground/8"
+      >
+        <Icon as={MoreHorizontal} size={15} className="text-muted-foreground" />
+        <Text className="text-[13px] font-medium text-muted-foreground">More</Text>
+      </Pressable>
+      <Dropdown
+        visible={productMenu.visible}
+        anchor={productMenu.anchor}
+        onClose={productMenu.close}
+        width={sidebarWidth - 24}
+        left={12}
+      >
+        <DropdownItem
+          icon={Code2}
+          label="Kode"
+          trailing={
+            <View className="rounded-full border border-primary/15 bg-primary/10 px-1.5 py-0.5">
+              <Text className="text-[9px] font-bold uppercase tracking-wide text-primary">
+                {planTier === "pro" || planTier === "max" ? planLabel(planTier) : "Locked"}
+              </Text>
+            </View>
+          }
+          onPress={() => {
+            productMenu.close();
+            go("/kode");
+          }}
+        />
+        <DropdownItem
           icon={Plug}
           label="Connectors"
-          onPress={() => go("/connectors")}
+          onPress={() => {
+            productMenu.close();
+            go("/connectors");
+          }}
         />
-      </View>
+      </Dropdown>
 
       <ScrollView
         style={{ flex: 1 }}
@@ -695,7 +745,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
               onChangeText={setProjectName}
               autoFocus
               placeholder="Project name"
-              placeholderTextColor="#7c6c77"
+              placeholderTextColor={mutedForeground}
               className="rounded-xl border border-border bg-secondary px-3.5 py-3 text-[14px] text-foreground"
             />
             <View className="mt-4 flex-row justify-end gap-2">
@@ -836,9 +886,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           label="Upgrade"
           onPress={() => {
             accountMenu.close();
-            // Checkout is Clerk-billing on the web; the in-app browser's
-            // Done button drops the user straight back here.
-            void WebBrowser.openBrowserAsync(`${API_BASE_URL}/pricing`);
+            go("/pricing");
           }}
         />
         <DropdownSeparator />

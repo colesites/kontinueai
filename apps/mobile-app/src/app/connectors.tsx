@@ -1,10 +1,11 @@
 import { Alert, Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
-import { CheckCircle2, Plug } from "lucide-react-native";
+import { ArrowLeft, CheckCircle2, Plug } from "lucide-react-native";
 import type { FC } from "react";
 import type { SvgProps } from "react-native-svg";
 
@@ -19,7 +20,6 @@ import GoogleSheetsLogo from "@/assets/connectors/google-sheets.svg";
 import NotionLogo from "@/assets/connectors/notion.svg";
 import TodoistLogo from "@/assets/connectors/todoist.svg";
 
-import { ScreenHeader } from "@/components/screen-header";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
@@ -43,7 +43,7 @@ const CATALOG: ConnectorDef[] = [
   { provider: "notion", name: "Notion", description: "Search and read your Notion pages.", logo: { kind: "single", src: NotionLogo }, available: true },
   { provider: "vercel", name: "Vercel", description: "Check deployments and project status.", logo: { kind: "themed", light: VercelLight, dark: VercelDark }, available: true },
   { provider: "todoist", name: "Todoist", description: "Manage your Todoist tasks from chat.", logo: { kind: "single", src: TodoistLogo }, available: true },
-  { provider: "google_sheets", name: "Google Sheets", description: "Read and update your spreadsheets.", logo: { kind: "single", src: GoogleSheetsLogo }, available: false },
+  { provider: "google_sheets", name: "Google Sheets", description: "Read, create and update spreadsheets from chat.", logo: { kind: "single", src: GoogleSheetsLogo }, available: true },
 ];
 
 function ConnectorLogo({ def }: { def: ConnectorDef }) {
@@ -54,6 +54,7 @@ function ConnectorLogo({ def }: { def: ConnectorDef }) {
 }
 
 export default function ConnectorsScreen() {
+  const router = useRouter();
   const connections = useQuery(api.connectors.listConnectors, {});
   const disconnect = useMutation(api.connectors.disconnect);
 
@@ -96,20 +97,30 @@ export default function ConnectorsScreen() {
 
   return (
     <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
-      <ScreenHeader title="" leading="back" />
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerClassName="px-4 pb-10"
+        contentContainerClassName="px-4 pb-10 pt-4"
         showsVerticalScrollIndicator={false}
       >
+        <Pressable
+          onPress={() => router.back()}
+          className="mb-6 min-h-11 self-start flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/4 px-3.5 active:bg-foreground/8"
+        >
+          <Icon as={ArrowLeft} size={16} className="text-muted-foreground" />
+          <Text className="text-[13px] font-medium text-muted-foreground">Back to chat</Text>
+        </Pressable>
+
         {/* Header — mirrors ConnectorsClient */}
-        <View className="mb-2 flex-row items-center gap-2">
-          <Icon as={Plug} size={19} className="text-primary" />
-          <Text className="text-[20px] font-semibold tracking-tight text-foreground">
+        <Text className="text-[10.5px] font-semibold uppercase tracking-[2.5px] text-primary">Integrations</Text>
+        <View className="mt-2 flex-row items-center gap-3">
+          <View className="h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/12">
+            <Icon as={Plug} size={19} className="text-primary" />
+          </View>
+          <Text className="text-[26px] font-semibold tracking-tight text-foreground">
             Connectors
           </Text>
         </View>
-        <Text className="mb-6 text-[13.5px] leading-5 text-muted-foreground">
+        <Text className="mb-6 mt-3 text-[13.5px] leading-5 text-muted-foreground">
           Connect external services so your assistant can act on your behalf.
           Tokens are encrypted at rest and never shared.
         </Text>

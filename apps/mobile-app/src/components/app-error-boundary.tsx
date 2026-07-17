@@ -44,7 +44,7 @@ export class AppErrorBoundary extends React.Component<
           >
             Something crashed
           </RNText>
-          <RNText style={{ color: "#f9a8d4", fontSize: 15, lineHeight: 22 }}>
+          <RNText style={{ color: "#d4d4d4", fontSize: 15, lineHeight: 22 }}>
             {error.message}
           </RNText>
           {error.stack ? (
@@ -52,8 +52,8 @@ export class AppErrorBoundary extends React.Component<
               selectable
               style={{
                 color: "#9ca3af",
-                fontSize: 11,
-                lineHeight: 16,
+                fontSize: 12,
+                lineHeight: 17,
                 marginTop: 18,
               }}
             >
@@ -64,7 +64,7 @@ export class AppErrorBoundary extends React.Component<
             onPress={() => this.setState({ error: null })}
             style={{
               alignItems: "center",
-              backgroundColor: "#ec2d96",
+              backgroundColor: "#f5f5f5",
               borderRadius: 12,
               height: 48,
               justifyContent: "center",
@@ -72,7 +72,7 @@ export class AppErrorBoundary extends React.Component<
             }}
           >
             <RNText
-              style={{ color: "#ffffff", fontSize: 15, fontWeight: "700" }}
+              style={{ color: "#171717", fontSize: 15, fontWeight: "700" }}
             >
               Try again
             </RNText>

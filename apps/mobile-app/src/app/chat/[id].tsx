@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   Alert,
   KeyboardAvoidingView,
@@ -37,6 +44,11 @@ import {
 } from "lucide-react-native";
 
 import { ChatInput } from "@/components/chat/chat-input";
+import { ClockWidget } from "@/components/chat/clock-widget";
+import {
+  EmailComposer,
+  type EmailDraft,
+} from "@/components/chat/email-composer";
 import { Markdown } from "@/components/chat/markdown";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useSidebar } from "@/components/sidebar/sidebar-context";
@@ -68,15 +80,80 @@ function uiMessageText(message: UIMessage): string {
 }
 
 function uiMessageImages(message: UIMessage): string[] {
-  return message.parts
-    .filter(
-      (part): part is { type: "file"; mediaType: string; url: string } =>
-        part.type === "file" && part.mediaType?.startsWith("image/"),
-    )
-    .map((part) => part.url);
+  const images: string[] = [];
+  for (const part of message.parts) {
+    if (
+      part.type === "file" &&
+      part.mediaType?.startsWith("image/") &&
+      part.url
+    ) {
+      images.push(part.url);
+      continue;
+    }
+    const toolPart = part as unknown as {
+      type: string;
+      toolName?: string;
+      output?: {
+        result?: string;
+        images?: (string | { base64?: string })[];
+      };
+      result?: string;
+    };
+    if (
+      toolPart.type === "tool-image_generation" ||
+      (toolPart.type === "tool-result" &&
+        toolPart.toolName === "image_generation")
+    ) {
+      const first = toolPart.output?.images?.[0];
+      const base64 =
+        toolPart.output?.result ??
+        toolPart.result ??
+        (typeof first === "string" ? first : first?.base64);
+      if (base64) images.push(`data:image/webp;base64,${base64}`);
+    }
+  }
+  return images;
 }
 
-function uiMessageDocuments(message: UIMessage): string[] {
+function uiMessageClockTimezone(message: UIMessage): string | null | undefined {
+  for (const part of message.parts) {
+    const toolPart = part as unknown as {
+      type: string;
+      output?: { timezone?: string | null };
+    };
+    if (toolPart.type === "tool-get_current_time" && toolPart.output) {
+      return toolPart.output.timezone ?? null;
+    }
+  }
+  return undefined;
+}
+
+function uiMessageEmailDraft(message: UIMessage): EmailDraft | null {
+  let draft: EmailDraft | null = null;
+  for (const part of message.parts) {
+    const toolPart = part as unknown as {
+      type: string;
+      output?: Partial<EmailDraft>;
+    };
+    if (
+      toolPart.type === "tool-compose_email" &&
+      typeof toolPart.output?.subject === "string"
+    ) {
+      draft = {
+        to: toolPart.output.to ?? "",
+        cc: toolPart.output.cc ?? "",
+        subject: toolPart.output.subject,
+        body: toolPart.output.body ?? "",
+      };
+    }
+  }
+  return draft;
+}
+
+function uiMessageDocuments(message: UIMessage): {
+  filename: string;
+  url: string;
+}[] {
   return message.parts
     .filter(
       (
@@ -88,7 +165,10 @@ function uiMessageDocuments(message: UIMessage): string[] {
         filename?: string;
       } => part.type === "file" && !part.mediaType?.startsWith("image/"),
     )
-    .map((part) => part.filename ?? "Attachment");
+    .map((part) => ({
+      filename: part.filename ?? "Attachment",
+      url: part.url,
+    }));
 }
 
 /** Mirrors trimMessagesToRetryTarget in apps/web chat-messaging.ts. */
@@ -121,7 +201,12 @@ export default function ConversationScreen() {
     api.messages.getMessages,
     chatId ? { chatId } : "skip",
   );
+  const chatFiles = useQuery(
+    api.files.listByChat,
+    chatId ? { chatId } : "skip",
+  );
   const addMessage = useMutation(api.messages.addMessage);
+  const createFileRecord = useMutation(api.files.createFileRecord);
   const updateMessageContent = useMutation(api.messages.updateMessageContent);
   const deleteMessagesAfter = useMutation(api.messages.deleteMessagesAfter);
 
@@ -142,10 +227,11 @@ export default function ConversationScreen() {
   // Voice input writes into the composer: interim results replace everything
   // after the text that was present when the mic was opened.
   const voicePrefixRef = useRef("");
-  const voice = useVoiceInput((transcript) => {
+  const handleVoiceTranscript = useCallback((transcript: string) => {
     const prefix = voicePrefixRef.current;
     setComposerValue(prefix ? `${prefix} ${transcript}` : transcript);
-  });
+  }, []);
+  const voice = useVoiceInput(handleVoiceTranscript);
   const handleMicPress = () => {
     if (!voice.isListening) voicePrefixRef.current = composerValue.trim();
     void voice.toggle();
@@ -193,18 +279,36 @@ export default function ConversationScreen() {
 
   // Hydrate AI SDK state from Convex history once it arrives.
   useEffect(() => {
-    if (dbMessages && dbMessages.length > 0 && aiMessages.length === 0) {
+    if (
+      dbMessages &&
+      dbMessages.length > 0 &&
+      chatFiles !== undefined &&
+      aiMessages.length === 0
+    ) {
       setMessages(
         dbMessages
           .filter((m) => m.role === "user" || m.role === "assistant")
-          .map((m) => ({
-            id: m._id,
-            role: m.role as "user" | "assistant",
-            parts: [{ type: "text" as const, text: m.content }],
-          })),
+          .map((m) => {
+            const persistedFiles = chatFiles
+              .filter((file) => file.messageId === m._id)
+              .map((file) => ({
+                type: "file" as const,
+                mediaType: file.contentType,
+                filename: file.filename,
+                url: file.blobUrl,
+              }));
+            return {
+              id: m._id,
+              role: m.role as "user" | "assistant",
+              parts: [
+                { type: "text" as const, text: m.content },
+                ...persistedFiles,
+              ],
+            };
+          }),
       );
     }
-  }, [dbMessages, aiMessages.length, setMessages]);
+  }, [dbMessages, chatFiles, aiMessages.length, setMessages]);
 
   const handleSend = useCallback(
     async (
@@ -364,6 +468,19 @@ export default function ConversationScreen() {
     webSearchEnabled,
   ]);
 
+  const sendPendingDraft = useEffectEvent(
+    (draft: ReturnType<typeof consumePendingChatDraft>) => {
+      if (!draft) return;
+      if (draft.webSearchEnabled) setWebSearchEnabled(true);
+      void handleSend(
+        draft.text,
+        draft.model,
+        draft.webSearchEnabled,
+        draft.attachments,
+      );
+    },
+  );
+
   // First prompt handed off from the home composer.
   const draftConsumedRef = useRef(false);
   useEffect(() => {
@@ -375,18 +492,10 @@ export default function ConversationScreen() {
       // The home screen already persisted draft.model as the default, so
       // selectedModel converges on its own — just send with the override.
       // Deferred so the send (and its state updates) runs outside the effect.
-      const timer = setTimeout(() => {
-        if (draft.webSearchEnabled) setWebSearchEnabled(true);
-        void handleSend(
-          draft.text,
-          draft.model,
-          draft.webSearchEnabled,
-          draft.attachments,
-        );
-      }, 0);
+      const timer = setTimeout(() => sendPendingDraft(draft), 0);
       return () => clearTimeout(timer);
     }
-  }, [chatId, status, dbMessages, handleSend]);
+  }, [chatId, status, dbMessages]);
 
   // Persist the assistant reply to Convex when a stream completes (mirrors
   // useChatPersistence on web, text only). dbMessages check skips imported /
@@ -404,18 +513,97 @@ export default function ConversationScreen() {
     const content = uiMessageText(last).trim();
     if (!content) return;
     lastSavedAssistantIdRef.current = last.id;
+    const generatedImages = uiMessageImages(last);
     addMessage({
       chatId,
       role: "assistant",
       content,
       model: selectedModel,
-    }).catch((err) => {
-      lastSavedAssistantIdRef.current = null;
-      console.error("failed to persist assistant message", err);
-    });
-  }, [status, aiMessages, dbMessages, addMessage, chatId, selectedModel]);
+    })
+      .then(async (messageId) => {
+        const token = generatedImages.length ? await getToken() : null;
+        await Promise.all(
+          generatedImages.map(async (source, index) => {
+            try {
+              if (!token) return;
+              const sourceResponse = await fetch(source);
+              const blob = await sourceResponse.blob();
+              const filename = `generated-${messageId}-${index}.${blob.type.includes("png") ? "png" : "webp"}`;
+              const uploadResponse = await fetch(
+                `${API_BASE_URL}/api/files/upload?filename=${encodeURIComponent(filename)}`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": blob.type || "image/webp",
+                  },
+                  body: blob,
+                },
+              );
+              const uploaded = (await uploadResponse.json()) as {
+                error?: string;
+                url: string;
+                pathname: string;
+                filename: string;
+                contentType: string;
+                size: number;
+              };
+              if (!uploadResponse.ok) {
+                throw new Error(uploaded.error ?? "Image upload failed.");
+              }
+              await createFileRecord({
+                chatId,
+                messageId,
+                blobUrl: uploaded.url,
+                pathname: uploaded.pathname,
+                filename: uploaded.filename,
+                contentType: uploaded.contentType,
+                size: uploaded.size,
+                fileType: "generated-image",
+              });
+            } catch (error) {
+              console.error("failed to persist generated image", error);
+            }
+          }),
+        );
+      })
+      .catch((err) => {
+        lastSavedAssistantIdRef.current = null;
+        console.error("failed to persist assistant message", err);
+      });
+  }, [
+    status,
+    aiMessages,
+    dbMessages,
+    addMessage,
+    chatId,
+    createFileRecord,
+    getToken,
+    selectedModel,
+  ]);
 
   const isStreaming = status === "submitted" || status === "streaming";
+  const importFailure =
+    dbMessages
+      ?.find(
+        (message) =>
+          message.metadata?.isImported &&
+          message.content.startsWith("Import failed:"),
+      )
+      ?.content.replace(/^Import failed:\s*/i, "") ?? null;
+  const importMatch = chat?.title
+    ?.replace(/\s+/g, " ")
+    .trim()
+    .match(/^Importing\s+(\d{1,3})%\s*(?:[·-]\s*(.+))?$/i);
+  const importProgress = chat?.title?.toLowerCase().startsWith("importing")
+    ? {
+        percent: importMatch
+          ? Math.max(1, Math.min(99, Number(importMatch[1]) || 1))
+          : 5,
+        stage: importMatch?.[2]?.trim() || "Preparing import",
+      }
+    : null;
+  const isBackgroundImporting = !!importProgress && !importFailure;
   const shareUrl = `${API_BASE_URL}/share/${chatId}`;
   const shareTitle = chat?.title?.trim() || "Conversation";
 
@@ -451,8 +639,32 @@ export default function ConversationScreen() {
         onShare={() => setShareOpen(true)}
         canShare={Boolean(chat)}
       />
+      {isBackgroundImporting ? (
+        <View className="mx-3 mt-2 rounded-xl border border-primary/25 bg-primary/8 px-3 py-2.5">
+          <View className="flex-row items-center justify-between gap-3">
+            <Text className="text-[12px] font-semibold text-primary">
+              Import in progress ({importProgress.percent}%)
+            </Text>
+            <Text className="text-[10.5px] text-primary/80">
+              {importProgress.stage}
+            </Text>
+          </View>
+          <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15">
+            <View
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${importProgress.percent}%` }}
+            />
+          </View>
+        </View>
+      ) : importFailure ? (
+        <View className="mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5">
+          <Text className="text-[12px] leading-5 text-destructive">
+            Import failed: {importFailure}
+          </Text>
+        </View>
+      ) : null}
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         <ScrollView
@@ -476,7 +688,15 @@ export default function ConversationScreen() {
               const text = uiMessageText(m);
               const images = uiMessageImages(m);
               const documents = uiMessageDocuments(m);
-              if (!text.trim() && images.length === 0 && documents.length === 0)
+              const clockTimezone = uiMessageClockTimezone(m);
+              const emailDraft = uiMessageEmailDraft(m);
+              if (
+                !text.trim() &&
+                images.length === 0 &&
+                documents.length === 0 &&
+                clockTimezone === undefined &&
+                !emailDraft
+              )
                 return null;
               const isUser = m.role === "user";
               return (
@@ -505,9 +725,9 @@ export default function ConversationScreen() {
                   ) : null}
                   {documents.length > 0 ? (
                     <View className="mb-1.5 gap-1.5">
-                      {documents.map((name, i) => (
+                      {documents.map((document) => (
                         <View
-                          key={`${name}-${i}`}
+                          key={document.url}
                           className={cn(
                             "flex-row items-center gap-2 rounded-lg px-2.5 py-1.5",
                             isUser
@@ -533,7 +753,7 @@ export default function ConversationScreen() {
                                 : "text-foreground",
                             )}
                           >
-                            {name}
+                            {document.filename}
                           </Text>
                         </View>
                       ))}
@@ -546,7 +766,13 @@ export default function ConversationScreen() {
                       </Text>
                     ) : null
                   ) : (
-                    <Markdown>{text}</Markdown>
+                    <>
+                      {text.trim() ? <Markdown>{text}</Markdown> : null}
+                      {clockTimezone !== undefined ? (
+                        <ClockWidget timezone={clockTimezone} />
+                      ) : null}
+                      {emailDraft ? <EmailComposer draft={emailDraft} /> : null}
+                    </>
                   )}
                 </Pressable>
               );
@@ -586,7 +812,9 @@ export default function ConversationScreen() {
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
             onSend={(text) => void handleSend(text)}
-            disabled={isStreaming || chat === null}
+            disabled={isStreaming || isBackgroundImporting || chat === null}
+            isLoading={isStreaming}
+            onStop={() => stop()}
             value={composerValue}
             onChangeText={setComposerValue}
             attachments={attachments}

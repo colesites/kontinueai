@@ -99,7 +99,7 @@ export default function HomeScreen() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const { primary } = useTheme();
+  const { primary, mutedForeground, primaryForeground } = useTheme();
   const webSearchAvailable = isPaidPlan || isKaiModel(selectedModel);
   const detectedProvider = importUrl.trim()
     ? detectProvider(importUrl.trim())
@@ -225,7 +225,7 @@ export default function HomeScreen() {
       <TopToolbar />
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         {/* Centered hero */}
@@ -304,6 +304,7 @@ export default function HomeScreen() {
             onModelChange={setSelectedModel}
             onSend={(text) => void startChatFromPrompt(text)}
             disabled={isCreatingChat}
+            isLoading={isCreatingChat}
             webSearchAvailable={webSearchAvailable}
             webSearchEnabled={webSearchEnabled}
             onWebSearchToggle={() => setWebSearchEnabled((prev) => !prev)}
@@ -355,18 +356,9 @@ export default function HomeScreen() {
                           colors={[`${primary}26`, `${primary}0D`]}
                           start={{ x: 0, y: 0 }}
                           end={{ x: 1, y: 1 }}
+                          className="h-10 w-10 items-center justify-center rounded-full border border-primary/20"
                           style={{
-                            width: 40,
-                            height: 40,
-                            borderRadius: 20,
-                            alignItems: "center",
-                            justifyContent: "center",
-                            borderWidth: 1,
-                            borderColor: `${primary}33`,
-                            shadowColor: primary,
-                            shadowOpacity: 0.35,
-                            shadowRadius: 8,
-                            shadowOffset: { width: 0, height: 4 },
+                            boxShadow: `0 4px 8px ${primary}59`,
                           }}
                         >
                           <Text className="text-[13px] font-semibold text-primary">
@@ -415,7 +407,7 @@ export default function HomeScreen() {
               value={importUrl}
               onChangeText={setImportUrl}
               placeholder="https://chat.openai.com/share/..."
-              placeholderTextColor="#7c6c77"
+              placeholderTextColor={mutedForeground}
               autoCapitalize="none"
               autoCorrect={false}
               keyboardType="url"
@@ -499,7 +491,7 @@ export default function HomeScreen() {
               }
             >
               {isImporting ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={primaryForeground} />
               ) : null}
               <Text className="text-[13px] font-semibold text-primary-foreground">
                 {isImporting ? "Importing..." : "Import chat"}

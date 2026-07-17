@@ -19,21 +19,20 @@ export function AuthButton({
   disabled?: boolean;
   loading?: boolean;
 }) {
-  const { primary } = useTheme();
+  const { primary, primaryForeground } = useTheme();
 
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled, busy: !!loading }}
       onPress={onPress}
       disabled={disabled}
       style={({ pressed }) => ({
         borderRadius: 14,
         opacity: disabled ? 0.5 : 1,
         transform: [{ scale: pressed ? 0.98 : 1 }],
-        shadowColor: primary,
-        shadowOpacity: disabled ? 0 : 0.45,
-        shadowRadius: 16,
-        shadowOffset: { width: 0, height: 6 },
-        elevation: disabled ? 0 : 8,
+        boxShadow: disabled ? undefined : `0 6px 18px ${primary}70`,
       })}
     >
       <LinearGradient
@@ -41,7 +40,7 @@ export function AuthButton({
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={{
-          height: 50,
+          height: 52,
           borderRadius: 14,
           alignItems: "center",
           justifyContent: "center",
@@ -49,7 +48,7 @@ export function AuthButton({
           gap: 8,
         }}
       >
-        {loading ? <ActivityIndicator color="#fff" size="small" /> : null}
+        {loading ? <ActivityIndicator color={primaryForeground} size="small" /> : null}
         <Text className="text-[15px] font-semibold text-primary-foreground">
           {label}
         </Text>

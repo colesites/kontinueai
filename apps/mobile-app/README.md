@@ -1,19 +1,27 @@
-# Welcome to your Expo app 👋
+# Kontinue AI mobile
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+The Expo/React Native client for Kontinue AI. It shares Clerk, Convex, core
+product constants, AI routes, connectors, Canvas, Kode and billing rules with
+the web app.
+
+Before changing or building this app, read:
+
+- `AGENTS.md` for the exact Expo SDK requirement;
+- `WEB_PARITY.md` for the web-to-native product contract;
+- `BUILD_VERSIONING.md` for mandatory release versioning.
 
 ## Get started
 
 1. Install dependencies
 
    ```bash
-   npm install
+   bun install
    ```
 
 2. Start the app
 
    ```bash
-   npx expo start
+   bun run dev
    ```
 
 In the output, you'll find options to open the app in a
@@ -47,6 +55,30 @@ To learn more about developing your project with Expo, look at the following res
 
 - [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
 - [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+
+## Android Google sign-in
+
+Standalone Android builds use Clerk's native Google Credential Manager flow.
+The Google Cloud and Clerk dashboard registrations must match the EAS release
+keystore—not a local debug keystore.
+
+- Android package: `com.kontinueai.app`
+- Current EAS SHA-1: `56:B9:A5:62:56:8C:68:00:76:43:6B:CF:56:86:E7:C0:F7:D9:FE:57`
+- Current EAS SHA-256: `74:2C:72:79:6C:2C:20:D0:23:5B:E7:7C:3B:C1:9F:8D:9F:EB:4A:58:EB:45:3C:55:03:56:B3:C6:44:4B:CD:77`
+
+Google Cloud's Android OAuth client needs the package and SHA-1. Clerk's Native
+Applications entry needs the package and SHA-256. Google must also be enabled
+for both sign-in and sign-up in Clerk with custom web-client credentials. If the
+EAS keystore changes, update both registrations before publishing another APK.
+
+## Email verification delivery
+
+Mobile email/password sign-up uses Clerk's built-in email delivery through
+`signUp.verifications.sendEmailCode()`; it does not call Resend directly. The
+verification screen supports retry with a 30-second cooldown and surfaces the
+provider error when Clerk rejects a send. For production delivery incidents,
+check Clerk Dashboard → Logs → Email logs and confirm the recipient shown in
+the app before investigating the mail provider.
 
 ## Join the community
 

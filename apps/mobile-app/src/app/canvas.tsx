@@ -2,13 +2,13 @@ import { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
-  Dimensions,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -73,10 +73,11 @@ function aspectToNumber(ratio: string): number {
 }
 
 export default function CanvasScreen() {
+  const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
   const { openSidebar } = useSidebar();
   const router = useRouter();
-  const { isDark } = useTheme();
+  const { isDark, primary, mutedForeground, primaryForeground } = useTheme();
   const planTier = usePlanTier();
   const isPaidPlan = planTier !== "free";
   const canGenerateVideos = planTier === "pro";
@@ -259,7 +260,7 @@ export default function CanvasScreen() {
       .catch(() => Alert.alert("Couldn't update visibility", "Please try again."));
   };
 
-  const columnWidth = (Dimensions.get("window").width - 16 * 2 - 10) / 2;
+  const columnWidth = (windowWidth - 16 * 2 - 10) / 2;
 
   return (
     <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
@@ -303,7 +304,7 @@ export default function CanvasScreen() {
       </View>
 
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         {/* Async video job banner */}
@@ -393,11 +394,7 @@ export default function CanvasScreen() {
           <View
             style={{
               borderRadius: 28,
-              shadowColor: "#000",
-              shadowOpacity: 0.35,
-              shadowRadius: 24,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 12,
+              boxShadow: "0 8px 24px rgba(0,0,0,0.35)",
             }}
           >
           <GlassView
@@ -449,7 +446,7 @@ export default function CanvasScreen() {
                 value={prompt}
                 onChangeText={setPrompt}
                 placeholder="What do you want to create?"
-                placeholderTextColor="#7c6c77"
+                placeholderTextColor={mutedForeground}
                 multiline
                 className="max-h-28 min-h-12 flex-1 py-3 text-[15.5px] leading-5 text-foreground"
               />
@@ -464,7 +461,7 @@ export default function CanvasScreen() {
                 )}
               >
                 {isGenerating ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={primaryForeground} />
                 ) : (
                   <Icon
                     as={ArrowUp}
@@ -759,7 +756,7 @@ export default function CanvasScreen() {
                     <Icon
                       as={Heart}
                       size={14}
-                      color={likedIds.has(expanded._id) ? "#ec4899" : undefined}
+                      color={likedIds.has(expanded._id) ? primary : undefined}
                       className={likedIds.has(expanded._id) ? undefined : "text-muted-foreground"}
                     />
                     <Text className="text-[12.5px] font-medium text-foreground">
@@ -861,6 +858,7 @@ function CreationCard({
   onPress: () => void;
   onLike: () => void;
 }) {
+  const { primary } = useTheme();
   const height = width / aspectToNumber(creation.aspectRatio);
   return (
     <Pressable onPress={onPress} className="overflow-hidden rounded-2xl border border-border bg-card active:opacity-90">
@@ -893,7 +891,7 @@ function CreationCard({
           <Icon
             as={Heart}
             size={13}
-            color={liked ? "#ec4899" : undefined}
+            color={liked ? primary : undefined}
             className={liked ? undefined : "text-muted-foreground"}
           />
           <Text className="text-[11.5px] text-muted-foreground">{creation.likeCount}</Text>

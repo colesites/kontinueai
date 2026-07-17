@@ -27,6 +27,7 @@ jest.mock("@/components/theme-provider", () => ({
   useTheme: () => ({
     isDark: true,
     primary: "#ec4899",
+    mutedForeground: "#b692a8",
   }),
 }));
 
@@ -45,7 +46,7 @@ jest.mock("@/components/ui/icon", () => {
 });
 
 jest.mock("@/hooks/use-plan-tier", () => ({
-  useIsProPlan: () => mockPaidPlan,
+  usePlanTier: () => (mockPaidPlan ? "pro" : "free"),
 }));
 
 jest.mock("@repo/core/use-model-capabilities", () => ({
@@ -56,6 +57,8 @@ jest.mock("@repo/core/use-model-capabilities", () => ({
         : ["text"],
     isProModel: (modelId: string) => modelId !== "kontinue/k-ai-1.0",
     proModelById: mockProModelById,
+    getModelAccessClass: (modelId: string) =>
+      mockProModelById[modelId] ? "pro" : "basic",
   }),
 }));
 
@@ -106,7 +109,7 @@ describe("ModelSelector", () => {
 
     expect(screen.getByTestId("model-selector-dialog")).toBeTruthy();
     expect(screen.getByLabelText("All models")).toBeTruthy();
-    expect(screen.getByLabelText("Search models")).toBeTruthy();
+    expect(screen.getByLabelText("Search AI models")).toBeTruthy();
     expect(screen.getByText("K-AI 1.0")).toBeTruthy();
     expect(screen.getByText("GPT-5.5 Pro")).toBeTruthy();
   });
@@ -114,19 +117,20 @@ describe("ModelSelector", () => {
   it("filters models by search and can clear the query", () => {
     renderSelector();
 
-    fireEvent.change(screen.getByLabelText("Search models"), {
+    fireEvent.change(screen.getByLabelText("Search AI models"), {
       target: { value: "opus" },
     });
 
     expect(screen.queryByText("K-AI 1.0")).toBeNull();
     expect(screen.getByText("Claude Opus 4.5")).toBeTruthy();
 
-    fireEvent.click(screen.getByLabelText("Clear search"));
+    fireEvent.click(screen.getByLabelText("Clear model search"));
 
     expect(screen.getByText("K-AI 1.0")).toBeTruthy();
   });
 
-  it("selects an unknown premium model while gateway metadata is still loading", () => {
+  it("selects an available gateway model for a paid user", () => {
+    mockPaidPlan = true;
     renderSelector();
 
     fireEvent.click(screen.getByLabelText("Select GPT-5.5 Pro"));
