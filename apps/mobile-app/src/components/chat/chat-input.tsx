@@ -1,18 +1,23 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import Animated, {
+  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
+  withRepeat,
   withSequence,
   withSpring,
   withTiming,
+  Easing,
 } from "react-native-reanimated";
+import Svg, { Rect } from "react-native-svg";
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import {
   Bot,
+  ArrowUp,
   AudioLines,
   Check,
   ChevronLeft,
@@ -37,6 +42,7 @@ import {
 import { GlassView } from "@/components/ui/glass";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { LinearGradient } from "expo-linear-gradient";
 import {
   Dropdown,
   DropdownItem,
@@ -57,6 +63,120 @@ const CONNECTOR_NAMES: Record<string, string> = {
   google_sheets: "Google Sheets",
   todoist: "Todoist",
 };
+
+/* ─── Animated Glow Rail ──────────────────────────────────────────────
+   React Native replica of the web's `glow-rail` CSS utility
+   (shared-styles.css lines 518-556).
+
+   Web CSS technique:
+   ─ A ::before pseudo-element with a conic-gradient rotates around
+     the container border at 7s per lap (4.5s on :focus-within).
+   ─ The gradient arc spans 30°→122° (92° total / 25.5% of perimeter):
+       transparent → color-mix(primary 78%, white 22%) → primary → lighter → transparent
+   ─ mask-composite: exclude crops it to a 1.5px border ring.
+   ─ At rest: opacity 0.4.  On focus-within: opacity 1 + box-shadow.
+
+   Native replica:
+   CSS conic-gradient with mask-composite is not available in React Native.
+   We use react-native-svg animated <Rect> strokes instead:
+   ─ One 1.5px stroke at full opacity for the bright core (~9% of perimeter,
+     matching the 58°→90° bright zone = 32°/360°).
+   ─ One 1.5px stroke at 30% opacity for the full comet arc (~25.5%),
+     creating the soft leading/trailing fade.
+   ─ One wider 4px stroke at 10% opacity behind both for subtle glow halo.
+   All three share the same animated dashOffset so they look like a single
+   comet with a bright center and soft edges — not stacked lines.
+   ─────────────────────────────────────────────────────────────────── */
+
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
+const BORDER_RADIUS = 24.5;
+const BORDER_WIDTH = 1.5;
+
+function calcPerimeter(w: number, h: number, r: number) {
+  return 2 * (w - 2 * r) + 2 * (h - 2 * r) + 2 * Math.PI * r;
+}
+
+// Web gradient arc: 30°→122° = 92°/360° ≈ 25.5% of perimeter (full comet).
+// Bright zone:      58°→ 90° = 32°/360° ≈  8.9% of perimeter (core).
+const ARC_FULL = 0.255;
+const ARC_CORE = 0.089;
+
+function GlowRail({ isFocused }: { isFocused: boolean }) {
+  const { primary } = useTheme();
+  const [dims, setDims] = useState({ w: 0, h: 0, p: 0 });
+  const progress = useSharedValue(0);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current || dims.p === 0) return;
+    started.current = true;
+    // 7s matches the web's `animation: glow-rail-spin 7s linear infinite`
+    progress.value = withRepeat(
+      withTiming(1, { duration: 7000, easing: Easing.linear }),
+      -1,
+      false,
+    );
+  }, [dims.p, progress]);
+
+  // Web: opacity 0.4 at rest, 1 on :focus-within, transition 350ms ease.
+  const opacityStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(isFocused ? 1 : 0.4, { duration: 350 }),
+  }));
+
+  const onLayout = useCallback(
+    (e: { nativeEvent: { layout: { width: number; height: number } } }) => {
+      const { width, height } = e.nativeEvent.layout;
+      const iw = width - BORDER_WIDTH * 2;
+      const ih = height - BORDER_WIDTH * 2;
+      setDims({ w: width, h: height, p: calcPerimeter(iw, ih, BORDER_RADIUS) });
+    },
+    [],
+  );
+
+  // All layers share the same offset — they overlap, not stack.
+  const animProps = useAnimatedProps(() => ({
+    strokeDashoffset: -(progress.value * dims.p),
+  }));
+
+  if (dims.p === 0) {
+    return <View className="absolute inset-0" pointerEvents="none" onLayout={onLayout} />;
+  }
+
+  const x = BORDER_WIDTH;
+  const y = BORDER_WIDTH;
+  const w = dims.w - BORDER_WIDTH * 2;
+  const h = dims.h - BORDER_WIDTH * 2;
+  const shared = { x, y, width: w, height: h, rx: BORDER_RADIUS, ry: BORDER_RADIUS, fill: "none" as const, strokeLinecap: "round" as const };
+
+  return (
+    <Animated.View className="absolute inset-0" pointerEvents="none" onLayout={onLayout} style={opacityStyle}>
+      <Svg width={dims.w} height={dims.h}>
+        {/* Subtle glow halo behind the comet */}
+        <AnimatedRect
+          {...shared}
+          stroke={primary} strokeWidth={4} opacity={0.10}
+          strokeDasharray={`${dims.p * ARC_FULL} ${dims.p * (1 - ARC_FULL)}`}
+          animatedProps={animProps}
+        />
+        {/* Full comet arc — 25.5%, lower opacity = soft fade edges */}
+        <AnimatedRect
+          {...shared}
+          stroke={primary} strokeWidth={BORDER_WIDTH} opacity={0.35}
+          strokeDasharray={`${dims.p * ARC_FULL} ${dims.p * (1 - ARC_FULL)}`}
+          animatedProps={animProps}
+        />
+        {/* Bright core — 8.9%, full opacity = crisp center */}
+        <AnimatedRect
+          {...shared}
+          stroke={primary} strokeWidth={BORDER_WIDTH} opacity={1}
+          strokeDasharray={`${dims.p * ARC_CORE} ${dims.p * (1 - ARC_CORE)}`}
+          animatedProps={animProps}
+        />
+      </Svg>
+    </Animated.View>
+  );
+}
 
 type ChatInputProps = {
   placeholder?: string;
@@ -108,6 +228,7 @@ export function ChatInput({
   const { isDark, primary, mutedForeground } = useTheme();
   const router = useRouter();
   const [internalValue, setInternalValue] = useState("");
+  const [isFocused, setIsFocused] = useState(false);
   const [modelSelectorOpen, setModelSelectorOpen] = useState(false);
   const actionScale = useSharedValue(1);
   const actionStyle = useAnimatedStyle(() => ({
@@ -162,25 +283,25 @@ export function ChatInput({
   };
 
   return (
-    // Mirrors the web dock: `glass bg-background/40 backdrop-blur-3xl
-    // rounded-3xl p-3` with the home page's primary glow blob rendered as a
-    // colored halo shadow around the card.
+    // Mirrors the web dock: `glow-rail glass bg-background/45 backdrop-blur-3xl
+    // rounded-[26px] p-2.5 transition-shadow duration-300`.
     <View
       style={{
         borderRadius: 26,
-        boxShadow: `0 6px 32px ${primary}73`,
+        padding: BORDER_WIDTH,
       }}
     >
+      <GlowRail isFocused={isFocused} />
       <GlassView
-        intensity={32}
+        intensity={45}
         style={{
-          borderRadius: 26,
+          borderRadius: 24.5,
           borderWidth: 1,
-          borderColor: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)",
+          borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
           backgroundColor: isDark
-            ? "rgba(12,9,12,0.40)"
-            : "rgba(255,251,253,0.40)",
-          padding: 10,
+            ? "rgba(12,9,12,0.45)"
+            : "rgba(255,251,253,0.45)",
+          padding: 8.5,
         }}
       >
         {attachments.length > 0 ? (
@@ -243,6 +364,8 @@ export function ChatInput({
         <TextInput
           value={value}
           onChangeText={setValue}
+          onFocus={() => setIsFocused(true)}
+          onBlur={() => setIsFocused(false)}
           placeholder={isListening ? "Listening…" : placeholder}
           placeholderTextColor={mutedForeground}
           multiline
@@ -251,14 +374,14 @@ export function ChatInput({
 
         <View className="mt-1 flex-row items-center justify-between">
           {/* Left tools: "+" menu + model selector (mirrors ChatInputTools) */}
-          <View className="flex-1 flex-row items-center gap-0.5">
+          <View className="flex-1 flex-row items-center gap-1.5">
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Add attachment or tools"
               onPress={plusMenu.open}
-              className="h-11 w-11 items-center justify-center rounded-full active:bg-foreground/5"
+              className="h-9 w-9 items-center justify-center rounded-full border border-foreground/10 bg-foreground/5 active:bg-foreground/10"
             >
-              <Icon as={Plus} size={17} className="text-muted-foreground" />
+              <Icon as={Plus} size={16} className="text-muted-foreground" />
             </Pressable>
 
             <ModelSelectorTrigger
@@ -276,13 +399,21 @@ export function ChatInput({
                 accessibilityLabel={isListening ? "Stop voice input" : "Start voice input"}
                 onPress={onMicPress}
                 className={cn(
-                  "h-11 w-11 items-center justify-center rounded-full active:bg-foreground/5",
-                  isListening && "bg-primary/15",
+                  "h-9 w-9 items-center justify-center rounded-full transition-all duration-200",
+                  isListening
+                    ? "bg-primary/15 active:bg-primary/25"
+                    : "active:bg-foreground/5",
                 )}
+                style={isListening ? {
+                  shadowColor: primary,
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 2,
+                } : undefined}
               >
                 <Icon
                   as={isListening ? MicOff : Mic}
-                  size={17}
+                  size={16}
                   className={isListening ? "text-primary" : "text-muted-foreground"}
                 />
               </Pressable>
@@ -307,15 +438,15 @@ export function ChatInput({
                     : () => router.push("/live" as Href)
                 }
                 className={cn(
-                  "h-11 w-11 items-center justify-center rounded-full border",
+                  "h-9 w-9 overflow-hidden items-center justify-center rounded-full",
                   showSubmitAction
                     ? canSend || isLoading
-                      ? "border-primary/30 bg-primary active:opacity-90"
-                      : "border-foreground/8 bg-foreground/8"
-                    : "border-primary/20 bg-primary/10 active:bg-primary/15",
+                      ? "bg-primary active:opacity-90"
+                      : "bg-foreground/8"
+                    : "active:opacity-90",
                 )}
                 style={
-                  showSubmitAction && (canSend || isLoading)
+                  (showSubmitAction && (canSend || isLoading)) || !showSubmitAction
                     ? {
                         shadowColor: primary,
                         shadowOpacity: 0.4,
@@ -326,21 +457,31 @@ export function ChatInput({
                     : undefined
                 }
               >
+                {!showSubmitAction && (
+                  <View className="absolute inset-0 bg-primary" />
+                )}
+                {!showSubmitAction && (
+                  <LinearGradient
+                    colors={[isDark ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.3)", "transparent"]}
+                    className="absolute inset-0"
+                  />
+                )}
                 <Icon
                   as={
                     showSubmitAction
                       ? isLoading
                         ? Square
-                        : SendHorizontal
+                        : ArrowUp
                       : AudioLines
                   }
-                  size={showSubmitAction && isLoading ? 13 : 17}
+                  size={20}
+                  strokeWidth={showSubmitAction && !isLoading ? 3 : 2.5}
                   className={
                     showSubmitAction
                       ? canSend || isLoading
                         ? "text-primary-foreground"
                         : "text-muted-foreground"
-                      : "text-primary"
+                      : "text-primary-foreground"
                   }
                 />
               </Pressable>

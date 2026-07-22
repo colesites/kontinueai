@@ -17,7 +17,7 @@ import {
 	SheetTrigger,
 } from "@repo/ui/components/ui/sheet";
 import { cn } from "@repo/ui/lib/utils";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import {
 	AudioLines,
 	Loader2,
@@ -167,13 +167,17 @@ function VoiceAperture({
 
 export function LiveVoiceDialog() {
 	const { user } = useUser();
+	const { isAuthenticated } = useConvexAuth();
 	const planTier = usePlanTier();
 	const canUseLive = planTier === "pro" || planTier === "max";
-	const allowance = useQuery(api.realtimeVoice.getAllowance, {});
+	const [open, setOpen] = useState(false);
+	const allowance = useQuery(
+		api.realtimeVoice.getAllowance,
+		open && canUseLive && isAuthenticated ? {} : "skip",
+	);
 	const startSession = useMutation(api.realtimeVoice.startSession);
 	const meterSession = useMutation(api.realtimeVoice.meterSession);
 	const finishSession = useMutation(api.realtimeVoice.endSession);
-	const [open, setOpen] = useState(false);
 	const [sessionId, setSessionId] = useState<VoiceSessionId | null>(null);
 	const [modelId, setModelId] = useState<RealtimeVoiceModelId | null>(() =>
 		getRealtimeVoiceModel(planTier),
@@ -422,6 +426,8 @@ export function LiveVoiceDialog() {
 		remainingSeconds ??
 		allowance?.remainingSeconds ??
 		fallbackAllowance.monthlySeconds;
+	const allowanceReady =
+		!canUseLive || (allowance !== undefined && allowance !== null);
 
 	return (
 		<Sheet open={open} onOpenChange={handleOpenChange}>
@@ -547,17 +553,21 @@ export function LiveVoiceDialog() {
 									<button
 										type="button"
 										onClick={begin}
-										disabled={starting || shownRemaining <= 0}
+										disabled={
+											starting || !allowanceReady || shownRemaining <= 0
+										}
 										className="glow-button group flex min-h-12 flex-1 items-center justify-center gap-2.5 rounded-full px-6 text-sm font-semibold text-primary-foreground transition hover:brightness-105 active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-50"
 									>
-										{starting ? (
+										{starting || !allowanceReady ? (
 											<Loader2 className="size-5 animate-spin" />
 										) : (
 											<Mic className="size-5" />
 										)}
-										{shownRemaining <= 0
-											? "Monthly limit reached"
-											: "Start talking"}
+										{!allowanceReady
+											? "Checking allowance…"
+											: shownRemaining <= 0
+												? "Monthly limit reached"
+												: "Start talking"}
 									</button>
 									<button
 										type="button"

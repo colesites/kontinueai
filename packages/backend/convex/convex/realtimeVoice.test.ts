@@ -30,6 +30,35 @@ async function seedUser(
 }
 
 describe("realtime voice entitlements and metering", () => {
+	test("returns a loading state while authentication or account sync is pending", async () => {
+		const t = convexTest(schema, modules);
+
+		expect(await t.query(api.realtimeVoice.getAllowance, {})).toBeNull();
+		expect(
+			await t
+				.withIdentity(identity("voice-not-synced"))
+				.query(api.realtimeVoice.getAllowance, {}),
+		).toBeNull();
+	});
+
+	test("returns allowance after the authenticated account is available", async () => {
+		const t = convexTest(schema, modules);
+		await seedUser(t, "voice-allowance", "pro_plan");
+
+		const allowance = await t
+			.withIdentity(identity("voice-allowance"))
+			.query(api.realtimeVoice.getAllowance, {});
+
+		expect(allowance).toMatchObject({
+			tier: "pro",
+			model: "openai/gpt-realtime-1.5",
+			usedSeconds: 0,
+			monthlySeconds: 1800,
+			remainingSeconds: 1800,
+			maxSessionSeconds: 900,
+		});
+	});
+
 	test("maps Pro and Max to their plan models and session caps", async () => {
 		for (const testCase of [
 			{

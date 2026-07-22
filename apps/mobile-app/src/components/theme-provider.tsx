@@ -31,6 +31,95 @@ type ThemeContextValue = {
   destructive: string;
 };
 
+const SURFACES: Record<
+  Theme,
+  {
+    dark: { background: string; foreground: string; mutedForeground: string; border: string; destructive: string };
+    light: { background: string; foreground: string; mutedForeground: string; border: string; destructive: string };
+  }
+> = {
+  default: {
+    dark: {
+      background: "#181217",
+      foreground: "#f5f1f3",
+      mutedForeground: "#b692a8",
+      border: "#49303e",
+      destructive: "#ef5350",
+    },
+    light: {
+      background: "#ffffff",
+      foreground: "#251f23",
+      mutedForeground: "#765c6b",
+      border: "#d8c6d0",
+      destructive: "#d9363e",
+    },
+  },
+  emerald: {
+    dark: {
+      background: "#19251e",
+      foreground: "#f2f7f4",
+      mutedForeground: "#aac3b4",
+      border: "#4d735d",
+      destructive: "#ef5350",
+    },
+    light: {
+      background: "#ffffff",
+      foreground: "#1f2622",
+      mutedForeground: "#5f806e",
+      border: "#cce0d5",
+      destructive: "#d9363e",
+    },
+  },
+  chelsea: {
+    dark: {
+      background: "#121626",
+      foreground: "#f2f4f7",
+      mutedForeground: "#9bb1d4",
+      border: "#2e3a59",
+      destructive: "#ef5350",
+    },
+    light: {
+      background: "#f8f9fc",
+      foreground: "#1a2035",
+      mutedForeground: "#657795",
+      border: "#cfd8e3",
+      destructive: "#d9363e",
+    },
+  },
+  amethyst: {
+    dark: {
+      background: "#191225",
+      foreground: "#f5f2f7",
+      mutedForeground: "#b8a2d4",
+      border: "#4a2f73",
+      destructive: "#ef5350",
+    },
+    light: {
+      background: "#ffffff",
+      foreground: "#231f26",
+      mutedForeground: "#735f8c",
+      border: "#dcd5e3",
+      destructive: "#d9363e",
+    },
+  },
+  normal: {
+    dark: {
+      background: "#000000",
+      foreground: "#fafdff",
+      mutedForeground: "#999999",
+      border: "#333333",
+      destructive: "#ef5350",
+    },
+    light: {
+      background: "#ffffff",
+      foreground: "#1a1a1a",
+      mutedForeground: "#666666",
+      border: "#ebebeb",
+      destructive: "#d9363e",
+    },
+  },
+};
+
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 const THEME_KEY = "kontinue-color-theme";
 const MODE_KEY = "kontinue-appearance-mode";
@@ -88,21 +177,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const isDark = mode === "system" ? colorScheme !== "light" : mode !== "light";
   const { primary, primaryForeground } = themePrimary(theme, isDark);
-  const surfaces = isDark
-    ? {
-        background: "#181217",
-        foreground: "#f5f1f3",
-        mutedForeground: "#b692a8",
-        border: "#49303e",
-        destructive: "#ef5350",
-      }
-    : {
-        background: "#ffffff",
-        foreground: "#251f23",
-        mutedForeground: "#765c6b",
-        border: "#d8c6d0",
-        destructive: "#d9363e",
-      };
+  const themeSurfaces = SURFACES[theme] ?? SURFACES.default;
+  const surfaces = themeSurfaces[isDark ? "dark" : "light"];
 
   // No manual useMemo: React Compiler memoizes this (and couldn't preserve
   // the hand-written dependency list, which failed its lint).
@@ -134,6 +210,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
             "--primary": primary,
             "--primary-foreground": primaryForeground,
             "--ring": primary,
+            "--background": surfaces.background,
+            "--foreground": surfaces.foreground,
+            "--muted-foreground": surfaces.mutedForeground,
+            "--border": surfaces.border,
           }),
         ]}
       >

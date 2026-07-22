@@ -393,7 +393,7 @@ export default async function ArticlePage({ params }: Props) {
 						)}
 
 						{/* comments section */}
-						<CommentsSection initialComments={comments} />
+						<CommentsSection postId={post._id} initialComments={comments} />
 					</div>
 
 					{/* TOC Sidebar (Right) */}

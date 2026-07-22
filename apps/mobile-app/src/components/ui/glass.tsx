@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Animated, Modal, Pressable, type ViewStyle } from "react-native";
+import { Animated, Modal, Pressable, type ViewStyle, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { X } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -24,15 +24,37 @@ export function GlassView({
   style?: ViewStyle | ViewStyle[];
   className?: string;
 }) {
-  const { isDark } = useTheme();
+  const { isDark, background } = useTheme();
+
+  // Extract borderRadius to apply to the inner absolute background view
+  // to avoid React Native's clipping bugs on iOS.
+  const stylesArray = Array.isArray(style) ? style : style ? [style] : [];
+  const flattenedStyle = stylesArray.reduce<Record<string, any>>((acc, s) => {
+    if (s && typeof s === "object") {
+      return { ...acc, ...s };
+    }
+    return acc;
+  }, {});
+  const borderRadius = flattenedStyle.borderRadius ?? 0;
+
   return (
     <BlurView
       intensity={intensity}
       tint={isDark ? "dark" : "light"}
       experimentalBlurMethod="dimezisBlurView"
       className={className}
-      style={[{ overflow: "hidden" }, ...(Array.isArray(style) ? style : style ? [style] : [])]}
+      style={[{ overflow: "hidden" }, ...stylesArray]}
     >
+      {/* 
+        Inject the theme's actual background color with opacity.
+        Expo's default "dark" tint is a neutral gray/black iOS material. 
+        Adding this matches the web's `background: color-mix(var(--background) 62%, transparent)`.
+      */}
+      <View
+        className="absolute inset-0"
+        style={{ backgroundColor: background, opacity: 0.45, borderRadius }}
+        pointerEvents="none"
+      />
       {children}
     </BlurView>
   );

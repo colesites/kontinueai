@@ -16,9 +16,15 @@ const ThemeOnboarding = dynamic(
 	{ ssr: false },
 );
 
-export function ConvexProviders({ children }: { children: React.ReactNode }) {
+export function ConvexProviders({
+	children,
+	requireAuthentication = false,
+}: {
+	children: React.ReactNode;
+	requireAuthentication?: boolean;
+}) {
 	return (
-		<ConvexClientProvider>
+		<ConvexClientProvider requireAuthentication={requireAuthentication}>
 			<TooltipProvider>{children}</TooltipProvider>
 		</ConvexClientProvider>
 	);
@@ -38,7 +44,7 @@ export function PublicConvexProviders({
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
 	return (
-		<ConvexProviders>
+		<ConvexProviders requireAuthentication>
 			<CanvasProvider>
 				<ThemeOnboarding />
 				{children}

@@ -82,9 +82,35 @@ export const SITEMAP_POSTS_QUERY = defineQuery(`
 
 // Comments for a specific post.
 export const POST_COMMENTS_QUERY = defineQuery(`
-	*[_type == "comment" && approved == true && post->slug.current == $slug] | order(createdAt desc) {
+	*[
+		_type == "comment" &&
+		post._ref == *[_type == "post" && slug.current == $slug][0]._id &&
+		(status == "approved" || (!defined(status) && approved == true))
+	] | order(createdAt desc)[0...100] {
 		_id,
+		"authorName": coalesce(authorName, "Guest"),
 		text,
 		createdAt
+	}
+`);
+
+export const COMMENT_SUBMISSION_CONTEXT_QUERY = defineQuery(`
+	{
+		"post": *[
+			_type == "post" &&
+			_id == $postId &&
+			!(_id in path("drafts.**"))
+		][0] { _id, "slug": slug.current },
+		"recentCount": count(*[
+			_type == "comment" &&
+			submitterHash == $submitterHash &&
+			createdAt > $rateCutoff
+		]),
+		"isDuplicate": count(*[
+			_type == "comment" &&
+			submitterHash == $submitterHash &&
+			contentHash == $contentHash &&
+			createdAt > $duplicateCutoff
+		]) > 0
 	}
 `);

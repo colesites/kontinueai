@@ -31,6 +31,7 @@ export type Seo = {
     media?: unknown;
     hotspot?: SanityImageHotspot;
     crop?: SanityImageCrop;
+    alt?: string;
     _type: "image";
   };
   noIndex?: boolean;
@@ -50,9 +51,13 @@ export type Comment = {
   _updatedAt: string;
   _rev: string;
   post?: PostReference;
+  authorName?: string;
   text?: string;
   createdAt?: string;
+  status?: "pending" | "approved" | "rejected";
   approved?: boolean;
+  submitterHash?: string;
+  contentHash?: string;
 };
 
 export type BlockContent = Array<
@@ -383,23 +388,14 @@ export type POST_QUERY_RESULT = {
   seo: {
     title: string | null;
     description: string | null;
-    image:
-      | {
-          asset?: SanityImageAssetReference;
-          media?: unknown;
-          hotspot?: SanityImageHotspot;
-          crop?: SanityImageCrop;
-          alt?: string;
-          _type: "image";
-        }
-      | {
-          asset?: SanityImageAssetReference;
-          media?: unknown;
-          hotspot?: SanityImageHotspot;
-          crop?: SanityImageCrop;
-          _type: "image";
-        }
-      | null;
+    image: {
+      asset?: SanityImageAssetReference;
+      media?: unknown;
+      hotspot?: SanityImageHotspot;
+      crop?: SanityImageCrop;
+      alt?: string;
+      _type: "image";
+    } | null;
     noIndex: boolean | false;
   };
   body: BlockContent | null;
@@ -586,12 +582,25 @@ export type SITEMAP_POSTS_QUERY_RESULT = Array<{
 
 // Source: src/sanity/lib/queries.ts
 // Variable: POST_COMMENTS_QUERY
-// Query: *[_type == "comment" && approved == true && post->slug.current == $slug] | order(createdAt desc) {		_id,		text,		createdAt	}
+// Query: *[		_type == "comment" &&		post._ref == *[_type == "post" && slug.current == $slug][0]._id &&		(status == "approved" || (!defined(status) && approved == true))	] | order(createdAt desc)[0...100] {		_id,		"authorName": coalesce(authorName, "Guest"),		text,		createdAt	}
 export type POST_COMMENTS_QUERY_RESULT = Array<{
   _id: string;
+  authorName: string | "Guest";
   text: string | null;
   createdAt: string | null;
 }>;
+
+// Source: src/sanity/lib/queries.ts
+// Variable: COMMENT_SUBMISSION_CONTEXT_QUERY
+// Query: {		"post": *[			_type == "post" &&			_id == $postId &&			!(_id in path("drafts.**"))		][0] { _id, "slug": slug.current },		"recentCount": count(*[			_type == "comment" &&			submitterHash == $submitterHash &&			createdAt > $rateCutoff		]),		"isDuplicate": count(*[			_type == "comment" &&			submitterHash == $submitterHash &&			contentHash == $contentHash &&			createdAt > $duplicateCutoff		]) > 0	}
+export type COMMENT_SUBMISSION_CONTEXT_QUERY_RESULT = {
+  post: {
+    _id: string;
+    slug: string | null;
+  } | null;
+  recentCount: number;
+  isDuplicate: boolean;
+};
 
 // Query TypeMap
 import "@sanity/client";
@@ -604,6 +613,7 @@ declare module "@sanity/client" {
     '\n\t*[_type == "author" && defined(slug.current)] | order(name asc) {\n\t\t_id, name, role, bio, x, linkedin, image, "slug": slug.current\n\t}\n': AUTHORS_QUERY_RESULT;
     '\n\t*[_type == "author" && slug.current == $slug][0] {\n\t\t_id, name, role, bio, x, linkedin, image, "slug": slug.current,\n\t\t"posts": *[_type == "post" && author._ref == ^._id && defined(slug.current)] | order(coalesce(publishedAt, _createdAt) desc) {\n\t\t\t\n\t_id,\n\ttitle,\n\t"slug": slug.current,\n\texcerpt,\n\t"publishedAt": coalesce(publishedAt, _createdAt),\n\t"modifiedAt": _updatedAt,\n\tfeatured,\n\t"views": coalesce(views, 0),\n\t"readMins": round(length(pt::text(body)) / 1200),\n\tmainImage{ ..., "lqip": asset->metadata.lqip },\n\tseo,\n\t"author": author->{ name, role, image, bio, x, linkedin, "slug": slug.current },\n\t"categories": categories[]->{ title, "slug": slug.current }\n\n\t\t}\n\t}\n': AUTHOR_QUERY_RESULT;
     '\n\t*[_type == "post" && defined(slug.current) && seo.noIndex != true] {\n\t\t"slug": slug.current,\n\t\t_updatedAt\n\t}\n': SITEMAP_POSTS_QUERY_RESULT;
-    '\n\t*[_type == "comment" && approved == true && post->slug.current == $slug] | order(createdAt desc) {\n\t\t_id,\n\t\ttext,\n\t\tcreatedAt\n\t}\n': POST_COMMENTS_QUERY_RESULT;
+    '\n\t*[\n\t\t_type == "comment" &&\n\t\tpost._ref == *[_type == "post" && slug.current == $slug][0]._id &&\n\t\t(status == "approved" || (!defined(status) && approved == true))\n\t] | order(createdAt desc)[0...100] {\n\t\t_id,\n\t\t"authorName": coalesce(authorName, "Guest"),\n\t\ttext,\n\t\tcreatedAt\n\t}\n': POST_COMMENTS_QUERY_RESULT;
+    '\n\t{\n\t\t"post": *[\n\t\t\t_type == "post" &&\n\t\t\t_id == $postId &&\n\t\t\t!(_id in path("drafts.**"))\n\t\t][0] { _id, "slug": slug.current },\n\t\t"recentCount": count(*[\n\t\t\t_type == "comment" &&\n\t\t\tsubmitterHash == $submitterHash &&\n\t\t\tcreatedAt > $rateCutoff\n\t\t]),\n\t\t"isDuplicate": count(*[\n\t\t\t_type == "comment" &&\n\t\t\tsubmitterHash == $submitterHash &&\n\t\t\tcontentHash == $contentHash &&\n\t\t\tcreatedAt > $duplicateCutoff\n\t\t]) > 0\n\t}\n': COMMENT_SUBMISSION_CONTEXT_QUERY_RESULT;
   }
 }

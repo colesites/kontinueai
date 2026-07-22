@@ -16,52 +16,54 @@ const MODES: { value: Mode; label: string }[] = [
 ];
 
 /** Blend a hex color toward white by `ratio` (0–1). */
-function lighten(hex: string, ratio: number): string {
-  const h = hex.replace("#", "");
-  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
-  const r = parseInt(full.slice(0, 2), 16);
-  const g = parseInt(full.slice(2, 4), 16);
-  const b = parseInt(full.slice(4, 6), 16);
-  const lr = Math.round(r + (255 - r) * ratio);
-  const lg = Math.round(g + (255 - g) * ratio);
-  const lb = Math.round(b + (255 - b) * ratio);
-  return `rgb(${lr},${lg},${lb})`;
+function lighten(hex: string, percent: number): string {
+  const num = parseInt(hex.replace("#", ""), 16),
+    amt = Math.round(2.55 * (percent * 100)),
+    R = (num >> 16) + amt,
+    G = ((num >> 8) & 0x00ff) + amt,
+    B = (num & 0x0000ff) + amt;
+  return (
+    "#" +
+    (
+      0x1000000 +
+      (R < 255 ? (R < 0 ? 0 : R) : 255) * 0x10000 +
+      (G < 255 ? (G < 0 ? 0 : G) : 255) * 0x100 +
+      (B < 255 ? (B < 0 ? 0 : B) : 255)
+    )
+      .toString(16)
+      .slice(1)
+  );
 }
 
-/**
- * Glossy 3D color ball — mirrors the web swatch:
- * `radial-gradient(circle at 30% 30%, lighter, color)` + inset top sheen +
- * colored drop shadow. The radial highlight (top-left) and a soft white
- * specular blob give it depth that a flat fill can't.
- */
+/** Web ModeToggle's color swatches — gradient fills matching CSS radial-gradient. */
 export function GlossySwatch({ id, color }: { id: string; color: string }) {
   const fillId = `swatch-fill-${id}`;
-  const sheenId = `swatch-sheen-${id}`;
   return (
     <View
       style={{
         width: 24,
         height: 24,
         borderRadius: 12,
-        boxShadow: `0 2px 5px ${color}80`,
+        shadowColor: color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.35,
+        shadowRadius: 3,
+        elevation: 2,
+        borderWidth: 1,
+        borderColor: "rgba(255, 255, 255, 0.08)",
+        alignItems: "center",
+        justifyContent: "center",
       }}
     >
-      <Svg width={24} height={24}>
+      <Svg width={22} height={22}>
         <Defs>
-          <RadialGradient id={fillId} cx="32%" cy="28%" r="80%">
-            <Stop offset="0" stopColor={lighten(color, 0.28)} />
-            <Stop offset="0.65" stopColor={color} />
+          <RadialGradient id={fillId} cx="30%" cy="30%" r="70%">
+            <Stop offset="0" stopColor={lighten(color, 0.15)} />
+            <Stop offset="0.7" stopColor={color} />
             <Stop offset="1" stopColor={color} />
           </RadialGradient>
-          <RadialGradient id={sheenId} cx="50%" cy="50%" r="50%">
-            <Stop offset="0" stopColor="#ffffff" stopOpacity={0.55} />
-            <Stop offset="1" stopColor="#ffffff" stopOpacity={0} />
-          </RadialGradient>
         </Defs>
-        {/* base ball */}
-        <Circle cx={12} cy={12} r={11.5} fill={`url(#${fillId})`} />
-        {/* top-left specular highlight */}
-        <Circle cx={8.5} cy={7.5} r={4.5} fill={`url(#${sheenId})`} />
+        <Circle cx={11} cy={11} r={11} fill={`url(#${fillId})`} />
       </Svg>
     </View>
   );
@@ -69,6 +71,7 @@ export function GlossySwatch({ id, color }: { id: string; color: string }) {
 
 /** Web ModeToggle's check pill — primary circle, only when active. */
 function CheckPill({ active }: { active: boolean }) {
+  const { primary } = useTheme();
   if (!active) return <View style={{ width: 20, height: 20 }} />;
   return (
     <View
@@ -76,7 +79,11 @@ function CheckPill({ active }: { active: boolean }) {
       style={{
         width: 20,
         height: 20,
-        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+        shadowColor: primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
+        elevation: 2,
       }}
     >
       <Icon as={Check} size={12} strokeWidth={3} className="text-primary-foreground" />
@@ -108,7 +115,7 @@ export function ThemeMenu({
         width={232}
       >
         {/* Appearance */}
-        <Text className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest text-primary">
+        <Text className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/80">
           Appearance
         </Text>
         {MODES.map(({ value, label }) => {
@@ -127,31 +134,31 @@ export function ThemeMenu({
                     since NativeWind's rounded-* is unreliable on these Views */}
                 <View
                   className={cn(
-                    "h-6 w-6 items-center justify-center",
+                    "items-center justify-center",
                     active
                       ? "border border-primary/20 bg-primary/12"
                       : "bg-foreground/5",
                   )}
-                  style={{ borderRadius: 8 }}
+                  style={{ width: 24, height: 24, borderRadius: 8 }}
                 >
                   {value === "light" && (
                     <Icon
                       as={Sun}
-                      size={12}
+                      size={15}
                       className={active ? "text-primary" : "text-muted-foreground"}
                     />
                   )}
                   {value === "dark" && (
                     <Icon
                       as={Moon}
-                      size={12}
+                      size={15}
                       className={active ? "text-primary" : "text-muted-foreground"}
                     />
                   )}
                   {value === "system" && (
                     <View
                       className={cn(
-                        "h-2 w-2 rounded-full opacity-70",
+                        "h-2.5 w-2.5 rounded-full opacity-70",
                         active ? "bg-primary" : "bg-muted-foreground",
                       )}
                     />
@@ -167,7 +174,7 @@ export function ThemeMenu({
         <DropdownSeparator />
 
         {/* Color theme */}
-        <Text className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest text-primary">
+        <Text className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/80">
           Color theme
         </Text>
         {THEMES.map((t) => {

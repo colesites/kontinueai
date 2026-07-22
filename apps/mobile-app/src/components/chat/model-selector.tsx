@@ -166,9 +166,12 @@ export function ModelSelectorTrigger({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Choose model. Current model ${model.name}`}
-      className="min-h-11 max-w-[210px] flex-row items-center gap-1.5 rounded-full border border-foreground/8 bg-foreground/3 px-2.5 active:bg-foreground/8"
+      className="min-h-11 max-w-[210px] flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/3 px-4 active:bg-foreground/8"
     >
-      <View className="h-5 w-5 shrink-0 items-center justify-center rounded-md border border-foreground/5 bg-foreground/5">
+      <View
+        className="h-5 w-5 shrink-0 items-center justify-center border border-foreground/5 bg-foreground/5 overflow-hidden"
+        style={{ borderRadius: 6 }}
+      >
         <ProviderLogo provider={model.provider} size={12} />
       </View>
       <Text numberOfLines={1} className="min-w-0 shrink text-[13px] font-medium text-foreground">
@@ -245,9 +248,8 @@ export function ModelSelector({
     >
       <View className="flex-1 bg-black/70">
         <Pressable className="absolute inset-0" accessibilityLabel="Close model selector" onPress={close} />
-        <SafeAreaView
+        <View
           className="flex-1 items-center justify-center px-3"
-          edges={["top", "right", "bottom", "left"]}
           style={{ pointerEvents: "box-none" }}
         >
           <View
@@ -375,9 +377,12 @@ export function ModelSelector({
                               )}
                               style={selected ? { borderLeftWidth: 3, borderLeftColor: primary } : undefined}
                             >
-                              <View className={cn("h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-foreground/6 bg-foreground/5", selected && "border-primary/25 bg-primary/12")}>
-                                <ProviderLogo provider={model.provider} size={18} />
-                              </View>
+                              <View
+                                className={cn("h-10 w-10 shrink-0 items-center justify-center border border-foreground/6 bg-foreground/5 overflow-hidden", selected && "border-primary/25 bg-primary/12")}
+                                style={{ borderRadius: 10 }}
+                               >
+                                 <ProviderLogo provider={model.provider} size={18} />
+                               </View>
                               <View className="min-w-0 flex-1 py-0.5">
                                 <View className="flex-row items-center gap-2">
                                   <Text numberOfLines={1} className="min-w-0 shrink text-[13.5px] font-semibold text-foreground">
@@ -410,7 +415,7 @@ export function ModelSelector({
               </ScrollView>
             )}
           </View>
-        </SafeAreaView>
+        </View>
       </View>
     </Modal>
   );

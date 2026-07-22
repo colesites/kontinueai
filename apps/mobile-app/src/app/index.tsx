@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
+import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { useUser } from "@clerk/expo";
 import { useAction, useMutation } from "convex/react";
@@ -99,7 +100,7 @@ export default function HomeScreen() {
   const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [agentId, setAgentId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const { primary, mutedForeground, primaryForeground } = useTheme();
+  const { isDark, primary, mutedForeground, primaryForeground } = useTheme();
   const webSearchAvailable = isPaidPlan || isKaiModel(selectedModel);
   const detectedProvider = importUrl.trim()
     ? detectProvider(importUrl.trim())
@@ -222,6 +223,78 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
+      {/* Ambient background glows matching web */}
+      <View
+        className="absolute inset-0 pointer-events-none overflow-hidden"
+        style={{ zIndex: 0 }}
+      >
+        {/* Top Center circular bloom */}
+        <View
+          style={{
+            position: "absolute",
+            top: -120,
+            left: 0,
+            right: 0,
+            height: 480,
+            alignItems: "center",
+          }}
+        >
+          <Svg height="480" width="100%">
+            <Defs>
+              <RadialGradient id="topGlow" cx="50%" cy="15%" r="50%">
+                <Stop offset="0%" stopColor={primary} stopOpacity={0.16} />
+                <Stop offset="100%" stopColor={primary} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx="50%" cy="15%" r="50%" fill="url(#topGlow)" />
+          </Svg>
+        </View>
+
+        {/* Bottom Right circular bloom */}
+        <View
+          style={{
+            position: "absolute",
+            bottom: -150,
+            right: -150,
+            width: 400,
+            height: 400,
+          }}
+        >
+          <Svg height="400" width="400">
+            <Defs>
+              <RadialGradient id="bottomGlow" cx="50%" cy="50%" r="50%">
+                <Stop offset="0%" stopColor={primary} stopOpacity={0.12} />
+                <Stop offset="100%" stopColor={primary} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx="50%" cy="50%" r="50%" fill="url(#bottomGlow)" />
+          </Svg>
+        </View>
+
+        {/* Bottom Center Input Bloom — spreads up behind the composer, perfectly centered */}
+        <View
+          style={{
+            position: "absolute",
+            bottom: -60,
+            left: 0,
+            right: 0,
+            height: 580,
+            alignItems: "center",
+          }}
+        >
+          <Svg height="580" width="100%">
+            <Defs>
+              <RadialGradient id="inputGlow" cx="50%" cy="65%" r="55%">
+                <Stop offset="0%" stopColor={primary} stopOpacity={0.25} />
+                <Stop offset="45%" stopColor={primary} stopOpacity={0.12} />
+                <Stop offset="100%" stopColor={primary} stopOpacity={0} />
+              </RadialGradient>
+            </Defs>
+            <Circle cx="50%" cy="65%" r="55%" fill="url(#inputGlow)" />
+          </Svg>
+        </View>
+      </View>
+
       <TopToolbar />
 
       <KeyboardAvoidingView
@@ -229,15 +302,32 @@ export default function HomeScreen() {
         style={{ flex: 1 }}
       >
         {/* Centered hero */}
-        <View className="items-center justify-center px-6" style={{ flex: 1 }}>
-          <KontinueLogo height={36} />
-          <Text className="mt-6 text-center text-[26px] font-normal tracking-wide text-foreground/90">
-            How can I help you, {firstName}?
+        <View className="items-center justify-center px-6" style={{ flex: 1, zIndex: 10 }}>
+          <View
+            style={{
+              shadowColor: primary,
+              shadowOpacity: 0.35,
+              shadowRadius: 28,
+              shadowOffset: { width: 0, height: 8 },
+              elevation: 10,
+            }}
+          >
+            <KontinueLogo height={44} />
+          </View>
+          
+          <Text className="mt-7 text-center text-3xl font-medium tracking-tight text-foreground/85">
+            How can I help{"\n"}you, <Text className="text-3xl font-semibold text-foreground">{firstName}</Text>?
           </Text>
 
-          <View className="mt-8 flex-row items-center gap-3">
+          <View className="mt-8 flex-row items-center justify-center gap-4">
             <Pressable onPress={() => setHowOpen(true)} hitSlop={6}>
-              <Text className="text-[14px] text-muted-foreground underline">
+              <Text 
+                className="text-[14px] text-muted-foreground"
+                style={{ 
+                  textDecorationLine: 'underline', 
+                  textDecorationColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'
+                }}
+              >
                 How does this work?
               </Text>
             </Pressable>
@@ -289,8 +379,9 @@ export default function HomeScreen() {
           ) : null}
         </View>
 
-        {/* Composer pinned to the bottom (glow is part of ChatInput) */}
-        <View className="px-4 pb-3">
+        {/* Composer pinned to the bottom */}
+        <View className="px-4 pb-3" style={{ zIndex: 20 }}>
+
           {isCreatingChat ? (
             <View className="mb-2 flex-row items-center justify-center gap-2">
               <ActivityIndicator size="small" />
@@ -299,6 +390,7 @@ export default function HomeScreen() {
               </Text>
             </View>
           ) : null}
+
           <ChatInput
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}

@@ -61,6 +61,7 @@ export interface AuthorPage extends Author {
 
 export interface PostComment {
 	_id: string;
+	authorName: string;
 	text: string;
 	createdAt: string;
 }

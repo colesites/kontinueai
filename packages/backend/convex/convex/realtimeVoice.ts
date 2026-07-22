@@ -1,9 +1,9 @@
+import { AI_USAGE_CREDIT_COSTS } from "@repo/core/ai-usage-credits";
 import {
 	getRealtimeVoiceModel,
 	getUtcMonthKey,
 	REALTIME_VOICE_LIMITS,
 } from "@repo/core/realtime-voice";
-import { AI_USAGE_CREDIT_COSTS } from "@repo/core/ai-usage-credits";
 import { ConvexError, v } from "convex/values";
 import { getPersistedPlanTier } from "../lib/plan";
 import type { Doc } from "./_generated/dataModel";
@@ -15,6 +15,16 @@ import {
 } from "./lib/aiUsageCredits";
 
 const HEARTBEAT_GRACE_SECONDS = 20;
+
+async function userByClerkSubject(
+	ctx: QueryCtx | MutationCtx,
+	clerkSubject: string,
+): Promise<Doc<"users"> | null> {
+	return await ctx.db
+		.query("users")
+		.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", clerkSubject))
+		.unique();
+}
 
 async function authenticatedUser(
 	ctx: QueryCtx | MutationCtx,
@@ -28,10 +38,7 @@ async function authenticatedUser(
 
 	// Existing accounts are keyed by Clerk's subject. Identity is still derived
 	// server-side; no caller-provided user id participates in authorization.
-	const user = await ctx.db
-		.query("users")
-		.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
-		.unique();
+	const user = await userByClerkSubject(ctx, identity.subject);
 	if (!user)
 		throw new ConvexError({
 			code: "USER_NOT_FOUND",
@@ -56,7 +63,13 @@ async function usageForMonth(
 export const getAllowance = query({
 	args: {},
 	handler: async (ctx) => {
-		const user = await authenticatedUser(ctx);
+		// This query is mounted from UI and can briefly run while Clerk is
+		// refreshing its Convex token or while a new account is being synced.
+		// Reads return a loading state; mutations remain strictly authenticated.
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return null;
+		const user = await userByClerkSubject(ctx, identity.subject);
+		if (!user) return null;
 		const tier = getPersistedPlanTier(user.plan);
 		const limits = REALTIME_VOICE_LIMITS[tier];
 		const monthKey = getUtcMonthKey();
