@@ -24,16 +24,16 @@ interface ThemeOnboardingProps {
 }
 
 const THEME_DESCRIPTIONS: Record<Theme, string> = {
-	default: "Classic pink & red tones",
+	normal: "Clean black & white",
+	pink: "Classic pink & red tones",
 	emerald: "Fresh green & teal vibes",
 	chelsea: "Royal blue with gold accents",
 	amethyst: "Bold violet & plum palette",
-	normal: "Clean black & white",
 };
 
 export function ThemeOnboarding({ onComplete }: ThemeOnboardingProps) {
 	const [open, setOpen] = useState(false);
-	const [selectedTheme, setSelectedTheme] = useState<Theme>("default");
+	const [selectedTheme, setSelectedTheme] = useState<Theme>("normal");
 
 	useEffect(() => {
 		if (!hasCompletedThemeOnboarding()) {

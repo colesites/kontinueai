@@ -5,7 +5,7 @@ This file records statements that should be reviewed by qualified counsel or the
 ## Items requiring review
 
 1. **Legal entity and address** — The policies name “Kontinue AI” but do not provide the registered legal entity, registration jurisdiction, company number, or service address.
-2. **Governing law** — The Terms select California law and American Arbitration Association rules while the public company positioning says the product was built in Nigeria. Confirm the intended contracting entity and jurisdiction.
+2. **Governing law** — The Terms select California law and American Arbitration Association rules. Confirm the intended contracting entity and jurisdiction.
 3. **International data transfers** — The Privacy Policy says the service is provided in the United States. Confirm every current hosting, storage, analytics, authentication, extraction, and AI-provider location before retaining this statement.
 4. **Retention periods** — The policy uses “as long as necessary” but the product does not expose a verified deletion schedule for chats, account data, import jobs, logs, analytics, backups, or error monitoring.
 5. **Account deletion** — The policy permits deletion requests by contact, but no self-service account-deletion route was found. Confirm the operational process, identity verification, provider deletion, backup handling, and response deadline.

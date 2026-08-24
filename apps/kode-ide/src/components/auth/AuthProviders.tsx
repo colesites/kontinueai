@@ -1,6 +1,7 @@
 import { ClerkProvider } from "@clerk/clerk-react";
 import { dark } from "@clerk/themes";
 import type { ReactNode } from "react";
+import { useEffect } from "react";
 
 import { ConvexClientProvider } from "@/lib/convex";
 
@@ -16,6 +17,7 @@ export function AuthProviders({ children }: { children: ReactNode }) {
     <ClerkProvider
       publishableKey={publishableKey}
       afterSignOutUrl="/"
+      allowedRedirectProtocols={["tauri:"]}
       appearance={{
         baseTheme: dark,
         variables: {
@@ -50,6 +52,14 @@ export function AuthProviders({ children }: { children: ReactNode }) {
 }
 
 function MissingAuthConfig() {
+  useEffect(() => {
+    const splash = document.getElementById("splash");
+    if (splash) {
+      splash.classList.add("hide");
+      setTimeout(() => splash.remove(), 350);
+    }
+  }, []);
+
   return (
     <main className="grid min-h-screen place-items-center bg-background px-6 text-foreground">
       <div className="glass-strong max-w-lg rounded-2xl p-6">
@@ -63,3 +73,4 @@ function MissingAuthConfig() {
     </main>
   );
 }
+

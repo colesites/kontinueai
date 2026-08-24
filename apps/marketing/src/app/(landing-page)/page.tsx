@@ -17,9 +17,9 @@ import { pageMetadata } from "@/lib/metadata";
 import { softwareSchema } from "@/lib/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-	title: "Kontinue AI | African-Built Multi-Model AI Platform",
+	title: "Kontinue AI | Multi-Model AI Platform",
 	description:
-		"Use K-AI 1.0, access leading AI models and import supported conversations with their context. Built in Africa for the world.",
+		"Use K-AI 1.0, access leading AI models and import supported conversations with their context.",
 	path: "/",
 });
 

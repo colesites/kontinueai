@@ -59,8 +59,8 @@ export default function RootLayout({
               (function() {
                 try {
                   var rawTheme = localStorage.getItem('ui-theme');
-                  var theme = rawTheme === 'chelsea-blue' ? 'chelsea' : rawTheme;
-                  if (theme && theme !== 'default') {
+                  var theme = rawTheme === 'default' ? 'pink' : rawTheme === 'chelsea-blue' ? 'chelsea' : rawTheme;
+                  if (theme) {
                     document.documentElement.classList.add('theme-' + theme);
                     document.documentElement.setAttribute('data-color-theme', theme);
                   } else {

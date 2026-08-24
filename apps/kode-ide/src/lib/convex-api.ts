@@ -18,9 +18,28 @@ type GetOrCreateUserArgs = {
   plan?: string;
 };
 
-// The Kode IDE talks to its OWN Convex tables (kodeChats / kodeMessages) via the
-// `kode` module, so coding chats never leak into the web app's chat list/search
-// or its memory/embedding/title pipelines.
+export type HomeConvexChat = {
+  _id: string;
+  title: string;
+  projectId?: string;
+  archived?: boolean;
+  lastMessageAt?: number;
+  pinnedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type HomeConvexProject = {
+  _id: string;
+  name: string;
+  color?: string;
+  icon?: string;
+  status: "active" | "on_hold" | "completed";
+  archived: boolean;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type KodeConvexChat = {
   _id: string;
   title: string;
@@ -76,6 +95,98 @@ type KodeConvexApi = {
       "public",
       GetOrCreateUserArgs,
       string
+    >;
+  };
+  chats: {
+    getUserChats: FunctionReference<
+      "query",
+      "public",
+      Record<string, never>,
+      HomeConvexChat[]
+    >;
+    createChat: FunctionReference<
+      "mutation",
+      "public",
+      {
+        title: string;
+        provider: string;
+        sourceUrl?: string;
+        importMethod: "automatic" | "manual";
+        messages: { role: "system" | "user" | "assistant"; content: string }[];
+      },
+      string
+    >;
+    toggleChatPin: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string; pinned: boolean },
+      { pinned: boolean }
+    >;
+    setChatArchived: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string; archived: boolean },
+      { archived: boolean }
+    >;
+    deleteChat: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string },
+      unknown
+    >;
+  };
+  projects: {
+    listProjects: FunctionReference<
+      "query",
+      "public",
+      { includeArchived?: boolean },
+      HomeConvexProject[]
+    >;
+    createProject: FunctionReference<
+      "mutation",
+      "public",
+      { name: string; description?: string; color?: string; icon?: string },
+      string
+    >;
+    updateProject: FunctionReference<
+      "mutation",
+      "public",
+      { projectId: string; name?: string; description?: string },
+      unknown
+    >;
+  };
+  connectors: {
+    listConnectors: FunctionReference<
+      "query",
+      "public",
+      Record<string, never>,
+      { _id: string; provider: string; connected: boolean; accountLabel?: string }[]
+    >;
+  };
+  messages: {
+    addMessage: FunctionReference<
+      "mutation",
+      "public",
+      {
+        chatId: string;
+        role: "user" | "assistant";
+        content: string;
+        model?: string;
+      } & KodeMessageMetadataArgs,
+      string
+    >;
+    getMessages: FunctionReference<
+      "query",
+      "public",
+      { chatId: string },
+      {
+        _id: string;
+        chatId: string;
+        role: "user" | "assistant" | "system";
+        content: string;
+        model?: string;
+        createdAt?: number;
+      }[]
     >;
   };
   kode: {

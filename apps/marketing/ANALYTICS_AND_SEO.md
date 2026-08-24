@@ -33,7 +33,7 @@ Suggested properties are limited to source platform, import method, model provid
 
 1. Verify `https://kontinueai.com/sitemap.xml` in Google Search Console and Bing Webmaster Tools.
 2. Segment organic landing pages by the model, import, platform-import, pricing, about, and security routes.
-3. Group queries into branded (“Kontinue AI”, “K-AI 1.0”) and non-branded (“import ChatGPT conversation”, “African AI platform”).
+3. Group queries into branded (“Kontinue AI”, “K-AI 1.0”) and non-branded (“import ChatGPT conversation”, “multi-model AI platform”).
 4. Measure import-page CTA clicks and signup starts by landing page and UTM source.
 5. Create referral segments for `chatgpt.com`, `claude.ai`, `gemini.google.com`, `perplexity.ai`, and other assistant domains.
 6. Review crawl errors, duplicate titles, canonical selection, rich-result warnings, Core Web Vitals, and indexed-page counts monthly.

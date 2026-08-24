@@ -32,7 +32,7 @@ const MODE_LABEL: Record<Mode, string> = {
 export function ModeToggle({ className }: { className?: string }) {
 	const { theme: darkMode, setTheme: setDarkMode } = useTheme();
 	const [colorTheme, setColorThemeState] = useState<Theme>(
-		() => getSavedTheme() ?? "default",
+		() => getSavedTheme() ?? "normal",
 	);
 
 	const handleColorThemeChange = (theme: Theme) => {

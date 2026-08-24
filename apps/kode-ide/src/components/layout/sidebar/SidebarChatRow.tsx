@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -7,7 +8,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useKodeWorkspace, type KodeChat } from "@/lib/kode-workspace";
 import { cn } from "@/lib/utils";
-import { Archive, MoreHorizontal, Pin, PinOff, Trash2 } from "lucide-react";
+import {
+  MoreVertical,
+  Pin,
+  PinOff,
+  Pencil,
+  Share2,
+  FolderInput,
+  Trash2,
+} from "lucide-react";
 import { ChatStatusIndicator } from "./ChatStatusIndicator";
 
 export const formatWhen = (timestamp: number) => {
@@ -21,69 +30,110 @@ export const formatWhen = (timestamp: number) => {
   if (diff < hour) return `${Math.max(1, Math.floor(diff / minute))}m`;
   if (diff < day) return `${Math.floor(diff / hour)}h`;
   if (diff < week) return `${Math.floor(diff / day)}d`;
-  if (diff < month) return `${Math.floor(diff / week)}w`;
+  if (diff < month) return `${Math.floor(diff / week)}mo`;
   return `${Math.floor(diff / month)}mo`;
 };
 
 const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
-  const { activeChatId, selectChat, togglePinChat, archiveChat, deleteChat } =
+  const { activeTab, setActiveTab, activeChatId, selectChat, togglePinChat, deleteChat } =
     useKodeWorkspace();
   const isActive = activeChatId === chat.id;
   const isPinned = chat.pinnedAt !== null;
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [title, setTitle] = useState(chat.title);
 
   return (
     <div
       className={cn(
-        "group/chat flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground/65 transition-colors hover:bg-white/[0.055] hover:text-foreground",
-        isActive && "bg-white/[0.06] text-foreground",
+        "group/chat flex items-center justify-between gap-2 rounded px-2.5 py-1 text-[11.5px] font-normal text-[#d1d1d6] transition-colors hover:bg-white/[0.05] hover:text-white h-[26px]",
+        isActive && "bg-white/[0.07] text-white font-medium",
       )}
     >
       <button
         type="button"
-        onClick={() => selectChat(chat.id)}
-        className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+        onClick={() => {
+          if (activeTab !== "home" && activeTab !== "kode") {
+            setActiveTab("home");
+          }
+          selectChat(chat.id);
+        }}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
       >
         <ChatStatusIndicator chatId={chat.id} isPinned={isPinned} />
-        <span className="flex-1 truncate">{chat.title}</span>
+        {isRenaming ? (
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            onBlur={() => setIsRenaming(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") setIsRenaming(false);
+            }}
+            className="w-full bg-black/50 px-1.5 py-0.5 rounded text-[11.5px] text-white outline-none"
+            autoFocus
+          />
+        ) : (
+          <span className="flex-1 truncate">{chat.title}</span>
+        )}
       </button>
 
       <span className="shrink-0 text-[10px] text-foreground/25 group-hover/chat:hidden">
         {formatWhen(chat.updatedAt)}
       </span>
 
+      {/* 3-Dot Trigger Button */}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             aria-label="Chat actions"
-            className="hidden shrink-0 rounded-md p-0.5 text-foreground/40 hover:text-foreground group-hover/chat:block data-[state=open]:block"
+            className="hidden shrink-0 size-5 flex items-center justify-center rounded-md text-white/50 hover:bg-white/[0.08] hover:text-white group-hover/chat:flex data-[state=open]:flex data-[state=open]:bg-white/[0.08] data-[state=open]:text-white transition-colors"
           >
-            <MoreHorizontal size={14} />
+            <MoreVertical size={13} strokeWidth={1.25} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40">
-          <DropdownMenuItem
-            onClick={() => void togglePinChat(chat.id, !isPinned)}
-          >
+
+        {/* Dropdown Menu Card */}
+        <DropdownMenuContent align="end" sideOffset={4} className="w-48">
+          {/* 1. Pin / Unpin */}
+          <DropdownMenuItem onClick={() => void togglePinChat(chat.id, !isPinned)}>
             {isPinned ? (
               <>
-                <PinOff size={14} /> Unpin
+                <PinOff size={13.5} strokeWidth={1.25} />
+                <span>Unpin</span>
               </>
             ) : (
               <>
-                <Pin size={14} /> Pin
+                <Pin size={13.5} strokeWidth={1.25} />
+                <span>Pin</span>
               </>
             )}
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void archiveChat(chat.id, true)}>
-            <Archive size={14} /> Archive
+
+          {/* 2. Rename */}
+          <DropdownMenuItem onClick={() => setIsRenaming(true)}>
+            <Pencil size={13.5} strokeWidth={1.25} />
+            <span>Rename</span>
           </DropdownMenuItem>
+
+          {/* 3. Share */}
+          <DropdownMenuItem onClick={() => void navigator.clipboard.writeText(window.location.href)}>
+            <Share2 size={13.5} strokeWidth={1.25} />
+            <span>Share</span>
+          </DropdownMenuItem>
+
+          {/* 4. Move to project */}
+          <DropdownMenuItem onClick={() => {}}>
+            <FolderInput size={13.5} strokeWidth={1.25} />
+            <span>Move to project</span>
+          </DropdownMenuItem>
+
           <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            onClick={() => void deleteChat(chat.id)}
-          >
-            <Trash2 size={14} /> Delete
+
+          {/* 5. Delete */}
+          <DropdownMenuItem variant="destructive" onClick={() => void deleteChat(chat.id)}>
+            <Trash2 size={13.5} strokeWidth={1.25} />
+            <span>Delete</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

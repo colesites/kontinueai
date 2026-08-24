@@ -40,8 +40,10 @@ export const KODE_MODEL_ACCESS: KodeModelAccess[] = [
 	{ modelId: "x-ai/grok-build-0.1", minimumPlan: "starter" },
 	{ modelId: "qwen/qwen3.7-max", minimumPlan: "starter" },
 	{ modelId: "anthropic/claude-opus-4.8", minimumPlan: "pro" },
+	{ modelId: "anthropic/claude-opus-5", minimumPlan: "pro" },
 	{ modelId: "google/gemini-3.5-flash", minimumPlan: "pro" },
 	{ modelId: "openai/gpt-5.5", minimumPlan: "pro" },
+	{ modelId: "openai/gpt-5.6-sol", minimumPlan: "pro" },
 ];
 
 export const KODE_MODELS: KodeModelOption[] = [
@@ -96,6 +98,13 @@ export const KODE_MODELS: KodeModelOption[] = [
 		minimumPlan: "pro",
 	},
 	{
+		id: "anthropic/claude-opus-5",
+		name: "Claude Opus 5",
+		provider: "anthropic",
+		description: "Anthropic's flagship agentic coding and reasoning model.",
+		minimumPlan: "pro",
+	},
+	{
 		id: "google/gemini-3.5-flash",
 		name: "Gemini 3.5 Flash",
 		provider: "google",
@@ -107,6 +116,13 @@ export const KODE_MODELS: KodeModelOption[] = [
 		name: "GPT 5.5",
 		provider: "openai",
 		description: "General-purpose coding and research model.",
+		minimumPlan: "pro",
+	},
+	{
+		id: "openai/gpt-5.6-sol",
+		name: "GPT 5.6 Sol",
+		provider: "openai",
+		description: "OpenAI's highest-capability model for demanding agentic work.",
 		minimumPlan: "pro",
 	},
 ];

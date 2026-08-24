@@ -21,7 +21,7 @@ export function AuthScreen() {
     () =>
       mode === "sign-in"
         ? {
-            title: "Kode IDE",
+            title: "Kontinue AI",
             body: "Sign in to keep your projects, chats, model access, and workspace memory connected.",
             action: "Create account",
             nextMode: "sign-up" as const,

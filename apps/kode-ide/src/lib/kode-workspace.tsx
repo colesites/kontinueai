@@ -11,7 +11,12 @@ import {
   type ReactNode,
 } from "react";
 
-import { api } from "@/lib/convex-api";
+import {
+  api,
+  type HomeConvexChat,
+  type HomeConvexProject,
+  type KodeConvexChat,
+} from "@/lib/convex-api";
 
 // Projects are LOCAL imported folders (stored on this machine), and the
 // chat → folder grouping is kept locally too. Chats themselves live in Convex.
@@ -42,7 +47,7 @@ export type KodeWorkspaceMessage = {
   usage?: LanguageModelUsage;
 };
 
-// A project is a local imported folder. `path` is the on-disk directory.
+// A project is a local imported folder (or Convex project in Home tab).
 export type KodeProject = {
   id: string;
   name: string;
@@ -59,7 +64,11 @@ export type KodeChat = {
   archived: boolean;
 };
 
+export type KodeTab = "home" | "canvas" | "kode";
+
 type KodeWorkspaceContextValue = {
+  activeTab: KodeTab;
+  setActiveTab: (tab: KodeTab) => void;
   projects: KodeProject[];
   chats: KodeChat[];
   chatsLoading: boolean;
@@ -69,6 +78,15 @@ type KodeWorkspaceContextValue = {
   removeFolder: (folderId: string) => void;
   newChat: (projectId?: string | null) => void;
   selectChat: (chatId: string) => void;
+  createProjectRecord: (input: {
+    name: string;
+    description?: string;
+  }) => Promise<string>;
+  renameProjectRecord: (
+    projectId: string,
+    name: string,
+    description?: string,
+  ) => Promise<void>;
   createChatRecord: (input: {
     title: string;
     projectId?: string | null;
@@ -93,6 +111,7 @@ const KodeWorkspaceContext = createContext<KodeWorkspaceContextValue | null>(
 );
 
 export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
+  const [activeTab, setActiveTab] = useState<KodeTab>("home");
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
   const [folders, setFolders] = useState<KodeFolder[]>(() =>
@@ -103,14 +122,27 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     loadJSON<Record<string, string>>(CHAT_FOLDER_KEY, {}),
   );
 
-  const convexChats = useQuery(api.kode.getUserChats, {});
+  // Queries: Home tab uses `chats` table + `projects` table; Kode tab uses `kodeChats` table + local folders
+  const convexHomeChats = useQuery(api.chats.getUserChats, {});
+  const convexKodeChats = useQuery(api.kode.getUserChats, {});
+  const convexHomeProjects = useQuery(api.projects.listProjects, {});
 
-  const createChat = useMutation(api.kode.createChat);
-  const addMessage = useMutation(api.kode.addMessage);
-  const toggleChatPin = useMutation(api.kode.toggleChatPin);
-  const setChatArchived = useMutation(api.kode.setChatArchived);
-  const deleteChatMutation = useMutation(api.kode.deleteChat);
-  const deleteMessagesAfter = useMutation(api.kode.deleteMessagesAfter);
+  // Mutations for Home tab (chats / messages / projects)
+  const createHomeChat = useMutation(api.chats.createChat);
+  const createHomeProject = useMutation(api.projects.createProject);
+  const updateHomeProject = useMutation(api.projects.updateProject);
+  const addHomeMessage = useMutation(api.messages.addMessage);
+  const toggleHomeChatPin = useMutation(api.chats.toggleChatPin);
+  const setHomeChatArchived = useMutation(api.chats.setChatArchived);
+  const deleteHomeChatMutation = useMutation(api.chats.deleteChat);
+
+  // Mutations for Kode tab (kodeChats / kodeMessages)
+  const createKodeChat = useMutation(api.kode.createChat);
+  const addKodeMessage = useMutation(api.kode.addMessage);
+  const toggleKodeChatPin = useMutation(api.kode.toggleChatPin);
+  const setKodeChatArchived = useMutation(api.kode.setChatArchived);
+  const deleteKodeChatMutation = useMutation(api.kode.deleteChat);
+  const deleteKodeMessagesAfter = useMutation(api.kode.deleteMessagesAfter);
 
   useEffect(() => {
     window.localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
@@ -119,34 +151,55 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(CHAT_FOLDER_KEY, JSON.stringify(chatFolder));
   }, [chatFolder]);
 
-  const projects = useMemo<KodeProject[]>(
-    () =>
-      folders.map((folder) => ({
-        id: folder.id,
-        name: folder.name,
-        hue: "var(--brand)",
-        path: folder.path,
-      })),
-    [folders],
-  );
+  // Projects list: Home tab shows Convex projects, Kode tab shows local imported folders
+  const projects = useMemo<KodeProject[]>(() => {
+    if (activeTab === "home") {
+      return (convexHomeProjects ?? []).map((project: HomeConvexProject) => ({
+        id: project._id,
+        name: project.name,
+        hue: project.color ?? "var(--brand)",
+        path: "",
+      }));
+    }
+    return folders.map((folder: KodeFolder) => ({
+      id: folder.id,
+      name: folder.name,
+      hue: "var(--brand)",
+      path: folder.path,
+    }));
+  }, [activeTab, convexHomeProjects, folders]);
 
-  const chats = useMemo<KodeChat[]>(
-    () =>
-      (convexChats ?? [])
-        .filter((chat) => !chat.archived)
-        .map((chat) => ({
+  // Chats list: Home tab shows `chats` table, Kode/Canvas tab shows `kodeChats` table
+  const chats = useMemo<KodeChat[]>(() => {
+    if (activeTab === "home") {
+      return (convexHomeChats ?? [])
+        .filter((chat: HomeConvexChat) => !chat.archived)
+        .map((chat: HomeConvexChat) => ({
           id: chat._id,
           title: chat.title,
-          projectId: chatFolder[chat._id] ?? null,
+          projectId: chat.projectId ?? null,
           updatedAt: chat.lastMessageAt ?? chat.updatedAt,
           pinnedAt:
             typeof chat.pinnedAt === "number" && chat.pinnedAt > 0
               ? chat.pinnedAt
               : null,
           archived: Boolean(chat.archived),
-        })),
-    [convexChats, chatFolder],
-  );
+        }));
+    }
+    return (convexKodeChats ?? [])
+      .filter((chat: KodeConvexChat) => !chat.archived)
+      .map((chat: KodeConvexChat) => ({
+        id: chat._id,
+        title: chat.title,
+        projectId: chatFolder[chat._id] ?? null,
+        updatedAt: chat.lastMessageAt ?? chat.updatedAt,
+        pinnedAt:
+          typeof chat.pinnedAt === "number" && chat.pinnedAt > 0
+            ? chat.pinnedAt
+            : null,
+        archived: Boolean(chat.archived),
+      }));
+  }, [activeTab, convexHomeChats, convexKodeChats, chatFolder]);
 
   const importFolder = useCallback(async () => {
     const selected = await open({
@@ -195,6 +248,35 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     setDraftProjectId(null);
   }, []);
 
+  const createProjectRecord = useCallback(
+    async ({ name, description }: { name: string; description?: string }) => {
+      const id = await createHomeProject({
+        name,
+        description: description?.trim() || undefined,
+      });
+      setDraftProjectId(id);
+      return id;
+    },
+    [createHomeProject],
+  );
+
+  const renameProjectRecord = useCallback(
+    async (projectId: string, name: string, description?: string) => {
+      if (activeTab === "home") {
+        await updateHomeProject({
+          projectId,
+          name: name.trim(),
+          description: description?.trim() || undefined,
+        });
+      } else {
+        setFolders((current) =>
+          current.map((f) => (f.id === projectId ? { ...f, name: name.trim() } : f)),
+        );
+      }
+    },
+    [activeTab, updateHomeProject],
+  );
+
   const createChatRecord = useCallback(
     async ({
       title,
@@ -203,20 +285,28 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       title: string;
       projectId?: string | null;
     }) => {
-      const chatId = await createChat({
-        title: toChatTitle(title),
-      });
+      const chatTitle = toChatTitle(title);
+      let chatId: string;
 
-      // Group under a local folder client-side (folders never touch Convex).
-      if (projectId) {
-        setChatFolder((current) => ({ ...current, [chatId]: projectId }));
+      if (activeTab === "home") {
+        chatId = await createHomeChat({
+          title: chatTitle,
+          provider: "manual",
+          importMethod: "manual",
+          messages: [],
+        });
+      } else {
+        chatId = await createKodeChat({
+          title: chatTitle,
+        });
+        if (projectId) {
+          setChatFolder((current) => ({ ...current, [chatId]: projectId }));
+        }
       }
 
-      // The caller decides when to switch the active chat (selectChat), so the
-      // optimistic overlay can be retagged in the same render and never flashes.
       return chatId;
     },
-    [createChat],
+    [activeTab, createHomeChat, createKodeChat],
   );
 
   const addMessageRecord = useCallback(
@@ -229,28 +319,59 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       sources?: { title: string; url: string }[];
       todos?: { title: string; description?: string; status: string }[];
     }) => {
-      await addMessage(input);
+      if (activeTab === "home") {
+        await addHomeMessage({
+          chatId: input.chatId as any,
+          role: input.role,
+          content: input.content,
+          model: input.model,
+          sources: input.sources,
+          todos: input.todos,
+        });
+      } else {
+        await addKodeMessage({
+          chatId: input.chatId as any,
+          role: input.role,
+          content: input.content,
+          model: input.model,
+          tokens: input.tokens,
+          sources: input.sources,
+          todos: input.todos,
+        });
+      }
     },
-    [addMessage],
+    [activeTab, addHomeMessage, addKodeMessage],
   );
 
   const togglePinChat = useCallback(
     async (chatId: string, pinned: boolean) => {
-      await toggleChatPin({ chatId, pinned });
+      if (activeTab === "home") {
+        await toggleHomeChatPin({ chatId: chatId as any, pinned });
+      } else {
+        await toggleKodeChatPin({ chatId: chatId as any, pinned });
+      }
     },
-    [toggleChatPin],
+    [activeTab, toggleHomeChatPin, toggleKodeChatPin],
   );
 
   const archiveChat = useCallback(
     async (chatId: string, archived: boolean) => {
-      await setChatArchived({ chatId, archived });
+      if (activeTab === "home") {
+        await setHomeChatArchived({ chatId: chatId as any, archived });
+      } else {
+        await setKodeChatArchived({ chatId: chatId as any, archived });
+      }
     },
-    [setChatArchived],
+    [activeTab, setHomeChatArchived, setKodeChatArchived],
   );
 
   const deleteChat = useCallback(
     async (chatId: string) => {
-      await deleteChatMutation({ chatId });
+      if (activeTab === "home") {
+        await deleteHomeChatMutation({ chatId: chatId as any });
+      } else {
+        await deleteKodeChatMutation({ chatId: chatId as any });
+      }
       setActiveChatId((current) => (current === chatId ? null : current));
       setChatFolder((current) => {
         if (!(chatId in current)) return current;
@@ -259,28 +380,34 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [deleteChatMutation],
+    [activeTab, deleteHomeChatMutation, deleteKodeChatMutation],
   );
 
-  // Rewind: drop the given message and everything after it (used to redo a turn).
   const rewindAfter = useCallback(
     async (messageId: string) => {
-      await deleteMessagesAfter({ messageId, inclusive: true });
+      await deleteKodeMessagesAfter({ messageId: messageId as any, inclusive: true });
     },
-    [deleteMessagesAfter],
+    [deleteKodeMessagesAfter],
   );
 
   const value = useMemo<KodeWorkspaceContextValue>(
     () => ({
+      activeTab,
+      setActiveTab,
       projects,
       chats,
-      chatsLoading: convexChats === undefined,
+      chatsLoading:
+        activeTab === "home"
+          ? convexHomeChats === undefined
+          : convexKodeChats === undefined,
       activeChatId,
       draftProjectId,
       importFolder,
       removeFolder,
       newChat,
       selectChat,
+      createProjectRecord,
+      renameProjectRecord,
       createChatRecord,
       addMessageRecord,
       togglePinChat,
@@ -289,12 +416,16 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       rewindAfter,
     }),
     [
+      activeTab,
       activeChatId,
       addMessageRecord,
       archiveChat,
       chats,
-      convexChats,
+      convexHomeChats,
+      convexKodeChats,
       createChatRecord,
+      createProjectRecord,
+      renameProjectRecord,
       deleteChat,
       draftProjectId,
       importFolder,

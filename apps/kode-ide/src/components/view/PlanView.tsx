@@ -5,6 +5,7 @@ import {
   type KodePlanTier,
 } from "@repo/ai/lib/kode";
 import { useQuery } from "convex/react";
+import { useUser } from "@clerk/clerk-react";
 import { Check, Copy, Loader2, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -161,6 +162,8 @@ function MessageMeta({
 }
 
 const PlanView = () => {
+  const { user } = useUser();
+  const firstName = user?.firstName || user?.fullName || "there";
   const planTier = normalizePlanTier(usePlanTier());
   const [selectedModelId, setSelectedModelId] = useState(KODE_DEFAULT_MODEL_ID);
   // All in-flight state is keyed by chat id (or DRAFT_KEY for an unsaved home
@@ -593,22 +596,18 @@ const PlanView = () => {
       <div
         className={
           inChat
-            ? "mx-auto flex min-h-0 w-full max-w-4xl flex-1 flex-col pt-20"
-            : "mx-auto flex w-full max-w-4xl flex-1 flex-col items-center pt-[15vh]"
+            ? "mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col pt-20"
+            : "mx-auto flex w-full max-w-2xl flex-1 flex-col items-center justify-center"
         }
       >
         {!inChat ? (
-          <div className="mb-9 text-center">
-            <div className="surface-inset mb-5 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-medium uppercase text-foreground/50">
-              <span className="size-1.5 rounded-full bg-brand" />
-              Agent
+          <div className="w-full text-center space-y-6 mb-6">
+            <div className="flex items-center justify-center">
+              <img src="/kontinueai.svg" alt="Kontinue AI" className="h-10" />
             </div>
-            <h1 className="text-[40px] font-semibold leading-[1.1] tracking-tight text-foreground">
-              What are we working on?
+            <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white">
+              How can I help you, <span className="font-bold">{firstName}</span>?
             </h1>
-            <p className="mt-3 text-[17px] text-foreground/55">
-              Ask the agent to build, edit, debug, explain, or review code.
-            </p>
           </div>
         ) : messages.length === 0 && messagesLoading ? (
           <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -706,7 +705,7 @@ const PlanView = () => {
           </Conversation>
         )}
 
-        <div className="w-full">
+        <div className="w-full max-w-2xl mx-auto">
           <ChatInput
             loading={isCurrentSending}
             onStop={stopCurrentRun}

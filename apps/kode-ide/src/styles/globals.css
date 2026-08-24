@@ -9,7 +9,7 @@
 
     --font-heading: var(--font-sans);
 
-    --font-sans: 'Figtree Variable', sans-serif;
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
 
     --color-sidebar-ring: var(--sidebar-ring);
 
@@ -157,7 +157,7 @@
 
 .dark {
 
-    --background: oklch(0.145 0 0);
+    --background: oklch(0.16 0 0);
 
     --foreground: oklch(0.985 0 0);
 
@@ -243,40 +243,41 @@
 /* ── Kode "dimensional Codex" design system ─────────────────────────────────
    Charcoal workspace, restrained neutral controls, and beveled depth. */
 :root {
-  --brand: oklch(0.63 0.239 349);
-  --brand-soft: oklch(0.63 0.239 349 / 0.18);
-  --surface-0: oklch(0.135 0.004 260);
-  --surface-1: oklch(0.17 0.004 260);
-  --surface-2: oklch(0.205 0.005 260);
-  --surface-3: oklch(0.245 0.006 260);
+  --brand: oklch(0.98 0 0);
+  --brand-soft: oklch(1 0 0 / 0.14);
+  --surface-0: #121212;
+  --surface-canvas: #151515;
+  --surface-1: #20201F;
+  --surface-2: #242423;
+  --surface-3: #282827;
   --edge: oklch(1 0 0 / 0.08);
   --edge-strong: oklch(1 0 0 / 0.12);
 }
 
 .dark {
-  --background: var(--surface-0);
-  --foreground: oklch(0.92 0.004 260);
-  --card: var(--surface-1);
-  --card-foreground: oklch(0.92 0.004 260);
-  --popover: var(--surface-2);
-  --popover-foreground: oklch(0.92 0.004 260);
-  --primary: oklch(0.92 0.004 260);
-  --primary-foreground: oklch(0.16 0.004 260);
-  --secondary: var(--surface-2);
-  --secondary-foreground: oklch(0.88 0.004 260);
-  --muted: var(--surface-2);
-  --muted-foreground: oklch(0.67 0.004 260);
-  --accent: var(--surface-3);
-  --accent-foreground: oklch(0.94 0.004 260);
+  --background: #151515;
+  --foreground: oklch(0.95 0 0);
+  --card: #20201F;
+  --card-foreground: oklch(0.95 0 0);
+  --popover: #242423;
+  --popover-foreground: oklch(0.95 0 0);
+  --primary: oklch(0.98 0 0);
+  --primary-foreground: oklch(0.12 0 0);
+  --secondary: #242423;
+  --secondary-foreground: oklch(0.88 0 0);
+  --muted: #242423;
+  --muted-foreground: oklch(0.65 0 0);
+  --accent: #282827;
+  --accent-foreground: oklch(0.95 0 0);
   --border: var(--edge);
   --input: oklch(1 0 0 / 0.1);
-  --ring: oklch(0.63 0.239 349 / 0.55);
-  --sidebar: var(--surface-1);
-  --sidebar-foreground: oklch(0.9 0.004 260);
+  --ring: oklch(1 0 0 / 0.25);
+  --sidebar: #121212;
+  --sidebar-foreground: oklch(0.9 0 0);
   --sidebar-primary: var(--brand);
-  --sidebar-primary-foreground: oklch(0.12 0.004 260);
-  --sidebar-accent: var(--surface-3);
-  --sidebar-accent-foreground: oklch(0.94 0.004 260);
+  --sidebar-primary-foreground: oklch(0.12 0 0);
+  --sidebar-accent: #282827;
+  --sidebar-accent-foreground: oklch(0.95 0 0);
   --sidebar-border: var(--edge);
   --sidebar-ring: var(--ring);
 }
@@ -324,45 +325,38 @@
   .text-brand { color: var(--brand); }
   .bg-brand { background-color: var(--brand); }
 
-  /* Thin, subtle pink scrollbar — only the bar shows, no track, low opacity.
-     NB: do NOT set the standard `scrollbar-width`/`scrollbar-color` here — once
-     `scrollbar-width` is set, WebKit/Chromium disable the ::-webkit-scrollbar
-     pseudo-elements below and fall back to a native bar. Tauri runs in WebKit
-     (macOS) / Chromium (Windows), so the pseudo-elements alone are enough. */
+  /* Tiny, subtle monochrome scrollbar — only the bar shows, no track, low opacity. */
   .kode-scroll::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 3px;
+    height: 3px;
   }
   .kode-scroll::-webkit-scrollbar-track {
     background: transparent;
   }
   .kode-scroll::-webkit-scrollbar-thumb {
-    background: oklch(0.63 0.239 349 / 0.35);
+    background: rgba(255, 255, 255, 0.15);
     border-radius: 9999px;
   }
   .kode-scroll::-webkit-scrollbar-thumb:hover {
-    background: oklch(0.63 0.239 349 / 0.6);
+    background: rgba(255, 255, 255, 0.35);
   }
 }
 
-/* Global scrollbars: transparent track (no white/grey), subtle pink thumb.
-   Styled purely via ::-webkit-scrollbar — setting the standard `scrollbar-width`
-   would make WebKit/Chromium ignore these pseudo-elements and render a native
-   bar instead, which is exactly the bug this replaces. */
+/* Global scrollbars: transparent track, tiny subtle monochrome thumb. */
 *::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 3px;
+  height: 3px;
   background: transparent;
 }
 *::-webkit-scrollbar-track {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: oklch(0.63 0.239 349 / 0.4);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 9999px;
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: oklch(0.63 0.239 349 / 0.7);
+  background: rgba(255, 255, 255, 0.35);
 }
 *::-webkit-scrollbar-corner {
   background: transparent;

@@ -1,9 +1,9 @@
 export const THEMES = [
-	"default",
+	"normal",
+	"pink",
 	"emerald",
 	"chelsea",
 	"amethyst",
-	"normal",
 ] as const;
 export type Theme = (typeof THEMES)[number];
 
@@ -11,18 +11,18 @@ const THEME_STORAGE_KEY = "ui-theme";
 const THEME_ONBOARDING_KEY = "theme-onboarding-completed";
 
 const THEME_LABELS: Record<Theme, string> = {
-	default: "Default",
+	normal: "Default",
+	pink: "Pink",
 	emerald: "Emerald",
 	chelsea: "Chelsea Blue",
 	amethyst: "Amethyst",
-	normal: "Normal",
 };
 const THEME_PRIMARY_COLORS: Record<Theme, string> = {
-	default: "#e91e63",
+	normal: "#000000",
+	pink: "#e91e63",
 	emerald: "#10b981",
 	chelsea: "oklch(0.420 0.205 266)",
 	amethyst: "oklch(0.603 0.267 316.3767413595733)",
-	normal: "#000000",
 };
 
 export function setColorTheme(theme: Theme) {
@@ -32,20 +32,15 @@ export function setColorTheme(theme: Theme) {
 
 	// Remove all theme classes
 	THEMES.forEach((t) => {
-		if (t !== "default") {
-			html.classList.remove(`theme-${t}`);
-		}
+		html.classList.remove(`theme-${t}`);
 	});
 	// Backward compatibility for an older id used during development.
 	html.classList.remove("theme-chelsea-blue");
 
-	// Add new theme class (skip for default)
-	if (theme !== "default") {
-		html.classList.add(`theme-${theme}`);
-		html.setAttribute("data-color-theme", theme);
-	} else {
-		html.removeAttribute("data-color-theme");
-	}
+	// The normal theme is also the CSS fallback, but retaining its class makes
+	// an explicit user choice clear and keeps theme handling consistent.
+	html.classList.add(`theme-${theme}`);
+	html.setAttribute("data-color-theme", theme);
 
 	// Persist to localStorage
 	try {
@@ -60,6 +55,10 @@ export function getSavedTheme(): Theme | null {
 
 	try {
 		const saved = localStorage.getItem(THEME_STORAGE_KEY);
+		// Preserve existing users' chosen pink theme after the default changed.
+		if (saved === "default") {
+			return "pink";
+		}
 		if (saved === "chelsea-blue") {
 			return "chelsea";
 		}

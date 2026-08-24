@@ -1,5 +1,6 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { LanguageModelUsage } from "ai";
+import { getActiveByokKeyForModel } from "@/lib/kode-byok";
 
 // Incremental events emitted by the Rust `kode_chat` command as tokens arrive.
 export type KodeStreamEvent =
@@ -90,6 +91,8 @@ export async function sendKodeChat({
     channel.onmessage = onEvent;
   }
 
+  const activeByok = await getActiveByokKeyForModel(modelId);
+
   const response = await invoke<KodeChatCommandResponse>("kode_chat", {
     request: {
       model_id: modelId,
@@ -97,6 +100,8 @@ export async function sendKodeChat({
       tools: tools && tools.length > 0 ? tools : null,
       tool_choice: tools && tools.length > 0 && toolChoice ? toolChoice : null,
       system_context: systemContext ?? null,
+      byok_key: activeByok?.key ?? null,
+      byok_provider: activeByok?.provider ?? null,
     },
     onEvent: channel,
   });

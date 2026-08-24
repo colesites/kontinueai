@@ -58,7 +58,7 @@ function PendingAnswer({ step }: { step: KodeToolStep }) {
         <button
           type="button"
           onClick={() => resolveApproval(step.id, true)}
-          className="flex-1 rounded-md bg-brand px-3 py-1.5 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
+          className="flex-1 rounded-md bg-white px-3 py-1.5 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-90"
         >
           Approve
         </button>
@@ -75,9 +75,7 @@ function PendingAnswer({ step }: { step: KodeToolStep }) {
 }
 
 /**
- * Leading icon for a sidebar chat row that reflects that chat's agent state:
- * idle (message icon) → running (spinner) → awaiting (pink "?" you can hover to
- * answer). Falls back to the pin icon for pinned-and-idle chats.
+ * Leading icon for a sidebar chat row that reflects that chat's agent state.
  */
 export function ChatStatusIndicator({
   chatId,
@@ -90,7 +88,7 @@ export function ChatStatusIndicator({
   const status = statusByChat[chatId] ?? "idle";
 
   if (status === "running") {
-    return <Loader2 size={13} className="shrink-0 animate-spin text-brand" />;
+    return <Loader2 size={13} className="shrink-0 animate-spin text-white" />;
   }
 
   if (status === "awaiting") {
@@ -100,7 +98,7 @@ export function ChatStatusIndicator({
       <HoverCard openDelay={80} closeDelay={120}>
         <HoverCardTrigger asChild>
           <span
-            className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[11px] font-bold leading-none text-brand ring-1 ring-brand/40"
+            className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-bold leading-none text-white ring-1 ring-white/40"
             aria-label="Needs your reply"
           >
             ?
@@ -111,7 +109,6 @@ export function ChatStatusIndicator({
             side="right"
             align="start"
             className="w-80"
-            // Stop row click/select from firing while answering.
             onClick={(e) => e.stopPropagation()}
           >
             <PendingAnswer step={step} />
@@ -123,14 +120,14 @@ export function ChatStatusIndicator({
 
   if (isPinned) {
     return (
-      <Pin size={12} className="shrink-0 text-brand" fill="currentColor" />
+      <Pin size={12} className="shrink-0 text-white" fill="currentColor" />
     );
   }
 
   return (
     <MessageSquare
       size={13}
-      className="shrink-0 text-foreground/30 group-hover/chat:text-foreground/60"
+      className="shrink-0 text-foreground/35 group-hover/chat:text-foreground/75"
     />
   );
 }

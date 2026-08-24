@@ -7,7 +7,7 @@ export const faqs: Faq[] = [
 	{
 		question: "What is Kontinue AI?",
 		answer:
-			"Kontinue AI is an African-built AI platform with K-AI 1.0, access to selected models from leading providers, and technology for importing and continuing supported AI conversations.",
+			"Kontinue AI is a multi-model AI platform with K-AI 1.0, access to selected models from leading providers, and technology for importing and continuing supported AI conversations.",
 	},
 	{
 		question: "Does Kontinue AI have its own model?",
@@ -33,10 +33,5 @@ export const faqs: Faq[] = [
 		question: "Is there a free plan?",
 		answer:
 			"Yes. Free includes K-AI 1.0, 10 conversation imports, K-AI web search, and a small AI-memory allowance. Starter, Plus, Pro, and Max add higher limits, more model groups, and additional tools.",
-	},
-	{
-		question: "Is Kontinue AI an African company?",
-		answer:
-			"Kontinue AI was built in Nigeria and is designed as a global AI platform for users around the world.",
 	},
 ];

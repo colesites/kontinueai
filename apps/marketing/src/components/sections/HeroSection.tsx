@@ -111,7 +111,7 @@ export function HeroSection() {
 						className="eyebrow inline-flex items-center gap-2"
 					>
 						<span className="size-1.5 rounded-full bg-brand" />
-						Built in Africa for the world
+						One place for your AI work
 					</p>
 
 					<h1 className="font-display tracking-tightest mt-6 text-[2.75rem] leading-[1.02] sm:text-6xl lg:text-[4.75rem]">

@@ -116,7 +116,6 @@ export default function PressPage() {
 						["Company", product.company.name],
 						["Category", product.company.productCategory],
 						["Founder", product.company.founder.name],
-						["Origin", product.company.countryOfOrigin],
 						["Market", product.company.market],
 						["Native option", product.nativeModel.name],
 						["Website", product.company.website],

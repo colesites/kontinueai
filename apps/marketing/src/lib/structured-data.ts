@@ -18,10 +18,6 @@ export const organizationSchema = {
 	url: SITE_URL,
 	logo: `${SITE_URL}/kontinueai-icon.png`,
 	description: product.positioning.short,
-	foundingLocation: {
-		"@type": "Country",
-		name: product.company.countryOfOrigin,
-	},
 	founder: founderSchema,
 	contactPoint: {
 		"@type": "ContactPoint",

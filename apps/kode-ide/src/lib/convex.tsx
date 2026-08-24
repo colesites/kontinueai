@@ -24,6 +24,11 @@ class AuthTransitionBoundary extends React.Component<
 
   componentDidCatch(error: unknown) {
     console.error("[convex] error caught at boundary", error);
+    const splash = document.getElementById("splash");
+    if (splash) {
+      splash.classList.add("hide");
+      setTimeout(() => splash.remove(), 350);
+    }
   }
 
   componentDidUpdate(prev: { resetKey: string | null | undefined }) {

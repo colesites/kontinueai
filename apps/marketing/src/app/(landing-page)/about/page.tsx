@@ -12,9 +12,9 @@ import { pageMetadata } from "@/lib/metadata";
 import { founderSchema, organizationSchema } from "@/lib/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-	title: "About Kontinue AI | An African-Built AI Platform",
+	title: "About Kontinue AI | A Multi-Model AI Platform",
 	description:
-		"Learn how Kontinue AI is building a global AI platform from Africa with K-AI 1.0, leading external models and portable AI conversations.",
+		"Learn how Kontinue AI brings together K-AI 1.0, leading external models and portable AI conversations.",
 	path: "/about",
 });
 
@@ -22,7 +22,6 @@ const facts = [
 	["Company", product.company.name],
 	["Product category", product.company.productCategory],
 	["Founder", product.company.founder.name],
-	["Country of origin", product.company.countryOfOrigin],
 	["Market", product.company.market],
 	["Website", product.company.website],
 ];
@@ -38,8 +37,8 @@ export default function AboutPage() {
 			/>
 			<PageHero
 				eyebrow="About Kontinue AI"
-				title="Building a global AI platform from Africa."
-				description="Kontinue AI is an African-built AI platform that combines K-AI 1.0, access to leading external models, and conversation-import technology in one product."
+				title="Building a global AI platform."
+				description="Kontinue AI combines K-AI 1.0, access to leading external models, and conversation-import technology in one product."
 				primary={{
 					label: "Start free",
 					href: "https://chat.kontinueai.com/sign-up",
@@ -86,12 +85,6 @@ export default function AboutPage() {
 			/>
 
 			<ContentSection
-				eyebrow="Built in Nigeria"
-				title="African origin. Global ambition."
-				description="Kontinue AI is an African-built AI platform created in Nigeria and designed for users around the world. Its origin is part of the company’s identity, not a limit on who the product is for."
-			/>
-
-			<ContentSection
 				tone="dark"
 				eyebrow="Founder"
 				title={product.company.founder.name}
@@ -133,7 +126,7 @@ export default function AboutPage() {
 			</ContentSection>
 
 			<ProductCTA
-				title="Use an AI platform built in Africa for the world."
+				title="Use an AI platform built for your work."
 				description="Start with K-AI 1.0, import supported conversations, and keep your choice of leading models."
 				eventName="about_final_signup_clicked"
 			/>

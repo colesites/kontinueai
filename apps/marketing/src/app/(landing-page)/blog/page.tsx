@@ -311,8 +311,8 @@ export default async function BlogIndexPage() {
 					</div>
 
 					<h1 className="font-display tracking-tightest mt-10 max-w-4xl text-[clamp(2.75rem,8vw,5.5rem)] leading-[0.95]">
-						Field notes from an{" "}
-						<span className="text-brand">African-built</span> AI platform.
+						Field notes from the <span className="text-brand">Kontinue AI</span>{" "}
+						platform.
 					</h1>
 
 					<p className="mt-9 max-w-2xl text-lg leading-relaxed text-muted-foreground">

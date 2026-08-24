@@ -5,7 +5,7 @@ import { getSavedTheme, type Theme } from "../lib/theme";
 
 // Theme-specific Clerk colors
 const CLERK_THEME_COLORS = {
-	default: {
+	pink: {
 		light: {
 			primary: "#e91e63",
 			background: "#ffffff",
@@ -108,7 +108,7 @@ const CLERK_THEME_COLORS = {
 } as const;
 
 export function useClerkTheme() {
-	const [theme, setTheme] = useState<Theme>(() => getSavedTheme() ?? "default");
+	const [theme, setTheme] = useState<Theme>(() => getSavedTheme() ?? "normal");
 	const [isDark, setIsDark] = useState(() =>
 		typeof document !== "undefined"
 			? document.documentElement.classList.contains("dark")

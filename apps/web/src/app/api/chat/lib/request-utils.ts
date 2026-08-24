@@ -9,7 +9,7 @@ export function createInputTooLongResponse(options: {
 	const payload = {
 		code: "INPUT_TOO_LONG",
 		error:
-			"Your message is too long for your current plan. Please shorten it and try again.",
+			"The message you just sent is too long for your current plan. Please shorten it and try again.",
 		details: {
 			tier: options.tierLabel,
 			maxInputTokens: options.maxInputTokens,
@@ -110,6 +110,37 @@ export function estimateUiMessageTokens(messages: UIMessage[]): number {
 		}
 	}
 	return Math.ceil(characters / 4);
+}
+
+/**
+ * Keeps a contiguous, most-recent slice of a chat inside the plan's per-request
+ * context budget. The complete conversation remains stored and visible; only
+ * older turns are left out of this individual model request.
+ */
+export function limitMessagesToInputTokens(
+	messages: UIMessage[],
+	maxInputTokens: number,
+): UIMessage[] {
+	const included: UIMessage[] = [];
+	let estimatedTokens = 0;
+
+	for (let index = messages.length - 1; index >= 0; index--) {
+		const message = messages[index];
+		if (!message) continue;
+
+		const messageTokens = estimateUiMessageTokens([message]);
+		if (estimatedTokens + messageTokens > maxInputTokens) {
+			// Keep the final message so the caller can return a useful error when
+			// that single message itself exceeds the limit.
+			if (included.length === 0) return [message];
+			break;
+		}
+
+		included.unshift(message);
+		estimatedTokens += messageTokens;
+	}
+
+	return included;
 }
 
 export function hasUserFileAttachments(messages: UIMessage[]): boolean {

@@ -4,11 +4,13 @@ import {
   Code2,
   Info,
   PanelBottom,
+  PanelLeft,
   PanelRight,
   Square,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { useSidebar } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -43,8 +45,16 @@ export function Topbar({
   onBottomPanelChange,
   onSidePanelChange,
 }: TopbarProps) {
+  const { toggleSidebar, state } = useSidebar();
+  const isCollapsed = state === "collapsed";
+
   return (
     <div className="flex items-center gap-3">
+      {isCollapsed && (
+        <IconButton label="Open sidebar" onClick={toggleSidebar}>
+          <PanelLeft size={16} strokeWidth={1.25} />
+        </IconButton>
+      )}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button

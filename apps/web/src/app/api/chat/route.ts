@@ -28,6 +28,7 @@ import {
 	estimateUiMessageTokens,
 	getLastUserContent,
 	hasUserFileAttachments,
+	limitMessagesToInputTokens,
 	logDetailedError,
 } from "./lib/request-utils";
 import { getAuthContext, parseChatRouteInput } from "./lib/route-input";
@@ -106,16 +107,6 @@ export async function POST(req: Request) {
 			!usingOpenRouter &&
 			canAccessPlanFeature(planTier, "premium-model") &&
 			requestedWebSearchEnabled;
-		if (
-			!canAccessPlanFeature(planTier, "file-upload") &&
-			hasUserFileAttachments(messages)
-		) {
-			return planDeniedResponse(
-				PLAN_ERROR_CODES.FILE_UPLOAD_REQUIRED,
-				"File attachments are available on Starter, Plus, Pro, and Max.",
-			);
-		}
-
 		const modelClass = usingKai
 			? "kai"
 			: usingKode
@@ -136,7 +127,23 @@ export async function POST(req: Request) {
 			modelClass,
 		});
 		const maxOutputTokens = tokenLimits.maxOutputTokens;
-		const estimatedInputTokens = estimateUiMessageTokens(messages);
+		// A plan's context allowance applies to one model request, not to how much
+		// conversation a person may keep. Imported chats can therefore remain whole
+		// while each new response receives the newest fitting run of messages.
+		const messagesForModel = limitMessagesToInputTokens(
+			messages,
+			tokenLimits.maxInputTokens,
+		);
+		if (
+			!canAccessPlanFeature(planTier, "file-upload") &&
+			hasUserFileAttachments(messagesForModel)
+		) {
+			return planDeniedResponse(
+				PLAN_ERROR_CODES.FILE_UPLOAD_REQUIRED,
+				"File attachments are available on Starter, Plus, Pro, and Max.",
+			);
+		}
+		const estimatedInputTokens = estimateUiMessageTokens(messagesForModel);
 		if (estimatedInputTokens > tokenLimits.maxInputTokens) {
 			return createInputTooLongResponse({
 				tierLabel: tokenLimits.tierLabel,
@@ -318,7 +325,7 @@ export async function POST(req: Request) {
 			maxOutputTokens,
 		});
 
-		const modelMessages = await convertToModelMessages(messages);
+		const modelMessages = await convertToModelMessages(messagesForModel);
 		const streamOptions = buildStreamOptions({
 			model: modelInstance,
 			systemPrompt: toolsConfig.systemPrompt,

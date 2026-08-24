@@ -45,7 +45,9 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-:root {
+/* Pink is a selectable theme. The unqualified root uses the normal theme below. */
+html.theme-pink,
+html[data-color-theme="pink"] {
   --radius: 0.5rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.144 0.004 339.9765904683926);
@@ -80,7 +82,8 @@
   --sidebar-ring: oklch(0.624 0.255 352.0131405922684);
 }
 
-.dark {
+html.theme-pink.dark,
+html.dark[data-color-theme="pink"] {
   --background: oklch(0.142 0.01 346.01689604482107);
   --foreground: oklch(0.96 0.003 339.5480951064927);
   --card: oklch(0.226 0.034 348.7375115168543);
@@ -345,7 +348,8 @@ html.dark[data-color-theme="amethyst"] {
   --sidebar-ring: oklch(0.628 0.226 317.3760303636354);
 }
 
-/* Normal Theme - Light Mode (Zen Minimalist) */
+/* Normal Theme - Light Mode (Zen Minimalist, the app default) */
+:root,
 html.theme-normal,
 html[data-color-theme="normal"] {
   --radius: 0.5rem;
@@ -367,6 +371,11 @@ html[data-color-theme="normal"] {
   --border: oklch(0.92 0 0);
   --input: oklch(0.92 0 0);
   --ring: oklch(0.1 0 0);
+  --chart-1: oklch(0.1 0 0);
+  --chart-2: oklch(0.25 0 0);
+  --chart-3: oklch(0.4 0 0);
+  --chart-4: oklch(0.55 0 0);
+  --chart-5: oklch(0.7 0 0);
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.2 0 0);
   --sidebar-primary: oklch(0.1 0 0);
@@ -378,6 +387,7 @@ html[data-color-theme="normal"] {
 }
 
 /* Normal Theme - Dark Mode (Zen Minimalist) */
+.dark,
 html.theme-normal.dark,
 html.dark[data-color-theme="normal"] {
   --background: oklch(0 0 0);
@@ -398,6 +408,11 @@ html.dark[data-color-theme="normal"] {
   --border: oklch(0.2 0 0);
   --input: oklch(0.2 0 0);
   --ring: oklch(0.9 0 0);
+  --chart-1: oklch(0.98 0 0);
+  --chart-2: oklch(0.8 0 0);
+  --chart-3: oklch(0.62 0 0);
+  --chart-4: oklch(0.44 0 0);
+  --chart-5: oklch(0.28 0 0);
   --sidebar: oklch(0.05 0 0);
   --sidebar-foreground: oklch(0.98 0 0);
   --sidebar-primary: oklch(1 0 0);

@@ -49,7 +49,7 @@ export function Footer() {
 							style={{ filter: "brightness(0)", width: "auto" }}
 						/>
 						<p className="mt-5 text-sm leading-relaxed text-muted-foreground">
-							{product.positioning.short} {product.company.originStatement}.
+							{product.positioning.short}
 						</p>
 					</div>
 
@@ -110,7 +110,7 @@ export function Footer() {
 				<div className="mt-16 flex flex-col items-start justify-between gap-4 border-t border-border pt-8 text-xs text-muted-foreground sm:flex-row sm:items-center">
 					<p>© {new Date().getFullYear()} Kontinue AI. All rights reserved.</p>
 					<p className="font-mono uppercase tracking-widest">
-						Built in Africa for the world
+						Built for every workflow
 					</p>
 				</div>
 			</div>

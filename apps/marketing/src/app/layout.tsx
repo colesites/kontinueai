@@ -33,9 +33,9 @@ const mono = JetBrains_Mono({
 	display: "swap",
 });
 
-const siteTitle = "Kontinue AI | African-Built Multi-Model AI Platform";
+const siteTitle = "Kontinue AI | Multi-Model AI Platform";
 const siteDescription =
-	"Use Kontinue AI’s own native intelligence layer, access leading AI models and import existing conversations with their context. Built in Africa for the world.";
+	"Use Kontinue AI’s own native intelligence layer, access leading AI models and import existing conversations with their context.";
 
 export const metadata: Metadata = {
 	metadataBase: new URL(SITE_URL),
@@ -55,8 +55,6 @@ export const metadata: Metadata = {
 	keywords: [
 		"Kontinue AI",
 		"kontinueai",
-		"African-built AI platform",
-		"Nigerian AI company",
 		"K-AI 1.0",
 		"import AI conversations",
 		"multi-model AI platform",
@@ -73,7 +71,7 @@ export const metadata: Metadata = {
 				url: DEFAULT_OG_IMAGE,
 				width: 1200,
 				height: 630,
-				alt: "Kontinue AI — built in Africa for the world",
+				alt: "Kontinue AI",
 				type: "image/png",
 			},
 		],

@@ -85,8 +85,6 @@ export const product = {
 			role: "Founder",
 			bio: null,
 		},
-		countryOfOrigin: "Nigeria",
-		originStatement: "Built in Africa for the world",
 		market: "Global",
 		foundedDate: null,
 		headquarters: null,
@@ -118,8 +116,8 @@ export const product = {
 	},
 	positioning: {
 		short:
-			"Kontinue AI is an African-built AI platform with its own native intelligence layer, access to leading AI models, and technology for importing and continuing AI conversations.",
-		long: "Kontinue AI is an AI platform and assistant built in Nigeria for users around the world. K-AI 1.0, Kontinue AI’s native intelligence layer, sits alongside supported models from leading providers. Users can import existing AI conversations, preserve the available message context, and continue with the model that fits their work.",
+			"Kontinue AI is a multi-model AI platform with its own native intelligence layer, access to leading AI models, and technology for importing and continuing AI conversations.",
+		long: "Kontinue AI is an AI platform and assistant for users around the world. K-AI 1.0, Kontinue AI’s native intelligence layer, sits alongside supported models from leading providers. Users can import existing AI conversations, preserve the available message context, and continue with the model that fits their work.",
 	},
 	nativeModel: {
 		name: "K-AI 1.0",

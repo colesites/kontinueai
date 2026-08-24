@@ -33,7 +33,7 @@ export function ProductDefinitionSection() {
 						More than a multi-model workspace
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						Kontinue AI is an African-built AI platform with K-AI 1.0, access to
+						Kontinue AI is a multi-model AI platform with K-AI 1.0, access to
 						other leading models, and technology for moving supported AI
 						conversations into one place. Ask, create, research, reason, and
 						code while keeping your conversations portable.
