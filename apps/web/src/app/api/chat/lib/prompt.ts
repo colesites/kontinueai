@@ -60,6 +60,8 @@ export function buildWebSearchResultsContext(
 		"Using these results:",
 		"- Answer the user's question directly and concisely, grounded in the results above.",
 		"- Cite sources inline as markdown links, e.g. [1](url), next to the claims they support.",
+		"- Never embed images for citations. No favicons, site icons, logos or thumbnails: markdown images (![alt](url)) render as full-size pictures in the chat and break the paragraph. A source is a link, never an image.",
+		"- Always give a citation link visible text (the source name or number). Never emit an empty link like [](url).",
 		"- End with a '**Sources**' section listing each source you used as a clickable markdown link: '- [Title](url)'.",
 		"- Prefer the most recent and authoritative results. If the results don't answer the question, say so rather than guessing.",
 		"- Do not paste raw result text verbatim; synthesize.",

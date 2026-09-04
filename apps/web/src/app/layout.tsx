@@ -58,6 +58,20 @@ export default function RootLayout({
 					{`
               (function() {
                 try {
+                  // next-themes only applies the light/dark class once its
+                  // provider mounts, and every route renders a Suspense
+                  // fallback ABOVE that provider. Without this the loading
+                  // skeletons paint in light mode and flip when auth resolves.
+                  var stored = localStorage.getItem('theme');
+                  var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+                  var mode = stored === 'light' || stored === 'dark'
+                    ? stored
+                    : (prefersDark ? 'dark' : 'light');
+                  document.documentElement.classList.remove('light', 'dark');
+                  document.documentElement.classList.add(mode);
+                  document.documentElement.style.colorScheme = mode;
+                } catch (e) {}
+                try {
                   var rawTheme = localStorage.getItem('ui-theme');
                   var theme = rawTheme === 'default' ? 'pink' : rawTheme === 'chelsea-blue' ? 'chelsea' : rawTheme;
                   if (theme) {

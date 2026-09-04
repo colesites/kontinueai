@@ -3,6 +3,7 @@ import {
 	buildFirecrawlScrapeRequest,
 	detachTrailingAttachmentLines,
 	parseNormalizedTranscript,
+	shrinkImageUrlsForNormalizer,
 	splitEmbeddedUserTurns,
 } from "./firecrawl";
 
@@ -294,5 +295,35 @@ describe("attachment placement across providers", () => {
 			content:
 				"Uploaded an image\nI have an investor list in notion, can you help me with their contacts?",
 		});
+	});
+});
+
+describe("shrinkImageUrlsForNormalizer", () => {
+	test("replaces a base64 data URI with a token and restores it", () => {
+		const markdown =
+			"Uploaded an image\n\n![Uploaded image](data:image/png;base64,AAAABBBBCCCC)\n\nWhat is this?";
+		const { markdown: shrunk, restore } =
+			shrinkImageUrlsForNormalizer(markdown);
+
+		expect(shrunk).not.toContain("base64");
+		expect(shrunk).toContain("![Uploaded image](kontinue-image-0)");
+		expect(restore(`[USER]:\n${shrunk}`)).toContain(
+			"data:image/png;base64,AAAABBBBCCCC",
+		);
+	});
+
+	test("shrinks an over-long signed attachment URL", () => {
+		const signed = `https://files.oaiusercontent.com/file-abc?${"sig=x&".repeat(60)}`;
+		const { markdown: shrunk, restore } = shrinkImageUrlsForNormalizer(
+			`![Uploaded image](${signed})`,
+		);
+
+		expect(shrunk).toBe("![Uploaded image](kontinue-image-0)");
+		expect(restore(shrunk)).toBe(`![Uploaded image](${signed})`);
+	});
+
+	test("leaves ordinary image URLs untouched", () => {
+		const markdown = "![chart](https://cdn.example.com/chart.png)";
+		expect(shrinkImageUrlsForNormalizer(markdown).markdown).toBe(markdown);
 	});
 });

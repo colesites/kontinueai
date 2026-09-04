@@ -27,35 +27,82 @@ function paragraphHasInlineImage(node: Element | undefined): boolean {
 	return hasText && children.some(isImage);
 }
 
+// Search citations arrive as a site icon plus a label, sometimes on their own
+// line. Sized as content they blow up into a full-width logo; ChatGPT renders
+// the same thing as a small chip beside the sentence, which is what these are.
+const CITATION_ICON_SRC_REGEX =
+	/(?:favicon|apple-touch-icon|\/s2\/favicons|[/_-](?:icon|logo)s?[/_.-])|\.ico(?:$|\?)/i;
+// A citation label carrying a source count, e.g. "Resend+1", "LinkedIn +2".
+const CITATION_COUNT_ALT_REGEX = /\s*\+\d+\s*$/;
+// A citation labelled with the bare source domain, e.g. "en.wikipedia.org".
+const DOMAIN_ALT_REGEX = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
+// Anything this small is chrome, not content, whatever the markdown claims.
+const ICON_MAX_NATURAL_PX = 64;
+// Site icons are square and ship at up to 512px (Wikipedia's is one of those).
+// Generated and attached images never reach this component — they render
+// through ChatMessageImages — so a square image with a label-sized alt here is
+// a source icon, not content.
+const SQUARE_ICON_MAX_NATURAL_PX = 512;
+const ICON_ALT_MAX_CHARS = 40;
+
+function isCitationIcon(src: string, alt: string): boolean {
+	return (
+		CITATION_ICON_SRC_REGEX.test(src) ||
+		CITATION_COUNT_ALT_REGEX.test(alt) ||
+		DOMAIN_ALT_REGEX.test(alt.trim())
+	);
+}
+
+function isMeasuredIcon(image: HTMLImageElement, alt: string): boolean {
+	const { naturalWidth: width, naturalHeight: height } = image;
+	if (width <= 0 || height <= 0) return false;
+	if (width <= ICON_MAX_NATURAL_PX && height <= ICON_MAX_NATURAL_PX) {
+		return true;
+	}
+	const isSquare = Math.abs(width - height) <= 2;
+	return (
+		isSquare &&
+		width <= SQUARE_ICON_MAX_NATURAL_PX &&
+		alt.trim().length <= ICON_ALT_MAX_CHARS
+	);
+}
+
 function MarkdownImage({ src, alt }: { src: string; alt: string }) {
-	const inline = useContext(InlineImageContext);
+	const inlineInParagraph = useContext(InlineImageContext);
 	const [failed, setFailed] = useState(false);
+	// Measured on load, so an icon we can't recognise from its URL still shrinks.
+	const [measuredIcon, setMeasuredIcon] = useState(false);
+	const inline = inlineInParagraph || measuredIcon || isCitationIcon(src, alt);
 
 	// A broken image renders as its bare alt text, which for imported chats reads
 	// like something the speaker typed ("Uploaded an image"). Say what it is.
 	if (failed) {
 		return (
-			<span className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
-				<ImageOff size={12} className="shrink-0" />
-				<span>{alt?.trim() || "Image"} (unavailable)</span>
+			<span className="not-prose mx-[0.15em] inline-flex items-center gap-[0.3em] rounded-full bg-muted/70 px-[0.5em] py-[0.15em] align-[-0.15em] text-[0.8em] leading-none text-muted-foreground">
+				<ImageOff className="size-[1.1em] shrink-0" />
+				<span className="truncate">{alt?.trim() || "Image"} unavailable</span>
 			</span>
 		);
 	}
 
+	const icon = (
+		<Image
+			src={src}
+			alt=""
+			width={16}
+			height={16}
+			unoptimized
+			referrerPolicy="no-referrer"
+			loading="lazy"
+			onError={() => setFailed(true)}
+			className="size-[1.1em] shrink-0 rounded-[0.2em] object-contain"
+		/>
+	);
+
 	if (inline) {
 		return (
-			<span className="mx-0.5 inline-flex max-w-[180px] items-center gap-1 align-middle rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-xs">
-				<Image
-					src={src}
-					alt=""
-					width={14}
-					height={14}
-					unoptimized
-					referrerPolicy="no-referrer"
-					loading="lazy"
-					onError={() => setFailed(true)}
-					className="size-3.5 shrink-0 rounded-full object-contain"
-				/>
+			<span className="not-prose mx-[0.15em] inline-flex max-w-[16em] items-center gap-[0.3em] rounded-full bg-muted/70 px-[0.5em] py-[0.15em] align-[-0.15em] text-[0.8em] font-medium leading-none text-muted-foreground">
+				{icon}
 				{alt ? <span className="truncate">{alt}</span> : null}
 			</span>
 		);
@@ -71,9 +118,39 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
 			referrerPolicy="no-referrer"
 			loading="lazy"
 			onError={() => setFailed(true)}
-			className="my-2 max-h-96 max-w-full rounded-lg border border-border/60"
+			onLoad={(event) => {
+				if (isMeasuredIcon(event.currentTarget, alt)) {
+					setMeasuredIcon(true);
+				}
+			}}
+			// `h-auto w-auto` keeps the intrinsic size: the 800x600 above is only
+			// next/image's required placeholder, and without this a 32px favicon is
+			// stretched to fill the message column.
+			className="my-2 h-auto w-auto max-h-96 max-w-full rounded-lg border border-border/60"
 		/>
 	);
+}
+
+// Older messages emit a citation as an empty link followed by its icon:
+// `[](url) ![Label](icon)`. That renders as two chips side by side. Fold them
+// into the single `[![Label](icon)](url)` chip the renderer already handles.
+const SPLIT_CITATION_REGEX =
+	/\[\]\((https?:\/\/[^\s)]+)\)\s*!\[([^\]]*)\]\((\S+?)\)/g;
+
+export function mergeSplitCitations(content: string): string {
+	// Transform prose only — never rewrite anything inside a fenced code block.
+	return content
+		.split(/(```[\s\S]*?```)/g)
+		.map((segment) =>
+			segment.startsWith("```")
+				? segment
+				: segment.replace(
+						SPLIT_CITATION_REGEX,
+						(_match, url: string, alt: string, icon: string) =>
+							`[![${alt}](${icon})](${url})`,
+					),
+		)
+		.join("");
 }
 
 interface MessageContentProps {

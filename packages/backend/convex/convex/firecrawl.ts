@@ -22,7 +22,16 @@ type ChunkProgressReporter = (
 // SYSTEM PROMPT FOR CHAT NORMALIZATION
 // ============================================================================
 
-const NORMALIZER_SYSTEM_PROMPT = `You are a strict chat transcript normalizer.
+// Role-placement rules. They fix attachments and mid-answer questions being
+// filed under the wrong speaker, but they are extra instructions for a small
+// model to juggle: if a pass comes back unparseable we retry without them
+// rather than failing the whole import.
+const ROLE_REPAIR_RULES = `    - **ATTACHMENT LABELS**: A bare line like "Uploaded an image", "Uploaded a file", "Attached document" or "Screenshot" is the share page's placeholder for something the USER attached. It ALWAYS begins a new [USER] turn — never leave it inside an [ASSISTANT] message. Keep the label text and attach the question that follows it to the same [USER] turn.
+    - **NEVER SWALLOW A QUESTION**: If a short question or instruction appears in the middle of a long answer and the text after it reads like a fresh reply ("Yes.", "Sure", "Here's...", "I can..."), that question is a [USER] turn. Emit a [USER] marker for it and an [ASSISTANT] marker for the reply.`;
+
+const buildNormalizerSystemPrompt = (
+	roleRepairRules: string,
+) => `You are a strict chat transcript normalizer.
 Your goal is to extract ONLY the conversation between the User and the AI from a raw web scrape.
 
 INPUT: Raw markdown that may contain:
@@ -49,8 +58,7 @@ RULES:
     - If markers are unclear, strictly alternate between [USER] and [ASSISTANT] starting with [USER].
     - [USER] messages usually come first.
     - [ASSISTANT] messages usually follow.
-    - **ATTACHMENT LABELS**: A bare line like "Uploaded an image", "Uploaded a file", "Attached document" or "Screenshot" is the share page's placeholder for something the USER attached. It ALWAYS begins a new [USER] turn — never leave it inside an [ASSISTANT] message. Keep the label text and attach the question that follows it to the same [USER] turn.
-    - **NEVER SWALLOW A QUESTION**: If a short question or instruction appears in the middle of a long answer and the text after it reads like a fresh reply ("Yes.", "Sure", "Here's...", "I can..."), that question is a [USER] turn. Emit a [USER] marker for it and an [ASSISTANT] marker for the reply.
+${roleRepairRules}
 4.  **PRESERVE CONTENT**: 
     - Keep the actual message content (code blocks, markdown tables, bold text) EXACTLY as is. Do not summarize or rewrite.
     - **IMAGES**: strictly PRESERVE all markdown images in the format ![alt](url). Do NOT remove them.
@@ -76,6 +84,9 @@ Hello there
 Hi! How can I help?
 `;
 
+const NORMALIZER_SYSTEM_PROMPT = buildNormalizerSystemPrompt(ROLE_REPAIR_RULES);
+const NORMALIZER_SYSTEM_PROMPT_MINIMAL = buildNormalizerSystemPrompt("");
+
 // ============================================================================
 // LLM NORMALIZATION (ALL PROVIDERS)
 // ============================================================================
@@ -93,47 +104,115 @@ function getLLMModel() {
 	return gw(modelId) as any;
 }
 
-async function normalizeTranscriptChunkWithLLM(markdownChunk: string) {
-	const { text } = await generateText({
+// ChatGPT signs image attachments with enormous query strings, and Firecrawl
+// sometimes inlines an attachment as a base64 data: URI. Either can dominate a
+// chunk and push the model into returning nothing at all. The normalizer only
+// needs to know an image was there, so shrink the URL for the model and put the
+// real one back afterwards.
+const DATA_URI_IMAGE_REGEX = /!\[([^\]]*)\]\((data:[^)]+)\)/g;
+const LONG_URL_IMAGE_REGEX = /!\[([^\]]*)\]\((https?:\/\/[^\s)]{200,})\)/g;
+const IMAGE_PLACEHOLDER_PREFIX = "kontinue-image-";
+
+export function shrinkImageUrlsForNormalizer(markdown: string): {
+	markdown: string;
+	restore: (normalized: string) => string;
+} {
+	const originals: string[] = [];
+	const shrink = (_match: string, alt: string, url: string) => {
+		const token = `${IMAGE_PLACEHOLDER_PREFIX}${originals.length}`;
+		originals.push(url);
+		return `![${alt}](${token})`;
+	};
+
+	const shrunk = markdown
+		.replace(DATA_URI_IMAGE_REGEX, shrink)
+		.replace(LONG_URL_IMAGE_REGEX, shrink);
+
+	if (originals.length === 0) {
+		return { markdown, restore: (normalized) => normalized };
+	}
+
+	return {
+		markdown: shrunk,
+		restore: (normalized) =>
+			normalized.replace(
+				new RegExp(`${IMAGE_PLACEHOLDER_PREFIX}(\\d+)`, "g"),
+				(match, index: string) => originals[Number(index)] ?? match,
+			),
+	};
+}
+
+async function runNormalizerCall(
+	prompt: string,
+	systemPrompt: string,
+	disableThinking: boolean,
+) {
+	const result = await generateText({
 		model: getLLMModel(),
-		system: NORMALIZER_SYSTEM_PROMPT,
-		messages: [
-			{
-				role: "user",
-				content: `Please normalize this transcript:\n\n${markdownChunk}`,
-			},
-		],
-		// @ts-expect-error - explicitly supported by Vercel AI SDK even if types lag
-		maxTokens: 12288,
+		system: systemPrompt,
+		messages: [{ role: "user", content: prompt }],
+		...(disableThinking
+			? {
+					providerOptions: {
+						google: { thinkingConfig: { thinkingBudget: 0 } },
+					},
+				}
+			: {}),
+		// Deliberately no output cap. The previous `maxTokens: 12288` was inert
+		// (this SDK takes `maxOutputTokens`), so setting one now would be a new
+		// truncation risk on long transcripts — and on Gemini 2.5 the cap is
+		// shared with thinking tokens, which is one way a completion comes back
+		// empty in the first place.
 	});
 
-	return text.trim();
+	return result;
+}
+
+async function normalizeTranscriptChunk(
+	prompt: string,
+	systemPrompt: string,
+): Promise<string> {
+	const result = await runNormalizerCall(prompt, systemPrompt, false);
+	const text = (result.text ?? "").trim();
+	if (text) return text;
+
+	// An empty completion is not a parse problem, so log what the provider said
+	// about it: a safety stop and a thinking-budget stop need different fixes.
+	console.error(
+		`[import] empty normalizer completion finish=${result.finishReason} ` +
+			`usage=${JSON.stringify(result.usage ?? {})} prompt_chars=${prompt.length}`,
+	);
+
+	// Gemini 2.5 spends output budget on thinking tokens and can return no text
+	// at all. Retry once with thinking off before giving up on the chunk.
+	const retried = await runNormalizerCall(prompt, systemPrompt, true);
+	const retriedText = (retried.text ?? "").trim();
+	if (!retriedText) {
+		console.error(
+			`[import] empty normalizer completion after retry finish=${retried.finishReason}`,
+		);
+	}
+	return retriedText;
 }
 
 async function normalizeTranscriptChunkWithContext(
 	markdownChunk: string,
 	continuationRole: "user" | "assistant" | null,
+	systemPrompt: string = NORMALIZER_SYSTEM_PROMPT,
 ) {
-	if (!continuationRole) {
-		return normalizeTranscriptChunkWithLLM(markdownChunk);
-	}
+	const { markdown: safeChunk, restore } =
+		shrinkImageUrlsForNormalizer(markdownChunk);
 
-	const continuationHint = `The previous chunk ended with [${continuationRole.toUpperCase()}]. If this chunk starts mid-message, continue that same role until a clear speaker switch is present.`;
+	const continuationHint = continuationRole
+		? `The previous chunk ended with [${continuationRole.toUpperCase()}]. If this chunk starts mid-message, continue that same role until a clear speaker switch is present.\n\n`
+		: "";
 
-	const { text } = await generateText({
-		model: getLLMModel(),
-		system: NORMALIZER_SYSTEM_PROMPT,
-		messages: [
-			{
-				role: "user",
-				content: `${continuationHint}\n\nPlease normalize this transcript:\n\n${markdownChunk}`,
-			},
-		],
-		// @ts-expect-error - explicitly supported by Vercel AI SDK even if types lag
-		maxTokens: 12288,
-	});
+	const normalized = await normalizeTranscriptChunk(
+		`${continuationHint}Please normalize this transcript:\n\n${safeChunk}`,
+		systemPrompt,
+	);
 
-	return text.trim();
+	return restore(normalized);
 }
 
 // ============================================================================
@@ -484,6 +563,7 @@ function repairLikelyRoleDrift(messages: ParsedMessage[]): ParsedMessage[] {
 async function normalizeTranscriptWithLLM(
 	markdown: string,
 	onChunkProgress?: ChunkProgressReporter,
+	systemPrompt: string = NORMALIZER_SYSTEM_PROMPT,
 ): Promise<ParsedMessage[]> {
 	const chunks = splitMarkdownIntoChunks(markdown, NORMALIZER_CHUNK_CHAR_LIMIT);
 	if (chunks.length === 0) {
@@ -500,6 +580,7 @@ async function normalizeTranscriptWithLLM(
 		const normalizedChunk = await normalizeTranscriptChunkWithContext(
 			chunk,
 			continuationRole,
+			systemPrompt,
 		);
 		normalizedChunks.push(normalizedChunk);
 
@@ -538,9 +619,31 @@ async function normalizeTranscriptWithLLM(
 	}
 
 	const fallbackNormalizedText = normalizedChunks.join("\n\n").trim();
-	return mergeAdjacentSameRoleMessages(
+	const fallbackMessages = mergeAdjacentSameRoleMessages(
 		parseNormalizedTranscript(fallbackNormalizedText).messages,
 	);
+	if (fallbackMessages.length > 0) {
+		return fallbackMessages;
+	}
+
+	console.error(
+		`[import] normalizer produced no readable turns chunks=${chunks.length} ` +
+			`output_chars=${fallbackNormalizedText.length} ` +
+			`minimal_prompt=${systemPrompt === NORMALIZER_SYSTEM_PROMPT_MINIMAL} ` +
+			`output_head=${JSON.stringify(fallbackNormalizedText.slice(0, 300))}`,
+	);
+
+	// The model ignored the output format. Retry once with the bare prompt: a
+	// slightly worse role split beats failing the import outright.
+	if (systemPrompt !== NORMALIZER_SYSTEM_PROMPT_MINIMAL) {
+		return normalizeTranscriptWithLLM(
+			markdown,
+			onChunkProgress,
+			NORMALIZER_SYSTEM_PROMPT_MINIMAL,
+		);
+	}
+
+	return fallbackMessages;
 }
 
 const USER_LABELS = new Set([
@@ -1330,6 +1433,14 @@ async function scrapeAndExtract(
 	}
 
 	if (messages.length === 0) {
+		// Every strategy came back empty. Log what the page and the normalizer
+		// actually produced — without it this failure is indistinguishable from a
+		// scrape that returned nothing at all.
+		console.error(
+			`[import] extraction failed url=${url} markdown_chars=${markdown.length} ` +
+				`artifact_aware=${requiresArtifactAwareNormalization} strategy=${extractionStrategy} ` +
+				`markdown_has_role_markers=${/\[(?:USER|ASSISTANT)\]:/i.test(markdown)}`,
+		);
 		throw new Error(
 			"Could not extract any messages from the page. The parsing might have failed.",
 		);
@@ -1407,7 +1518,12 @@ const REHOST_FETCH_TIMEOUT_MS = 15_000;
 // the reader with nothing but the alt text. Copy the bytes into our own storage
 // while the scrape's URLs are still live.
 async function rehostImportedImages(
-	ctx: { storage: { store: (blob: Blob) => Promise<string>; getUrl: (id: string) => Promise<string | null> } },
+	ctx: {
+		storage: {
+			store: (blob: Blob) => Promise<string>;
+			getUrl: (id: string) => Promise<string | null>;
+		};
+	},
 	messages: ParsedMessage[],
 ): Promise<{ messages: ParsedMessage[]; found: number; rehosted: number }> {
 	const sources = new Set<string>();
