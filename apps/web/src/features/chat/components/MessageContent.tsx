@@ -1,6 +1,7 @@
 import type { Element, ElementContent } from "hast";
+import { ImageOff } from "lucide-react";
 import Image from "next/image";
-import { createContext, memo, useContext } from "react";
+import { createContext, memo, useContext, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
@@ -28,6 +29,18 @@ function paragraphHasInlineImage(node: Element | undefined): boolean {
 
 function MarkdownImage({ src, alt }: { src: string; alt: string }) {
 	const inline = useContext(InlineImageContext);
+	const [failed, setFailed] = useState(false);
+
+	// A broken image renders as its bare alt text, which for imported chats reads
+	// like something the speaker typed ("Uploaded an image"). Say what it is.
+	if (failed) {
+		return (
+			<span className="my-1 inline-flex items-center gap-1.5 rounded-md border border-border/60 bg-muted/40 px-2 py-1 text-xs text-muted-foreground">
+				<ImageOff size={12} className="shrink-0" />
+				<span>{alt?.trim() || "Image"} (unavailable)</span>
+			</span>
+		);
+	}
 
 	if (inline) {
 		return (
@@ -40,6 +53,7 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
 					unoptimized
 					referrerPolicy="no-referrer"
 					loading="lazy"
+					onError={() => setFailed(true)}
 					className="size-3.5 shrink-0 rounded-full object-contain"
 				/>
 				{alt ? <span className="truncate">{alt}</span> : null}
@@ -56,6 +70,7 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
 			unoptimized
 			referrerPolicy="no-referrer"
 			loading="lazy"
+			onError={() => setFailed(true)}
 			className="my-2 max-h-96 max-w-full rounded-lg border border-border/60"
 		/>
 	);
@@ -77,9 +92,7 @@ export const MessageContent = memo(function MessageContent({
 				rehypePlugins={[rehypeHighlight]}
 				components={{
 					p: ({ children, node, ...props }) => (
-						<InlineImageContext.Provider
-							value={paragraphHasInlineImage(node)}
-						>
+						<InlineImageContext.Provider value={paragraphHasInlineImage(node)}>
 							<p
 								className="wrap-anywhere"
 								data-testid="message-content-paragraph"

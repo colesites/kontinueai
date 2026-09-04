@@ -1396,6 +1396,73 @@ export const scrapeUrl = action({
 	},
 });
 
+const MARKDOWN_IMAGE_REGEX = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+const MAX_REHOSTED_IMAGES = 25;
+const MAX_REHOSTED_IMAGE_BYTES = 10 * 1024 * 1024;
+const REHOST_FETCH_TIMEOUT_MS = 15_000;
+
+// Providers serve chat attachments from signed, short-lived URLs (ChatGPT's
+// files.oaiusercontent.com links carry an expiry) or behind hotlink protection.
+// Hotlinking them means the image works for a few hours and then 403s, leaving
+// the reader with nothing but the alt text. Copy the bytes into our own storage
+// while the scrape's URLs are still live.
+async function rehostImportedImages(
+	ctx: { storage: { store: (blob: Blob) => Promise<string>; getUrl: (id: string) => Promise<string | null> } },
+	messages: ParsedMessage[],
+): Promise<{ messages: ParsedMessage[]; found: number; rehosted: number }> {
+	const sources = new Set<string>();
+	for (const message of messages) {
+		for (const match of message.content.matchAll(MARKDOWN_IMAGE_REGEX)) {
+			const url = match[2];
+			if (url) sources.add(url);
+		}
+	}
+
+	if (sources.size === 0) {
+		return { messages, found: 0, rehosted: 0 };
+	}
+
+	const rewrites = new Map<string, string>();
+	for (const source of Array.from(sources).slice(0, MAX_REHOSTED_IMAGES)) {
+		try {
+			const response = await fetch(source, {
+				signal: AbortSignal.timeout(REHOST_FETCH_TIMEOUT_MS),
+			});
+			if (!response.ok) continue;
+
+			const contentType = response.headers.get("content-type") ?? "";
+			if (!contentType.startsWith("image/")) continue;
+
+			const blob = await response.blob();
+			if (blob.size === 0 || blob.size > MAX_REHOSTED_IMAGE_BYTES) continue;
+
+			const storageId = await ctx.storage.store(blob);
+			const storedUrl = await ctx.storage.getUrl(storageId);
+			if (storedUrl) rewrites.set(source, storedUrl);
+		} catch {
+			// Leave the original URL in place; a broken image is still better than
+			// dropping the reader's attachment entirely.
+		}
+	}
+
+	if (rewrites.size === 0) {
+		return { messages, found: sources.size, rehosted: 0 };
+	}
+
+	const rewritten = messages.map((message) => ({
+		role: message.role,
+		content: message.content.replace(
+			MARKDOWN_IMAGE_REGEX,
+			(original, alt: string, url: string) => {
+				const replacement = rewrites.get(url);
+				return replacement ? `![${alt}](${replacement})` : original;
+			},
+		),
+	}));
+
+	return { messages: rewritten, found: sources.size, rehosted: rewrites.size };
+}
+
 export const importIntoChat = action({
 	args: {
 		chatId: v.id("chats"),
@@ -1463,14 +1530,27 @@ export const importIntoChat = action({
 			if (!result) {
 				throw lastError ?? new Error("Scrape failed after retries");
 			}
-			const messages = (result.messages ?? []).map((message) => ({
+			const extracted = (result.messages ?? []).map((message) => ({
 				role: message.role,
 				content: message.content,
 			}));
 
-			if (messages.length === 0) {
+			if (extracted.length === 0) {
 				throw new Error("No messages were extracted from this link.");
 			}
+
+			await reportProgress(90, "Saving attachments");
+			const {
+				messages,
+				found: imagesFound,
+				rehosted: imagesRehosted,
+			} = await rehostImportedImages(ctx, extracted);
+			// Whether a share page yields a real image URL or only its alt-text
+			// placeholder is provider- and DOM-dependent; log both counts so a failed
+			// attachment can be told apart from one that was never scraped at all.
+			console.log(
+				`[import] ${args.url} images_in_markdown=${imagesFound} rehosted=${imagesRehosted}`,
+			);
 
 			await reportProgress(95, "Saving messages");
 			await ctx.runMutation(api.chats.appendImportedMessagesToChat, {
