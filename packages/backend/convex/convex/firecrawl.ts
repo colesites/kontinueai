@@ -49,6 +49,8 @@ RULES:
     - If markers are unclear, strictly alternate between [USER] and [ASSISTANT] starting with [USER].
     - [USER] messages usually come first.
     - [ASSISTANT] messages usually follow.
+    - **ATTACHMENT LABELS**: A bare line like "Uploaded an image", "Uploaded a file", "Attached document" or "Screenshot" is the share page's placeholder for something the USER attached. It ALWAYS begins a new [USER] turn — never leave it inside an [ASSISTANT] message. Keep the label text and attach the question that follows it to the same [USER] turn.
+    - **NEVER SWALLOW A QUESTION**: If a short question or instruction appears in the middle of a long answer and the text after it reads like a fresh reply ("Yes.", "Sure", "Here's...", "I can..."), that question is a [USER] turn. Emit a [USER] marker for it and an [ASSISTANT] marker for the reply.
 4.  **PRESERVE CONTENT**: 
     - Keep the actual message content (code blocks, markdown tables, bold text) EXACTLY as is. Do not summarize or rewrite.
     - **IMAGES**: strictly PRESERVE all markdown images in the format ![alt](url). Do NOT remove them.
@@ -279,6 +281,152 @@ function looksLikeAssistantContinuation(content: string): boolean {
 	return false;
 }
 
+// Share pages render an uploaded attachment as a bare label rather than an
+// image the scraper can reach ("Uploaded an image" on ChatGPT). The label is
+// the user's turn, so it marks where an assistant message was wrongly extended.
+const ATTACHMENT_MARKER_REGEX =
+	/^(?:uploaded|attached|shared)\s+(?:an?|\d+|the)?\s*(?:image|images|photo|photos|picture|pictures|file|files|document|documents|screenshot|screenshots|pdf)\b[.!]?$/i;
+
+// A markdown image, or a bare filename, standing on its own line.
+const STANDALONE_ATTACHMENT_LINE_REGEX =
+	/^(?:!\[[^\]]*\]\([^)]*\)|\[?[\w .-]+\.(?:png|jpe?g|gif|webp|heic|svg|pdf|csv|xlsx?|docx?|txt|md|zip)\]?)$/i;
+
+function isAttachmentLine(line: string): boolean {
+	const trimmed = line.trim();
+	if (!trimmed) return false;
+	return (
+		ATTACHMENT_MARKER_REGEX.test(trimmed) ||
+		STANDALONE_ATTACHMENT_LINE_REGEX.test(trimmed)
+	);
+}
+
+// Providers put the speaker label first and the message after it — except for
+// attachments, which several platforms emit ABOVE the label of the turn they
+// belong to. Parsing strictly by label therefore files the attachment under the
+// PREVIOUS speaker. At every role boundary, hand any trailing attachment lines
+// forward to the turn that is starting.
+//
+// Mutates `parts` (removing what it hands over) and returns the moved lines.
+// Never empties the previous turn: a message that is only an attachment is a
+// real message belonging to that speaker, not a mislabelled one.
+export function detachTrailingAttachmentLines(parts: string[]): string[] {
+	let cut = parts.length;
+	let sawAttachment = false;
+
+	for (let index = parts.length - 1; index >= 0; index -= 1) {
+		const line = (parts[index] ?? "").trim();
+		if (!line) {
+			cut = index;
+			continue;
+		}
+		if (!isAttachmentLine(line)) break;
+		sawAttachment = true;
+		cut = index;
+	}
+
+	if (!sawAttachment) return [];
+
+	// An unterminated code fence means these lines are inside a code block.
+	const remaining = parts.slice(0, cut);
+	const fenceCount = remaining.filter((line) =>
+		/^```/.test(line.trim()),
+	).length;
+	if (fenceCount % 2 !== 0) return [];
+	if (!remaining.join("\n").trim()) return [];
+
+	const moved = parts.slice(cut).filter((line) => line.trim());
+	parts.length = cut;
+	return moved;
+}
+
+// Openers an assistant reply starts with when answering a fresh question. Used
+// as the closing boundary of an embedded user turn.
+const ASSISTANT_OPENER_REGEX =
+	/^(?:yes|yep|no|nope|sure|absolutely|certainly|of course|got it|understood|here(?:'s| is| are)|i can|i'll|i will|i'd|i've|great question|good question|short answer|happy to)\b/i;
+
+function isStructuralLine(line: string): boolean {
+	return /^(?:#{1,6}\s|[-*+]\s|\d+[.)]\s|>|\||```)/.test(line);
+}
+
+// The LLM normalizer sometimes fails to emit a [USER] marker for a turn in the
+// middle of a chunk, which silently glues the user's prompt onto the end of the
+// preceding assistant message. `repairLikelyRoleDrift` can't recover that (it
+// works per message, and the message as a whole still looks like an assistant
+// turn), so pull the embedded prompt back out into its own user message.
+export function splitEmbeddedUserTurns(
+	messages: ParsedMessage[],
+): ParsedMessage[] {
+	const result: ParsedMessage[] = [];
+
+	for (const message of messages) {
+		if (message.role !== "assistant") {
+			result.push(message);
+			continue;
+		}
+
+		const lines = message.content.split(/\r?\n/);
+		let inCodeFence = false;
+		let start = -1;
+		let end = -1;
+
+		for (let index = 1; index < lines.length; index += 1) {
+			const line = (lines[index] ?? "").trim();
+			if (/^```/.test(line)) {
+				inCodeFence = !inCodeFence;
+				continue;
+			}
+			if (inCodeFence || !line || isStructuralLine(line)) continue;
+
+			const isCandidate =
+				ATTACHMENT_MARKER_REGEX.test(line) ||
+				(line.length <= 300 &&
+					looksLikeUserPrompt(line) &&
+					!looksLikeAssistantContinuation(line));
+			if (!isCandidate) continue;
+
+			// Only split when the assistant visibly resumes afterwards — without a
+			// closing boundary this is far more likely to be the assistant echoing a
+			// question back than a real user turn. Look a few lines ahead so an
+			// attachment label followed by the actual question still matches.
+			let scanned = 0;
+			for (let after = index + 1; after < lines.length; after += 1) {
+				const candidateEnd = (lines[after] ?? "").trim();
+				if (!candidateEnd) continue;
+				if (/^```/.test(candidateEnd) || isStructuralLine(candidateEnd)) break;
+				if (ASSISTANT_OPENER_REGEX.test(candidateEnd)) {
+					start = index;
+					end = after;
+					break;
+				}
+				scanned += 1;
+				if (scanned >= 3) break;
+			}
+
+			if (start !== -1) break;
+		}
+
+		if (start === -1 || end === -1) {
+			result.push(message);
+			continue;
+		}
+
+		const before = lines.slice(0, start).join("\n").trim();
+		const embedded = lines.slice(start, end).join("\n").trim();
+		const after = lines.slice(end).join("\n").trim();
+
+		if (!before || !embedded || !after) {
+			result.push(message);
+			continue;
+		}
+
+		result.push({ role: "assistant", content: before });
+		result.push({ role: "user", content: embedded });
+		result.push({ role: "assistant", content: after });
+	}
+
+	return result;
+}
+
 function repairLikelyRoleDrift(messages: ParsedMessage[]): ParsedMessage[] {
 	const repaired = messages
 		.map((message) => ({
@@ -293,6 +441,23 @@ function repairLikelyRoleDrift(messages: ParsedMessage[]): ParsedMessage[] {
 		const next = repaired[index + 1];
 
 		if (!current) continue;
+
+		// Assistant → user: `shouldForceContinuationRole` stamps a chunk's first
+		// message with the previous chunk's role, so a user turn that happens to
+		// land on a chunk boundary gets absorbed into the assistant side. A short
+		// prompt sandwiched between two assistant messages is that failure.
+		if (
+			current.role === "assistant" &&
+			previous?.role === "assistant" &&
+			(next === undefined || next.role === "assistant") &&
+			current.content.length <= 300 &&
+			looksLikeUserPrompt(current.content) &&
+			!looksLikeAssistantContinuation(current.content)
+		) {
+			current.role = "user";
+			continue;
+		}
+
 		if (current.role !== "user" || previous?.role !== "assistant") {
 			continue;
 		}
@@ -366,7 +531,7 @@ async function normalizeTranscriptWithLLM(
 	}
 
 	const mergedParsed = repairLikelyRoleDrift(
-		mergeAdjacentSameRoleMessages(parsedMessages),
+		splitEmbeddedUserTurns(mergeAdjacentSameRoleMessages(parsedMessages)),
 	);
 	if (mergedParsed.length > 0) {
 		return mergedParsed;
@@ -526,9 +691,10 @@ function parseRoleLabeledTranscript(markdown: string): {
 			if (roleMatch) {
 				const nextRole = normalizeRoleLabel(roleMatch[1]);
 				if (nextRole) {
+					const carried = detachTrailingAttachmentLines(currentParts);
 					flush();
 					currentRole = nextRole;
-					currentParts = [];
+					currentParts = carried;
 					const inlineContent = roleMatch[2]?.trim();
 					if (inlineContent) {
 						currentParts.push(inlineContent);
@@ -631,9 +797,10 @@ function parseStandaloneRoleTranscript(markdown: string): {
 		if (!inCodeBlock) {
 			const role = resolveStandaloneRoleLine(line);
 			if (role) {
+				const carried = detachTrailingAttachmentLines(currentParts);
 				flush();
 				currentRole = role;
-				currentParts = [];
+				currentParts = carried;
 				continue;
 			}
 		}
@@ -921,10 +1088,11 @@ function parseGenericSpeakerTranscript(markdown: string): {
 		if (!inCodeBlock) {
 			const roleMatch = line.match(ROLE_HEADER_REGEX);
 			if (roleMatch && isLikelyColonSpeakerLabel(roleMatch[1])) {
+				const carried = detachTrailingAttachmentLines(currentParts);
 				flush();
 				currentLabelRaw = (roleMatch[1] ?? "").trim();
 				currentLabelKey = canonicalizeSpeakerLabel(currentLabelRaw);
-				currentParts = [];
+				currentParts = carried;
 				const inlineContent = roleMatch[2]?.trim();
 				if (inlineContent) {
 					currentParts.push(inlineContent);
@@ -934,10 +1102,11 @@ function parseGenericSpeakerTranscript(markdown: string): {
 
 			const standaloneLabel = extractStandaloneSpeakerLabel(line);
 			if (standaloneLabel) {
+				const carried = detachTrailingAttachmentLines(currentParts);
 				flush();
 				currentLabelRaw = standaloneLabel;
 				currentLabelKey = canonicalizeSpeakerLabel(standaloneLabel);
-				currentParts = [];
+				currentParts = carried;
 				continue;
 			}
 		}
@@ -1010,12 +1179,13 @@ export function parseNormalizedTranscript(normalizedText: string): {
 		if (!inCodeBlock) {
 			const markerMatch = trimmed.match(/^\[(user|assistant)\]:\s*(.*)$/i);
 			if (markerMatch) {
+				const carried = detachTrailingAttachmentLines(currentParts);
 				flush();
 				currentRole =
 					(markerMatch[1] ?? "").toLowerCase() === "user"
 						? "user"
 						: "assistant";
-				currentParts = [];
+				currentParts = carried;
 				const inlineContent = markerMatch[2]?.trim();
 				if (inlineContent) {
 					currentParts.push(inlineContent);
@@ -1165,7 +1335,9 @@ async function scrapeAndExtract(
 		);
 	}
 
-	messages = repairLikelyRoleDrift(mergeAdjacentSameRoleMessages(messages));
+	messages = repairLikelyRoleDrift(
+		splitEmbeddedUserTurns(mergeAdjacentSameRoleMessages(messages)),
+	);
 
 	if (messages.length === 0) {
 		throw new Error("Could not resolve speaker roles in this transcript.");

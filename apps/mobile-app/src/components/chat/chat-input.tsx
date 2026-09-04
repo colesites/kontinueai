@@ -369,7 +369,7 @@ export function ChatInput({
           placeholder={isListening ? "Listening…" : placeholder}
           placeholderTextColor={mutedForeground}
           multiline
-          className="max-h-40 min-h-12 px-2 py-1.5 text-[16px] leading-6 text-foreground"
+          className="max-h-40 min-h-16 px-2 py-2.5 text-[16px] leading-6 text-foreground"
         />
 
         <View className="mt-1 flex-row items-center justify-between">
@@ -448,11 +448,17 @@ export function ChatInput({
                 style={
                   (showSubmitAction && (canSend || isLoading)) || !showSubmitAction
                     ? {
+                        // Web `glow-button`: a hairline rim plus a SOFT bloom
+                        // (0 2px 6px -2px / 0 8px 24px -6px at ~50% primary).
+                        // The old 0.4 opacity + elevation 4 bloomed so hard it
+                        // swallowed the rim entirely.
+                        borderWidth: 1,
+                        borderColor: "rgba(255,255,255,0.22)",
                         shadowColor: primary,
-                        shadowOpacity: 0.4,
-                        shadowRadius: 8,
-                        shadowOffset: { width: 0, height: 4 },
-                        elevation: 4,
+                        shadowOpacity: 0.18,
+                        shadowRadius: 6,
+                        shadowOffset: { width: 0, height: 2 },
+                        elevation: 2,
                       }
                     : undefined
                 }
@@ -460,12 +466,17 @@ export function ChatInput({
                 {!showSubmitAction && (
                   <View className="absolute inset-0 bg-primary" />
                 )}
-                {!showSubmitAction && (
+                {/* glow-button's `inset 0 1px 0 white 30%` top highlight, which
+                    is what gives the pill its lit upper rim. Only on the filled
+                    states — the disabled pill stays flat. */}
+                {(showSubmitAction && (canSend || isLoading)) || !showSubmitAction ? (
                   <LinearGradient
-                    colors={[isDark ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.3)", "transparent"]}
+                    colors={["rgba(255,255,255,0.30)", "rgba(255,255,255,0.04)", "transparent"]}
+                    locations={[0, 0.45, 1]}
                     className="absolute inset-0"
+                    pointerEvents="none"
                   />
-                )}
+                ) : null}
                 <Icon
                   as={
                     showSubmitAction

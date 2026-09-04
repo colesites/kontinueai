@@ -6,7 +6,7 @@ import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { Dropdown, DropdownSeparator, useDropdown } from "@/components/ui/dropdown";
 import { useTheme } from "@/components/theme-provider";
-import { THEMES, THEME_LABELS, THEME_SWATCH, type Mode } from "@/lib/theme";
+import { THEMES, THEME_LABELS, themeSwatch, type Mode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 const MODES: { value: Mode; label: string }[] = [
@@ -102,7 +102,7 @@ export function ThemeMenu({
   trigger: (open: (event: GestureResponderEvent) => void) => React.ReactNode;
 }) {
   const menu = useDropdown();
-  const { mode, setMode, theme, setTheme } = useTheme();
+  const { mode, setMode, theme, setTheme, isDark } = useTheme();
 
   return (
     <>
@@ -179,7 +179,7 @@ export function ThemeMenu({
         </Text>
         {THEMES.map((t) => {
           const active = theme === t;
-          const color = THEME_SWATCH[t];
+          const color = themeSwatch(t, isDark);
           return (
             <Pressable
               key={t}

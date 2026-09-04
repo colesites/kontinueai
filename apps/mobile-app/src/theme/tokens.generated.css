@@ -1,0 +1,84 @@
+/**
+ * GENERATED FILE - DO NOT EDIT.
+ *
+ * Source: packages/tailwind-config/shared-styles.css
+ * Regenerate: bun run theme:sync (from apps/mobile-app)
+ *
+ * Every Kontinue color is authored on the web side. Editing this file by hand
+ * reintroduces the drift it exists to prevent.
+ */
+
+/*
+ * The app is dark-first: the default theme's DARK values live in `:root` so
+ * they apply with no class attached, and light mode is opt-in via `.light`.
+ * ThemeProvider overrides every token at runtime with `vars()`; these blocks
+ * are the pre-hydration fallback and the source for build-time class lookups.
+ */
+:root {
+  --accent: oklch(0.18 0 0);
+  --accent-foreground: oklch(1 0 0);
+  --background: oklch(0 0 0);
+  --border: oklch(0.2 0 0);
+  --card: oklch(0.12 0 0);
+  --card-foreground: oklch(0.98 0 0);
+  --chart-1: oklch(0.98 0 0);
+  --chart-2: oklch(0.8 0 0);
+  --chart-3: oklch(0.62 0 0);
+  --chart-4: oklch(0.44 0 0);
+  --chart-5: oklch(0.28 0 0);
+  --destructive: oklch(0.4 0.15 25);
+  --foreground: oklch(0.98 0 0);
+  --input: oklch(0.2 0 0);
+  --muted: oklch(0.15 0 0);
+  --muted-foreground: oklch(0.6 0 0);
+  --popover: oklch(0.08 0 0);
+  --popover-foreground: oklch(0.98 0 0);
+  --primary: oklch(1 0 0);
+  --primary-foreground: oklch(0 0 0);
+  --ring: oklch(0.9 0 0);
+  --secondary: oklch(0.15 0 0);
+  --secondary-foreground: oklch(0.98 0 0);
+  --sidebar: oklch(0.05 0 0);
+  --sidebar-accent: oklch(0.12 0 0);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.18 0 0);
+  --sidebar-foreground: oklch(0.98 0 0);
+  --sidebar-primary: oklch(1 0 0);
+  --sidebar-primary-foreground: oklch(0 0 0);
+  --sidebar-ring: oklch(0.9 0 0);
+}
+
+.light {
+  --accent: oklch(0.95 0 0);
+  --accent-foreground: oklch(0.1 0 0);
+  --background: oklch(1 0 0);
+  --border: oklch(0.92 0 0);
+  --card: oklch(0.99 0 0);
+  --card-foreground: oklch(0.1 0 0);
+  --chart-1: oklch(0.1 0 0);
+  --chart-2: oklch(0.25 0 0);
+  --chart-3: oklch(0.4 0 0);
+  --chart-4: oklch(0.55 0 0);
+  --chart-5: oklch(0.7 0 0);
+  --destructive: oklch(0.5 0.2 25);
+  --foreground: oklch(0.1 0 0);
+  --input: oklch(0.92 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.4 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.1 0 0);
+  --primary: oklch(0 0 0);
+  --primary-foreground: oklch(1 0 0);
+  --radius: 0.5rem;
+  --ring: oklch(0.1 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.2 0 0);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.96 0 0);
+  --sidebar-accent-foreground: oklch(0.1 0 0);
+  --sidebar-border: oklch(0.92 0 0);
+  --sidebar-foreground: oklch(0.2 0 0);
+  --sidebar-primary: oklch(0.1 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-ring: oklch(0.1 0 0);
+}

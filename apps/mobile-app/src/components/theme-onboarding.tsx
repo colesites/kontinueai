@@ -8,17 +8,17 @@ import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { useTheme } from "@/components/theme-provider";
 import { GlossySwatch } from "@/components/mode-toggle";
-import { THEMES, THEME_LABELS, THEME_SWATCH, type Theme } from "@/lib/theme";
+import { THEMES, THEME_LABELS, themeSwatch, type Theme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 
 const ONBOARDING_KEY = "theme-onboarding-completed";
 
 const THEME_DESCRIPTIONS: Record<Theme, string> = {
-  default: "Classic pink & red tones",
+  normal: "Clean black & white",
+  pink: "Classic pink & red tones",
   emerald: "Fresh green & teal vibes",
   chelsea: "Royal blue with gold accents",
   amethyst: "Bold violet & plum palette",
-  normal: "Clean black & white",
 };
 
 /**
@@ -26,7 +26,7 @@ const THEME_DESCRIPTIONS: Record<Theme, string> = {
  * persisted in SecureStore); live-previews the palette as the user taps.
  */
 export function ThemeOnboarding() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, isDark } = useTheme();
   const [open, setOpen] = useState(false);
   const [selected, setSelected] = useState<Theme>(theme);
 
@@ -68,7 +68,7 @@ export function ThemeOnboarding() {
       <View className="flex-1 items-center justify-center bg-black/60 px-6">
         <View className="w-full max-w-md overflow-hidden rounded-2xl border border-border bg-popover">
           <LinearGradient
-            colors={["transparent", THEME_SWATCH[selected], "transparent"]}
+            colors={["transparent", themeSwatch(selected, isDark), "transparent"]}
             className="h-px"
           />
           <Pressable
@@ -106,7 +106,7 @@ export function ThemeOnboarding() {
                     )}
                   >
                     <View className={isSelected ? "rounded-full border-2 border-primary/40 p-1" : "p-1"}>
-                      <GlossySwatch id={`onboarding-${t}`} color={THEME_SWATCH[t]} />
+                      <GlossySwatch id={`onboarding-${t}`} color={themeSwatch(t, isDark)} />
                     </View>
                     <View className="flex-1">
                       <Text className="text-[14px] font-medium text-foreground">

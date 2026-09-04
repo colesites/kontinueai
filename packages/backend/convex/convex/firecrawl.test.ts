@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
 	buildFirecrawlScrapeRequest,
+	detachTrailingAttachmentLines,
 	parseNormalizedTranscript,
+	splitEmbeddedUserTurns,
 } from "./firecrawl";
 
 describe("buildFirecrawlScrapeRequest", () => {
@@ -142,5 +144,155 @@ Ignored
 		const { messages } = parseNormalizedTranscript(input);
 		expect(messages).toHaveLength(1);
 		expect(messages[0]?.content).toBe("Valid content\n[BROKEN]:\nIgnored");
+	});
+});
+
+describe("splitEmbeddedUserTurns", () => {
+	test("pulls an attachment-marked user turn out of an assistant message", () => {
+		const messages = splitEmbeddedUserTurns([
+			{
+				role: "assistant",
+				content: [
+					"That's the bigger story.",
+					"Uploaded an image",
+					"I have an investor list in notion, can you help me with their contacts?",
+					"Yes. I can work directly from the investors in your Notion screenshot.",
+				].join("\n"),
+			},
+		]);
+
+		expect(messages).toHaveLength(3);
+		expect(messages[0]).toEqual({
+			role: "assistant",
+			content: "That's the bigger story.",
+		});
+		expect(messages[1]).toEqual({
+			role: "user",
+			content:
+				"Uploaded an image\nI have an investor list in notion, can you help me with their contacts?",
+		});
+		expect(messages[2]?.role).toBe("assistant");
+	});
+
+	test("splits a bare embedded question when the assistant visibly resumes", () => {
+		const messages = splitEmbeddedUserTurns([
+			{
+				role: "assistant",
+				content: [
+					"Here is the full breakdown of the pricing tiers.",
+					"Can you put that in a table?",
+					"Sure, here it is as a table.",
+				].join("\n"),
+			},
+		]);
+
+		expect(messages.map((message) => message.role)).toEqual([
+			"assistant",
+			"user",
+			"assistant",
+		]);
+		expect(messages[1]?.content).toBe("Can you put that in a table?");
+	});
+
+	test("leaves a rhetorical question alone when no reply follows it", () => {
+		const original = [
+			{
+				role: "assistant" as const,
+				content: [
+					"There are a few angles worth weighing here.",
+					"What makes users stay?",
+					"Retention is driven by persistent context more than raw speed.",
+				].join("\n"),
+			},
+		];
+
+		expect(splitEmbeddedUserTurns(original)).toEqual(original);
+	});
+
+	test("ignores questions inside code blocks and lists", () => {
+		const original = [
+			{
+				role: "assistant" as const,
+				content: [
+					"Try this snippet:",
+					"```js",
+					"// Can you handle this case?",
+					"Yes.answer()",
+					"```",
+					"- What is your moat?",
+					"Here's why that matters.",
+				].join("\n"),
+			},
+		];
+
+		expect(splitEmbeddedUserTurns(original)).toEqual(original);
+	});
+
+	test("leaves user messages untouched", () => {
+		const original = [
+			{ role: "user" as const, content: "Can you help me? Yes I need it." },
+		];
+		expect(splitEmbeddedUserTurns(original)).toEqual(original);
+	});
+});
+
+describe("detachTrailingAttachmentLines", () => {
+	test("hands an attachment label emitted before the role header to the next turn", () => {
+		const parts = ["Here is the analysis.", "", "Uploaded an image"];
+		expect(detachTrailingAttachmentLines(parts)).toEqual(["Uploaded an image"]);
+		expect(parts).toEqual(["Here is the analysis."]);
+	});
+
+	test("carries a markdown image and a bare filename forward", () => {
+		const parts = [
+			"That's the summary.",
+			"![screenshot](https://cdn.example.com/a.png)",
+			"investors.pdf",
+		];
+		expect(detachTrailingAttachmentLines(parts)).toEqual([
+			"![screenshot](https://cdn.example.com/a.png)",
+			"investors.pdf",
+		]);
+		expect(parts).toEqual(["That's the summary."]);
+	});
+
+	test("keeps an attachment-only message with its own speaker", () => {
+		const parts = ["Uploaded an image"];
+		expect(detachTrailingAttachmentLines(parts)).toEqual([]);
+		expect(parts).toEqual(["Uploaded an image"]);
+	});
+
+	test("leaves attachments that are not at the end of the turn", () => {
+		const parts = ["Uploaded an image", "and here is what I make of it."];
+		expect(detachTrailingAttachmentLines(parts)).toEqual([]);
+	});
+
+	test("ignores an image line inside an unterminated code block", () => {
+		const parts = ["Example:", "```md", "![diagram](a.png)"];
+		expect(detachTrailingAttachmentLines(parts)).toEqual([]);
+	});
+});
+
+describe("attachment placement across providers", () => {
+	test("[USER]/[ASSISTANT] transcript keeps the upload with the user turn", () => {
+		const { messages } = parseNormalizedTranscript(
+			[
+				"[ASSISTANT]:",
+				"That's the bigger story.",
+				"Uploaded an image",
+				"[USER]:",
+				"I have an investor list in notion, can you help me with their contacts?",
+				"[ASSISTANT]:",
+				"Yes. I can work directly from your Notion screenshot.",
+			].join("\n"),
+		);
+
+		expect(messages).toHaveLength(3);
+		expect(messages[0]?.content).toBe("That's the bigger story.");
+		expect(messages[1]).toEqual({
+			role: "user",
+			content:
+				"Uploaded an image\nI have an investor list in notion, can you help me with their contacts?",
+		});
 	});
 });

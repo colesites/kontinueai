@@ -20,7 +20,14 @@ export function PillLink({
 		// Invalid URL, just use the href as-is
 	}
 
-	const displayText = children;
+	// Models sometimes emit a bare `[](url)`, which would render as a lone icon
+	// with no indication of where it goes — fall back to the domain.
+	const isEmpty =
+		children === null ||
+		children === undefined ||
+		children === false ||
+		(typeof children === "string" && children.trim() === "");
+	const displayText = isEmpty ? domain || href : children;
 
 	return (
 		<a

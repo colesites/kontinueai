@@ -36,25 +36,36 @@ export function GlassView({
     return acc;
   }, {});
   const borderRadius = flattenedStyle.borderRadius ?? 0;
+  // Callers that supply their own translucent fill (dropdowns, dialogs) already
+  // set the panel's opacity. Stacking the tint below on top of it pushed the
+  // panel to effectively opaque and buried the blur.
+  const hasOwnBackground = flattenedStyle.backgroundColor !== undefined;
 
   return (
     <BlurView
       intensity={intensity}
       tint={isDark ? "dark" : "light"}
+      // NOTE: Android renders no real blur without a `blurTarget` ref (SDK 56+).
+      // Supplying one requires wrapping the app in expo-blur's native
+      // BlurTargetView, which crashed the app on launch in build 11 — see
+      // WEB_PARITY.md. Left as the flat translucent fallback until that is
+      // diagnosed from a real crash log.
       experimentalBlurMethod="dimezisBlurView"
       className={className}
       style={[{ overflow: "hidden" }, ...stylesArray]}
     >
-      {/* 
+      {/*
         Inject the theme's actual background color with opacity.
-        Expo's default "dark" tint is a neutral gray/black iOS material. 
+        Expo's default "dark" tint is a neutral gray/black iOS material.
         Adding this matches the web's `background: color-mix(var(--background) 62%, transparent)`.
       */}
-      <View
-        className="absolute inset-0"
-        style={{ backgroundColor: background, opacity: 0.45, borderRadius }}
-        pointerEvents="none"
-      />
+      {hasOwnBackground ? null : (
+        <View
+          className="absolute inset-0"
+          style={{ backgroundColor: background, opacity: 0.45, borderRadius }}
+          pointerEvents="none"
+        />
+      )}
       {children}
     </BlurView>
   );

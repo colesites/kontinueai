@@ -89,8 +89,27 @@ contract above.
 - Product routes use opaque theme backgrounds and no stack push animation, so
   Android never composites the outgoing and incoming screens together.
 - Imperative React Native colors (spinners, placeholders, shadows, likes,
-  stars) must come from `useTheme()`. Fixed magenta is valid only as the
-  selectable Default theme swatch, never as an active-control shortcut.
+  stars) must come from `useTheme()`. No color may be hand-written in this app.
+- KNOWN GAP: dropdowns and menus have NO real backdrop blur on Android, so they
+  are flat translucent panels rather than the web's liquid glass. Since Expo
+  SDK 56 a `BlurView` only blurs when given a `blurTarget` ref pointing at a
+  native `BlurTargetView` wrapping the content to blur. Mounting that wrapper
+  at the app root shipped in build 11 (v1.2.3) and the app crashed on launch;
+  `ExpoBlurTargetView` proxies addView/removeView/getChildCount to an inner
+  view, which its own source notes breaks react-native-gesture-handler's
+  attached-view walk. Reverted in v1.2.4. Do NOT re-attempt this without a
+  captured crash log (`adb logcat`) and a scope narrower than the whole tree.
+- Design tokens are GENERATED from `packages/tailwind-config/shared-styles.css`
+  into `src/theme/tokens.generated.{css,ts}` by `bun run theme:sync`. The web
+  stylesheet is the only place a Kontinue color is authored; the generated
+  files are never edited by hand. Values are converted to hex for the TS
+  artifact because React Native cannot parse `oklch()` at runtime.
+- Theme ids and order match `apps/web/src/lib/theme.ts` exactly
+  (`normal, pink, emerald, chelsea, amethyst`), because the id is persisted.
+  `normal` is the default. This app's retired `default` id migrates to `pink`
+  via `normalizeTheme`, mirroring web's own `getSavedTheme` migration.
+  Provider brand colors (model vendors, the Google button) and translucent
+  glass overlays are not theme tokens and stay as literals.
 - Theme and appearance selections persist in SecureStore. Sidebar search,
   New chat, product menu, settings, feedback, agents, connectors and Canvas
   follow their corresponding `apps/web` surface hierarchy and tokens.

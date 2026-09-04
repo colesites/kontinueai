@@ -1,4 +1,4 @@
-import { Pressable, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { PanelLeft, Plus, Search } from "lucide-react-native";
 
@@ -17,15 +17,25 @@ export function TopToolbar() {
   const router = useRouter();
   const { isDark } = useTheme();
 
+  /*
+   * Liquid-glass pill. A single flat border reads as a printed outline, so the
+   * rim is built the way the web one is: a translucent hairline all round, a
+   * brighter LIT TOP edge, and a thinner, darker bottom edge. That top-light /
+   * bottom-dark split is what gives the pill its raised 3D look.
+   *
+   * React Native has no per-side border radius + width combination that keeps
+   * the rounded corners intact, so the top and bottom edges are drawn as inset
+   * hairline overlays inside the pill instead (see the rim children below).
+   */
   const glassStyle = {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: isDark ? "rgba(255, 255, 255, 0.08)" : "rgba(0, 0, 0, 0.08)",
+    borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.06)",
     shadowColor: "#000000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: isDark ? 0.35 : 0.12,
-    shadowRadius: 15,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: isDark ? 0.42 : 0.14,
+    shadowRadius: 18,
+    elevation: 10,
   };
 
   return (
@@ -35,6 +45,7 @@ export function TopToolbar() {
         style={glassStyle}
         className="flex-row items-center gap-1.5 p-1"
       >
+        <GlassRim isDark={isDark} />
         <ToolbarButton label="Open sidebar" icon={PanelLeft} onPress={openSidebar} />
         <ToolbarButton label="Search" icon={Search} onPress={openSidebar} />
         <ToolbarButton label="New chat" icon={Plus} onPress={() => router.push("/chat/new")} />
@@ -45,9 +56,49 @@ export function TopToolbar() {
         style={glassStyle}
         className="p-1"
       >
+        <GlassRim isDark={isDark} />
         <ModeToggle />
       </GlassView>
     </View>
+  );
+}
+
+/**
+ * The lit top edge and thinner, darker bottom edge that make the pill read as
+ * a raised piece of glass rather than a flat outlined box. Sits inside the
+ * GlassView's clip, so it follows the rounded corners.
+ */
+function GlassRim({ isDark }: { isDark: boolean }) {
+  return (
+    <>
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 12,
+          right: 12,
+          height: 1,
+          backgroundColor: isDark
+            ? "rgba(255,255,255,0.22)"
+            : "rgba(255,255,255,0.85)",
+        }}
+      />
+      <View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 20,
+          right: 20,
+          // Thinner than the top edge: the underside catches less light.
+          height: StyleSheet.hairlineWidth,
+          backgroundColor: isDark
+            ? "rgba(0,0,0,0.35)"
+            : "rgba(0,0,0,0.10)",
+        }}
+      />
+    </>
   );
 }
 

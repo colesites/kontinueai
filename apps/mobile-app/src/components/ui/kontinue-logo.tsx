@@ -12,13 +12,13 @@ const RATIO = 2769 / 555;
  * same behavior as the web `invert dark:invert-0` treatment.
  */
 export function KontinueLogo({ height = 34 }: { height?: number }) {
-  const { isDark } = useTheme();
+  const { foreground } = useTheme();
   return (
     <Image
       source={LOGO}
       style={{ height, width: height * RATIO }}
       contentFit="contain"
-      tintColor={isDark ? "#ffffff" : "#0a0a0a"}
+      tintColor={foreground}
     />
   );
 }

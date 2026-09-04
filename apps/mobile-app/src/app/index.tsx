@@ -5,6 +5,7 @@ import {
   Platform,
   Pressable,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -83,6 +84,7 @@ function detectProvider(url: string): string {
 }
 
 export default function HomeScreen() {
+  const { width: windowWidth } = useWindowDimensions();
   const router = useRouter();
   const { user } = useUser();
   const firstName = getFirstName(user);
@@ -236,10 +238,9 @@ export default function HomeScreen() {
             left: 0,
             right: 0,
             height: 480,
-            alignItems: "center",
           }}
         >
-          <Svg height="480" width="100%">
+          <Svg height={480} width={windowWidth}>
             <Defs>
               <RadialGradient id="topGlow" cx="50%" cy="15%" r="50%">
                 <Stop offset="0%" stopColor={primary} stopOpacity={0.16} />
@@ -250,39 +251,27 @@ export default function HomeScreen() {
           </Svg>
         </View>
 
-        {/* Bottom Right circular bloom */}
-        <View
-          style={{
-            position: "absolute",
-            bottom: -150,
-            right: -150,
-            width: 400,
-            height: 400,
-          }}
-        >
-          <Svg height="400" width="400">
-            <Defs>
-              <RadialGradient id="bottomGlow" cx="50%" cy="50%" r="50%">
-                <Stop offset="0%" stopColor={primary} stopOpacity={0.12} />
-                <Stop offset="100%" stopColor={primary} stopOpacity={0} />
-              </RadialGradient>
-            </Defs>
-            <Circle cx="50%" cy="50%" r="50%" fill="url(#bottomGlow)" />
-          </Svg>
-        </View>
-
-        {/* Bottom Center Input Bloom — spreads up behind the composer, perfectly centered */}
+        {/*
+         * Bottom Center Input Bloom — spreads up behind the composer.
+         *
+         * The width is the measured window width, not "100%": a percentage on
+         * the root <Svg> inside an `alignItems: center` parent has no definite
+         * cross-axis size to resolve against, so `cx="50%"` landed off-centre.
+         *
+         * There is deliberately no bottom-RIGHT bloom here. Web has room for a
+         * corner accent beside the centred one; on a phone the two overlap and
+         * read as a single glow pushed to the right edge.
+         */}
         <View
           style={{
             position: "absolute",
             bottom: -60,
             left: 0,
-            right: 0,
+            width: windowWidth,
             height: 580,
-            alignItems: "center",
           }}
         >
-          <Svg height="580" width="100%">
+          <Svg height={580} width={windowWidth}>
             <Defs>
               <RadialGradient id="inputGlow" cx="50%" cy="65%" r="55%">
                 <Stop offset="0%" stopColor={primary} stopOpacity={0.25} />
@@ -320,53 +309,61 @@ export default function HomeScreen() {
           </Text>
 
           <View className="mt-8 flex-row items-center justify-center gap-4">
+            {/*
+             * Web draws this as a `border-b` sitting tight under the text.
+             * React Native's `textDecorationLine` positions the underline off
+             * the font's line box, so with a multiple-of-line-height leading it
+             * drifts far below the glyphs. A 1px View gives exact control, the
+             * same way the web rule does.
+             */}
             <Pressable onPress={() => setHowOpen(true)} hitSlop={6}>
-              <Text 
-                className="text-[14px] text-muted-foreground"
-                style={{ 
-                  textDecorationLine: 'underline', 
-                  textDecorationColor: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)'
-                }}
-              >
+              <Text className="text-[14px] leading-5 text-muted-foreground">
                 How does this work?
               </Text>
+              <View
+                style={{
+                  height: 1,
+                  marginTop: 1,
+                  backgroundColor: isDark
+                    ? "rgba(255,255,255,0.20)"
+                    : "rgba(0,0,0,0.20)",
+                }}
+              />
             </Pressable>
 
-            {/* Mirrors HomeImportDialog trigger: primary gradient + ring + glow */}
+            {/*
+             * Mirrors HomeImportDialog's trigger: the FILL is transparent and
+             * the BORDER carries the glow. The old version filled the pill with
+             * a primary gradient and bloomed a wide outer shadow, which read as
+             * a solid frosted button and hid the ring entirely.
+             */}
             <Pressable
               onPress={() => setImportOpen(true)}
               style={({ pressed }) => [
                 {
                   borderRadius: 999,
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                  shadowColor: primary,
-                  shadowOpacity: 0.45,
-                  shadowRadius: 16,
-                  shadowOffset: { width: 0, height: 2 },
-                  elevation: 8,
-                },
-              ]}
-            >
-              <LinearGradient
-                colors={[`${primary}2E`, `${primary}14`]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: `${primary}40`,
+                  borderColor: `${primary}59`,
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 8,
                   paddingHorizontal: 16,
                   paddingVertical: 9,
-                }}
-              >
-                <Icon as={ArrowUpRight} size={16} className="text-primary" />
-                <Text className="text-[14px] font-medium text-foreground">
-                  Import shared link
-                </Text>
-              </LinearGradient>
+                  backgroundColor: "transparent",
+                  transform: [{ scale: pressed ? 0.98 : 1 }],
+                  // Tight bloom hugging the ring, not a wide halo behind a fill.
+                  shadowColor: primary,
+                  shadowOpacity: pressed ? 0.35 : 0.22,
+                  shadowRadius: 7,
+                  shadowOffset: { width: 0, height: 0 },
+                  elevation: 3,
+                },
+              ]}
+            >
+              <Icon as={ArrowUpRight} size={16} className="text-primary" />
+              <Text className="text-[14px] font-medium text-foreground">
+                Import shared link
+              </Text>
             </Pressable>
           </View>
 

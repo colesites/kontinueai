@@ -16,11 +16,35 @@ WebBrowser.maybeCompleteAuthSession();
 const NATIVE_AUTH_SCHEME = "com.kontinueai.app";
 
 /**
- * Uses Clerk's native Credential Manager flow in standalone Android builds.
- * Expo Go and iOS keep the browser SSO fallback until their native Google
- * credentials are configured. Native Android avoids fragile custom-scheme
- * callbacks and gives us the real provider error code when configuration is
- * wrong instead of collapsing every failure into the same generic message.
+ * Gates Clerk's native Credential Manager flow on Android.
+ *
+ * Currently OFF. The native flow returns a genuine Google ID token, but Clerk
+ * rejected it with "The provided Google One Tap token is invalid" because it
+ * validates the token's audience against its own Google connection. Turning
+ * this back on requires BOTH, verified in the Clerk Dashboard:
+ *
+ *   1. Native Applications: the Android package name `com.kontinueai.app` with
+ *      the build keystore's SHA-256 fingerprint. This is separate from the
+ *      SHA-1 that Google Cloud needs; see AUTH_CONFIGURATION.md.
+ *   2. SSO Connections -> Google: custom credentials whose client ID is the
+ *      SAME web client as EXPO_PUBLIC_CLERK_GOOGLE_WEB_CLIENT_ID, plus its
+ *      secret. Shared/dev credentials or any other web client make every
+ *      native token fail audience validation.
+ *
+ * Flip to `true` only after a standalone build completes Google sign-up end to
+ * end. Browser SSO stays the fallback-free path until then.
+ */
+const NATIVE_GOOGLE_AUTH_ENABLED = false;
+
+/**
+ * Google sign-in for every platform.
+ *
+ * Browser SSO is the single flow: it works on iOS, Android and Expo Go, and
+ * needs only the redirect allowlist that AUTH_CONFIGURATION.md pins down.
+ *
+ * Exactly one account picker may ever be shown per press. The native path must
+ * never chain into browser SSO on failure: that showed the Credential Manager
+ * sheet and then Google's web "Choose an account" page for the same attempt.
  */
 export function useGoogleOAuth() {
   const { startSSOFlow } = useSSO();
@@ -29,7 +53,9 @@ export function useGoogleOAuth() {
   const [error, setError] = useState<string | null>(null);
 
   const useNativeAndroid =
-    Platform.OS === "android" && Constants.appOwnership !== "expo";
+    NATIVE_GOOGLE_AUTH_ENABLED &&
+    Platform.OS === "android" &&
+    Constants.appOwnership !== "expo";
   const browserRedirectUrl =
     Constants.appOwnership === "expo"
       ? AuthSession.makeRedirectUri({ path: "sso-callback" })
@@ -77,45 +103,16 @@ export function useGoogleOAuth() {
         );
       }
 
-      let nativeResult: Awaited<
-        ReturnType<typeof startGoogleAuthenticationFlow>
-      >;
-
-      try {
-        // Only provider-launch failures are eligible for browser recovery.
-        // Activation happens outside this catch because Clerk can already have
-        // created the native session before a later callback/navigation error.
-        nativeResult = await startGoogleAuthenticationFlow();
-      } catch (nativeError) {
-        const nativeDetails = getGoogleAuthError(nativeError);
-
-        Sentry.captureException(nativeError, {
-          tags: {
-            subsystem: "google-auth",
-            flow: "native-android",
-            errorCode: nativeDetails.code,
-            fallback: "browser-sso",
-          },
-          extra: { providerMessage: nativeDetails.message },
-        });
-
-        // A cancelled native picker should stay cancelled. For provider or
-        // Credential Manager failures, use Clerk's browser flow as a reliable
-        // recovery path instead of leaving the user locked out.
-        if (nativeDetails.cancelled) return false;
-
-        return await activateSession(
-          await startSSOFlow({
-            strategy: "oauth_google",
-            redirectUrl: browserRedirectUrl,
-          }),
-        );
-      }
-
-      // A returned native result must never launch a second OAuth flow.
-      return await activateSession(nativeResult);
+      // The native Credential Manager sheet is the only picker on Android.
+      // A failure here surfaces as an error; it must not start browser SSO,
+      // which would present a second "Choose an account" screen.
+      return await activateSession(await startGoogleAuthenticationFlow());
     } catch (err) {
       const details = getGoogleAuthError(err);
+
+      // Dismissing the picker is a normal outcome, not a failure to report.
+      if (details.cancelled) return false;
+
       console.error("[google-auth]", details.code, details.message);
       Sentry.captureException(err, {
         tags: {

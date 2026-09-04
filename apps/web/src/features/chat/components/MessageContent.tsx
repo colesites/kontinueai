@@ -1,11 +1,65 @@
+import type { Element, ElementContent } from "hast";
 import Image from "next/image";
-import { memo } from "react";
+import { createContext, memo, useContext } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import CodeBlock from "./CodeBlock";
 import { PillLink } from "./PillLink";
+
+// Models often drop logo/favicon images into the middle of a sentence
+// (e.g. `![LinkedIn](.../logo.png)` next to a citation). Rendering those as
+// full-width blocks tears the paragraph apart, so images that share a
+// paragraph with real text are rendered as a small inline chip instead.
+const InlineImageContext = createContext(false);
+
+function paragraphHasInlineImage(node: Element | undefined): boolean {
+	const children = node?.children ?? [];
+	const isImage = (child: ElementContent) =>
+		child.type === "element" && child.tagName === "img";
+	const hasText = children.some(
+		(child) =>
+			(child.type === "text" && child.value.trim().length > 0) ||
+			(child.type === "element" && child.tagName !== "img"),
+	);
+	return hasText && children.some(isImage);
+}
+
+function MarkdownImage({ src, alt }: { src: string; alt: string }) {
+	const inline = useContext(InlineImageContext);
+
+	if (inline) {
+		return (
+			<span className="mx-0.5 inline-flex max-w-[180px] items-center gap-1 align-middle rounded-full border border-border/60 bg-muted/40 px-1.5 py-0.5 text-xs">
+				<Image
+					src={src}
+					alt=""
+					width={14}
+					height={14}
+					unoptimized
+					referrerPolicy="no-referrer"
+					loading="lazy"
+					className="size-3.5 shrink-0 rounded-full object-contain"
+				/>
+				{alt ? <span className="truncate">{alt}</span> : null}
+			</span>
+		);
+	}
+
+	return (
+		<Image
+			src={src}
+			alt={alt}
+			width={800}
+			height={600}
+			unoptimized
+			referrerPolicy="no-referrer"
+			loading="lazy"
+			className="my-2 max-h-96 max-w-full rounded-lg border border-border/60"
+		/>
+	);
+}
 
 interface MessageContentProps {
 	content: string;
@@ -22,14 +76,18 @@ export const MessageContent = memo(function MessageContent({
 				remarkPlugins={[remarkGfm, remarkBreaks]}
 				rehypePlugins={[rehypeHighlight]}
 				components={{
-					p: ({ children, ...props }) => (
-						<p
-							className="wrap-anywhere"
-							data-testid="message-content-paragraph"
-							{...props}
+					p: ({ children, node, ...props }) => (
+						<InlineImageContext.Provider
+							value={paragraphHasInlineImage(node)}
 						>
-							{children}
-						</p>
+							<p
+								className="wrap-anywhere"
+								data-testid="message-content-paragraph"
+								{...props}
+							>
+								{children}
+							</p>
+						</InlineImageContext.Provider>
 					),
 					li: ({ children, ...props }) => (
 						<li className="wrap-anywhere" {...props}>
@@ -101,16 +159,7 @@ export const MessageContent = memo(function MessageContent({
 					// load instead of returning 429/403.
 					img: ({ src, alt }) =>
 						typeof src === "string" ? (
-							<Image
-								src={src}
-								alt={alt ?? ""}
-								width={800}
-								height={600}
-								unoptimized
-								referrerPolicy="no-referrer"
-								loading="lazy"
-								className="my-2 max-h-96 max-w-full rounded-lg border border-border/60"
-							/>
+							<MarkdownImage src={src} alt={alt ?? ""} />
 						) : null,
 				}}
 			>

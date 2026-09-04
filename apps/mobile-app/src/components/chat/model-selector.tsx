@@ -166,7 +166,9 @@ export function ModelSelectorTrigger({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`Choose model. Current model ${model.name}`}
-      className="min-h-11 max-w-[210px] flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/3 px-4 active:bg-foreground/8"
+      /* h-9 matches the sibling "+" button exactly; the old min-h-11 made the
+         trigger taller than it and broke the row's optical alignment. */
+      className="h-9 max-w-[210px] flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/3 px-3 active:bg-foreground/8"
     >
       <View
         className="h-5 w-5 shrink-0 items-center justify-center border border-foreground/5 bg-foreground/5 overflow-hidden"

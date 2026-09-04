@@ -2,19 +2,24 @@
   "expo": {
     "name": "Kontinue AI",
     "slug": "mobile-app",
-    "version": "1.2.0",
+    "version": "1.2.4",
     "orientation": "portrait",
     "icon": "./assets/images/kontinue-icon.png",
-    "scheme": ["mobileapp", "com.kontinueai.app"],
+    "scheme": [
+      "mobileapp",
+      "com.kontinueai.app"
+    ],
     "userInterfaceStyle": "automatic",
     "android": {
       "package": "com.kontinueai.app",
       "adaptiveIcon": {
         "backgroundColor": "#0B0A0C",
-        "foregroundImage": "./assets/images/kontinue-icon.png"
+        "foregroundImage": "./assets/images/kontinue-adaptive-icon.png"
       },
       "predictiveBackGestureEnabled": false,
-      "permissions": ["android.permission.RECORD_AUDIO"]
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.kontinueai.app",

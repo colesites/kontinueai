@@ -32,7 +32,7 @@ export function AuthField({
   editable = true,
   ...props
 }: AuthFieldProps) {
-  const { isDark, primary } = useTheme();
+  const { primary, mutedForeground, isDark } = useTheme();
   const [focused, setFocused] = useState(false);
   const [passwordVisible, setPasswordVisible] = useState(false);
 
@@ -63,7 +63,7 @@ export function AuthField({
           <Icon
             as={leadingIcon}
             size={18}
-            color={focused ? primary : isDark ? "#9f919a" : "#64748b"}
+            color={focused ? primary : mutedForeground}
           />
         </View>
         <TextInput
@@ -78,7 +78,7 @@ export function AuthField({
             setFocused(false);
             onBlur?.(event);
           }}
-          placeholderTextColor={isDark ? "#786a73" : "#94a3b8"}
+          placeholderTextColor={mutedForeground}
           selectionColor={primary}
           className="min-w-0 flex-1 text-[15px] text-foreground"
           style={{
@@ -103,7 +103,7 @@ export function AuthField({
             <Icon
               as={passwordVisible ? EyeOff : Eye}
               size={19}
-              color={focused ? primary : isDark ? "#9f919a" : "#64748b"}
+              color={focused ? primary : mutedForeground}
             />
           </Pressable>
         ) : (
