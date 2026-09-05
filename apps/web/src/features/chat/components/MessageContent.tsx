@@ -35,7 +35,10 @@ const CITATION_ICON_SRC_REGEX =
 // A citation label carrying a source count, e.g. "Resend+1", "LinkedIn +2".
 const CITATION_COUNT_ALT_REGEX = /\s*\+\d+\s*$/;
 // A citation labelled with the bare source domain, e.g. "en.wikipedia.org".
+// A filename ("photo.png") has the same shape and must not match.
 const DOMAIN_ALT_REGEX = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
+const FILE_EXTENSION_ALT_REGEX =
+	/\.(?:png|jpe?g|gif|webp|heic|svg|pdf|csv|xlsx?|docx?|txt|md|zip|json)$/i;
 // Anything this small is chrome, not content, whatever the markdown claims.
 const ICON_MAX_NATURAL_PX = 64;
 // Site icons are square and ship at up to 512px (Wikipedia's is one of those).
@@ -49,7 +52,8 @@ function isCitationIcon(src: string, alt: string): boolean {
 	return (
 		CITATION_ICON_SRC_REGEX.test(src) ||
 		CITATION_COUNT_ALT_REGEX.test(alt) ||
-		DOMAIN_ALT_REGEX.test(alt.trim())
+		(DOMAIN_ALT_REGEX.test(alt.trim()) &&
+			!FILE_EXTENSION_ALT_REGEX.test(alt.trim()))
 	);
 }
 

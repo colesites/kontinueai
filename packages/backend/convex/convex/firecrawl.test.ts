@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+	attachRecoveredAttachments,
+	attachRecoveredImages,
 	buildFirecrawlScrapeRequest,
 	detachTrailingAttachmentLines,
+	extractAttachmentImages,
+	extractChatGptAttachmentPointers,
 	parseNormalizedTranscript,
 	shrinkImageUrlsForNormalizer,
 	splitEmbeddedUserTurns,
@@ -13,9 +17,10 @@ describe("buildFirecrawlScrapeRequest", () => {
 			buildFirecrawlScrapeRequest("https://claude.ai/share/example"),
 		).toEqual({
 			url: "https://claude.ai/share/example",
-			formats: ["markdown"],
+			formats: ["markdown", "rawHtml"],
 			onlyMainContent: false,
 			waitFor: 8_000,
+			maxAge: 0,
 		});
 	});
 
@@ -24,9 +29,10 @@ describe("buildFirecrawlScrapeRequest", () => {
 			buildFirecrawlScrapeRequest("https://chatgpt.com/share/example"),
 		).toEqual({
 			url: "https://chatgpt.com/share/example",
-			formats: ["markdown"],
+			formats: ["markdown", "rawHtml"],
 			onlyMainContent: true,
 			waitFor: 5_000,
+			maxAge: 0,
 		});
 	});
 });
@@ -325,5 +331,115 @@ describe("shrinkImageUrlsForNormalizer", () => {
 	test("leaves ordinary image URLs untouched", () => {
 		const markdown = "![chart](https://cdn.example.com/chart.png)";
 		expect(shrinkImageUrlsForNormalizer(markdown).markdown).toBe(markdown);
+	});
+});
+
+describe("attachment image recovery", () => {
+	test("pulls uploaded attachments out of the page HTML", () => {
+		const html = `
+			<img src="https://cdn.oaistatic.com/assets/logo.svg" alt="ChatGPT">
+			<img alt="Uploaded image" src="https://files.oaiusercontent.com/file-abc?se=2026">
+			<img src="https://example.com/avatar.png" alt="">
+		`;
+
+		expect(extractAttachmentImages(html)).toEqual([
+			"https://files.oaiusercontent.com/file-abc?se=2026",
+		]);
+	});
+
+	test("skips blob URLs that cannot render outside the page", () => {
+		expect(
+			extractAttachmentImages(
+				'<img alt="Uploaded image" src="blob:https://x/y">',
+			),
+		).toEqual([]);
+	});
+
+	test("replaces attachment labels with the recovered images in order", () => {
+		const messages = attachRecoveredImages(
+			[
+				{ role: "user", content: "Uploaded an image\nWhat is wrong here?" },
+				{ role: "assistant", content: "Here is what I see." },
+				{ role: "user", content: "Uploaded an image" },
+			],
+			["https://cdn.example.com/one.png", "https://cdn.example.com/two.png"],
+		);
+
+		expect(messages[0]?.content).toBe(
+			"![Uploaded an image](https://cdn.example.com/one.png)\nWhat is wrong here?",
+		);
+		expect(messages[1]?.content).toBe("Here is what I see.");
+		expect(messages[2]?.content).toBe(
+			"![Uploaded an image](https://cdn.example.com/two.png)",
+		);
+	});
+
+	test("leaves messages untouched when nothing was recovered", () => {
+		const original = [{ role: "user" as const, content: "Uploaded an image" }];
+		expect(attachRecoveredImages(original, [])).toEqual(original);
+	});
+});
+
+describe("ChatGPT attachment pointers", () => {
+	// Shape of the share page's embedded state stream, JSON-escaped inside a
+	// script string exactly as the raw document carries it.
+	const stream = String.raw`\"file_000000000a0c8210bbe9d0e6bc9a5839\",\"size\",2233826,\"name\",\"Screenshot 2026-09-04 at 3.13.16 PM.png\",\"mime_type\",\"image/png\",2048,1280,\"source\",\"local\",\"multimodal_text\",[263,264],{\"_179\":265},\"hello\",\"image_asset_pointer\",\"asset_pointer\",\"sediment://file_000000000a0c8210bbe9d0e6bc9a5839?shared_conversation_id=abc\",\"size_bytes\"`;
+
+	test("reads the file id, metadata and owning message text", () => {
+		expect(extractChatGptAttachmentPointers(stream)).toEqual([
+			{
+				fileId: "file_000000000a0c8210bbe9d0e6bc9a5839",
+				name: "Screenshot 2026-09-04 at 3.13.16 PM.png",
+				mimeType: "image/png",
+				anchorText: "hello",
+			},
+		]);
+	});
+
+	test("dedupes a pointer the page repeats", () => {
+		expect(extractChatGptAttachmentPointers(`${stream}${stream}`)).toHaveLength(
+			1,
+		);
+	});
+
+	test("routes an attachment to the message that owns its text", () => {
+		const messages = attachRecoveredAttachments(
+			[
+				{ role: "user", content: "Uploaded an image\nfirst question" },
+				{ role: "assistant", content: "Answer one." },
+				{ role: "user", content: "Uploaded an image\nsecond question" },
+			],
+			[
+				{
+					url: "https://cdn/two.png",
+					name: "two.png",
+					isImage: true,
+					anchorText: "second question",
+				},
+				{
+					url: "https://cdn/one.png",
+					name: "one.png",
+					isImage: true,
+					anchorText: "first question",
+				},
+			],
+		);
+
+		expect(messages[0]?.content).toBe(
+			"![one.png](https://cdn/one.png)\nfirst question",
+		);
+		expect(messages[2]?.content).toBe(
+			"![two.png](https://cdn/two.png)\nsecond question",
+		);
+	});
+
+	test("renders a non-image attachment as a link", () => {
+		const messages = attachRecoveredAttachments(
+			[{ role: "user", content: "Uploaded a file\nsummarise this" }],
+			[{ url: "https://cdn/deck.pdf", name: "deck.pdf", isImage: false }],
+		);
+		expect(messages[0]?.content).toBe(
+			"[deck.pdf](https://cdn/deck.pdf)\nsummarise this",
+		);
 	});
 });

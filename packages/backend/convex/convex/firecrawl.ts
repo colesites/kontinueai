@@ -715,6 +715,7 @@ type FirecrawlScrapeApiResponse = {
 	error?: string;
 	data?: {
 		markdown?: string;
+		rawHtml?: string;
 		metadata?: {
 			title?: string;
 			[key: string]: unknown;
@@ -740,11 +741,19 @@ export function buildFirecrawlScrapeRequest(url: string) {
 	const isClaude = isClaudeSharedUrl(url);
 	return {
 		url,
-		formats: ["markdown"],
+		// rawHtml is only used to recover attachments. Firecrawl's markdown drops
+		// them, and its cleaned `html` drops the page state that references them,
+		// so only the raw document still knows the file behind an "Uploaded an
+		// image" label.
+		formats: ["markdown", "rawHtml"],
 		// Claude renders artifacts beside the conversation rather than inside the
 		// message column. Main-content filtering removes that panel entirely.
 		onlyMainContent: !isClaude,
 		waitFor: isClaude ? 8_000 : FIRECRAWL_WAIT_FOR_MS,
+		// Firecrawl serves a cached snapshot of a URL for up to two days by
+		// default, so re-importing a link replayed the previous scrape — stale
+		// content, and the attachments that were missing were still missing.
+		maxAge: 0,
 	};
 }
 
@@ -1450,6 +1459,23 @@ async function scrapeAndExtract(
 		splitEmbeddedUserTurns(mergeAdjacentSameRoleMessages(messages)),
 	);
 
+	// Put the attachments back where the page only left a placeholder label.
+	const rawHtml = result.data?.rawHtml ?? "";
+	const recovered: RecoveredAttachment[] = isChatGptSharedUrl(url)
+		? await recoverChatGptAttachments(url, rawHtml)
+		: extractAttachmentImages(rawHtml).map((imageUrl) => ({
+				url: imageUrl,
+				name: "Uploaded an image",
+				isImage: true,
+			}));
+	if (recovered.length > 0) {
+		messages = attachRecoveredAttachments(messages, recovered);
+	}
+	console.log(
+		`[import] attachments recovered=${recovered.length} ` +
+			`labels=${messages.reduce((count, message) => count + message.content.split(/\r?\n/).filter((line) => ATTACHMENT_MARKER_REGEX.test(line.trim())).length, 0)} url=${url}`,
+	);
+
 	if (messages.length === 0) {
 		throw new Error("Could not resolve speaker roles in this transcript.");
 	}
@@ -1507,7 +1533,304 @@ export const scrapeUrl = action({
 	},
 });
 
+// Hosts that serve chat attachments. A share page's other images are product
+// chrome (avatars, logos, buttons); these are the ones a person actually
+// uploaded or the model produced.
+const ATTACHMENT_HOST_PATTERNS = [
+	/oaiusercontent\.com/i,
+	/\/backend-api\/files\//i,
+	/googleusercontent\.com/i,
+	/anthropic\.com\/.*(?:upload|file)/i,
+	/claudeusercontent\.com/i,
+	/grok(?:usercontent|-attachments)/i,
+	/\/files\/[0-9a-f-]{8,}/i,
+];
+const ATTACHMENT_ALT_REGEX = /(upload|attach|screenshot|image|photo|file)/i;
+const HTML_IMG_REGEX = /<img\b[^>]*>/gi;
+
+function readHtmlAttribute(tag: string, name: string): string {
+	const match = tag.match(
+		new RegExp(`${name}\\s*=\\s*("([^"]*)"|'([^']*)')`, "i"),
+	);
+	return (match?.[2] ?? match?.[3] ?? "").trim();
+}
+
+// Firecrawl's markdown conversion drops chat attachments, so pull their URLs
+// out of the HTML it returned alongside it, in document order.
+export function extractAttachmentImages(html: string): string[] {
+	const found: string[] = [];
+	for (const tag of html.match(HTML_IMG_REGEX) ?? []) {
+		const src =
+			readHtmlAttribute(tag, "src") || readHtmlAttribute(tag, "data-src");
+		if (!src || src.startsWith("blob:")) continue;
+		if (src.startsWith("data:") && !src.startsWith("data:image/")) continue;
+
+		const alt = readHtmlAttribute(tag, "alt");
+		const isAttachment =
+			ATTACHMENT_HOST_PATTERNS.some((pattern) => pattern.test(src)) ||
+			(alt.length > 0 && ATTACHMENT_ALT_REGEX.test(alt));
+		if (!isAttachment) continue;
+		if (found.includes(src)) continue;
+		found.push(src);
+	}
+	return found;
+}
+
+function isChatGptSharedUrl(url: string): boolean {
+	try {
+		const hostname = new URL(url).hostname.toLowerCase();
+		return (
+			hostname === "chatgpt.com" ||
+			hostname.endsWith(".chatgpt.com") ||
+			hostname === "chat.openai.com"
+		);
+	} catch {
+		return false;
+	}
+}
+
+export type RecoveredAttachment = {
+	url: string;
+	name: string;
+	isImage: boolean;
+	// Text of the message the attachment belongs to, when the page told us.
+	anchorText?: string;
+};
+
+type ChatGptAttachmentPointer = {
+	fileId: string;
+	name: string;
+	mimeType: string;
+	anchorText?: string;
+};
+
+// A ChatGPT share page never puts an attachment in the DOM — the markup is a
+// sprite icon plus "<span>Uploaded an image</span>". The file exists only as an
+// asset pointer inside the page's embedded state stream, serialised as a flat
+// list of string literals where each pointer directly follows its file's
+// metadata ("name", "mime_type", …) and the text of the message it belongs to.
+const CHATGPT_POINTER_REGEX =
+	/(?:sediment|file-service):\/\/(file[_-][A-Za-z0-9]+)/g;
+// String literals in the stream; the document may hold them JSON-escaped.
+const STREAM_STRING_REGEX = /\\?"((?:[^"\\]|\\.){2,400}?)\\?"/g;
+const STREAM_KEY_TOKENS = new Set([
+	"image_asset_pointer",
+	"asset_pointer",
+	"multimodal_text",
+	"text",
+	"size",
+	"name",
+	"mime_type",
+	"source",
+	"local",
+	"is_big_paste",
+	"library_file_id",
+	"size_bytes",
+	"sanitized",
+	"user",
+]);
+
+function readStreamField(context: string, field: string): string {
+	const match = context.match(
+		new RegExp(`\\\\?"${field}\\\\?",\\\\?"((?:[^"\\\\]|\\\\.)+?)\\\\?"`),
+	);
+	return match?.[1] ?? "";
+}
+
+export function extractChatGptAttachmentPointers(
+	rawHtml: string,
+): ChatGptAttachmentPointer[] {
+	const pointers: ChatGptAttachmentPointer[] = [];
+	const seen = new Set<string>();
+
+	for (const match of rawHtml.matchAll(CHATGPT_POINTER_REGEX)) {
+		const fileId = match[1];
+		if (!fileId || seen.has(fileId)) continue;
+		seen.add(fileId);
+
+		const context = rawHtml.slice(Math.max(0, match.index - 2500), match.index);
+		const name = readStreamField(context, "name");
+		const mimeType = readStreamField(context, "mime_type");
+
+		// The message text is the last ordinary string before the pointer's own
+		// "image_asset_pointer"/"asset_pointer" keys.
+		let anchorText: string | undefined;
+		for (const literal of context.matchAll(STREAM_STRING_REGEX)) {
+			const value = literal[1] ?? "";
+			if (!value || /^_\d+$/.test(value) || STREAM_KEY_TOKENS.has(value)) {
+				continue;
+			}
+			if (value === name || value === mimeType || value.startsWith("file")) {
+				continue;
+			}
+			anchorText = value;
+		}
+
+		pointers.push({ fileId, name, mimeType, anchorText });
+	}
+
+	return pointers;
+}
+
+const CHATGPT_ANON_USER_AGENT =
+	"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+
+// Resolves a share-page asset pointer to a signed download URL. The endpoint is
+// the same one the share page itself calls; it needs no session, only a device
+// id header, and the URL it returns expires in about an hour — which is why the
+// bytes are copied into our storage straight afterwards.
+async function resolveChatGptAttachment(
+	fileId: string,
+	sharedConversationId: string,
+): Promise<{ downloadUrl: string; fileName: string } | null> {
+	const endpoint = new URL(
+		`https://chatgpt.com/backend-anon/files/download/${encodeURIComponent(fileId)}`,
+	);
+	endpoint.searchParams.set("shared_conversation_id", sharedConversationId);
+	endpoint.searchParams.set("inline", "false");
+	endpoint.searchParams.set("download_intent", "false");
+
+	try {
+		const response = await fetch(endpoint, {
+			headers: {
+				"User-Agent": CHATGPT_ANON_USER_AGENT,
+				Accept: "application/json",
+				"oai-device-id": crypto.randomUUID(),
+				"oai-language": "en-US",
+				Referer: `https://chatgpt.com/share/${sharedConversationId}`,
+			},
+			signal: AbortSignal.timeout(15_000),
+		});
+		if (!response.ok) {
+			console.error(
+				`[import] chatgpt attachment ${fileId} resolve failed status=${response.status}`,
+			);
+			return null;
+		}
+		const payload = (await response.json()) as {
+			download_url?: string;
+			file_name?: string;
+		};
+		if (!payload.download_url) return null;
+		return {
+			downloadUrl: payload.download_url,
+			fileName: payload.file_name ?? "",
+		};
+	} catch (error) {
+		console.error(
+			`[import] chatgpt attachment ${fileId} resolve threw ${String(error)}`,
+		);
+		return null;
+	}
+}
+
+function chatGptShareId(url: string): string | null {
+	const match = url.match(/\/share\/([0-9a-f-]{20,})/i);
+	return match?.[1] ?? null;
+}
+
+async function recoverChatGptAttachments(
+	url: string,
+	rawHtml: string,
+): Promise<RecoveredAttachment[]> {
+	const shareId = chatGptShareId(url);
+	if (!shareId) return [];
+
+	const pointers = extractChatGptAttachmentPointers(rawHtml);
+	const resolved = await Promise.all(
+		pointers.map(async (pointer): Promise<RecoveredAttachment | null> => {
+			const file = await resolveChatGptAttachment(pointer.fileId, shareId);
+			if (!file) return null;
+			const name = pointer.name || file.fileName || pointer.fileId;
+			const attachment: RecoveredAttachment = {
+				url: file.downloadUrl,
+				name,
+				isImage:
+					pointer.mimeType.startsWith("image/") ||
+					/\.(png|jpe?g|gif|webp|heic)$/i.test(name),
+			};
+			if (pointer.anchorText) attachment.anchorText = pointer.anchorText;
+			return attachment;
+		}),
+	);
+	return resolved.filter(
+		(attachment): attachment is RecoveredAttachment => attachment !== null,
+	);
+}
+
+// Turn each "Uploaded an image" placeholder back into the attachment it stands
+// for. An attachment that knows its message's text goes to that message; the
+// rest are handed out in document order, which is how both lists were built.
+export function attachRecoveredAttachments(
+	messages: ParsedMessage[],
+	attachments: RecoveredAttachment[],
+): ParsedMessage[] {
+	if (attachments.length === 0) return messages;
+
+	const lines = messages.map((message) => message.content.split(/\r?\n/));
+	const isLabel = (line: string) => ATTACHMENT_MARKER_REGEX.test(line.trim());
+	const render = (attachment: RecoveredAttachment) =>
+		attachment.isImage
+			? `![${attachment.name}](${attachment.url})`
+			: `[${attachment.name}](${attachment.url})`;
+
+	const placeInto = (messageIndex: number, attachment: RecoveredAttachment) => {
+		const messageLines = lines[messageIndex];
+		if (!messageLines) return false;
+		const labelIndex = messageLines.findIndex(isLabel);
+		if (labelIndex === -1) return false;
+		messageLines[labelIndex] = render(attachment);
+		return true;
+	};
+
+	const unplaced: RecoveredAttachment[] = [];
+	for (const attachment of attachments) {
+		const anchor = attachment.anchorText?.trim();
+		const target =
+			anchor && anchor.length >= 2
+				? messages.findIndex(
+						(message, index) =>
+							message.content.includes(anchor) && lines[index]?.some(isLabel),
+					)
+				: -1;
+		if (target === -1 || !placeInto(target, attachment)) {
+			unplaced.push(attachment);
+		}
+	}
+
+	let cursor = 0;
+	for (const attachment of unplaced) {
+		while (cursor < lines.length && !placeInto(cursor, attachment)) {
+			cursor += 1;
+		}
+		if (cursor >= lines.length) break;
+	}
+
+	return messages.map((message, index) => ({
+		role: message.role,
+		content: (lines[index] ?? []).join("\n"),
+	}));
+}
+
+// Back-compat wrapper for plain <img> recovery, where the page gives us URLs
+// in document order and nothing else.
+export function attachRecoveredImages(
+	messages: ParsedMessage[],
+	imageUrls: string[],
+): ParsedMessage[] {
+	return attachRecoveredAttachments(
+		messages,
+		imageUrls.map((url) => ({ url, name: "Uploaded an image", isImage: true })),
+	);
+}
+
 const MARKDOWN_IMAGE_REGEX = /!\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+// A non-image attachment is emitted as a plain link; only links to attachment
+// hosts are re-hosted, ordinary citations are left alone.
+const MARKDOWN_ATTACHMENT_LINK_REGEX =
+	/(?<!!)\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g;
+const REHOSTABLE_CONTENT_TYPES =
+	/^(image\/|application\/pdf|text\/|application\/(?:json|zip|msword|vnd\.))/i;
 const MAX_REHOSTED_IMAGES = 25;
 const MAX_REHOSTED_IMAGE_BYTES = 10 * 1024 * 1024;
 const REHOST_FETCH_TIMEOUT_MS = 15_000;
@@ -1532,6 +1855,17 @@ async function rehostImportedImages(
 			const url = match[2];
 			if (url) sources.add(url);
 		}
+		for (const match of message.content.matchAll(
+			MARKDOWN_ATTACHMENT_LINK_REGEX,
+		)) {
+			const url = match[2];
+			if (
+				url &&
+				ATTACHMENT_HOST_PATTERNS.some((pattern) => pattern.test(url))
+			) {
+				sources.add(url);
+			}
+		}
 	}
 
 	if (sources.size === 0) {
@@ -1547,7 +1881,7 @@ async function rehostImportedImages(
 			if (!response.ok) continue;
 
 			const contentType = response.headers.get("content-type") ?? "";
-			if (!contentType.startsWith("image/")) continue;
+			if (!REHOSTABLE_CONTENT_TYPES.test(contentType)) continue;
 
 			const blob = await response.blob();
 			if (blob.size === 0 || blob.size > MAX_REHOSTED_IMAGE_BYTES) continue;
@@ -1567,13 +1901,18 @@ async function rehostImportedImages(
 
 	const rewritten = messages.map((message) => ({
 		role: message.role,
-		content: message.content.replace(
-			MARKDOWN_IMAGE_REGEX,
-			(original, alt: string, url: string) => {
+		content: message.content
+			.replace(MARKDOWN_IMAGE_REGEX, (original, alt: string, url: string) => {
 				const replacement = rewrites.get(url);
 				return replacement ? `![${alt}](${replacement})` : original;
-			},
-		),
+			})
+			.replace(
+				MARKDOWN_ATTACHMENT_LINK_REGEX,
+				(original, text: string, url: string) => {
+					const replacement = rewrites.get(url);
+					return replacement ? `[${text}](${replacement})` : original;
+				},
+			),
 	}));
 
 	return { messages: rewritten, found: sources.size, rehosted: rewrites.size };
