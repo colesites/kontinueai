@@ -1,8 +1,9 @@
 "use client";
 
-import { Download, X } from "lucide-react";
+import { Download } from "lucide-react";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { downloadImage, ImageLightbox } from "./ImageLightbox";
 
 interface ChatMessageImagesProps {
 	imageParts: string[];
@@ -12,46 +13,6 @@ export function ChatMessageImages({ imageParts }: ChatMessageImagesProps) {
 	const [expandedImageIndex, setExpandedImageIndex] = useState<number | null>(
 		null,
 	);
-
-	useEffect(() => {
-		if (expandedImageIndex === null) return;
-
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				setExpandedImageIndex(null);
-			}
-		};
-
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [expandedImageIndex]);
-
-	const handleDownloadImage = async (src: string, index: number) => {
-		try {
-			const response = await fetch(src);
-			if (!response.ok) {
-				throw new Error(`Failed to fetch image (${response.status})`);
-			}
-
-			const blob = await response.blob();
-			const extension =
-				blob.type === "image/png"
-					? "png"
-					: blob.type === "image/jpeg"
-						? "jpg"
-						: "webp";
-			const objectUrl = URL.createObjectURL(blob);
-			const anchor = document.createElement("a");
-			anchor.href = objectUrl;
-			anchor.download = `generated-${index + 1}.${extension}`;
-			document.body.appendChild(anchor);
-			anchor.click();
-			anchor.remove();
-			URL.revokeObjectURL(objectUrl);
-		} catch (error) {
-			console.error("[chat-message] failed to download image", error);
-		}
-	};
 
 	if (!imageParts || imageParts.length === 0) return null;
 
@@ -79,7 +40,7 @@ export function ChatMessageImages({ imageParts }: ChatMessageImagesProps) {
 						</button>
 						<button
 							type="button"
-							onClick={() => void handleDownloadImage(src, i)}
+							onClick={() => void downloadImage(src, `generated-${i + 1}`)}
 							className="inline-flex w-fit items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
 						>
 							<Download size={12} />
@@ -90,46 +51,12 @@ export function ChatMessageImages({ imageParts }: ChatMessageImagesProps) {
 			</div>
 
 			{expandedImageIndex !== null && expandedSrc && (
-				<div
-					className="fixed inset-0 z-80 flex items-center justify-center bg-black/85 p-4"
-					role="dialog"
-					aria-modal="true"
-					aria-label="Expanded generated image"
-				>
-					<button
-						type="button"
-						aria-label="Close expanded image"
-						className="absolute inset-0 cursor-zoom-out"
-						onClick={() => setExpandedImageIndex(null)}
-					/>
-					<button
-						type="button"
-						onClick={() => setExpandedImageIndex(null)}
-						className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-md border border-white/20 bg-black/40 px-2 py-1 text-xs text-white transition-colors hover:bg-black/60"
-					>
-						<X size={12} />
-						Close
-					</button>
-					<div className="relative z-10 max-h-[92vh] max-w-[96vw]">
-						<Image
-							src={expandedSrc}
-							alt={`Expanded generated ${expandedImageIndex + 1}`}
-							width={1920}
-							height={1080}
-							className="max-h-[92vh] max-w-[96vw] rounded-lg border border-white/20 object-contain shadow-2xl"
-						/>
-						<button
-							type="button"
-							onClick={() =>
-								void handleDownloadImage(expandedSrc, expandedImageIndex)
-							}
-							className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-md border border-white/20 bg-black/45 px-2 py-1 text-xs text-white transition-colors hover:bg-black/60"
-						>
-							<Download size={12} />
-							Download
-						</button>
-					</div>
-				</div>
+				<ImageLightbox
+					src={expandedSrc}
+					alt={`Expanded generated ${expandedImageIndex + 1}`}
+					downloadName={`generated-${expandedImageIndex + 1}`}
+					onClose={() => setExpandedImageIndex(null)}
+				/>
 			)}
 		</>
 	);

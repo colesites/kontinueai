@@ -8,10 +8,14 @@ export const geminiParser: ProviderParser = {
 	detect: (url: string): boolean => {
 		try {
 			const parsed = new URL(url);
+			const hostname = parsed.hostname.toLowerCase();
 			return (
-				parsed.hostname.includes("gemini.google.com") ||
-				parsed.hostname.includes("aistudio.google.com") ||
-				parsed.hostname.includes("bard.google.com")
+				hostname === "gemini.google" ||
+				hostname.endsWith(".gemini.google") ||
+				hostname.includes("gemini.google.com") ||
+				hostname.includes("aistudio.google.com") ||
+				hostname.includes("bard.google.com") ||
+				(hostname === "g.co" && parsed.pathname.startsWith("/gemini"))
 			);
 		} catch {
 			return false;

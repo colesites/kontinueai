@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
+	annotateHiddenClaudeFiles,
 	attachRecoveredAttachments,
 	attachRecoveredImages,
 	buildFirecrawlScrapeRequest,
+	CLAUDE_HIDDEN_FILES_NOTE,
 	detachTrailingAttachmentLines,
 	extractAttachmentImages,
 	extractChatGptAttachmentPointers,
 	parseNormalizedTranscript,
+	repairLikelyRoleDrift,
 	shrinkImageUrlsForNormalizer,
 	splitEmbeddedUserTurns,
 } from "./firecrawl";
@@ -366,7 +369,7 @@ describe("attachment image recovery", () => {
 		);
 
 		expect(messages[0]?.content).toBe(
-			"![Uploaded an image](https://cdn.example.com/one.png)\nWhat is wrong here?",
+			"![Uploaded an image](https://cdn.example.com/one.png)\n\nWhat is wrong here?",
 		);
 		expect(messages[1]?.content).toBe("Here is what I see.");
 		expect(messages[2]?.content).toBe(
@@ -426,10 +429,10 @@ describe("ChatGPT attachment pointers", () => {
 		);
 
 		expect(messages[0]?.content).toBe(
-			"![one.png](https://cdn/one.png)\nfirst question",
+			"![one.png](https://cdn/one.png)\n\nfirst question",
 		);
 		expect(messages[2]?.content).toBe(
-			"![two.png](https://cdn/two.png)\nsecond question",
+			"![two.png](https://cdn/two.png)\n\nsecond question",
 		);
 	});
 
@@ -439,7 +442,53 @@ describe("ChatGPT attachment pointers", () => {
 			[{ url: "https://cdn/deck.pdf", name: "deck.pdf", isImage: false }],
 		);
 		expect(messages[0]?.content).toBe(
-			"[deck.pdf](https://cdn/deck.pdf)\nsummarise this",
+			"[deck.pdf](https://cdn/deck.pdf)\n\nsummarise this",
 		);
+	});
+});
+
+describe("repairLikelyRoleDrift with attachments", () => {
+	const longUrl = `https://lh3.googleusercontent.com/gg/${"A".repeat(220)}`;
+
+	test("keeps an image-only user turn between two replies as the user's", () => {
+		const messages = repairLikelyRoleDrift([
+			{ role: "assistant", content: "Here are a few ways to phrase it." },
+			{ role: "user", content: `![Uploaded image preview](${longUrl})` },
+			{ role: "assistant", content: "Oh, I like that — smooth recovery!" },
+		]);
+
+		expect(messages.map((message) => message.role)).toEqual([
+			"assistant",
+			"user",
+			"assistant",
+		]);
+	});
+
+	test("does not count an attachment URL as prose length", () => {
+		const messages = repairLikelyRoleDrift([
+			{ role: "assistant", content: "First answer." },
+			{ role: "user", content: `![Uploaded image preview](${longUrl})\n\nok` },
+			{ role: "assistant", content: "Second answer." },
+		]);
+
+		expect(messages[1]?.role).toBe("user");
+	});
+});
+
+describe("annotateHiddenClaudeFiles", () => {
+	test("replaces Claude's hidden-files placeholder with an explicit note", () => {
+		const messages = annotateHiddenClaudeFiles([
+			{
+				role: "user",
+				content:
+					"### Files hidden in shared chats\n\nI don't really like the content.",
+			},
+			{ role: "assistant", content: "Here are some stronger options." },
+		]);
+
+		expect(messages[0]?.content).toBe(
+			`${CLAUDE_HIDDEN_FILES_NOTE}\n\nI don't really like the content.`,
+		);
+		expect(messages[1]?.content).toBe("Here are some stronger options.");
 	});
 });

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MessageContent } from "../features/chat/components/MessageContent";
 
 afterEach(() => {
@@ -100,5 +100,60 @@ describe("MessageContent", () => {
 		expect(chip?.className).toContain("not-prose");
 		expect(chip?.querySelector("img")).not.toBeNull();
 		expect(chip?.textContent).toContain("editorial.uefa.com");
+	});
+
+	test("a content image is expandable", () => {
+		const { container } = render(
+			<MessageContent content="![Screenshot 2026-09-04.png](https://cdn.example.com/shot.png)" />,
+		);
+
+		const trigger = container.querySelector('button[title="Expand image"]');
+		expect(trigger).not.toBeNull();
+		expect(trigger?.querySelector("img")?.getAttribute("width")).toBe("800");
+	});
+
+	test("an attachment stays a picture even beside text in the same paragraph", () => {
+		const { container } = render(
+			<MessageContent
+				content={
+					"![Screenshot 2026-09-04.png](https://cdn.example.com/shot.png)\nhello"
+				}
+			/>,
+		);
+
+		expect(
+			container.querySelector('button[title="Expand image"]'),
+		).not.toBeNull();
+		expect(container.querySelector("img")?.getAttribute("width")).toBe("800");
+	});
+
+	test("the lightbox renders outside the paragraph", () => {
+		const { container } = render(
+			<MessageContent content="![shot.png](https://cdn.example.com/shot.png)" />,
+		);
+
+		const trigger = container.querySelector(
+			'button[title="Expand image"]',
+		) as HTMLButtonElement;
+		fireEvent.click(trigger);
+
+		const dialog = document.querySelector('[role="dialog"]');
+		expect(dialog).not.toBeNull();
+		expect(dialog?.closest("p")).toBeNull();
+		expect(dialog?.parentElement).toBe(document.body);
+	});
+
+	test("an upload labelled without a file extension is still a picture", () => {
+		const { container } = render(
+			<MessageContent
+				content={
+					"![Uploaded image preview](https://lh3.googleusercontent.com/gg/abc)\nWhat do you think"
+				}
+			/>,
+		);
+
+		expect(
+			container.querySelector('button[title="Expand image"]'),
+		).not.toBeNull();
 	});
 });

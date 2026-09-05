@@ -13,6 +13,7 @@ const SCRAPER_HOST_PATTERNS: RegExp[] = [
 	/(^|\.)chatgpt\.com$/,
 	/(^|\.)chat\.openai\.com$/,
 	/(^|\.)gemini\.google\.com$/,
+	/(^|\.)gemini\.google$/,
 	/(^|\.)g\.co$/,
 	/(^|\.)grok\.com$/,
 	/(^|\.)x\.com$/,

@@ -63,6 +63,7 @@ ${roleRepairRules}
     - Keep the actual message content (code blocks, markdown tables, bold text) EXACTLY as is. Do not summarize or rewrite.
     - **IMAGES**: strictly PRESERVE all markdown images in the format ![alt](url). Do NOT remove them.
     - **DIAGRAMS/CODE**: strictly PRESERVE all code blocks and diagrams (Mermaid, ASCII), even if they constitute the entire message.
+    - **HIDDEN FILES**: Claude share pages replace uploaded files with the line "Files hidden in shared chats". Keep that line, inside the [USER] turn it appears in. Do not delete it as UI text.
     - **CLAUDE ARTIFACTS**: Artifacts are part of Claude's assistant response even when the page renders them in a separate panel or labels them as a create_file result. Preserve each artifact's title or filename, type, and COMPLETE source/content. Attach it to the associated [ASSISTANT] message under a heading like "### Claude Artifact: <title>". Keep HTML, React, SVG, Mermaid, code, and documents in an appropriate fenced code block. Never replace an artifact with only "Artifact", "Open artifact", "View artifact", a filename, or a summary.
 5.  **NO EXTRA TEXT**: Do not add "Here is the transcript" or "Summary:". Just the bracketed labels and content.
 6.  **CODE BLOCKS**: If there is code, keep it inside standard \`\`\` blocks. Do NOT put [USER] or [ASSISTANT] tags *inside* a code block. Ensure language tags (like \`\`\`mermaid\` or \`\`\`typescript\`) are preserved.
@@ -84,7 +85,8 @@ Hello there
 Hi! How can I help?
 `;
 
-const NORMALIZER_SYSTEM_PROMPT = buildNormalizerSystemPrompt(ROLE_REPAIR_RULES);
+export const NORMALIZER_SYSTEM_PROMPT =
+	buildNormalizerSystemPrompt(ROLE_REPAIR_RULES);
 const NORMALIZER_SYSTEM_PROMPT_MINIMAL = buildNormalizerSystemPrompt("");
 
 // ============================================================================
@@ -324,6 +326,29 @@ function chunkStartsWithExplicitSpeaker(chunk: string): boolean {
 	return false;
 }
 
+// Prose only: an attachment's URL is a couple of hundred characters of noise
+// that the length heuristics below would otherwise read as a long reply.
+export function visibleText(content: string): string {
+	return content
+		.replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.trim();
+}
+
+function isAttachmentOnly(content: string): boolean {
+	return (
+		/(?:!\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\([^)]*\))/.test(content) &&
+		visibleText(content)
+			.split(/\r?\n/)
+			.every(
+				(line) =>
+					!line.trim() ||
+					ATTACHMENT_MARKER_REGEX.test(line.trim()) ||
+					/^(?:uploaded|attached)\b/i.test(line.trim()),
+			)
+	);
+}
+
 function looksLikeUserPrompt(content: string): boolean {
 	const trimmed = content.trim();
 	if (!trimmed) return false;
@@ -344,7 +369,7 @@ function looksLikeUserPrompt(content: string): boolean {
 }
 
 function looksLikeAssistantContinuation(content: string): boolean {
-	const trimmed = content.trim();
+	const trimmed = visibleText(content);
 	if (!trimmed) return false;
 
 	if (/^([,.;:)\]-]|\d+\.\s|[-*]\s|```|>)/.test(trimmed)) {
@@ -506,7 +531,9 @@ export function splitEmbeddedUserTurns(
 	return result;
 }
 
-function repairLikelyRoleDrift(messages: ParsedMessage[]): ParsedMessage[] {
+export function repairLikelyRoleDrift(
+	messages: ParsedMessage[],
+): ParsedMessage[] {
 	const repaired = messages
 		.map((message) => ({
 			role: message.role,
@@ -548,7 +575,12 @@ function repairLikelyRoleDrift(messages: ParsedMessage[]): ParsedMessage[] {
 			continue;
 		}
 
-		const longCandidate = current.content.length >= 180;
+		// A message that is only an upload is the user's by construction; the
+		// share page labelled it as theirs and nothing about its length or
+		// wording says otherwise.
+		if (isAttachmentOnly(current.content)) continue;
+
+		const longCandidate = visibleText(current.content).length >= 180;
 		const likelyPrompt = looksLikeUserPrompt(current.content);
 		const likelyContinuation = looksLikeAssistantContinuation(current.content);
 
@@ -1471,6 +1503,9 @@ async function scrapeAndExtract(
 	if (recovered.length > 0) {
 		messages = attachRecoveredAttachments(messages, recovered);
 	}
+	if (requiresArtifactAwareNormalization) {
+		messages = annotateHiddenClaudeFiles(messages);
+	}
 	console.log(
 		`[import] attachments recovered=${recovered.length} ` +
 			`labels=${messages.reduce((count, message) => count + message.content.split(/\r?\n/).filter((line) => ATTACHMENT_MARKER_REGEX.test(line.trim())).length, 0)} url=${url}`,
@@ -1758,6 +1793,28 @@ async function recoverChatGptAttachments(
 	);
 }
 
+// Claude's share pages withhold uploaded files entirely and show this line in
+// their place. Nothing can be recovered, so say so where the file would be
+// rather than dropping the placeholder and pretending nothing was attached.
+const CLAUDE_HIDDEN_FILES_REGEX =
+	/^\s*(?:#{1,6}\s*)?Files hidden in shared chats\s*$/i;
+export const CLAUDE_HIDDEN_FILES_NOTE =
+	"_Attachment not included: Claude does not include uploaded files in shared chats._";
+
+export function annotateHiddenClaudeFiles(
+	messages: ParsedMessage[],
+): ParsedMessage[] {
+	return messages.map((message) => ({
+		role: message.role,
+		content: message.content
+			.split(/\r?\n/)
+			.map((line) =>
+				CLAUDE_HIDDEN_FILES_REGEX.test(line) ? CLAUDE_HIDDEN_FILES_NOTE : line,
+			)
+			.join("\n"),
+	}));
+}
+
 // Turn each "Uploaded an image" placeholder back into the attachment it stands
 // for. An attachment that knows its message's text goes to that message; the
 // rest are handed out in document order, which is how both lists were built.
@@ -1779,7 +1836,14 @@ export function attachRecoveredAttachments(
 		if (!messageLines) return false;
 		const labelIndex = messageLines.findIndex(isLabel);
 		if (labelIndex === -1) return false;
-		messageLines[labelIndex] = render(attachment);
+		// Own paragraph: an image sharing a paragraph with the message text is
+		// rendered inline at text size, like a citation, instead of as a picture.
+		const followedByText = messageLines
+			.slice(labelIndex + 1)
+			.some((line) => line.trim().length > 0);
+		messageLines[labelIndex] = followedByText
+			? `${render(attachment)}\n`
+			: render(attachment);
 		return true;
 	};
 

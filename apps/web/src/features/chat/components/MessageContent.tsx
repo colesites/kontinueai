@@ -7,6 +7,7 @@ import rehypeHighlight from "rehype-highlight";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 import CodeBlock from "./CodeBlock";
+import { ImageLightbox } from "./ImageLightbox";
 import { PillLink } from "./PillLink";
 
 // Models often drop logo/favicon images into the middle of a sentence
@@ -39,6 +40,9 @@ const CITATION_COUNT_ALT_REGEX = /\s*\+\d+\s*$/;
 const DOMAIN_ALT_REGEX = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i;
 const FILE_EXTENSION_ALT_REGEX =
 	/\.(?:png|jpe?g|gif|webp|heic|svg|pdf|csv|xlsx?|docx?|txt|md|zip|json)$/i;
+// How share pages label an upload ("Uploaded image preview", "Screenshot…").
+const ATTACHMENT_ALT_REGEX =
+	/\b(?:upload|attach|screenshot|photo|picture|preview)/i;
 // Anything this small is chrome, not content, whatever the markdown claims.
 const ICON_MAX_NATURAL_PX = 64;
 // Site icons are square and ship at up to 512px (Wikipedia's is one of those).
@@ -76,7 +80,14 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
 	const [failed, setFailed] = useState(false);
 	// Measured on load, so an icon we can't recognise from its URL still shrinks.
 	const [measuredIcon, setMeasuredIcon] = useState(false);
-	const inline = inlineInParagraph || measuredIcon || isCitationIcon(src, alt);
+	const [expanded, setExpanded] = useState(false);
+	// An attachment (alt is a filename) is a picture wherever it sits; only
+	// citation-shaped images get the inline chip treatment.
+	const isAttachment =
+		FILE_EXTENSION_ALT_REGEX.test(alt.trim()) || ATTACHMENT_ALT_REGEX.test(alt);
+	const inline =
+		!isAttachment &&
+		(inlineInParagraph || measuredIcon || isCitationIcon(src, alt));
 
 	// A broken image renders as its bare alt text, which for imported chats reads
 	// like something the speaker typed ("Uploaded an image"). Say what it is.
@@ -112,49 +123,46 @@ function MarkdownImage({ src, alt }: { src: string; alt: string }) {
 		);
 	}
 
+	// A content image (an import's screenshot, say) expands and downloads the
+	// same way a generated image does.
 	return (
-		<Image
-			src={src}
-			alt={alt}
-			width={800}
-			height={600}
-			unoptimized
-			referrerPolicy="no-referrer"
-			loading="lazy"
-			onError={() => setFailed(true)}
-			onLoad={(event) => {
-				if (isMeasuredIcon(event.currentTarget, alt)) {
-					setMeasuredIcon(true);
-				}
-			}}
-			// `h-auto w-auto` keeps the intrinsic size: the 800x600 above is only
-			// next/image's required placeholder, and without this a 32px favicon is
-			// stretched to fill the message column.
-			className="my-2 h-auto w-auto max-h-96 max-w-full rounded-lg border border-border/60"
-		/>
+		<>
+			<button
+				type="button"
+				onClick={() => setExpanded(true)}
+				title="Expand image"
+				className="not-prose my-2 block w-fit max-w-full cursor-zoom-in rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+			>
+				<Image
+					src={src}
+					alt={alt}
+					width={800}
+					height={600}
+					unoptimized
+					referrerPolicy="no-referrer"
+					loading="lazy"
+					onError={() => setFailed(true)}
+					onLoad={(event) => {
+						if (isMeasuredIcon(event.currentTarget, alt)) {
+							setMeasuredIcon(true);
+						}
+					}}
+					// `h-auto w-auto` keeps the intrinsic size: the 800x600 above is only
+					// next/image's required placeholder, and without this a 32px favicon is
+					// stretched to fill the message column.
+					className="h-auto w-auto max-h-96 max-w-full rounded-lg border border-border/60"
+				/>
+			</button>
+			{expanded && (
+				<ImageLightbox
+					src={src}
+					alt={alt}
+					downloadName={alt.trim() || "image"}
+					onClose={() => setExpanded(false)}
+				/>
+			)}
+		</>
 	);
-}
-
-// Older messages emit a citation as an empty link followed by its icon:
-// `[](url) ![Label](icon)`. That renders as two chips side by side. Fold them
-// into the single `[![Label](icon)](url)` chip the renderer already handles.
-const SPLIT_CITATION_REGEX =
-	/\[\]\((https?:\/\/[^\s)]+)\)\s*!\[([^\]]*)\]\((\S+?)\)/g;
-
-export function mergeSplitCitations(content: string): string {
-	// Transform prose only — never rewrite anything inside a fenced code block.
-	return content
-		.split(/(```[\s\S]*?```)/g)
-		.map((segment) =>
-			segment.startsWith("```")
-				? segment
-				: segment.replace(
-						SPLIT_CITATION_REGEX,
-						(_match, url: string, alt: string, icon: string) =>
-							`[![${alt}](${icon})](${url})`,
-					),
-		)
-		.join("");
 }
 
 interface MessageContentProps {
