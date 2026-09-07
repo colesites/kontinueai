@@ -529,6 +529,14 @@ export default defineSchema({
 	userSettings: defineTable({
 		ownerId: v.id("users"),
 		defaultModel: v.string(),
+		// The Web Search toggle, persisted per user so it survives a new chat, a
+		// closed tab, and a different device. Absent = off.
+		webSearchEnabled: v.optional(v.boolean()),
+		// DEPRECATED — an earlier "auto"/"always" spelling of the same toggle.
+		// Kept only so rows written before the rename still validate. Writes clear
+		// it, and `users.clearLegacyWebSearchMode` clears the rest; once no row has
+		// it, delete this line.
+		webSearchMode: v.optional(v.union(v.literal("auto"), v.literal("always"))),
 		uiPrefs: v.optional(
 			v.object({
 				theme: v.optional(v.string()),

@@ -21,11 +21,15 @@ export interface CanvasModel {
 export const K_IMAGE_MODEL_ID = "kontinue/k-image-1.0";
 export const K_VIDEO_MODEL_ID = "kontinue/k-video-1.0";
 
-// Underlying OpenRouter models (kept private to the server routes). These are
-// OpenRouter slugs (note the `x-ai/` namespace), routed via @openrouter/ai-sdk-provider.
+// Underlying AI Gateway models (kept private to the server routes), so the
+// branded id is all the client ever sees.
+//
+// These used to be OpenRouter slugs (`x-ai/…`). OpenRouter dropped every Grok
+// image model and serves no video models at all, so both K-models now route
+// through the AI Gateway alongside the rest of the canvas.
 export const KONTINUE_CANVAS_UNDERLYING: Record<string, string> = {
-	[K_IMAGE_MODEL_ID]: "x-ai/grok-imagine-image-quality",
-	[K_VIDEO_MODEL_ID]: "google/veo-3.1-fast",
+	[K_IMAGE_MODEL_ID]: "spacexai/grok-imagine-image-2.0",
+	[K_VIDEO_MODEL_ID]: "google/veo-3.1-fast-generate-001",
 };
 
 // Resolve a (possibly branded) canvas model id to the real gateway id.
@@ -128,14 +132,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	K_IMAGE_MODEL,
 	// xAI
 	{
-		id: "xai/grok-imagine-image-pro",
-		name: "Grok Imagine Pro",
-		provider: "xAI",
-		capability: "image",
-		description: "xAI's pro image generation model.",
-	},
-	{
-		id: "xai/grok-imagine-image",
+		id: "spacexai/grok-imagine-image",
 		name: "Grok Imagine",
 		provider: "xAI",
 		capability: "image",
@@ -163,27 +160,6 @@ export const IMAGE_MODELS: CanvasModel[] = [
 		provider: "Google",
 		capability: "image",
 		description: "Pro-tier image generation from Google.",
-	},
-	{
-		id: "google/imagen-4.0-fast-generate-001",
-		name: "Imagen 4 Generate",
-		provider: "Google",
-		capability: "image",
-		description: "Fast Imagen 4 generation.",
-	},
-	{
-		id: "google/imagen-4.0-ultra-generate-001",
-		name: "Imagen 4 Ultra Generate",
-		provider: "Google",
-		capability: "image",
-		description: "Highest quality Imagen 4 model.",
-	},
-	{
-		id: "google/imagen-4.0-generate-001",
-		name: "Imagen 4",
-		provider: "Google",
-		capability: "image",
-		description: "Standard Imagen 4 generation.",
 	},
 
 	// OpenAI
@@ -345,7 +321,7 @@ export const VIDEO_MODELS: CanvasModel[] = [
 	K_VIDEO_MODEL,
 	// xAI
 	{
-		id: "xai/grok-imagine-video",
+		id: "spacexai/grok-imagine-video",
 		name: "Grok Imagine Video",
 		provider: "xAI",
 		capability: "video",
@@ -513,23 +489,11 @@ export const VIDEO_MODELS: CanvasModel[] = [
 		],
 	},
 	{
-		id: "bytedance/seedance-v1.0-lite-t2v",
-		name: "Seedance 1.0 Lite (Text-to-Video)",
+		id: "bytedance/seedance-2.0-mini",
+		name: "Seedance 2.0 Mini",
 		provider: "ByteDance",
 		capability: "video",
-		description: "Lightweight text-to-video generation.",
-		resolutions: [
-			{ value: "854x480", label: "480P" },
-			{ value: "1280x720", label: "720P" },
-			{ value: "1920x1080", label: "1080P" },
-		],
-	},
-	{
-		id: "bytedance/seedance-v1.0-lite-i2v",
-		name: "Seedance 1.0 Lite (Image-to-Video)",
-		provider: "ByteDance",
-		capability: "video",
-		description: "Lightweight image-to-video generation.",
+		description: "Lightweight text- and image-to-video generation.",
 		resolutions: [
 			{ value: "854x480", label: "480P" },
 			{ value: "1280x720", label: "720P" },
@@ -664,7 +628,7 @@ export function isDurationSupported(
 	}
 
 	// xAI Grok
-	if (modelId.includes("xai/grok")) {
+	if (modelId.includes("spacexai/grok")) {
 		return [5, 10, 15].includes(duration);
 	}
 

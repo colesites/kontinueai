@@ -2,6 +2,18 @@ import type { ModelOption } from "./models";
 
 export const GOOGLE_MODELS: ModelOption[] = [
   {
+    id: "google/gemini-3.8-flash",
+    name: "Gemini 3.8 Flash",
+    provider: "google",
+    description: "Pro-level agentic capability at Flash speed and cost",
+  },
+  {
+    id: "google/gemini-3.7-flash",
+    name: "Gemini 3.7 Flash",
+    provider: "google",
+    description: "High-efficiency model for agentic work and everyday tasks",
+  },
+  {
     id: "google/gemini-3.5-flash",
     name: "Gemini 3.5 Flash",
     provider: "google",
@@ -14,8 +26,8 @@ export const GOOGLE_MODELS: ModelOption[] = [
     description: "Powerful, high-efficiency model for advanced reasoning, and coding",
   },
   {
-    id: "google/gemini-3.1-flash-lite-preview",
-    name: "Gemini 3.1 Flash Lite Preview",
+    id: "google/gemini-3.1-flash-lite",
+    name: "Gemini 3.1 Flash Lite",
     provider: "google",
     description: "Fast, cost-efficient model for high-volume workloads",
   },
@@ -24,12 +36,6 @@ export const GOOGLE_MODELS: ModelOption[] = [
     name: "Nano Banana 2",
     provider: "google",
     description: "Fast, cost-efficient model for image generation and understanding",
-  },
-  {
-    id: "google/gemini-3-pro-preview",
-    name: "Gemini 3 Pro Preview",
-    provider: "google",
-    description: "High-performance model for complex reasoning, and coding",
   },
   {
     id: "google/gemini-3-flash",

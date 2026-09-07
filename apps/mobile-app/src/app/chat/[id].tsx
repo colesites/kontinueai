@@ -55,6 +55,7 @@ import { useSidebar } from "@/components/sidebar/sidebar-context";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { useSelectedModel } from "@/hooks/use-selected-model";
+import { useWebSearchPreference } from "@/hooks/use-web-search-preference";
 import { useVoiceInput } from "@/hooks/use-voice-input";
 import {
   API_BASE_URL,
@@ -211,7 +212,9 @@ export default function ConversationScreen() {
   const deleteMessagesAfter = useMutation(api.messages.deleteMessagesAfter);
 
   const [sendError, setSendError] = useState<string | null>(null);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  // Persisted on the account: survives leaving the chat, force-quitting the
+  // app, and follows the user to their other devices.
+  const { webSearchEnabled, toggleWebSearch } = useWebSearchPreference();
   // Mirrors web gating: paid plans use the gateway search tool; K-AI has its
   // own server-side search pipeline so it's available on every tier.
   const webSearchAvailable = isPaidPlan || isKaiModel(selectedModel);
@@ -471,7 +474,9 @@ export default function ConversationScreen() {
   const sendPendingDraft = useEffectEvent(
     (draft: ReturnType<typeof consumePendingChatDraft>) => {
       if (!draft) return;
-      if (draft.webSearchEnabled) setWebSearchEnabled(true);
+      // No need to set the toggle from the draft any more — the preference is
+      // persisted on the account, so this screen already reads the same value
+      // the home screen wrote. The draft still carries it for the send itself.
       void handleSend(
         draft.text,
         draft.model,
@@ -826,7 +831,7 @@ export default function ConversationScreen() {
             onMicPress={handleMicPress}
             webSearchAvailable={webSearchAvailable}
             webSearchEnabled={webSearchEnabled}
-            onWebSearchToggle={() => setWebSearchEnabled((prev) => !prev)}
+            onWebSearchToggle={toggleWebSearch}
             agentId={agentId}
             onAgentChange={setAgentId}
           />

@@ -112,6 +112,12 @@ type BuildStreamOptionsInput = {
 	forceImageTool: boolean;
 	forceWebSearchTool: boolean;
 	stopWhen: StopCondition<ToolSet>[];
+	// Called once per perplexity_search call the model actually makes, with the
+	// running count for this turn. The gateway executes the search on its own, so
+	// this step callback is the only place we learn a search happened — and the
+	// only honest place to charge it. Auto-triggered searches land here exactly
+	// like toggled ones.
+	onWebSearchToolCall?: (callCount: number) => void;
 };
 
 export function buildStreamOptions(options: BuildStreamOptionsInput) {
@@ -126,7 +132,10 @@ export function buildStreamOptions(options: BuildStreamOptionsInput) {
 		forceImageTool,
 		forceWebSearchTool,
 		stopWhen,
+		onWebSearchToolCall,
 	} = options;
+
+	let webSearchCallCount = 0;
 
 	return {
 		model,
@@ -156,11 +165,21 @@ export function buildStreamOptions(options: BuildStreamOptionsInput) {
 			toolCalls?: Array<{ toolName: string }>;
 			toolResults?: unknown[];
 		}) => {
+			const toolCallNames = (toolCalls ?? []).map(
+				(toolCall) => toolCall.toolName,
+			);
 			console.log("[chat-debug] step", {
 				finishReason,
-				toolCallNames: (toolCalls ?? []).map((toolCall) => toolCall.toolName),
+				toolCallNames,
 				toolResultCount: (toolResults ?? []).length,
 			});
+			if (onWebSearchToolCall) {
+				for (const name of toolCallNames) {
+					if (name !== "perplexity_search") continue;
+					webSearchCallCount += 1;
+					onWebSearchToolCall(webSearchCallCount);
+				}
+			}
 		},
 		onFinish: ({
 			finishReason,

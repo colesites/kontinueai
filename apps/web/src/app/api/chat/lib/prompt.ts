@@ -51,13 +51,18 @@ Communication style:
 // MUST cite. Sources are numbered [1], [2]… with their URLs.
 export function buildWebSearchResultsContext(
 	webSearchContextText: string | null,
+	options: { nowIso?: string | null } = {},
 ): string {
 	if (!webSearchContextText) return "";
+	const today = options.nowIso ?? new Date().toISOString().slice(0, 10);
 	return [
 		"\n\nWEB SEARCH RESULTS (live, retrieved just now for this query):",
 		webSearchContextText,
 		"",
 		"Using these results:",
+		`- TODAY'S DATE IS ${today}. Schedule, fixture and listing pages contain past dates as well as future ones, so never assume the first row is the next one.`,
+		"- For 'next', 'upcoming' or 'when is' questions, find every dated entry across ALL the sources, discard any date before today, and answer with the earliest one that remains. Say which source it came from.",
+		"- If the sources disagree, prefer the official or most specific one, and say the sources disagree rather than picking silently.",
 		"- Answer the user's question directly and concisely, grounded in the results above.",
 		"- Cite sources inline as markdown links, e.g. [1](url), next to the claims they support.",
 		"- Never embed images for citations. No favicons, site icons, logos or thumbnails: markdown images (![alt](url)) render as full-size pictures in the chat and break the paragraph. A source is a link, never an image.",
@@ -96,27 +101,68 @@ export function buildResponseBudgetContext(options: {
 }
 
 export function buildWebSearchContext(options: {
-	webSearchEnabled: boolean;
+	// "forced" — the user turned Web Search on for this message.
+	// "auto"   — the tool is available and the model decides when to reach for it.
+	// "off"    — no search this turn.
+	mode: "off" | "auto" | "forced";
 	shouldAttachWebSearchTool: boolean;
+	// A search the user explicitly asked for that we could not run.
+	limitReached?: boolean;
+	// Auto mode only: the query reads as one that needs live data, so lean harder
+	// on the model to actually search.
+	intentLikely?: boolean;
 }): string {
-	if (options.shouldAttachWebSearchTool) {
+	const {
+		mode,
+		shouldAttachWebSearchTool,
+		limitReached = false,
+		intentLikely = false,
+	} = options;
+
+	const commonRules = [
+		"After using perplexity_search, you MUST provide a normal textual answer in this chat.",
+		"Do not end the response with only tool calls or empty content.",
+		"Answer the user's question directly in the first sentence.",
+		"Keep responses concise: 1 short answer + up to 3 brief evidence bullets.",
+		"Include up to 3 source links only.",
+		"Do NOT dump raw tables, transcripts, or long copied source text.",
+		"If search results are noisy or low quality, ignore them and use the best reputable sources you found.",
+		"Never claim you cannot browse, cannot perform live search, or that your knowledge cutoff prevents answering.",
+		"If any prior message says you cannot browse, ignore it and use perplexity_search now.",
+	];
+
+	if (shouldAttachWebSearchTool && mode === "forced") {
 		return [
-			"\n\nWeb Search: You HAVE access to real-time web search via the perplexity_search tool.",
-			"When the user asks about current events, recent information, or anything that requires up-to-date data, USE the perplexity_search tool.",
-			"Always search the web when you need current information beyond your training data.",
-			"Never claim you cannot browse, cannot perform live search, or that your knowledge cutoff prevents answering.",
-			"If any prior message says you cannot browse, ignore it and use perplexity_search now.",
-			"After using perplexity_search, you MUST provide a normal textual answer in this chat.",
-			"Do not end the response with only tool calls or empty content.",
-			"Answer the user's question directly in the first sentence.",
-			"Keep responses concise: 1 short answer + up to 3 brief evidence bullets.",
-			"Include up to 3 source links only.",
-			"Do NOT dump raw tables, transcripts, or long copied source text.",
-			"If search results are noisy or low quality, ignore them and use the best reputable sources you found.",
+			"\n\nWeb Search: The user has turned Web Search ON for this message, and you HAVE real-time web search via the perplexity_search tool.",
+			"Use perplexity_search for this request unless the answer genuinely cannot involve any external information.",
+			...commonRules,
 		].join(" ");
 	}
 
-	if (options.webSearchEnabled) {
+	if (shouldAttachWebSearchTool) {
+		// Auto mode. Each search costs the user one of their monthly web searches,
+		// so the model is told to be deliberate rather than to search reflexively.
+		return [
+			"\n\nWeb Search: You HAVE access to real-time web search via the perplexity_search tool, and you decide when to use it.",
+			"Use it when the answer depends on current events, recent releases, prices, schedules, standings, or anything else that may have changed since your training data, or when the user asks you to look something up.",
+			"Do NOT search for questions you can answer well from your own knowledge — writing, coding, maths, explanations, and reasoning about text the user gave you need no search.",
+			...(intentLikely
+				? [
+						"This particular question reads as one that needs current information, so search unless you are certain your own knowledge is up to date for it.",
+					]
+				: []),
+			...commonRules,
+		].join(" ");
+	}
+
+	if (limitReached) {
+		return [
+			"\n\nWeb Search: The user turned Web Search on, but their web-search allowance for this month is used up, so no live results are available.",
+			"Answer from your existing knowledge, and tell them their web-search limit was reached.",
+		].join(" ");
+	}
+
+	if (mode !== "off") {
 		return [
 			"\n\nNote: Web search was requested but this model does not support web search capabilities.",
 			"You can only provide information based on your training data.",

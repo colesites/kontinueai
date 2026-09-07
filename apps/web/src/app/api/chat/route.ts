@@ -17,7 +17,7 @@ import { getModelAccessClass } from "@repo/core/model-pricing";
 import { canAccessModel, canAccessPlanFeature } from "@repo/core/plan-access";
 import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import { convertToModelMessages, type LanguageModel, streamText } from "ai";
-import { fetchAction, fetchMutation } from "convex/nextjs";
+import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
 import { PLAN_ERROR_CODES, planDeniedResponse } from "../lib/plan-denial";
 import { classifyChatError } from "./lib/error-classifier";
 import { getGatewayRuntimeConfig } from "./lib/gateway-runtime";
@@ -36,8 +36,12 @@ import { logFinalStreamOptions } from "./lib/stream-logging";
 import { buildStreamOptions, resolveToolRuntime } from "./lib/stream-runtime";
 import { buildToolsAndPrompt } from "./lib/tools-config";
 import type { AiGatewayModel } from "./lib/types";
-import { detectSearchIntent } from "./lib/web-search/intent";
 import { runKaiWebSearch } from "./lib/web-search/pipeline";
+import {
+	resolveWebSearchPolicy,
+	shouldRunRetrievalPipeline,
+	type WebSearchPolicy,
+} from "./lib/web-search/policy";
 
 export const maxDuration = 60;
 
@@ -101,12 +105,26 @@ export async function POST(req: Request) {
 				"Kode is available on Pro and Max.",
 			);
 		}
+		// Web search is decided per turn, not switched on and off. The toggle
+		// forces a search; with it off we still search when the question needs
+		// live data. Either way the search is charged against the same monthly
+		// quota — see lib/web-search/policy.ts.
+		//
 		// K-AI routes through OpenRouter, which can't use the Vercel-gateway
-		// Perplexity web-search tool, so web search is disabled for it.
-		let webSearchEnabled =
-			!usingOpenRouter &&
-			canAccessPlanFeature(planTier, "premium-model") &&
-			requestedWebSearchEnabled;
+		// Perplexity tool, so it searches through our own pipeline instead
+		// (`runKaiWebSearch`); Kode has no search path at all.
+		const activeAgent = getAgent(agentId ?? null);
+		const webSearchPolicy: WebSearchPolicy = resolveWebSearchPolicy({
+			toggleOn: requestedWebSearchEnabled,
+			// K-AI's search is included on every tier (bounded by the monthly
+			// quota); the gateway models' Perplexity search is paid-only.
+			planAllowsSearch:
+				usingKai || canAccessPlanFeature(planTier, "premium-model"),
+			surfaceSupportsSearch: usingKai || !usingOpenRouter,
+			lastUserContent,
+			// Research/Marketing agents bias toward live data.
+			aggressive: activeAgent?.autoWebSearch ?? false,
+		});
 		const modelClass = usingKai
 			? "kai"
 			: usingKode
@@ -205,61 +223,99 @@ export async function POST(req: Request) {
 				},
 			});
 		}
-		if (webSearchEnabled && convexToken) {
-			const searchQuota = await fetchMutation(
-				convexApi.webSearch.consumeSearchQuota,
-				{},
-				{ token: convexToken },
-			);
-			webSearchEnabled = searchQuota.allowed;
-		}
+		// Two independent lookups before the model runs: the memory context for
+		// this message, and a quota probe for web search. Run them together so
+		// auto mode costs no extra latency over the old on/off gate.
+		//
+		// The probe deliberately does NOT spend anything. A search is charged when
+		// one actually runs — the K-AI pipeline charges on a real provider hit, the
+		// gateway tool from onStepFinish below — so a turn where the model decides
+		// not to search costs the user nothing, and a turn where it decides on its
+		// own to search is charged exactly like a toggled one.
+		const [memoryContextText, searchQuotaExhausted] = await Promise.all([
+			(async (): Promise<string | null> => {
+				if (!chatId || !lastUserContent.trim()) return null;
+				try {
+					const memoryContext = await fetchAction(
+						convexApi.memoryWorkers.getChatMemoryContext,
+						{
+							chatId: chatId as Id<"chats">,
+							userMessage: lastUserContent,
+						},
+						{ token: convexToken },
+					);
+					return memoryContext?.contextText ?? null;
+				} catch (error) {
+					logDetailedError("Memory context fetch failed", error);
+					return null;
+				}
+			})(),
+			(async (): Promise<boolean> => {
+				if (webSearchPolicy.mode === "off") return false;
+				try {
+					const quota = await fetchQuery(
+						convexApi.webSearch.checkSearchQuota,
+						{},
+						{ token: convexToken },
+					);
+					console.log("[web-search] quota probe", {
+						used: quota.used,
+						limit: quota.limit,
+						reason: quota.reason,
+					});
+					return !quota.allowed;
+				} catch (error) {
+					logDetailedError("Web search quota probe failed", error);
+					return false;
+				}
+			})(),
+		]);
+		// The search we would run this turn, after plan + quota.
+		const webSearchActive =
+			webSearchPolicy.mode !== "off" && !searchQuotaExhausted;
+		console.log("[web-search] policy", {
+			mode: webSearchPolicy.mode,
+			trigger: webSearchPolicy.trigger,
+			intentLikely: webSearchPolicy.intentLikely,
+			confidence: webSearchPolicy.confidence.toFixed(2),
+			reason: webSearchPolicy.reason,
+			active: webSearchActive,
+		});
 
-		let memoryContextText: string | null = null;
-		if (chatId && lastUserContent.trim() && convexToken) {
-			try {
-				const memoryContext = await fetchAction(
-					convexApi.memoryWorkers.getChatMemoryContext,
-					{
-						chatId: chatId as Id<"chats">,
-						userMessage: lastUserContent,
-					},
-					{ token: convexToken },
-				);
-				memoryContextText = memoryContext?.contextText ?? null;
-			} catch (error) {
-				logDetailedError("Memory context fetch failed", error);
-			}
-		}
-
-		// K-AI web search: a dedicated retrieval pipeline (NOT a model tool). We
-		// decide whether the query needs live data, run the search/extract/cache
-		// pipeline, and inject the cleaned results into the prompt with citations.
+		// K-AI web search: a dedicated retrieval pipeline (NOT a model tool). K-AI
+		// runs on a free Gemma tier whose provider 500s far more often once tools
+		// are attached, so the decision stays server-side: the policy above already
+		// chose, from the toggle or the intent heuristic, whether this turn
+		// searches. Results are injected into the prompt with citations.
 		let webSearchContextText: string | null = null;
-		if (usingKai && convexToken && lastUserContent.trim()) {
-			// Research/Marketing agents bias toward live data (aggressive intent).
-			const activeAgent = getAgent(agentId ?? null);
-			const intent = detectSearchIntent(lastUserContent, {
-				aggressive: activeAgent?.autoWebSearch ?? false,
-			});
-			// The manual Web Search toggle forces a search regardless of intent. For
-			// K-AI it's allowed on every tier (still bounded by the daily quota).
-			const forceSearch = requestedWebSearchEnabled === true;
-			console.log("[web-search] intent", {
-				shouldSearch: intent.shouldSearch,
-				confidence: intent.confidence.toFixed(2),
-				reason: intent.reason,
-				forced: forceSearch,
-			});
-			if (intent.shouldSearch || forceSearch) {
+		if (
+			usingKai &&
+			lastUserContent.trim() &&
+			shouldRunRetrievalPipeline(webSearchPolicy)
+		) {
+			if (searchQuotaExhausted) {
+				// Only say so when the user actually asked for a search. An auto
+				// search they never requested should degrade quietly to a model-only
+				// answer, not turn into an upsell.
+				webSearchContextText =
+					webSearchPolicy.trigger === "manual"
+						? "NOTE: The user turned on Web Search but their monthly web-search limit has been reached, so live web results are unavailable for this message. Answer from your existing knowledge and tell them their web-search limit was reached (it resets next month, or they can upgrade)."
+						: null;
+			} else {
 				try {
 					const result = await runKaiWebSearch({
 						query: lastUserContent,
 						convexToken,
+						trigger: webSearchPolicy.trigger,
 					});
 					if (result && "limited" in result && result.limited) {
-						// Daily free-tier budget exhausted — answer model-only and say so.
+						// Budget ran out between the probe and the search.
 						webSearchContextText =
-							"NOTE: The user's daily web-search limit has been reached, so live web results are unavailable for this message. Answer from your existing knowledge and tell the user their daily web-search limit was reached (it resets tomorrow, or they can upgrade).";
+							webSearchPolicy.trigger !== "manual"
+								? null
+								: result.reason === "credits_exhausted"
+									? "NOTE: The user turned on Web Search but their AI usage credits are exhausted, so live web results are unavailable for this message. Answer from your existing knowledge and tell them their credits ran out for this month."
+									: "NOTE: The user turned on Web Search but their monthly web-search limit has been reached, so live web results are unavailable for this message. Answer from your existing knowledge and tell them their web-search limit was reached (it resets next month, or they can upgrade).";
 					} else if (result && !("limited" in result)) {
 						webSearchContextText = result.contextText;
 					}
@@ -289,14 +345,28 @@ export async function POST(req: Request) {
 		}
 
 		// K-AI never uses the gateway Perplexity tool (incompatible with OpenRouter);
-		// its web search runs through our own pipeline above. So force the tool-side
-		// web-search flag off for K-AI even when the toggle is on.
-		const toolWebSearchEnabled = usingOpenRouter ? false : webSearchEnabled;
+		// its web search runs through our own pipeline above. So the tool-side mode
+		// is always off for K-AI, however the toggle is set.
+		//
+		// For gateway models the mode is what the model is told: "forced" means
+		// search this turn, "auto" means the tool is there and it should reach for
+		// it when the question needs live data.
+		const toolWebSearchMode =
+			usingOpenRouter || !webSearchActive ? "off" : webSearchPolicy.mode;
+		const toolWebSearchEnabled = toolWebSearchMode !== "off";
+		// A forced search we couldn't run is worth saying out loud; an auto search
+		// the user never asked for is not.
+		const webSearchLimitReached =
+			searchQuotaExhausted && webSearchPolicy.trigger === "manual";
 
 		const toolsConfig = buildToolsAndPrompt({
 			requestedModel,
 			modelId,
-			webSearchEnabled: toolWebSearchEnabled,
+			webSearchMode: toolWebSearchMode,
+			webSearchLimitReached,
+			// In auto mode the model chooses; a positive intent read only makes the
+			// prompt lean harder toward searching.
+			webSearchIntentLikely: webSearchPolicy.intentLikely,
 			lastUserContent,
 			maxOutputTokens,
 			imageAspectRatio,
@@ -337,6 +407,41 @@ export async function POST(req: Request) {
 			forceImageTool: toolsConfig.forceImageTool,
 			forceWebSearchTool: toolsConfig.forceWebSearchTool,
 			stopWhen: toolRuntime.stopWhen,
+			// The gateway runs perplexity_search on its own; we only learn a search
+			// happened from the step that called it. Charge it here so an
+			// auto-triggered search counts exactly like a toggled one, and so a turn
+			// where the model never searched costs nothing.
+			onWebSearchToolCall: toolWebSearchEnabled
+				? (callCount) => {
+						// One message costs at most one web search, matching how the
+						// K-AI pipeline bills and how the plan's "web searches per
+						// month" reads. Extra calls inside the same turn are logged,
+						// not charged again.
+						if (callCount > 1) {
+							console.log("[web-search] extra gateway search in same turn", {
+								callCount,
+							});
+							return;
+						}
+						void fetchMutation(
+							convexApi.webSearch.consumeSearchQuota,
+							{ source: webSearchPolicy.trigger },
+							{ token: convexToken },
+						)
+							.then((quota) => {
+								console.log("[web-search] gateway search charged", {
+									trigger: webSearchPolicy.trigger,
+									callCount,
+									allowed: quota.allowed,
+									reason: quota.reason,
+									remaining: quota.remaining,
+								});
+							})
+							.catch((error) => {
+								logDetailedError("Web search quota consume failed", error);
+							});
+					}
+				: undefined,
 		});
 
 		logFinalStreamOptions({
@@ -347,7 +452,7 @@ export async function POST(req: Request) {
 				streamOptions.tools && typeof streamOptions.tools === "object"
 					? Object.keys(streamOptions.tools)
 					: [],
-			webSearchEnabled,
+			webSearchEnabled: toolWebSearchEnabled,
 			hasWebSearchCapability: toolsConfig.hasWebSearch,
 			supportsTools: toolsConfig.supportsTools,
 			imageAspectRatio,

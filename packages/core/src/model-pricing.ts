@@ -23,7 +23,7 @@ export type ModelAccessClass = "basic" | "pro" | "frontier";
 export const STARTER_BASIC_MODEL_IDS = new Set([
 	"openai/gpt-5.4-mini",
 	"google/gemini-3-flash",
-	"google/gemini-3.1-flash-lite-preview",
+	"google/gemini-3.1-flash-lite",
 ]);
 
 function parsePricePerToken(value: unknown): number | null {

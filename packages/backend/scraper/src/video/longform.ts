@@ -7,11 +7,16 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateText, experimental_generateVideo as generateVideo } from "ai";
+import { createGateway } from "@ai-sdk/gateway";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { put } from "@vercel/blob";
 
-const VEO_MODEL = "google/veo-3.1-fast";
+// Veo runs on the Vercel AI Gateway — OpenRouter serves no video models at all.
+// Keep in sync with KONTINUE_CANVAS_UNDERLYING[K_VIDEO_MODEL_ID] in
+// packages/ai/src/lib/canvas-models.ts, which the short-form path uses.
+const VEO_MODEL = "google/veo-3.1-fast-generate-001";
 const SCENE_SECONDS = 8; // Veo's practical per-clip max.
+// Storyboarding is a text call and stays on OpenRouter, same model as K-AI.
 const K_AI_MODEL = "google/gemma-4-31b-it:free";
 
 export interface LongVideoRequest {
@@ -21,7 +26,9 @@ export interface LongVideoRequest {
   resolution: string; // e.g. "1920x1080"
   aspectRatio: string; // e.g. "16:9"
   audio: boolean;
+  // Storyboard (text) runs on OpenRouter; the scene clips run on the AI Gateway.
   openRouterKey: string;
+  aiGatewayKey: string;
   blobToken: string;
   // Where to POST progress/result; secured by callbackSecret.
   callbackUrl: string;
@@ -88,21 +95,24 @@ async function buildStoryboard(
   }
 }
 
-// Generate one scene clip via OpenRouter Veo; returns the raw mp4 bytes.
+// Generate one scene clip via Veo on the AI Gateway; returns the raw mp4 bytes.
 async function generateSceneClip(
   scenePrompt: string,
   req: LongVideoRequest,
 ): Promise<Uint8Array> {
-  const openrouter = createOpenRouter({ apiKey: req.openRouterKey });
+  const gateway = createGateway({ apiKey: req.aiGatewayKey });
   const result = await generateVideo({
-    model: openrouter.videoModel(VEO_MODEL, {
-      generateAudio: req.audio,
-      maxPollTimeMs: 600000,
-    }),
+    model: gateway.video(VEO_MODEL),
     prompt: scenePrompt,
     duration: SCENE_SECONDS,
     resolution: req.resolution as `${number}x${number}`,
     aspectRatio: req.aspectRatio as `${number}:${number}`,
+    providerOptions: {
+      vertex: {
+        generateAudio: req.audio,
+        pollTimeoutMs: 600000,
+      },
+    },
   });
   if (!result.video) throw new Error("Veo returned no video for a scene");
   return result.video.uint8Array;

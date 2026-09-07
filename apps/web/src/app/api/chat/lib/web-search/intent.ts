@@ -80,6 +80,26 @@ const NEGATIVE_SIGNALS = [
 	"difference between",
 ];
 
+// Any request to search/look something up counts as explicit — not just the
+// "search the web" phrasing.
+const EXPLICIT_SEARCH =
+	/\b(search|searching|google|googled|look(?:ing)? up|looked up|browse the (?:web|internet)|web search)\b/;
+
+// ...except when the search is scoped to the user's OWN data. Those are handled
+// by the connector tools (gmail, drive, notion, github…), and must not spend a
+// web search from the monthly quota.
+const OWN_DATA_SEARCH =
+	/\bsearch(?:ing)?\s+(?:in\s+|through\s+|for\s+\w+\s+in\s+)?(?:my|our|the|this)\s+(?:e-?mails?|gmail|inbox|messages?|chats?|conversations?|threads?|drive|docs?|documents?|files?|sheets?|spreadsheets?|notion|calendar|events?|tasks?|todoist|repo(?:sitor(?:y|ies))?|codebase|projects?|notes?)\b/;
+
+// An @-mentioned connector means the user is pointing at their own account, not
+// the open web.
+const CONNECTOR_MENTION =
+	/@(github|notion|vercel|gmail|google_calendar|google_drive|google_sheets|todoist)\b/;
+
+function isOwnDataSearch(query: string): boolean {
+	return OWN_DATA_SEARCH.test(query) || CONNECTOR_MENTION.test(query);
+}
+
 function countMatches(text: string, terms: string[]): number {
 	let n = 0;
 	for (const t of terms) if (text.includes(t)) n++;
@@ -103,10 +123,12 @@ export function detectSearchIntent(
 		return { shouldSearch: false, confidence: 0, reason: "empty query" };
 	}
 
-	// Explicit user opt-in always searches.
-	if (
-		/\bsearch (the )?(web|internet|online)\b|\bgoogle\b|\blook up\b/.test(query)
-	) {
+	// Explicit user opt-in always searches. Someone who says "search" means it —
+	// we do not also require them to phrase it with a recency keyword. This used
+	// to insist on "search THE WEB", which missed the most natural phrasing of
+	// all ("help me search for chelsea's next match") and answered from the
+	// model's stale knowledge instead.
+	if (EXPLICIT_SEARCH.test(query) && !isOwnDataSearch(query)) {
 		return {
 			shouldSearch: true,
 			confidence: 0.95,

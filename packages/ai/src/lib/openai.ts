@@ -17,6 +17,13 @@ export const OPENAI_MODELS: ModelOption[] = [
 		modality: "realtime",
 	},
 	{
+		id: "openai/gpt-6-astra",
+		name: "GPT-6 Astra",
+		provider: "openai",
+		description:
+			"OpenAI's most capable model for reasoning, coding, and research",
+	},
+	{
 		id: "openai/gpt-5.6-sol",
 		name: "GPT 5.6 Sol",
 		provider: "openai",
@@ -70,12 +77,6 @@ export const OPENAI_MODELS: ModelOption[] = [
 		name: "GPT 5.4 Nano",
 		provider: "openai",
 		description: "Designed for tasks where speed and cost matter most",
-	},
-	{
-		id: "openai/gpt-5.3-chat",
-		name: "GPT 5.3 Chat",
-		provider: "openai",
-		description: "OpenAI’s high-speed, natural conversational specialist",
 	},
 	{
 		id: "openai/gpt-image-2",

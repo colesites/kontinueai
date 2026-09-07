@@ -117,8 +117,8 @@ export default function PricingPage() {
 							Every limit, side by side.
 						</h2>
 						<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-							Values are shown wherever quantity matters. Use the question marks
-							for definitions and details.
+							Values are shown wherever quantity matters. On smaller screens,
+							pick a plan and read its limits one by one.
 						</p>
 					</div>
 					<div className="mt-14">

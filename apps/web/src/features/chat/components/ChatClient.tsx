@@ -220,9 +220,7 @@ function ChatClientContent() {
 				selectedModel={chatState.selectedModel}
 				onModelChange={(next) => chatState.setUserSelectedModel(next)}
 				webSearchEnabled={chatState.webSearchEnabled}
-				onWebSearchToggle={() =>
-					chatState.setWebSearchEnabled((prev: boolean) => !prev)
-				}
+				onWebSearchToggle={chatState.toggleWebSearch}
 				imageAspectRatio={chatState.imageAspectRatio}
 				imageSize={chatState.imageSize}
 				onImageAspectRatioChange={chatState.setImageAspectRatio}

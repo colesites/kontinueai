@@ -32,6 +32,7 @@ import { KontinueLogo } from "@/components/ui/kontinue-logo";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { useSelectedModel } from "@/hooks/use-selected-model";
+import { useWebSearchPreference } from "@/hooks/use-web-search-preference";
 import {
   pickDocumentAttachments,
   type PendingAttachment,
@@ -99,7 +100,9 @@ export default function HomeScreen() {
   const [isImporting, setIsImporting] = useState(false);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
+  // Persisted on the account so it carries into the chat this screen starts,
+  // into the next session, and across devices.
+  const { webSearchEnabled, toggleWebSearch } = useWebSearchPreference();
   const [agentId, setAgentId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const { isDark, primary, mutedForeground, primaryForeground } = useTheme();
@@ -396,7 +399,7 @@ export default function HomeScreen() {
             isLoading={isCreatingChat}
             webSearchAvailable={webSearchAvailable}
             webSearchEnabled={webSearchEnabled}
-            onWebSearchToggle={() => setWebSearchEnabled((prev) => !prev)}
+            onWebSearchToggle={toggleWebSearch}
             agentId={agentId}
             onAgentChange={setAgentId}
             attachments={attachments}

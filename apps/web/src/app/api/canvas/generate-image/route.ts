@@ -1,12 +1,7 @@
 import { gateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import { auth } from "@clerk/nextjs/server";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import {
-	IMAGE_MODELS,
-	isKontinueCanvasModel,
-	resolveCanvasModelId,
-} from "@repo/ai/lib/canvas-models";
+import { IMAGE_MODELS, resolveCanvasModelId } from "@repo/ai/lib/canvas-models";
 import { fetchAiGatewayModels } from "@repo/ai/lib/model-capabilities";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import { canAccessPlanFeature } from "@repo/core/plan-access";
@@ -212,22 +207,8 @@ export async function POST(req: Request) {
 				throw new Error("Unsupported image data format from tool");
 			}
 		} else {
-			// K-Image routes through OpenRouter; every other model uses the AI Gateway.
-			const useOpenRouter = isKontinueCanvasModel(modelId);
-			if (useOpenRouter && !process.env.OPEN_ROUTER) {
-				return NextResponse.json(
-					{ error: "K-Image is not configured (missing OPEN_ROUTER key)." },
-					{ status: 500 },
-				);
-			}
-			const imageModel = useOpenRouter
-				? createOpenRouter({ apiKey: process.env.OPEN_ROUTER }).imageModel(
-						resolvedModelId,
-						// Grok Imagine only supports image OUTPUT; the provider defaults to
-						// modalities ["image","text"] which 404s. Override to image-only.
-						{ extraBody: { modalities: ["image"] } },
-					)
-				: gateway.imageModel(resolvedModelId);
+			// Every image model, K-Image included, goes through the AI Gateway.
+			const imageModel = gateway.imageModel(resolvedModelId);
 			const result = await generateImage({
 				model: imageModel,
 				prompt: body.image
@@ -239,7 +220,7 @@ export async function POST(req: Request) {
 				// Surface the real provider error (e.g. unknown model / no image
 				// endpoint on OpenRouter) instead of a generic 500.
 				console.error(
-					`[canvas/generate-image] generation failed for ${resolvedModelId} (via ${useOpenRouter ? "openrouter" : "gateway"}):`,
+					`[canvas/generate-image] generation failed for ${resolvedModelId}:`,
 					err,
 				);
 				throw err;

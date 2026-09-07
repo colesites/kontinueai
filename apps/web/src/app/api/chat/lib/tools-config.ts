@@ -1,6 +1,5 @@
 import { gateway } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { type AgentId, getAgent } from "@repo/ai/lib/agents";
 import {
 	K_IMAGE_MODEL_ID,
@@ -27,9 +26,23 @@ import type { AiGatewayModel, OpenAIImageSize } from "./types";
 
 const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 
+// The user's local calendar date (YYYY-MM-DD), for grounding "next X" questions
+// against the day they are actually having.
+function userTodayIso(timezone: string | null): string {
+	try {
+		return new Intl.DateTimeFormat("en-CA", {
+			timeZone: timezone && isValidTimezone(timezone) ? timezone : undefined,
+			year: "numeric",
+			month: "2-digit",
+			day: "2-digit",
+		}).format(new Date());
+	} catch {
+		return new Date().toISOString().slice(0, 10);
+	}
+}
+
 function makeKaiImageTool(options: {
 	convexToken: string;
-	openRouterKey: string;
 	aspectRatio?: string | null;
 }) {
 	return tool({
@@ -39,14 +52,12 @@ function makeKaiImageTool(options: {
 			prompt: z.string().min(3).max(4_000),
 		}),
 		execute: async ({ prompt }) => {
-			const openrouter = createOpenRouter({ apiKey: options.openRouterKey });
 			const aspectRatio = /^\d+:\d+$/.test(options.aspectRatio ?? "")
 				? options.aspectRatio
 				: "1:1";
 			const result = await generateImage({
-				model: openrouter.imageModel(resolveCanvasModelId(K_IMAGE_MODEL_ID), {
-					extraBody: { modalities: ["image"] },
-				}),
+				// K-Image runs through the AI Gateway, same as the canvas route.
+				model: gateway.imageModel(resolveCanvasModelId(K_IMAGE_MODEL_ID)),
 				prompt,
 				aspectRatio: aspectRatio as `${number}:${number}`,
 				n: 1,
@@ -2642,6 +2653,7 @@ import {
 	isLikelyWebSearchRequest,
 	looksLikeSportsPlayerQuery,
 } from "./prompt";
+import type { WebSearchMode } from "./web-search/policy";
 
 export type ToolsConfigResult = {
 	tools: ToolSet;
@@ -2660,7 +2672,12 @@ export type ToolsConfigResult = {
 export function buildToolsAndPrompt(options: {
 	requestedModel: AiGatewayModel;
 	modelId: string;
-	webSearchEnabled: boolean;
+	webSearchMode: WebSearchMode;
+	// The user forced a search we couldn't run (quota/credits spent). Only set
+	// for an explicit toggle — an auto search degrades silently.
+	webSearchLimitReached?: boolean;
+	// Auto mode only: the query reads as one that needs live data.
+	webSearchIntentLikely?: boolean;
 	lastUserContent: string;
 	maxOutputTokens: number;
 	imageAspectRatio?: string | null;
@@ -2679,7 +2696,9 @@ export function buildToolsAndPrompt(options: {
 	const {
 		requestedModel,
 		modelId,
-		webSearchEnabled,
+		webSearchMode,
+		webSearchLimitReached = false,
+		webSearchIntentLikely = false,
 		lastUserContent,
 		maxOutputTokens,
 		imageAspectRatio,
@@ -2696,6 +2715,9 @@ export function buildToolsAndPrompt(options: {
 		openRouterKey,
 	} = options;
 
+	// "auto" and "forced" both attach the tool; they differ only in how firmly the
+	// prompt tells the model to use it (and whether we pin toolChoice).
+	const webSearchEnabled = webSearchMode !== "off";
 	const capabilities = deriveCapabilities(requestedModel);
 	const hasKaiImageGen =
 		enableKaiImageGeneration &&
@@ -2745,7 +2767,7 @@ export function buildToolsAndPrompt(options: {
 		tools.todoist = makeTodoistTool(tokens);
 	}
 
-	if (webSearchEnabled && !hasWebSearch) {
+	if (webSearchMode === "forced" && !hasWebSearch) {
 		console.warn(
 			`[chat-debug] model metadata does not report web-search capability for ${modelId}; attaching perplexity_search tool optimistically`,
 		);
@@ -2794,14 +2816,15 @@ export function buildToolsAndPrompt(options: {
 	if (hasKaiImageGen && convexToken && openRouterKey) {
 		tools.image_generation = makeKaiImageTool({
 			convexToken,
-			openRouterKey,
 			aspectRatio: imageAspectRatio,
 		});
 	}
 
 	const webSearchContext = buildWebSearchContext({
-		webSearchEnabled,
+		mode: webSearchMode,
 		shouldAttachWebSearchTool,
+		limitReached: webSearchLimitReached,
+		intentLikely: webSearchIntentLikely,
 	});
 	const responseBudgetContext = buildResponseBudgetContext({ maxOutputTokens });
 	const imageGenContext = buildImageGenerationContext({
@@ -2895,14 +2918,21 @@ export function buildToolsAndPrompt(options: {
 		connectorToolContext +
 		mentionDirective +
 		buildMemoryContext(memoryContextText ?? null) +
-		buildWebSearchResultsContext(webSearchContextText ?? null);
+		buildWebSearchResultsContext(webSearchContextText ?? null, {
+			// Resolve "next"/"upcoming" against the user's own today, not UTC's.
+			nowIso: userTodayIso(userTimezone ?? null),
+		});
 
 	const forceImageTool =
 		hasImageGen &&
 		(provider === "openai" || provider === "kontinue") &&
 		!!tools.image_generation &&
 		isLikelyImageRequest(lastUserContent);
+	// Pin toolChoice only when the user explicitly asked for a search. In auto
+	// mode the tool is offered, not compelled — forcing it would spend a web
+	// search on every borderline query.
 	const forceWebSearchTool =
+		webSearchMode === "forced" &&
 		shouldAttachWebSearchTool &&
 		!!tools.perplexity_search &&
 		isLikelyWebSearchRequest(lastUserContent);

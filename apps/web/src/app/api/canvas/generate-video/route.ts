@@ -1,6 +1,5 @@
 import { gateway } from "@ai-sdk/gateway";
 import { auth } from "@clerk/nextjs/server";
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import {
 	clampKVideoDuration,
 	clampKVideoResolution,
@@ -134,7 +133,7 @@ export async function POST(req: Request) {
 		let result: Awaited<ReturnType<typeof generateVideo>>;
 
 		if (isKontinueCanvasModel(modelId)) {
-			// K-Video → OpenRouter (Veo). Clamp duration + resolution to the user's
+			// K-Video → Veo. Clamp duration + resolution to the user's
 			// plan ceiling (free 5/10s·720p, starter ≤60s·1080p, pro ≤5min·4K).
 			const kDuration = clampKVideoDuration(planTier, duration);
 			const kResolution = clampKVideoResolution(
@@ -150,12 +149,24 @@ export async function POST(req: Request) {
 				const scraperKey =
 					process.env.SCRAPER_API_KEY ?? process.env.API_KEY ?? "";
 				const openRouterKey = process.env.OPEN_ROUTER;
+				// The worker storyboards on OpenRouter but renders the scene clips
+				// with Veo on the AI Gateway, so it needs both keys.
+				const aiGatewayKey =
+					process.env.VERCEL_AI_GATEWAY_API_KEY ??
+					process.env.AI_GATEWAY_API_KEY ??
+					process.env.AI_GATEWAY_TOKEN;
 				const agentSecret = process.env.AGENT_TASK_SECRET;
 				const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
 				const appUrl =
 					process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin;
 
-				if (!scraperUrl || !openRouterKey || !agentSecret || !blobToken) {
+				if (
+					!scraperUrl ||
+					!openRouterKey ||
+					!aiGatewayKey ||
+					!agentSecret ||
+					!blobToken
+				) {
 					return NextResponse.json(
 						{ error: "Long-form video is not fully configured." },
 						{ status: 500 },
@@ -205,6 +216,7 @@ export async function POST(req: Request) {
 						aspectRatio,
 						audio: body.audio ?? false,
 						openRouterKey,
+						aiGatewayKey,
 						blobToken,
 						callbackUrl: `${appUrl}/api/canvas/video-job/callback`,
 						callbackSecret: agentSecret,
@@ -222,16 +234,21 @@ export async function POST(req: Request) {
 				});
 			}
 
-			const openrouter = createOpenRouter({ apiKey: process.env.OPEN_ROUTER });
+			// K-Video runs on Veo through the AI Gateway (OpenRouter serves no video
+			// models), so it takes the same vertex provider options as the raw Veo
+			// entries below.
 			result = await generateVideo({
-				model: openrouter.videoModel(resolvedModelId, {
-					generateAudio: body.audio ?? false,
-					maxPollTimeMs: 600000,
-				}),
+				model: gateway.video(resolvedModelId),
 				prompt: promptParam,
 				duration: kDuration,
 				resolution: kResolution,
 				aspectRatio,
+				providerOptions: {
+					vertex: {
+						generateAudio: body.audio ?? false,
+						pollTimeoutMs: 600000,
+					},
+				},
 			}).catch((err) => {
 				console.error(
 					`[canvas/generate-video] K-Video failed (dur=${kDuration} res=${kResolution} ar=${aspectRatio}):`,
@@ -322,8 +339,9 @@ export async function POST(req: Request) {
 					},
 				},
 			});
-		} else if (resolvedModelId.startsWith("xai/")) {
-			// Grok: Supports both.
+		} else if (resolvedModelId.startsWith("spacexai/")) {
+			// Grok: Supports both. The gateway moved every Grok route from "xai/"
+			// to "spacexai/", which is also the provider-options namespace.
 			result = await generateVideo({
 				model,
 				prompt: promptParam,
@@ -331,7 +349,7 @@ export async function POST(req: Request) {
 				resolution,
 				duration,
 				providerOptions: {
-					xai: {
+					spacexai: {
 						pollTimeoutMs: 600000,
 					},
 				},

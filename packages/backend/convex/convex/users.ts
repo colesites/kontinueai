@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { FREE_DEFAULT_MODEL_ID } from "@repo/ai/models";
 import { getMemoryLimitBytesForPlan } from "@repo/core/memory";
 import { isPaidPersistedPlan } from "@repo/core/plan-tier";
 import { grantBonusCredits, REFERRAL_REWARD_CREDITS } from "./lib/videoCredits";
@@ -181,6 +182,105 @@ export const getDefaultModel = query({
 			.collect();
 
 		return settings[0]?.defaultModel ?? null;
+	},
+});
+
+// The Web Search toggle. Persisted per user (not per chat, not per tab) so the
+// state a person picks follows them into the next chat, survives closing the
+// tab, and shows up the same on their phone. Absent = off.
+export const getWebSearchEnabled = query({
+	args: {},
+	handler: async (ctx): Promise<boolean | null> => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) {
+			return null;
+		}
+
+		const user = await ctx.db
+			.query("users")
+			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+			.unique();
+
+		if (!user) {
+			return null;
+		}
+
+		const settings = await ctx.db
+			.query("userSettings")
+			.withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+			.collect();
+
+		return settings[0]?.webSearchEnabled ?? false;
+	},
+});
+
+export const setWebSearchEnabled = mutation({
+	args: { enabled: v.boolean() },
+	handler: async (ctx, args) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) {
+			throw new Error("Not authenticated");
+		}
+
+		const user = await ctx.db
+			.query("users")
+			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+			.unique();
+
+		if (!user) {
+			throw new Error("User not found");
+		}
+
+		const settings = await ctx.db
+			.query("userSettings")
+			.withIndex("by_owner", (q) => q.eq("ownerId", user._id))
+			.collect();
+
+		const [existing, ...duplicates] = settings;
+		if (existing) {
+			if (
+				existing.webSearchEnabled !== args.enabled ||
+				existing.webSearchMode !== undefined
+			) {
+				await ctx.db.patch(existing._id, {
+					webSearchEnabled: args.enabled,
+					// Drop the pre-rename field on the way past.
+					webSearchMode: undefined,
+				});
+			}
+		} else {
+			// userSettings requires a defaultModel, and this row may not exist yet if
+			// the user has never changed models. Seed it with the plan default.
+			await ctx.db.insert("userSettings", {
+				ownerId: user._id,
+				defaultModel: FREE_DEFAULT_MODEL_ID,
+				webSearchEnabled: args.enabled,
+			});
+		}
+
+		await Promise.all(duplicates.map((setting) => ctx.db.delete(setting._id)));
+
+		return args.enabled;
+	},
+});
+
+// One-shot cleanup for rows written before webSearchMode was renamed to
+// webSearchEnabled. Carries the old value over, then removes the field. Safe to
+// run repeatedly; once it reports 0 the deprecated field can leave the schema.
+export const clearLegacyWebSearchMode = internalMutation({
+	args: {},
+	handler: async (ctx): Promise<{ migrated: number }> => {
+		const rows = await ctx.db.query("userSettings").collect();
+		let migrated = 0;
+		for (const row of rows) {
+			if (row.webSearchMode === undefined) continue;
+			await ctx.db.patch(row._id, {
+				webSearchEnabled: row.webSearchEnabled ?? row.webSearchMode === "always",
+				webSearchMode: undefined,
+			});
+			migrated += 1;
+		}
+		return { migrated };
 	},
 });
 
