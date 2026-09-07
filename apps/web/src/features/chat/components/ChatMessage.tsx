@@ -2,14 +2,17 @@
 
 import { cn } from "@repo/ui/lib/utils";
 import { useEffect, useRef, useState } from "react";
+import type { GeneratedFile } from "../lib/message-transformer";
 import type { ChatMessageProps } from "../types";
 import { ChatMessageActions } from "./ChatMessageActions";
 import { ChatMessageImages } from "./ChatMessageImages";
 import { ClockWidget } from "./ClockWidget";
 import { EmailComposer } from "./EmailComposer";
+import { GeneratedFiles } from "./GeneratedFiles";
 import { MessageContent } from "./MessageContent";
 
 const EMPTY_IMAGE_PARTS: string[] = [];
+const EMPTY_GENERATED_FILES: GeneratedFile[] = [];
 
 export function ChatMessage({
 	role,
@@ -17,6 +20,7 @@ export function ChatMessage({
 	imageParts = EMPTY_IMAGE_PARTS,
 	clockData,
 	emailDraft,
+	generatedFiles = EMPTY_GENERATED_FILES,
 	isImported,
 	isStreaming,
 	onRetry,
@@ -163,7 +167,8 @@ export function ChatMessage({
 								!isStreaming &&
 								imageParts.length === 0 &&
 								!clockData &&
-								!emailDraft ? (
+								!emailDraft &&
+								generatedFiles.length === 0 ? (
 								<p className="italic text-muted-foreground">
 									No response was returned. Please retry or switch models.
 								</p>
@@ -173,6 +178,7 @@ export function ChatMessage({
 								<ClockWidget timezone={clockData.timezone} />
 							)}
 							{!isUser && emailDraft && <EmailComposer draft={emailDraft} />}
+							{!isUser && <GeneratedFiles files={generatedFiles} />}
 						</div>
 					)}
 				</div>

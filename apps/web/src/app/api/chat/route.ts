@@ -19,6 +19,7 @@ import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import { convertToModelMessages, type LanguageModel, streamText } from "ai";
 import { fetchAction, fetchMutation, fetchQuery } from "convex/nextjs";
 import { PLAN_ERROR_CODES, planDeniedResponse } from "../lib/plan-denial";
+import { isCodeSandboxConfigured } from "./lib/code-sandbox";
 import { classifyChatError } from "./lib/error-classifier";
 import { getGatewayRuntimeConfig } from "./lib/gateway-runtime";
 import { getAiGatewayModelsCached } from "./lib/model-utils";
@@ -381,6 +382,13 @@ export async function POST(req: Request) {
 			agentId,
 			enableKaiImageGeneration:
 				usingKai && PLAN_DEFINITIONS[planTier].imageGenerations > 0,
+			// File creation via sandboxed Python. Needs both the plan and a runtime
+			// that can actually start a sandbox (VERCEL_* creds locally, OIDC on
+			// Vercel) — without the latter the tool would only ever fail.
+			enableCodeExecution:
+				canAccessPlanFeature(planTier, "code-execution") &&
+				isCodeSandboxConfigured(),
+			userId,
 			openRouterKey,
 		});
 

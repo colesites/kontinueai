@@ -93,6 +93,7 @@ export function ChatMessageList({
 							imageParts={message.imageParts}
 							clockData={message.clockData}
 							emailDraft={message.emailDraft}
+							generatedFiles={message.generatedFiles}
 							isImported={message.isImported}
 							isStreaming={
 								isStreaming &&

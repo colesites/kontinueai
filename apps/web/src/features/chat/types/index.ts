@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { GeneratedFile } from "../lib/message-transformer";
 
 interface ChatInputProps {
 	onSend: (message: string, files?: File[]) => void;
@@ -34,6 +35,8 @@ interface ChatMessageProps {
 		subject: string;
 		body: string;
 	} | null;
+	/** Files the run_code sandbox produced; rendered as download cards */
+	generatedFiles?: GeneratedFile[];
 	isImported?: boolean;
 	isStreaming?: boolean;
 	onRetry?: () => void;

@@ -1,13 +1,14 @@
-import type { PlanTier } from "./plan-tier";
-import { isPlanAtLeast } from "./plan-tier";
 import {
 	type ModelAccessClass,
 	STARTER_BASIC_MODEL_IDS,
 } from "./model-pricing";
+import type { PlanTier } from "./plan-tier";
+import { isPlanAtLeast } from "./plan-tier";
 
 export type PlanFeature =
 	| "file-upload"
 	| "premium-model"
+	| "code-execution"
 	| "realtime-voice"
 	| "kode"
 	| "canvas";
@@ -24,6 +25,8 @@ export function canAccessPlanFeature(
 		return isPlanAtLeast(tier, "pro");
 	}
 	if (feature === "premium-model") return isPlanAtLeast(tier, "plus");
+	// Sandboxed code execution boots a microVM per run, so it is paid-only.
+	if (feature === "code-execution") return isPlanAtLeast(tier, "plus");
 	return isPlanAtLeast(tier, "starter");
 }
 

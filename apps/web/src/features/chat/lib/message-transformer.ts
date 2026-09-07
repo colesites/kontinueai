@@ -168,3 +168,41 @@ export function mergeImportedChunks<
 
 	return merged;
 }
+
+export type GeneratedFile = {
+	name: string;
+	url: string;
+	bytes: number;
+};
+
+/**
+ * Files produced by the run_code sandbox, pulled off the tool result so the
+ * chat can render them as downloads. The model is told NOT to paste these URLs
+ * into its text, so this is the only place they surface.
+ */
+export function collectGeneratedFilesFromParts(
+	parts: UIMessage["parts"],
+): GeneratedFile[] {
+	const files: GeneratedFile[] = [];
+	for (const part of parts) {
+		if (part.type !== "tool-run_code" || !("output" in part)) continue;
+		const output = part.output as
+			| { ok?: boolean; files?: GeneratedFile[] }
+			| undefined;
+		if (!output?.ok || !Array.isArray(output.files)) continue;
+		for (const file of output.files) {
+			if (
+				file &&
+				typeof file.name === "string" &&
+				typeof file.url === "string"
+			) {
+				files.push({
+					name: file.name,
+					url: file.url,
+					bytes: typeof file.bytes === "number" ? file.bytes : 0,
+				});
+			}
+		}
+	}
+	return files;
+}

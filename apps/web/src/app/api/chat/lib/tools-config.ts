@@ -11,6 +11,7 @@ import { deriveCapabilities } from "@repo/ai/lib/model-capabilities";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { markdownToBlocks } from "@tryfabric/martian";
+import { put } from "@vercel/blob";
 import {
 	experimental_generateImage as generateImage,
 	type ToolSet,
@@ -18,6 +19,11 @@ import {
 } from "ai";
 import { fetchMutation } from "convex/nextjs";
 import { z } from "zod";
+import {
+	isCodeSandboxConfigured,
+	runPythonForFiles,
+	SANDBOX_OUTPUT_DIR,
+} from "./code-sandbox";
 import { type ConnectorTokens, userConnectorTokens } from "./connector-tokens";
 import { makeGoogleSheetsTool } from "./google-sheets-tool";
 import { modelSupportsTools } from "./model-utils";
@@ -25,6 +31,112 @@ import { toOpenAIImageSize } from "./request-utils";
 import type { AiGatewayModel, OpenAIImageSize } from "./types";
 
 const TASK_PRIORITIES = ["low", "medium", "high", "urgent"] as const;
+
+// Code interpreter — the same shape ChatGPT and Claude use for file creation.
+//
+// The model writes Python; we execute it in a throwaway microVM; anything it
+// leaves in the output directory is uploaded and handed back as a download.
+// Building the file this way rather than with a bespoke "make a docx" tool is
+// what makes the format list open-ended.
+function makeCodeInterpreterTool(options: {
+	convexToken: string;
+	userId: string;
+}) {
+	return tool({
+		description:
+			"Run Python in a secure sandbox to compute something or to CREATE A FILE for the user — spreadsheets (.xlsx, .csv), documents (.docx, .pdf), slide decks (.pptx), charts (.png/.svg), archives (.zip), or any other file a Python library can write. Available libraries: python-docx, openpyxl, python-pptx, reportlab, pandas, matplotlib, plus the standard library. Use this whenever the user asks for a document, spreadsheet, deck, report, export or download. Save every file the user should receive into the output directory; print a short summary to stdout. Do not use it for network access.",
+		inputSchema: z.object({
+			code: z
+				.string()
+				.min(1)
+				.max(20_000)
+				.describe(
+					`Python 3 source. Write any file the user should receive into ${SANDBOX_OUTPUT_DIR} (the directory already exists). Print a one-line summary of what you produced.`,
+				),
+		}),
+		execute: async ({ code }) => {
+			// Charge first: a run costs a microVM whether or not it produces a file.
+			try {
+				const charge = await fetchMutation(
+					convexApi.aiUsage.consumeCodeExecution,
+					{},
+					{ token: options.convexToken },
+				);
+				if (!charge.allowed) {
+					return {
+						ok: false as const,
+						message:
+							charge.reason === "credits_exhausted"
+								? "The user's AI usage credits are exhausted, so code could not be run. Tell them their credits ran out for this month."
+								: "Code execution is unavailable for this account right now.",
+					};
+				}
+			} catch (error) {
+				console.error("[code-interpreter] credit charge failed", error);
+				return {
+					ok: false as const,
+					message: "Code execution is unavailable right now.",
+				};
+			}
+
+			const run = await runPythonForFiles({ code });
+			if (!run.ok) {
+				return {
+					ok: false as const,
+					message: `The sandbox could not run that: ${run.error}. Tell the user plainly and offer to try a simpler approach.`,
+				};
+			}
+
+			// Upload whatever the script produced; the model only ever sees names and
+			// URLs, never the bytes, so a 5MB spreadsheet costs no tokens.
+			const files: Array<{ name: string; url: string; bytes: number }> = [];
+			for (const file of run.files) {
+				try {
+					const blob = await put(
+						`code/${options.userId.slice(-8)}/${Date.now()}_${file.name}`,
+						file.bytes,
+						{ access: "public", contentType: contentTypeFor(file.name) },
+					);
+					files.push({
+						name: file.name,
+						url: blob.url,
+						bytes: file.bytes.byteLength,
+					});
+				} catch (error) {
+					console.error("[code-interpreter] upload failed", file.name, error);
+				}
+			}
+
+			return {
+				ok: true as const,
+				exitCode: run.exitCode,
+				stdout: run.stdout,
+				stderr: run.exitCode === 0 ? "" : run.stderr,
+				files,
+			};
+		},
+	});
+}
+
+// Content types for the formats the sandbox is expected to produce, so browsers
+// download them with the right name instead of rendering bytes.
+function contentTypeFor(filename: string): string {
+	const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+	const types: Record<string, string> = {
+		csv: "text/csv",
+		docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+		json: "application/json",
+		md: "text/markdown",
+		pdf: "application/pdf",
+		png: "image/png",
+		pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		svg: "image/svg+xml",
+		txt: "text/plain",
+		xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		zip: "application/zip",
+	};
+	return types[ext] ?? "application/octet-stream";
+}
 
 // The user's local calendar date (YYYY-MM-DD), for grounding "next X" questions
 // against the day they are actually having.
@@ -2678,6 +2790,9 @@ export function buildToolsAndPrompt(options: {
 	webSearchLimitReached?: boolean;
 	// Auto mode only: the query reads as one that needs live data.
 	webSearchIntentLikely?: boolean;
+	// Sandboxed code execution (file generation). Plan-gated by the caller.
+	enableCodeExecution?: boolean;
+	userId?: string | null;
 	lastUserContent: string;
 	maxOutputTokens: number;
 	imageAspectRatio?: string | null;
@@ -2699,6 +2814,8 @@ export function buildToolsAndPrompt(options: {
 		webSearchMode,
 		webSearchLimitReached = false,
 		webSearchIntentLikely = false,
+		enableCodeExecution = false,
+		userId = null,
 		lastUserContent,
 		maxOutputTokens,
 		imageAspectRatio,
@@ -2743,6 +2860,12 @@ export function buildToolsAndPrompt(options: {
 		// Email composer is always available; the Send action (client-side) is what
 		// requires a connected Gmail account, not the drafting.
 		tools.compose_email = makeComposeEmailTool();
+	}
+
+	// Code interpreter: only when the plan allows it AND this environment can
+	// actually start a sandbox (locally that needs the VERCEL_* credentials).
+	if (supportsTools && convexToken && userId && enableCodeExecution) {
+		tools.run_code = makeCodeInterpreterTool({ convexToken, userId });
 	}
 
 	// Task creation is available whenever the model supports tools and we have an
@@ -2834,6 +2957,11 @@ export function buildToolsAndPrompt(options: {
 		imageAspectRatio,
 		imageSize,
 	});
+	const codeToolContext = tools.run_code
+		? "\n\nFILES: You can create real files for the user with the run_code tool — spreadsheets (.xlsx, .csv), documents (.docx, .pdf), slide decks (.pptx), charts, and archives. When the user asks for a document, spreadsheet, deck, report, export or 'give me a file', WRITE PYTHON and call run_code rather than pasting the content into the chat. Save every file the user should receive into " +
+			SANDBOX_OUTPUT_DIR +
+			" and print a one-line summary. After the tool returns, tell the user what you made in plain language — the download links are rendered from the tool result, so do NOT paste the URLs yourself. If the run fails, say what went wrong and offer a simpler approach. Never claim you cannot create files."
+		: "";
 	const taskToolContext = tools.create_task
 		? "\n\nTASKS: You can create tasks/reminders with the create_task tool. When the user clearly states something to do or be reminded of, create it and confirm briefly. When they include a time (e.g. 'remind me at 3pm'), that is the DUE time for the task — resolve it from the CURRENT TIME in your context and set dueDateIso; do NOT call get_current_time and do NOT show a clock widget (they did not ask what time it is). If the intent or timing is unclear, ask one short clarifying question before creating."
 		: "";
@@ -2913,6 +3041,7 @@ export function buildToolsAndPrompt(options: {
 		responseBudgetContext +
 		webSearchContext +
 		imageGenContext +
+		codeToolContext +
 		taskToolContext +
 		emailToolContext +
 		connectorToolContext +

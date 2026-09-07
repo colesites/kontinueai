@@ -5,9 +5,11 @@ import {
 	type ClockData,
 	collectClockDataFromParts,
 	collectEmailDraftFromParts,
+	collectGeneratedFilesFromParts,
 	collectImageUrlsFromParts,
 	collectPerplexitySearchResults,
 	type EmailDraft,
+	type GeneratedFile,
 	mapImportedFlags,
 	mapStoredGeneratedImages,
 	mergeImportedChunks,
@@ -21,6 +23,7 @@ export type DisplayMessage = {
 	isImported: boolean;
 	clockData?: ClockData | null;
 	emailDraft?: EmailDraft | null;
+	generatedFiles?: GeneratedFile[];
 };
 
 interface ConvexMessage {
@@ -72,6 +75,7 @@ function mapAiMessageToDisplayMessage(params: {
 
 	const clockData = collectClockDataFromParts(msg.parts);
 	const emailDraft = collectEmailDraftFromParts(msg.parts);
+	const generatedFiles = collectGeneratedFilesFromParts(msg.parts);
 
 	return {
 		id: msg.id,
@@ -81,6 +85,7 @@ function mapAiMessageToDisplayMessage(params: {
 		isImported: importedById[msg.id] ?? false,
 		clockData,
 		emailDraft,
+		generatedFiles,
 	};
 }
 
