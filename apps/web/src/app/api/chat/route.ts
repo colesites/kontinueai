@@ -49,6 +49,12 @@ export const maxDuration = 60;
 // Longest we wait for recalled memories before answering without them.
 const MEMORY_CONTEXT_TIMEOUT_MS = 1500;
 
+/**
+ * Chat completion endpoint. Authenticates the caller, enforces plan access and
+ * usage limits, gathers memory and web-search context, then streams the model
+ * response (K-AI/Kode via OpenRouter, everything else via the AI Gateway) as a
+ * UI message stream.
+ */
 export async function POST(req: Request) {
 	try {
 		const { userId, hasPlan, getToken } = await getAuthContext();
