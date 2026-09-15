@@ -1,7 +1,17 @@
-import { ImageIcon, X } from "lucide-react";
-import Image from "next/image";
+import { FileText, Music, Play, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+/** Formats a byte count as a short human-readable size (B, KB, MB). */
+function formatBytes(bytes: number) {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Compact preview tile for a pending chat attachment: a thumbnail for images
+ * and videos, or a small name/type card for other files, with a remove button.
+ */
 export function AttachmentPreview({
 	file,
 	onRemove,
@@ -9,34 +19,23 @@ export function AttachmentPreview({
 	file: File;
 	onRemove: () => void;
 }) {
-	const fileExt = file.name.split(".").pop()?.toUpperCase() ?? "";
+	const fileExt = file.name.includes(".")
+		? (file.name.split(".").pop()?.toUpperCase() ?? "")
+		: "";
 	const isImage =
 		file.type.startsWith("image/") ||
 		/\.(png|jpe?g|webp|gif|bmp|svg|heic|heif)$/i.test(file.name);
 	const isVideo = file.type.startsWith("video/");
 	const isAudio = file.type.startsWith("audio/");
-	const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-	const isText =
-		file.type.startsWith("text/") ||
-		[
-			"application/json",
-			"application/xml",
-			"application/x-yaml",
-			"text/xml",
-		].includes(file.type) ||
-		/\.(txt|md|markdown|csv|json|xml|yml|yaml|log|ini|conf|env|toml)$/i.test(
-			file.name,
-		);
-	const [imageError, setImageError] = useState(false);
-	const [textPreview, setTextPreview] = useState<string | null>(null);
+	const [mediaError, setMediaError] = useState(false);
 	const objectUrl = useMemo(() => {
-		if (!isImage && !isVideo && !isAudio && !isPdf) return null;
+		if (!isImage && !isVideo) return null;
 		try {
 			return URL.createObjectURL(file);
 		} catch {
 			return null;
 		}
-	}, [file, isImage, isVideo, isAudio, isPdf]);
+	}, [file, isImage, isVideo]);
 
 	useEffect(() => {
 		return () => {
@@ -46,97 +45,77 @@ export function AttachmentPreview({
 		};
 	}, [objectUrl]);
 
-	useEffect(() => {
-		if (!isText) return;
+	const removeButton = (
+		<button
+			type="button"
+			onClick={onRemove}
+			className="absolute -right-1.5 -top-1.5 z-10 flex h-6 w-6 touch-manipulation items-center justify-center rounded-full bg-background text-foreground shadow-sm ring-1 ring-border transition-colors after:absolute after:-inset-2 after:content-[''] hover:bg-destructive hover:text-destructive-foreground"
+			title="Remove file"
+			aria-label={`Remove ${file.name}`}
+		>
+			<X className="h-3.5 w-3.5" />
+		</button>
+	);
 
-		const reader = new FileReader();
-		reader.onload = () => {
-			const text = typeof reader.result === "string" ? reader.result : "";
-			setTextPreview(text.slice(0, 800));
-		};
-		reader.onerror = () => setTextPreview(null);
-		reader.readAsText(file.slice(0, 2000));
-	}, [file, isText]);
+	// Media: thumbnail only, like Claude. The name lives in the tooltip.
+	if ((isImage || isVideo) && objectUrl && !mediaError) {
+		return (
+			<div
+				className="relative h-16 w-16 shrink-0"
+				title={`${file.name} · ${formatBytes(file.size)}`}
+			>
+				<div className="relative h-full w-full overflow-hidden rounded-xl border border-border/60 bg-muted">
+					{isImage ? (
+						// biome-ignore lint/performance/noImgElement: blob URLs can't go through next/image optimization.
+						<img
+							src={objectUrl}
+							alt={file.name}
+							className="h-full w-full object-cover"
+							onError={() => setMediaError(true)}
+						/>
+					) : (
+						<>
+							{/* Play badge sits underneath so codecs that never paint a frame (e.g. HEVC .mov) don't leave a blank tile. */}
+							<div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+								<Play className="h-5 w-5" />
+							</div>
+							{/* #t=0.1 makes mobile Safari/Chrome paint the first frame with preload="metadata". */}
+							<video
+								src={`${objectUrl}#t=0.1`}
+								className="relative h-full w-full object-cover"
+								muted
+								playsInline
+								preload="metadata"
+								onError={() => setMediaError(true)}
+							/>
+						</>
+					)}
+				</div>
+				{removeButton}
+			</div>
+		);
+	}
 
+	// Documents: compact card with a truncated name and type.
+	const Icon = isAudio ? Music : FileText;
 	return (
-		<div className="group surface-card relative flex min-w-[240px] max-w-[360px] items-center gap-3 rounded-xl p-2.5 pr-9">
-			{isImage && objectUrl && !imageError ? (
-				<Image
-					src={objectUrl}
-					alt={file.name}
-					width={64}
-					height={64}
-					className="h-16 w-16 rounded-lg border border-border/60 object-cover"
-					onError={() => setImageError(true)}
-				/>
-			) : isVideo && objectUrl && !imageError ? (
-				<video
-					src={objectUrl}
-					className="h-16 w-16 rounded-lg border border-border/60 object-cover"
-					muted
-					playsInline
-					preload="metadata"
-					onError={() => setImageError(true)}
-				/>
-			) : isPdf && objectUrl && !imageError ? (
-				<embed
-					src={objectUrl}
-					type="application/pdf"
-					className="h-20 w-16 rounded-lg border border-border/60 bg-background/80"
-					onError={() => setImageError(true)}
-				/>
-			) : isText ? (
-				<div className="flex h-20 w-16 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground">
-					<span className="text-[10px] font-semibold tracking-wide text-muted-foreground/80">
-						TEXT
-					</span>
-				</div>
-			) : isAudio && objectUrl && !imageError ? (
-				<div className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground">
-					<ImageIcon className="h-5 w-5" />
-					<span className="mt-1 text-[10px] font-semibold tracking-wide text-muted-foreground/80">
-						AUDIO
-					</span>
-				</div>
-			) : (
-				<div className="flex h-16 w-16 flex-col items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground">
-					<ImageIcon className="h-5 w-5" />
-					<span className="mt-1 text-[10px] font-semibold tracking-wide text-muted-foreground/80">
-						{fileExt || "FILE"}
-					</span>
-				</div>
-			)}
+		<div
+			className="surface-card relative flex h-16 w-44 shrink-0 items-center gap-2 rounded-xl p-2 pr-3"
+			title={file.name}
+		>
+			<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/60 bg-background/80 text-muted-foreground">
+				<Icon className="h-4 w-4" />
+			</div>
 			<div className="min-w-0 flex-1">
-				<div className="truncate text-sm font-medium text-foreground">
+				<div className="truncate text-xs font-medium text-foreground">
 					{file.name}
 				</div>
-				<div className="text-xs text-muted-foreground">
-					{(file.size / 1024).toFixed(1)}KB
+				<div className="truncate text-[11px] text-muted-foreground">
+					{fileExt ? `${fileExt} · ` : ""}
+					{formatBytes(file.size)}
 				</div>
-				{isText && textPreview && (
-					<div className="mt-2 line-clamp-3 whitespace-pre-wrap rounded-md border border-border/60 bg-background/70 px-2 py-1 text-[11px] leading-snug text-muted-foreground">
-						{textPreview}
-					</div>
-				)}
-				{isAudio && objectUrl && !imageError && (
-					// biome-ignore lint/a11y/useMediaCaption: local user attachments do not have a caption track.
-					<audio
-						src={objectUrl}
-						controls
-						preload="metadata"
-						className="mt-2 h-8 w-full"
-						onError={() => setImageError(true)}
-					/>
-				)}
 			</div>
-			<button
-				type="button"
-				onClick={onRemove}
-				className="absolute right-2 top-2 rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-				title="Remove file"
-			>
-				<X className="h-3.5 w-3.5" />
-			</button>
+			{removeButton}
 		</div>
 	);
 }
