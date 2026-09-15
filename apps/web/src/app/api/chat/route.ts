@@ -46,6 +46,9 @@ import {
 
 export const maxDuration = 60;
 
+// Longest we wait for recalled memories before answering without them.
+const MEMORY_CONTEXT_TIMEOUT_MS = 1500;
+
 export async function POST(req: Request) {
 	try {
 		const { userId, hasPlan, getToken } = await getAuthContext();
@@ -199,6 +202,39 @@ export async function POST(req: Request) {
 				},
 			);
 		}
+		// Memory context is best-effort: start it now so it runs alongside the
+		// usage gate, and cap its wait so a slow or failing embedding call never
+		// holds back the first token.
+		const memoryContextPromise = (async (): Promise<string | null> => {
+			if (!chatId || !lastUserContent.trim()) return null;
+			let timer: ReturnType<typeof setTimeout> | undefined;
+			try {
+				const memoryContext = await Promise.race([
+					fetchAction(
+						convexApi.memoryWorkers.getChatMemoryContext,
+						{
+							chatId: chatId as Id<"chats">,
+							userMessage: lastUserContent,
+						},
+						{ token: convexToken },
+					),
+					new Promise<null>((resolve) => {
+						timer = setTimeout(() => {
+							console.warn("[chat-debug] memory context timed out", {
+								timeoutMs: MEMORY_CONTEXT_TIMEOUT_MS,
+							});
+							resolve(null);
+						}, MEMORY_CONTEXT_TIMEOUT_MS);
+					}),
+				]);
+				return memoryContext?.contextText ?? null;
+			} catch (error) {
+				logDetailedError("Memory context fetch failed", error);
+				return null;
+			} finally {
+				clearTimeout(timer);
+			}
+		})();
 		try {
 			await fetchMutation(
 				convexApi.messages.consumeChatRequest,
@@ -234,23 +270,7 @@ export async function POST(req: Request) {
 		// not to search costs the user nothing, and a turn where it decides on its
 		// own to search is charged exactly like a toggled one.
 		const [memoryContextText, searchQuotaExhausted] = await Promise.all([
-			(async (): Promise<string | null> => {
-				if (!chatId || !lastUserContent.trim()) return null;
-				try {
-					const memoryContext = await fetchAction(
-						convexApi.memoryWorkers.getChatMemoryContext,
-						{
-							chatId: chatId as Id<"chats">,
-							userMessage: lastUserContent,
-						},
-						{ token: convexToken },
-					);
-					return memoryContext?.contextText ?? null;
-				} catch (error) {
-					logDetailedError("Memory context fetch failed", error);
-					return null;
-				}
-			})(),
+			memoryContextPromise,
 			(async (): Promise<boolean> => {
 				if (webSearchPolicy.mode === "off") return false;
 				try {
@@ -474,7 +494,13 @@ export async function POST(req: Request) {
 			messageCount: modelMessages.length,
 		});
 
-		return streamText(streamOptions).toUIMessageStreamResponse({
+		return streamText({
+			...streamOptions,
+			// OpenRouter already fails over across the K-AI/Kode chain server-side,
+			// so the SDK's default 2 retries (2s + 4s backoff) mostly add dead air
+			// before the first token when the free tier is rate limited.
+			...(usingOpenRouter ? { maxRetries: 1 } : {}),
+		}).toUIMessageStreamResponse({
 			onError: (error) => {
 				logDetailedError("UI message stream error", error);
 				// Map the real (logged) cause to a stable, user-safe message the client
