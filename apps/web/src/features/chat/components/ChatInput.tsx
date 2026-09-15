@@ -27,7 +27,7 @@ import {
 import { useFileAttachments } from "../hooks/use-file-attachments";
 import { useSpeechInput } from "../hooks/use-speech-input";
 import type { ChatInputProps } from "../types";
-import { ChatInputBodyExtras } from "./ChatInputBodyExtras";
+import { AttachmentTray, ChatInputBodyExtras } from "./ChatInputBodyExtras";
 import { ChatInputTools } from "./ChatInputTools";
 import { LiveVoiceDialog } from "./LiveVoiceDialog";
 import { MentionInput, type MentionInputHandle } from "./MentionInput";
@@ -194,6 +194,10 @@ export function ChatInput({
 					onValueChange={setInputValue}
 				>
 					<PromptInputBody>
+						<AttachmentTray
+							attachedFiles={attachedFiles}
+							onRemoveFile={removeFile}
+						/>
 						<div className="px-2 pt-1.5">
 							<MentionInput
 								ref={inputRef}
@@ -208,8 +212,6 @@ export function ChatInput({
 						<ChatInputBodyExtras
 							isListening={isListening}
 							activeRecognitionLanguage={activeRecognitionLanguage}
-							attachedFiles={attachedFiles}
-							onRemoveFile={removeFile}
 						/>
 					</PromptInputBody>
 					<PromptInputFooter>
