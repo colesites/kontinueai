@@ -24,6 +24,7 @@ interface ChatInputProps {
 interface ChatMessageProps {
 	role: "user" | "assistant" | "system";
 	content: string;
+	reasoningText?: string;
 	/** Data URLs or http(s) URLs for generated/attached images */
 	imageParts?: string[];
 	/** Time-tool result; when present, the message renders a clock widget */

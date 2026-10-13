@@ -42,8 +42,10 @@ interface UseChatMessagingProps {
 	getState: () => {
 		selectedModel: string;
 		webSearchEnabled: boolean;
+		reasoningEnabled?: boolean;
 		imageAspectRatio: string;
 		imageSize: string | null;
+		agentId?: string | null;
 	};
 }
 

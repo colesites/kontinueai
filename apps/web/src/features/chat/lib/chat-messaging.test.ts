@@ -33,11 +33,12 @@ describe("getChatErrorToast", () => {
 		});
 	});
 
-	test("includes chatId in chat request payload", () => {
+	test("includes chatId and reasoningEnabled in chat request payload", () => {
 		const body = toChatRequestBody(
 			{
 				selectedModel: "openai/gpt-5.5",
 				webSearchEnabled: true,
+				reasoningEnabled: false,
 				imageAspectRatio: "1:1",
 				imageSize: "1024x1024",
 			},
@@ -47,5 +48,6 @@ describe("getChatErrorToast", () => {
 		expect(body.chatId).toBe("chat_123");
 		expect(body.model).toBe("openai/gpt-5.5");
 		expect(body.webSearchEnabled).toBe(true);
+		expect(body.reasoningEnabled).toBe(false);
 	});
 });

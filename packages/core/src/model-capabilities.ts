@@ -9,6 +9,25 @@ export type ModelCapability =
 
 import type { AiGatewayModel } from "./model-pricing";
 
+export function isReasoningModelId(modelId: string): boolean {
+  const lower = modelId.toLowerCase();
+  return (
+    lower === "kontinue/k-ai-1.0" ||
+    lower.includes("reasoning") ||
+    lower.includes("thinking") ||
+    lower.includes("/o1") ||
+    lower.includes("/o3") ||
+    lower.includes("/o4-mini") ||
+    lower.includes("-r1") ||
+    lower.includes("qwq") ||
+    lower.includes("claude-3-7-sonnet") ||
+    lower.includes("claude-3.7-sonnet") ||
+    lower.includes("gemini-2.5-pro") ||
+    lower.includes("gemini-2.5-flash") ||
+    lower.includes("gemini-4")
+  );
+}
+
 export function deriveCapabilities(model: AiGatewayModel): ModelCapability[] {
   const caps = new Set<ModelCapability>();
 
@@ -23,12 +42,16 @@ export function deriveCapabilities(model: AiGatewayModel): ModelCapability[] {
     }
   }
 
+  // Fallback pattern matching for models with native reasoning capabilities
+  if (isReasoningModelId(model.id)) {
+    caps.add("thinking");
+  }
+
   const pricing = model.pricing ?? {};
   if (pricing && typeof pricing === "object") {
     if ("input_cache_write" in pricing) caps.add("explicit-caching");
     if ("input_cache_read" in pricing) {
-      // This doesn't necessarily imply implicit caching, but it indicates cache reads are supported.
-      // We'll still use the dedicated tag for implicit caching.
+      // Indicates cache reads are supported.
     }
     const webSearch = (pricing as Record<string, unknown>).web_search;
     if (
@@ -59,12 +82,11 @@ export async function fetchAiGatewayModels(): Promise<AiGatewayModel[]> {
 
   const res = await fetch("https://ai-gateway.vercel.sh/v1/models");
   if (!res.ok) {
-    // If we have stale data, return it rather than throwing
-    if (_cachedModels) return _cachedModels;
-    throw new Error(`Failed to fetch AI Gateway models: ${res.status}`);
+    throw new Error(`Failed to fetch models: ${res.statusText}`);
   }
-  const json = (await res.json()) as { data?: AiGatewayModel[] };
-  _cachedModels = json.data ?? [];
+
+  const data = (await res.json()) as { data: AiGatewayModel[] };
+  _cachedModels = data.data;
   _cacheExpiry = now + CACHE_TTL_MS;
   return _cachedModels;
 }

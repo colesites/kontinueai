@@ -23,11 +23,7 @@ function ClerkWrapper({ children }: { children: React.ReactNode }) {
 }
 
 export function Providers({ children }: { children: React.ReactNode }) {
-	return (
-		<ThemeProviders>
-			<ClerkWrapper>{children}</ClerkWrapper>
-		</ThemeProviders>
-	);
+	return <ClerkWrapper>{children}</ClerkWrapper>;
 }
 
 export function ThemeProviders({ children }: { children: React.ReactNode }) {

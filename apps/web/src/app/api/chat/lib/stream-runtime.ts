@@ -103,6 +103,9 @@ export function stopWhenOutputBudgetReached(
 
 type BuildStreamOptionsInput = {
 	model: LanguageModel;
+	modelId?: string;
+	provider?: string;
+	reasoningEnabled?: boolean;
 	systemPrompt: string;
 	modelMessages: ModelMessage[];
 	maxOutputTokens: number;
@@ -123,6 +126,9 @@ type BuildStreamOptionsInput = {
 export function buildStreamOptions(options: BuildStreamOptionsInput) {
 	const {
 		model,
+		modelId,
+		provider,
+		reasoningEnabled,
 		systemPrompt,
 		modelMessages,
 		maxOutputTokens,
@@ -137,11 +143,50 @@ export function buildStreamOptions(options: BuildStreamOptionsInput) {
 
 	let webSearchCallCount = 0;
 
+	const effectiveSystemPrompt =
+		reasoningEnabled === false
+			? `${systemPrompt}\n\n[REASONING DISABLED]: Thinking mode is turned OFF by the user. Do not produce reasoning tokens or chain-of-thought. Answer directly and concisely.`
+			: systemPrompt;
+
 	return {
 		model,
-		system: systemPrompt,
+		system: effectiveSystemPrompt,
 		messages: modelMessages,
 		maxTokens: maxOutputTokens,
+		providerOptions: {
+			...(provider === "openai" || modelId?.startsWith("openai/")
+				? {
+						openai: {
+							reasoningEffort: reasoningEnabled === false ? "low" : "medium",
+						},
+					}
+				: {}),
+			...(provider === "anthropic" || modelId?.startsWith("anthropic/")
+				? {
+						anthropic: {
+							thinking:
+								reasoningEnabled === false
+									? { type: "disabled" }
+									: { type: "enabled", budgetTokens: 2048 },
+						},
+					}
+				: {}),
+			...(provider === "google" || modelId?.startsWith("google/")
+				? {
+						google: {
+							thinkingConfig: {
+								thinkingBudget: reasoningEnabled === false ? 0 : undefined,
+							},
+						},
+					}
+				: {}),
+			openrouter: {
+				reasoning: {
+					effort: reasoningEnabled === false ? "none" : "medium",
+					enabled: reasoningEnabled !== false,
+				},
+			},
+		},
 		tools: shouldDisableTools ? undefined : hasTools ? tools : undefined,
 		...(forceImageTool
 			? {

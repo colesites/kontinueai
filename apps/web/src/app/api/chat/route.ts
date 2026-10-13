@@ -71,6 +71,7 @@ export async function POST(req: Request) {
 			messages,
 			modelId,
 			webSearchEnabled: requestedWebSearchEnabled,
+			reasoningEnabled,
 			imageAspectRatio,
 			imageSize,
 			userTimezone,
@@ -432,6 +433,9 @@ export async function POST(req: Request) {
 		const modelMessages = await convertToModelMessages(messagesForModel);
 		const streamOptions = buildStreamOptions({
 			model: modelInstance,
+			modelId,
+			provider: toolsConfig.provider,
+			reasoningEnabled,
 			systemPrompt: toolsConfig.systemPrompt,
 			modelMessages,
 			maxOutputTokens,
@@ -507,6 +511,7 @@ export async function POST(req: Request) {
 			// before the first token when the free tier is rate limited.
 			...(usingOpenRouter ? { maxRetries: 1 } : {}),
 		}).toUIMessageStreamResponse({
+			sendReasoning: reasoningEnabled !== false,
 			onError: (error) => {
 				logDetailedError("UI message stream error", error);
 				// Map the real (logged) cause to a stable, user-safe message the client

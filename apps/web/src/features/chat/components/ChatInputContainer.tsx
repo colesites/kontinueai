@@ -16,6 +16,8 @@ type ChatInputContainerProps = {
 	onModelChange: (model: string) => void;
 	webSearchEnabled: boolean;
 	onWebSearchToggle: () => void;
+	reasoningEnabled?: boolean;
+	onReasoningToggle?: () => void;
 	imageAspectRatio: string;
 	imageSize: string | null;
 	onImageAspectRatioChange: (val: string) => void;
@@ -39,6 +41,8 @@ export function ChatInputContainer({
 	onModelChange,
 	webSearchEnabled,
 	onWebSearchToggle,
+	reasoningEnabled = true,
+	onReasoningToggle,
 	imageAspectRatio,
 	imageSize,
 	onImageAspectRatioChange,
@@ -105,6 +109,8 @@ export function ChatInputContainer({
 					onModelChange={onModelChange}
 					webSearchEnabled={webSearchEnabled}
 					onWebSearchToggle={onWebSearchToggle}
+					reasoningEnabled={reasoningEnabled}
+					onReasoningToggle={onReasoningToggle}
 					imageAspectRatio={imageAspectRatio}
 					imageSize={imageSize}
 					onImageAspectRatioChange={onImageAspectRatioChange}

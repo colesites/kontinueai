@@ -17,6 +17,7 @@ import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePlanTier } from "../../../lib/use-plan-tier";
+import { useReasoningPreference } from "./useReasoningPreference";
 import { useWebSearchPreference } from "./useWebSearchPreference";
 
 export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
@@ -35,6 +36,7 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
 	// chat, a closed tab, and follows the user to their other devices.
 	const { webSearchEnabled: persistedWebSearchEnabled, toggleWebSearch } =
 		useWebSearchPreference();
+	const { reasoningEnabled, toggleReasoning } = useReasoningPreference();
 	const [imageAspectRatio, setImageAspectRatio] = useState<string>("auto");
 	const [imageSize, setImageSize] = useState<string | null>(null);
 
@@ -147,6 +149,8 @@ export function useChatState({ chatId }: { chatId: Id<"chats"> }) {
 				? persistedWebSearchEnabled
 				: false,
 		toggleWebSearch,
+		reasoningEnabled,
+		toggleReasoning,
 		imageAspectRatio,
 		setImageAspectRatio,
 		imageSize,

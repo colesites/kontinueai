@@ -8,6 +8,7 @@ export type ChatRouteInput = {
 	messages: UIMessage[];
 	modelId: string;
 	webSearchEnabled: boolean;
+	reasoningEnabled?: boolean;
 	imageAspectRatio: string | null;
 	imageSize: string | null;
 	userTimezone: string | null;
@@ -43,6 +44,7 @@ export async function parseChatRouteInput(
 		messages: UIMessage[];
 		model?: string;
 		webSearchEnabled?: boolean;
+		reasoningEnabled?: boolean;
 		imageAspectRatio?: string | null;
 		imageSize?: string | null;
 		userTimezone?: string | null;
@@ -57,6 +59,7 @@ export async function parseChatRouteInput(
 		messages: body.messages,
 		modelId: body.model ?? FREE_DEFAULT_MODEL_ID,
 		webSearchEnabled: !!body.webSearchEnabled,
+		reasoningEnabled: body.reasoningEnabled !== false,
 		imageAspectRatio: body.imageAspectRatio ?? null,
 		imageSize: body.imageSize ?? null,
 		userTimezone:

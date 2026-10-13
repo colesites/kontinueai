@@ -15,6 +15,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useReasoningPreference } from "../../chat/hooks/useReasoningPreference";
 import { useWebSearchPreference } from "../../chat/hooks/useWebSearchPreference";
 import { getImportStrategy } from "../../import/lib/import-strategy";
 import { MODEL_PROVIDER_MAP } from "../lib/model-provider-map";
@@ -47,6 +48,7 @@ export function useHomePageActions() {
 	// Persisted on the account so the state carries into the chat the user is
 	// about to start, and into their next session on any device.
 	const { webSearchEnabled, toggleWebSearch } = useWebSearchPreference();
+	const { reasoningEnabled, toggleReasoning } = useReasoningPreference();
 	const [imageAspectRatio, setImageAspectRatio] = useState("auto");
 	const [imageSize, setImageSize] = useState<string | null>(null);
 	const [agentId, setAgentId] = useState<string | null>(null);
@@ -211,6 +213,8 @@ export function useHomePageActions() {
 		webSearchEnabled:
 			isPaidPlan || isKaiModel(selectedModel) ? webSearchEnabled : false,
 		toggleWebSearch,
+		reasoningEnabled,
+		toggleReasoning,
 		imageAspectRatio,
 		setImageAspectRatio,
 		imageSize,

@@ -89,6 +89,7 @@ function ChatClientContent() {
 		getState: () => ({
 			selectedModel: chatState.selectedModel,
 			webSearchEnabled: chatState.webSearchEnabled,
+			reasoningEnabled: chatState.reasoningEnabled,
 			imageAspectRatio: chatState.imageAspectRatio,
 			imageSize: chatState.imageSize,
 			agentId,
@@ -221,6 +222,8 @@ function ChatClientContent() {
 				onModelChange={(next) => chatState.setUserSelectedModel(next)}
 				webSearchEnabled={chatState.webSearchEnabled}
 				onWebSearchToggle={chatState.toggleWebSearch}
+				reasoningEnabled={chatState.reasoningEnabled}
+				onReasoningToggle={chatState.toggleReasoning}
 				imageAspectRatio={chatState.imageAspectRatio}
 				imageSize={chatState.imageSize}
 				onImageAspectRatioChange={chatState.setImageAspectRatio}

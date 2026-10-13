@@ -2,10 +2,30 @@ import type { ModelOption } from "./models";
 
 export const GOOGLE_MODELS: ModelOption[] = [
   {
+    id: "google/gemini-3.8-live",
+    name: "Gemini 3.8 Live",
+    provider: "google",
+    description: "Realtime live voice conversation model with low latency and streaming audio",
+    modality: "realtime",
+  },
+  {
+    id: "google/gemini-3.8-live-extended-thinking",
+    name: "Gemini 3.8 Live Extended Thinking",
+    provider: "google",
+    description: "Live realtime voice model with on-the-fly deep reasoning",
+    modality: "realtime",
+  },
+  {
+    id: "google/gemini-4-argon",
+    name: "Gemini 4 Argon",
+    provider: "google",
+    description: "Next-gen flagship model",
+  },
+  {
     id: "google/gemini-3.8-flash",
     name: "Gemini 3.8 Flash",
     provider: "google",
-    description: "Pro-level agentic capability at Flash speed and cost",
+    description: "Fast model with pro-level capability at Flash speed",
   },
   {
     id: "google/gemini-3.7-flash",
@@ -14,10 +34,22 @@ export const GOOGLE_MODELS: ModelOption[] = [
     description: "High-efficiency model for agentic work and everyday tasks",
   },
   {
+    id: "google/gemini-3.6-flash",
+    name: "Gemini 3.6 Flash",
+    provider: "google",
+    description: "Fast frontier-class model optimized for reasoning and agentic workflows",
+  },
+  {
     id: "google/gemini-3.5-flash",
     name: "Gemini 3.5 Flash",
     provider: "google",
-    description: "Google's latest model, highly optimized for coding proficiency",
+    description: "Highly optimized model for coding proficiency and efficiency",
+  },
+  {
+    id: "google/gemini-3.5-flash-lite",
+    name: "Gemini 3.5 Flash Lite",
+    provider: "google",
+    description: "Ultra-lightweight high-speed model for cost-effective tasks",
   },
   {
     id: "google/gemini-3.1-pro-preview",
@@ -32,10 +64,22 @@ export const GOOGLE_MODELS: ModelOption[] = [
     description: "Fast, cost-efficient model for high-volume workloads",
   },
   {
+    id: "google/gemini-nano-banana-2.1",
+    name: "Nano Banana 2.1",
+    provider: "google",
+    description: "Upgraded multimodal model for responsive image generation and vision understanding",
+  },
+  {
     id: "google/gemini-3.1-flash-image-preview",
     name: "Nano Banana 2",
     provider: "google",
     description: "Fast, cost-efficient model for image generation and understanding",
+  },
+  {
+    id: "google/gemini-omni-flash-preview",
+    name: "Gemini Omni Flash Preview",
+    provider: "google",
+    description: "Native multimodal model for unified text, vision, and audio reasoning",
   },
   {
     id: "google/gemini-3-flash",
@@ -60,6 +104,12 @@ export const GOOGLE_MODELS: ModelOption[] = [
     name: "Gemini 2.5 Flash",
     provider: "google",
     description: "Fast, efficient model for everyday AI tasks",
+  },
+  {
+    id: "google/gemini-2.5-flash-lite",
+    name: "Gemini 2.5 Flash Lite",
+    provider: "google",
+    description: "Compact, economical model for lightweight high-volume requests",
   },
   {
     id: "google/gemini-2.5-flash-image",

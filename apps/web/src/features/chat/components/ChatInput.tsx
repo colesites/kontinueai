@@ -42,6 +42,8 @@ export function ChatInput({
 	onModelChange,
 	webSearchEnabled = false,
 	onWebSearchToggle,
+	reasoningEnabled = true,
+	onReasoningToggle,
 	imageAspectRatio = "auto",
 	imageSize = null,
 	onImageAspectRatioChange,
@@ -54,6 +56,8 @@ export function ChatInput({
 }: ChatInputProps & {
 	webSearchEnabled?: boolean;
 	onWebSearchToggle?: () => void;
+	reasoningEnabled?: boolean;
+	onReasoningToggle?: () => void;
 	imageAspectRatio?: string;
 	imageSize?: string | null;
 	onImageAspectRatioChange?: (value: string) => void;
@@ -128,12 +132,20 @@ export function ChatInput({
 	// gated behind paid plans like the gateway models' Perplexity search.
 	const isKaiSearch = isKaiModel(model);
 	const canSearch =
-		!!selectedModelData &&
-		getCapabilities(selectedModelData.id).includes("web-search");
+		isKaiSearch ||
+		getCapabilities(model).includes("web-search") ||
+		(!!selectedModelData &&
+			getCapabilities(selectedModelData.id).includes("web-search"));
+	const canReason =
+		isKaiSearch ||
+		getCapabilities(model).includes("thinking") ||
+		(!!selectedModelData &&
+			getCapabilities(selectedModelData.id).includes("thinking"));
 	const canGenerateImage =
 		canUsePaidFeatures &&
-		!!selectedModelData &&
-		getCapabilities(selectedModelData.id).includes("image-generation");
+		(getCapabilities(model).includes("image-generation") ||
+			(!!selectedModelData &&
+				getCapabilities(selectedModelData.id).includes("image-generation")));
 
 	const {
 		isListening,
@@ -227,6 +239,9 @@ export function ChatInput({
 							}
 							onWebSearchToggle={onWebSearchToggle}
 							canSearch={canSearch}
+							reasoningEnabled={reasoningEnabled}
+							onReasoningToggle={onReasoningToggle}
+							canReason={canReason}
 							canGenerateImage={canGenerateImage}
 							fileInputRef={fileInputRef}
 							onAttachClick={handleAttachClick}

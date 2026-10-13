@@ -90,6 +90,7 @@ export function ChatMessageList({
 						<ChatMessage
 							role={message.role}
 							content={message.content}
+							reasoningText={message.reasoningText}
 							imageParts={message.imageParts}
 							clockData={message.clockData}
 							emailDraft={message.emailDraft}

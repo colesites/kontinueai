@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@repo/ui/lib/utils";
+import { Brain, ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { GeneratedFile } from "../lib/message-transformer";
 import type { ChatMessageProps } from "../types";
@@ -14,9 +15,59 @@ import { MessageContent } from "./MessageContent";
 const EMPTY_IMAGE_PARTS: string[] = [];
 const EMPTY_GENERATED_FILES: GeneratedFile[] = [];
 
+function ThinkingAccordion({
+	reasoningText,
+	isStreaming,
+	hasContent,
+}: {
+	reasoningText: string;
+	isStreaming?: boolean;
+	hasContent: boolean;
+}) {
+	const [isOpen, setIsOpen] = useState(isStreaming && !hasContent);
+
+	useEffect(() => {
+		if (isStreaming && !hasContent) {
+			setIsOpen(true);
+		}
+	}, [isStreaming, hasContent]);
+
+	return (
+		<div className="mb-3 rounded-xl border border-foreground/10 bg-foreground/[0.03] text-xs not-prose">
+			<button
+				type="button"
+				onClick={() => setIsOpen(!isOpen)}
+				className="flex w-full items-center gap-2 px-3 py-2 text-left text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+			>
+				<Brain
+					className={cn(
+						"h-3.5 w-3.5 shrink-0",
+						isStreaming && !hasContent && "animate-pulse text-primary",
+					)}
+				/>
+				<span className="font-medium">
+					{isStreaming && !hasContent ? "Thinking..." : "Thought process"}
+				</span>
+				<ChevronDown
+					className={cn(
+						"ml-auto h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+						isOpen && "rotate-180",
+					)}
+				/>
+			</button>
+			{isOpen && (
+				<div className="border-t border-foreground/5 px-3 py-2 text-muted-foreground/90 whitespace-pre-wrap font-mono text-[11px] leading-relaxed max-h-60 overflow-y-auto">
+					{reasoningText}
+				</div>
+			)}
+		</div>
+	);
+}
+
 export function ChatMessage({
 	role,
 	content,
+	reasoningText,
 	imageParts = EMPTY_IMAGE_PARTS,
 	clockData,
 	emailDraft,
@@ -161,10 +212,18 @@ export function ChatMessage({
 								"prose-code:text-sm prose-code:bg-foreground/5 prose-code:px-1 prose-code:rounded prose-code:font-medium",
 							)}
 						>
+							{!isUser && !!reasoningText && (
+								<ThinkingAccordion
+									reasoningText={reasoningText}
+									isStreaming={isStreaming}
+									hasContent={!!content.trim()}
+								/>
+							)}
 							{content ? (
 								<MessageContent content={content} isStreaming={isStreaming} />
 							) : !isUser &&
 								!isStreaming &&
+								!reasoningText &&
 								imageParts.length === 0 &&
 								!clockData &&
 								!emailDraft &&

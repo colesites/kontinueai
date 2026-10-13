@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
 	deriveCapabilities,
 	fetchAiGatewayModels,
+	isReasoningModelId,
 	type ModelCapability,
 } from "./model-capabilities";
 import {
@@ -74,7 +75,11 @@ export function useModelCapabilities() {
 						"image-generation",
 					] as ModelCapability[];
 				}
-				return capabilitiesById[modelId] ?? [];
+				const caps = capabilitiesById[modelId] ?? [];
+				if (isReasoningModelId(modelId) && !caps.includes("thinking")) {
+					return [...caps, "thinking"];
+				}
+				return caps;
 			},
 			// K-AI is free for everyone — never gate it as a premium/pro model.
 			isProModel: (modelId: string) =>

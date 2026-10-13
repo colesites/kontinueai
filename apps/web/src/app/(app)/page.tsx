@@ -14,6 +14,8 @@ export default function HomePage() {
 		setSelectedModel,
 		webSearchEnabled,
 		toggleWebSearch,
+		reasoningEnabled,
+		toggleReasoning,
 		imageAspectRatio,
 		setImageAspectRatio,
 		imageSize,
@@ -77,6 +79,8 @@ export default function HomePage() {
 								onModelChange={setSelectedModel}
 								webSearchEnabled={webSearchEnabled}
 								onWebSearchToggle={toggleWebSearch}
+								reasoningEnabled={reasoningEnabled}
+								onReasoningToggle={toggleReasoning}
 								imageAspectRatio={imageAspectRatio}
 								imageSize={imageSize}
 								onImageAspectRatioChange={setImageAspectRatio}

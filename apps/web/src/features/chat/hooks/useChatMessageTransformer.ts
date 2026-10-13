@@ -19,6 +19,7 @@ export type DisplayMessage = {
 	id: string;
 	role: "user" | "assistant";
 	content: string;
+	reasoningText?: string;
 	imageParts: string[];
 	isImported: boolean;
 	clockData?: ClockData | null;
@@ -57,17 +58,37 @@ function mapAiMessageToDisplayMessage(params: {
 	);
 	let content = textParts.map((part) => part.text).join("");
 
+	// Extract native AI SDK reasoning parts (type: "reasoning")
+	const reasoningParts = msg.parts.filter(
+		(part) => part.type === "reasoning",
+	) as Array<{ type: "reasoning"; text?: string; reasoning?: string }>;
+	let reasoningText = reasoningParts
+		.map((part) => part.text ?? part.reasoning ?? "")
+		.join("");
+
+	// Extract <think>...</think> tags if present in content (common with OpenRouter / open models)
+	if (/<think/i.test(content)) {
+		const thinkMatch = content.match(/<\s*think\s*>([\s\S]*?)(?:<\/\s*think\s*>|$)/i);
+		if (thinkMatch) {
+			const extracted = thinkMatch[1].trim();
+			if (extracted) {
+				reasoningText = reasoningText
+					? `${reasoningText}\n\n${extracted}`
+					: extracted;
+			}
+			content = content.replace(/<\s*think\s*>[\s\S]*?<\/\s*think\s*>/gi, "").trim();
+			if (/^<\s*think/i.test(content)) {
+				content = "";
+			}
+		}
+	}
+
 	const searchResults = collectPerplexitySearchResults(msg.parts);
 	if (!content.trim() && searchResults.length > 0) {
 		content = buildSearchFallbackContent(searchResults);
 	}
 
 	const imageParts = collectImageUrlsFromParts(msg.parts);
-	// NOTE: deliberately do NOT substitute a "no text returned" placeholder here.
-	// While streaming, an assistant message is momentarily empty (before the
-	// first token, or while only reasoning tokens have arrived), which made the
-	// placeholder flash on screen. The empty-state fallback is now decided at
-	// render time (ChatMessage), where streaming status is known.
 
 	const persisted = persistedImageUrlsByMessageId[msg.id] ?? [];
 	const stored = storedGeneratedImageUrlsByMessageId[msg.id] ?? [];
@@ -81,6 +102,7 @@ function mapAiMessageToDisplayMessage(params: {
 		id: msg.id,
 		role: msg.role as "user" | "assistant",
 		content,
+		reasoningText: reasoningText.trim() ? reasoningText.trim() : undefined,
 		imageParts: resolvedImages,
 		isImported: importedById[msg.id] ?? false,
 		clockData,

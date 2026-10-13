@@ -12,6 +12,7 @@ import {
 import { cn } from "@repo/ui/lib/utils";
 import {
 	Bot,
+	Brain,
 	Check,
 	ChevronLeft,
 	ChevronRight,
@@ -40,6 +41,9 @@ type ChatInputToolsProps = {
 	webSearchEnabled: boolean;
 	onWebSearchToggle?: () => void;
 	canSearch: boolean;
+	reasoningEnabled?: boolean;
+	onReasoningToggle?: () => void;
+	canReason?: boolean;
 	canGenerateImage: boolean;
 	fileInputRef: RefObject<HTMLInputElement | null>;
 	onAttachClick: () => void;
@@ -62,6 +66,9 @@ export function ChatInputTools({
 	webSearchEnabled,
 	onWebSearchToggle,
 	canSearch,
+	reasoningEnabled = true,
+	onReasoningToggle,
+	canReason = false,
 	canGenerateImage,
 	fileInputRef,
 	onAttachClick,
@@ -136,6 +143,22 @@ export function ChatInputTools({
 										{isWebSearchEnabled
 											? "Web Search (On)"
 											: "Web Search (Off)"}
+									</span>
+								</DropdownMenuItem>
+							)}
+							{canReason && (
+								<DropdownMenuItem
+									onClick={onReasoningToggle}
+									className={cn(
+										"cursor-pointer gap-2",
+										reasoningEnabled && "text-primary focus:text-primary",
+									)}
+								>
+									<Brain className="h-4 w-4" />
+									<span>
+										{reasoningEnabled
+											? "Thinking (On)"
+											: "Thinking (Off)"}
 									</span>
 								</DropdownMenuItem>
 							)}

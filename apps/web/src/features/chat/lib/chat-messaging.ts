@@ -3,6 +3,7 @@ import type { FileUIPart, UIMessage } from "ai";
 export type ChatRequestBodyState = {
 	selectedModel: string;
 	webSearchEnabled: boolean;
+	reasoningEnabled?: boolean;
 	imageAspectRatio: string;
 	imageSize: string | null;
 	agentId?: string | null;
@@ -144,6 +145,7 @@ export function toChatRequestBody(
 	chatId: string;
 	model: string;
 	webSearchEnabled: boolean;
+	reasoningEnabled?: boolean;
 	imageAspectRatio: string;
 	imageSize: string | null;
 	userTimezone: string | null;
@@ -153,6 +155,7 @@ export function toChatRequestBody(
 		chatId,
 		model: state.selectedModel,
 		webSearchEnabled: state.webSearchEnabled,
+		reasoningEnabled: state.reasoningEnabled,
 		imageAspectRatio: state.imageAspectRatio,
 		imageSize: state.imageSize,
 		userTimezone: getClientTimezone(),

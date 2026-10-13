@@ -2,6 +2,24 @@ import type { ModelOption } from "./models";
 
 export const ANTHROPIC_MODELS: ModelOption[] = [
   {
+    id: "anthropic/claude-opus-5.5",
+    name: "Claude Opus 5.5",
+    provider: "anthropic",
+    description: "Anthropic's latest and most capable model for complex reasoning and deep knowledge work",
+  },
+  {
+    id: "anthropic/claude-sonnet-5.5",
+    name: "Claude Sonnet 5.5",
+    provider: "anthropic",
+    description: "Next-generation balanced frontier model for high-performance coding and workflows",
+  },
+  {
+    id: "anthropic/claude-haiku-5.5",
+    name: "Claude Haiku 5.5",
+    provider: "anthropic",
+    description: "Ultra-fast, highly efficient 5.5-generation model for responsive agentic tasks",
+  },
+  {
     id: "anthropic/claude-fable-5.1",
     name: "Claude Fable 5.1",
     provider: "anthropic",
@@ -66,5 +84,11 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
     name: "Claude Haiku 4.5",
     provider: "anthropic",
     description: "Fast, lightweight model for simple everyday tasks",
+  },
+  {
+    id: "anthropic/claude-sonnet-4",
+    name: "Claude Sonnet 4",
+    provider: "anthropic",
+    description: "Reliable, balanced model for coding and general workflows",
   },
 ];
