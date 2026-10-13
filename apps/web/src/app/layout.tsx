@@ -54,10 +54,8 @@ export default function RootLayout({
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>
-				<script
-					id="initialize-color-theme"
-					dangerouslySetInnerHTML={{
-						__html: `(function() {
+				<script id="initialize-color-theme">
+					{`(function() {
 							try {
 								var stored = localStorage.getItem('theme');
 								var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -78,9 +76,8 @@ export default function RootLayout({
 									document.documentElement.removeAttribute('data-color-theme');
 								}
 							} catch (e) {}
-						})();`,
-					}}
-				/>
+						})();`}
+				</script>
 			</head>
 			<body className="antialiased bg-background text-foreground">
 				<ThemeProviders>
