@@ -59,7 +59,7 @@ export function useModelCapabilities() {
 
 	return useMemo(
 		() => ({
-			getCapabilities: (modelId: string) => {
+			getCapabilities: (modelId: string): ModelCapability[] => {
 				// K-AI is not a gateway model. Its underlying open-source models
 				// (Gemma, GPT-OSS) support reasoning, tool calling and web search, so
 				// advertise the full capability set.
@@ -73,7 +73,7 @@ export function useModelCapabilities() {
 						"thinking",
 						"web-search",
 						"image-generation",
-					] as ModelCapability[];
+					];
 				}
 				const caps = capabilitiesById[modelId] ?? [];
 				if (isReasoningModelId(modelId) && !caps.includes("thinking")) {
