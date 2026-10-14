@@ -106,20 +106,32 @@ export function useChatMessaging({
 		async (content: string, files?: File[]) => {
 			try {
 				const state = getState();
+				const requestBody = toChatRequestBody(state, chatId);
+				const nonImageFiles = nonImageAttachments(files);
+				const contentWithFiles = withAttachmentSummary(content, nonImageFiles);
 
-				await addMessage({
+				// Fire Convex message persistence in the background so sending feels instantaneous
+				const persistPromise = addMessage({
 					chatId,
 					role: "user",
 					content,
 					model: state.selectedModel,
 					isPremiumModel: getModelClass(state.selectedModel) !== "basic",
 					modelClass: getModelClass(state.selectedModel),
+				}).catch((err: unknown) => {
+					const convexError = err as ConvexRateLimitError;
+					if (convexError.data?.code?.includes("RATE_LIMIT")) {
+						toast.error(convexError.data.message);
+						stop();
+						return;
+					}
+					console.error("Failed to persist user message in Convex:", err);
 				});
-				const requestBody = toChatRequestBody(state, chatId);
-				const imageFileParts = await toImageFileUIParts(files);
-				const nonImageFiles = nonImageAttachments(files);
-				const contentWithFiles = withAttachmentSummary(content, nonImageFiles);
 
+				const imageFileParts = await toImageFileUIParts(files);
+
+				// Send immediately to AI SDK so user message renders with zero latency
+				// and status updates to "submitted" (Loading...) without any delay
 				await sendMessage(
 					imageFileParts.length > 0
 						? { text: contentWithFiles, files: imageFileParts }
@@ -128,6 +140,8 @@ export function useChatMessaging({
 						body: requestBody,
 					},
 				);
+
+				await persistPromise;
 			} catch (err: unknown) {
 				const convexError = err as ConvexRateLimitError;
 				if (convexError.data?.code?.includes("RATE_LIMIT")) {
@@ -137,7 +151,7 @@ export function useChatMessaging({
 				throw err;
 			}
 		},
-		[addMessage, chatId, getModelClass, sendMessage, getState],
+		[addMessage, chatId, getModelClass, sendMessage, getState, stop],
 	);
 
 	const handleRetry = useCallback(

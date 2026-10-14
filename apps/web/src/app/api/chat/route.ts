@@ -47,7 +47,7 @@ import {
 export const maxDuration = 60;
 
 // Longest we wait for recalled memories before answering without them.
-const MEMORY_CONTEXT_TIMEOUT_MS = 1500;
+const MEMORY_CONTEXT_TIMEOUT_MS = 800;
 
 /**
  * Chat completion endpoint. Authenticates the caller, enforces plan access and
@@ -244,15 +244,46 @@ export async function POST(req: Request) {
 				clearTimeout(timer);
 			}
 		})();
+		const consumeChatRequestPromise = fetchMutation(
+			convexApi.messages.consumeChatRequest,
+			{
+				model: modelId,
+				...(modelClass === "kai" ? {} : { modelClass }),
+			},
+			{ token: convexToken },
+		);
+
+		const quotaProbePromise = (async (): Promise<boolean> => {
+			if (webSearchPolicy.mode === "off") return false;
+			try {
+				const quota = await fetchQuery(
+					convexApi.webSearch.checkSearchQuota,
+					{},
+					{ token: convexToken },
+				);
+				console.log("[web-search] quota probe", {
+					used: quota.used,
+					limit: quota.limit,
+					reason: quota.reason,
+				});
+				return !quota.allowed;
+			} catch (error) {
+				logDetailedError("Web search quota probe failed", error);
+				return false;
+			}
+		})();
+
+		let memoryContextText: string | null = null;
+		let searchQuotaExhausted = false;
+
 		try {
-			await fetchMutation(
-				convexApi.messages.consumeChatRequest,
-				{
-					model: modelId,
-					...(modelClass === "kai" ? {} : { modelClass }),
-				},
-				{ token: convexToken },
-			);
+			const [_, memoryText, quotaExhausted] = await Promise.all([
+				consumeChatRequestPromise,
+				memoryContextPromise,
+				quotaProbePromise,
+			]);
+			memoryContextText = memoryText;
+			searchQuotaExhausted = quotaExhausted;
 		} catch (error) {
 			const data =
 				typeof error === "object" && error !== null && "data" in error
@@ -269,37 +300,6 @@ export async function POST(req: Request) {
 				},
 			});
 		}
-		// Two independent lookups before the model runs: the memory context for
-		// this message, and a quota probe for web search. Run them together so
-		// auto mode costs no extra latency over the old on/off gate.
-		//
-		// The probe deliberately does NOT spend anything. A search is charged when
-		// one actually runs — the K-AI pipeline charges on a real provider hit, the
-		// gateway tool from onStepFinish below — so a turn where the model decides
-		// not to search costs the user nothing, and a turn where it decides on its
-		// own to search is charged exactly like a toggled one.
-		const [memoryContextText, searchQuotaExhausted] = await Promise.all([
-			memoryContextPromise,
-			(async (): Promise<boolean> => {
-				if (webSearchPolicy.mode === "off") return false;
-				try {
-					const quota = await fetchQuery(
-						convexApi.webSearch.checkSearchQuota,
-						{},
-						{ token: convexToken },
-					);
-					console.log("[web-search] quota probe", {
-						used: quota.used,
-						limit: quota.limit,
-						reason: quota.reason,
-					});
-					return !quota.allowed;
-				} catch (error) {
-					logDetailedError("Web search quota probe failed", error);
-					return false;
-				}
-			})(),
-		]);
 		// The search we would run this turn, after plan + quota.
 		const webSearchActive =
 			webSearchPolicy.mode !== "off" && !searchQuotaExhausted;

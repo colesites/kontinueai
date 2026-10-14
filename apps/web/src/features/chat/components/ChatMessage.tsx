@@ -24,29 +24,80 @@ function ThinkingAccordion({
 	isStreaming?: boolean;
 	hasContent: boolean;
 }) {
-	const [isOpen, setIsOpen] = useState(isStreaming && !hasContent);
+	const isActivelyThinking = Boolean(isStreaming && !hasContent);
+	const [isOpen, setIsOpen] = useState(isActivelyThinking);
+	const [elapsedSeconds, setElapsedSeconds] = useState(1);
+	const [finalDuration, setFinalDuration] = useState<number | null>(null);
+	const startTimeRef = useRef<number | null>(null);
 
+	// Start live timer when reasoning tokens are streaming
 	useEffect(() => {
-		if (isStreaming && !hasContent) {
+		if (isActivelyThinking) {
+			if (!startTimeRef.current) {
+				startTimeRef.current = Date.now();
+			}
 			setIsOpen(true);
+			const interval = setInterval(() => {
+				if (startTimeRef.current) {
+					const diff = Math.max(
+						1,
+						Math.floor((Date.now() - startTimeRef.current) / 1000),
+					);
+					setElapsedSeconds(diff);
+				}
+			}, 1000);
+			return () => clearInterval(interval);
+		} else if (startTimeRef.current && finalDuration === null) {
+			// Finished thinking — lock in duration and collapse like Claude / ChatGPT
+			const diff = Math.max(
+				1,
+				Math.round((Date.now() - startTimeRef.current) / 1000),
+			);
+			setFinalDuration(diff);
+			setIsOpen(false);
 		}
-	}, [isStreaming, hasContent]);
+	}, [isActivelyThinking, finalDuration]);
+
+	// Auto-collapse when answer content begins streaming
+	useEffect(() => {
+		if (hasContent && isStreaming) {
+			setIsOpen(false);
+		}
+	}, [hasContent, isStreaming]);
+
+	const displaySeconds =
+		finalDuration ??
+		(startTimeRef.current
+			? Math.max(1, elapsedSeconds)
+			: Math.max(1, Math.round(reasoningText.length / 150)));
+
+	const label = isActivelyThinking
+		? `Thinking for ${Math.max(1, elapsedSeconds)}s...`
+		: `Thought for ${displaySeconds}s`;
 
 	return (
-		<div className="mb-3 rounded-xl border border-foreground/10 bg-foreground/[0.03] text-xs not-prose">
+		<div className="mb-3 rounded-xl border border-foreground/10 bg-foreground/[0.03] text-xs not-prose transition-all">
 			<button
 				type="button"
 				onClick={() => setIsOpen(!isOpen)}
 				className="flex w-full items-center gap-2 px-3 py-2 text-left text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+				aria-expanded={isOpen}
 			>
 				<Brain
 					className={cn(
 						"h-3.5 w-3.5 shrink-0",
-						isStreaming && !hasContent && "animate-pulse text-primary",
+						isActivelyThinking && "animate-pulse text-primary",
 					)}
 				/>
-				<span className="font-medium">
-					{isStreaming && !hasContent ? "Thinking..." : "Thought process"}
+				<span
+					className={cn(
+						"font-medium",
+						isActivelyThinking
+							? "text-foreground font-semibold"
+							: "text-muted-foreground",
+					)}
+				>
+					{label}
 				</span>
 				<ChevronDown
 					className={cn(

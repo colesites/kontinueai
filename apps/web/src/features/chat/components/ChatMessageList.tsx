@@ -1,6 +1,5 @@
 "use client";
 
-import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 import { Loader2 } from "lucide-react";
 import type { DisplayMessage } from "../hooks/useChatMessageTransformer";
 import { getChatTurnAnchorId } from "../lib/chat-turns";
@@ -56,9 +55,6 @@ export function ChatMessageList({
 	onScrollToBottom,
 	messagesEndRef,
 }: ChatMessageListProps) {
-	const { getCapabilities } = useModelCapabilities();
-	const isThinkingModel = getCapabilities(currentModelId).includes("thinking");
-
 	const turns = messages
 		.filter((message) => message.role === "user")
 		.map((message, index) => {
@@ -136,7 +132,7 @@ export function ChatMessageList({
 							</div>
 							<div className="flex items-center gap-2">
 								<span className="text-sm font-medium text-muted-foreground">
-									{isThinkingModel ? "Thinking" : "Generating"}
+									Loading
 								</span>
 								<span className="flex items-center gap-1">
 									<span className="typing-dot h-1.5 w-1.5 rounded-full bg-primary/70" />
