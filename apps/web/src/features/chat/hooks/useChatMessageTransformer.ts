@@ -70,7 +70,7 @@ function mapAiMessageToDisplayMessage(params: {
 	if (/<think/i.test(content)) {
 		const thinkMatch = content.match(/<\s*think\s*>([\s\S]*?)(?:<\/\s*think\s*>|$)/i);
 		if (thinkMatch) {
-			const extracted = thinkMatch[1].trim();
+			const extracted = thinkMatch[1]?.trim();
 			if (extracted) {
 				reasoningText = reasoningText
 					? `${reasoningText}\n\n${extracted}`

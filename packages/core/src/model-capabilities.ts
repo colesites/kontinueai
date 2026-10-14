@@ -13,6 +13,7 @@ export function isReasoningModelId(modelId: string): boolean {
   const lower = modelId.toLowerCase();
   return (
     lower === "kontinue/k-ai-1.0" ||
+    lower.includes("kode-1.0") ||
     lower.includes("reasoning") ||
     lower.includes("thinking") ||
     lower.includes("/o1") ||
@@ -22,9 +23,14 @@ export function isReasoningModelId(modelId: string): boolean {
     lower.includes("qwq") ||
     lower.includes("claude-3-7-sonnet") ||
     lower.includes("claude-3.7-sonnet") ||
+    lower.includes("claude-opus-4.8") ||
+    lower.includes("claude-opus-5") ||
     lower.includes("gemini-2.5-pro") ||
     lower.includes("gemini-2.5-flash") ||
-    lower.includes("gemini-4")
+    lower.includes("gemini-3.5-flash") ||
+    lower.includes("gemini-4") ||
+    lower.includes("gpt-5.5") ||
+    lower.includes("gpt-5.6")
   );
 }
 

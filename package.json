@@ -19,7 +19,7 @@
     "dev:convex": "bun run --cwd packages/backend/convex dev",
     "dev:scraper-api": "bun run --cwd packages/backend/scraper dev",
     "dev:scraper": "bun run --cwd apps/scraper dev",
-    "dev:desktop": "bun run --cwd apps/kode-ide tauri dev",
+    "dev:desktop": "bun run --cwd apps/desktop tauri dev",
     "build": "bun run build:web && bun run build:mobile && bun run build:convex && bun run build:scraper-api",
     "build:web": "bun run --cwd apps/web build",
     "build:marketing": "bun run --cwd apps/marketing build",
@@ -28,7 +28,7 @@
     "eas:mobile:preview": "bun run --cwd apps/mobile-app eas:preview",
     "build:convex": "bun run --cwd packages/backend/convex build",
     "build:scraper-api": "bun run --cwd packages/backend/scraper typecheck",
-    "build:desktop": "bun run --cwd apps/kode-ide tauri build",
+    "build:desktop": "bun run --cwd apps/desktop tauri build",
     "convex:codegen": "bun run --cwd packages/backend/convex codegen",
     "convex:deploy": "bun run --cwd packages/backend/convex deploy",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
@@ -46,7 +46,7 @@
     "typecheck:mobile": "bun run --cwd apps/mobile-app typecheck",
     "typecheck:web": "bun run --cwd apps/web typecheck",
     "typecheck:marketing": "bun run --cwd apps/marketing typecheck",
-    "typecheck:desktop": "bun run --cwd apps/kode-ide typecheck"
+    "typecheck:desktop": "bun run --cwd apps/desktop typecheck"
   },
   "workspaces": [
     "apps/*",
