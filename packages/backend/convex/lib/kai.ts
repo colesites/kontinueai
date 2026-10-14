@@ -2,10 +2,11 @@ import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import type { PersistedPlanTier } from "./plan";
 
 export const K_AI_MODEL_ID = "kontinue/k-ai-1.0";
-export const K_AI_PRIMARY_MODEL = "google/gemma-4-31b-it:free";
+export const K_AI_PRIMARY_MODEL = "google/gemini-2.5-flash-lite";
 export const K_AI_MODEL_CHAIN = [
 	K_AI_PRIMARY_MODEL,
-	"openai/gpt-oss-120b:free",
+	"alibaba/qwen3.7-flash",
+	"google/gemma-4-31b-it",
 ];
 
 export function isKaiModel(modelId?: string | null): boolean {
