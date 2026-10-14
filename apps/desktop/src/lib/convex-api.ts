@@ -263,6 +263,73 @@ type KodeConvexApi = {
       KodeUsage
     >;
   };
+  canvas: {
+    getCredits: FunctionReference<"query", "public", Record<string, never>, CanvasCredits>;
+    listPublished: FunctionReference<
+      "query",
+      "public",
+      { paginationOpts: any; sortBy?: "likes" | "recent" },
+      any
+    >;
+    listMyCreations: FunctionReference<
+      "query",
+      "public",
+      { paginationOpts: any },
+      any
+    >;
+    getMyLikes: FunctionReference<"query", "public", Record<string, never>, string[]>;
+    toggleLike: FunctionReference<"mutation", "public", { creationId: any }, { liked: boolean }>;
+    publishCreation: FunctionReference<"mutation", "public", { creationId: any }, { isPublished: boolean }>;
+    createCreation: FunctionReference<
+      "mutation",
+      "public",
+      {
+        mediaType: "image" | "video";
+        mediaUrl: string;
+        pathname: string;
+        prompt: string;
+        modelId: string;
+        aspectRatio: string;
+        duration?: number;
+        quality?: string;
+        audio?: boolean;
+        referenceImageUrl?: string;
+        resolution?: string;
+      },
+      string
+    >;
+  };
 };
+
+export type CanvasCreation = {
+  _id: string;
+  ownerId?: string;
+  ownerName?: string;
+  ownerImageUrl?: string;
+  mediaType: "image" | "video";
+  mediaUrl: string;
+  pathname?: string;
+  prompt: string;
+  modelId: string;
+  aspectRatio: string;
+  duration?: number;
+  quality?: string;
+  audio?: boolean;
+  resolution?: string;
+  isPublished: boolean;
+  likeCount: number;
+  createdAt: number;
+};
+
+export type CanvasCredits = {
+  total: number;
+  used: number;
+  remaining: number;
+  monthKey: string;
+  isPro: boolean;
+  monthly: { total: number; used: number; remaining: number };
+  bonus: { total: number; used: number; remaining: number };
+  available: number;
+} | null;
 
 export const api = anyApi as unknown as KodeConvexApi;

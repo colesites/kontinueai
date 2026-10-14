@@ -1,6 +1,6 @@
-import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { gateway } from "@ai-sdk/gateway";
 import { getAgent, isAgentId } from "@repo/ai/lib/agents";
-import { K_AI_MODEL_CHAIN, K_AI_PRIMARY_MODEL } from "@repo/ai/lib/kai";
+import { K_AI_PRIMARY_MODEL } from "@repo/ai/lib/kai";
 import { generateText, type LanguageModel, stepCountIs } from "ai";
 import { ownerConnectorTokens } from "../../chat/lib/connector-tokens";
 import { buildAutonomousConnectorTools } from "../../chat/lib/tools-config";
@@ -22,9 +22,15 @@ export async function POST(req: Request) {
 		return Response.json({ error: "Forbidden" }, { status: 403 });
 	}
 
-	const openRouterKey = process.env.OPEN_ROUTER;
-	if (!openRouterKey) {
+	const aiGatewayKey =
+		process.env.VERCEL_AI_GATEWAY_API_KEY ??
+		process.env.AI_GATEWAY_API_KEY ??
+		process.env.AI_GATEWAY_TOKEN;
+	if (!aiGatewayKey) {
 		return Response.json({ error: "AI not configured" }, { status: 500 });
+	}
+	if (!process.env.AI_GATEWAY_API_KEY) {
+		process.env.AI_GATEWAY_API_KEY = aiGatewayKey;
 	}
 
 	let body: { ownerId?: string; instruction?: string; agentId?: string | null };
@@ -78,10 +84,7 @@ export async function POST(req: Request) {
 			webContext,
 		].join("\n");
 
-		const openrouter = createOpenRouter({ apiKey: openRouterKey });
-		const model = openrouter.chat(K_AI_PRIMARY_MODEL, {
-			models: K_AI_MODEL_CHAIN,
-		}) as unknown as LanguageModel;
+		const model = gateway(K_AI_PRIMARY_MODEL) as unknown as LanguageModel;
 
 		const { text } = await generateText({
 			model,
@@ -89,7 +92,7 @@ export async function POST(req: Request) {
 			prompt: instruction,
 			tools,
 			stopWhen: stepCountIs(6),
-			maxOutputTokens: 1500,
+			maxOutputTokens: 3000,
 		});
 
 		return Response.json({ text: text ?? "" });

@@ -76,7 +76,7 @@ function ProjectModal({ initialProject, onClose }: ProjectModalProps) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-[400px] rounded-2xl border border-border bg-popover p-5 shadow-2xl backdrop-blur-2xl text-popover-foreground"
+        className="relative w-full max-w-[400px] rounded-2xl liquid-glass-dropdown p-5 text-popover-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -113,7 +113,7 @@ function ProjectModal({ initialProject, onClose }: ProjectModalProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Kontinue AI"
-                className="w-full h-9 rounded-lg border border-border bg-secondary/50 px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-purple-500/50 transition-colors"
+                className="w-full h-9 rounded-xl border border-border bg-secondary/50 px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-purple-500/50 transition-colors"
                 autoFocus
               />
             </div>
@@ -126,7 +126,7 @@ function ProjectModal({ initialProject, onClose }: ProjectModalProps) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What is this project about?"
-                className="w-full h-16 rounded-lg border border-border bg-secondary/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-purple-500/50 transition-colors resize-none"
+                className="w-full h-16 rounded-xl border border-border bg-secondary/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-purple-500/50 transition-colors resize-none"
               />
             </div>
           </div>
@@ -143,7 +143,7 @@ function ProjectModal({ initialProject, onClose }: ProjectModalProps) {
             <button
               type="submit"
               disabled={!name.trim() || submitting}
-              className="rounded-lg bg-purple-600 text-white font-semibold px-3.5 py-1.5 text-xs hover:bg-purple-500 disabled:opacity-30 transition-colors cursor-pointer shadow-sm"
+              className="rounded-xl bg-purple-600 text-white font-semibold px-3.5 py-1.5 text-xs hover:bg-purple-500 disabled:opacity-30 transition-colors cursor-pointer shadow-sm"
             >
               {isEditing ? "Save changes" : "Create project"}
             </button>
@@ -188,7 +188,7 @@ const LeftSidebarProjects = () => {
             onClick={collapseAll}
             title="Collapse all"
             aria-label="Collapse all"
-            className="size-5 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+            className="size-5 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
           >
             <ChevronsDownUp size={13} strokeWidth={1.25} />
           </button>
@@ -199,7 +199,7 @@ const LeftSidebarProjects = () => {
               <button
                 type="button"
                 aria-label="Project options"
-                className="size-5 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:text-foreground transition-colors cursor-pointer"
+                className="size-5 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:text-foreground transition-colors cursor-pointer"
               >
                 <MoreVertical size={13} strokeWidth={1.25} />
               </button>
@@ -222,7 +222,7 @@ const LeftSidebarProjects = () => {
             onClick={handleAddProject}
             title={activeTab === "home" ? "New project" : "Import project folder"}
             aria-label={activeTab === "home" ? "New project" : "Import project folder"}
-            className="size-5 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+            className="size-5 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
           >
             <Plus size={13} strokeWidth={1.25} />
           </button>
@@ -249,7 +249,7 @@ const LeftSidebarProjects = () => {
               <div key={project.id}>
                 <div
                   className={cn(
-                    "group/project flex items-center gap-1.5 rounded-lg pr-1 text-[13px] text-foreground/80 transition-colors hover:bg-accent hover:text-foreground",
+                    "group/project flex items-center gap-1.5 rounded-xl pr-1 text-[13px] text-foreground/80 transition-colors hover:bg-accent hover:text-foreground",
                     isDraftTarget && "bg-accent text-foreground",
                   )}
                 >
@@ -289,7 +289,7 @@ const LeftSidebarProjects = () => {
                     onClick={() => newChat(project.id)}
                     title="New chat"
                     aria-label="New chat in project"
-                    className="hidden shrink-0 size-5 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground group-hover/project:flex transition-colors cursor-pointer"
+                    className="hidden shrink-0 size-5 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground group-hover/project:flex transition-colors cursor-pointer"
                   >
                     <SquarePen size={13} strokeWidth={1.25} />
                   </button>
@@ -300,7 +300,7 @@ const LeftSidebarProjects = () => {
                       <button
                         type="button"
                         aria-label="Project actions"
-                        className="hidden shrink-0 size-5 flex items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground group-hover/project:flex data-[state=open]:flex data-[state=open]:bg-accent data-[state=open]:text-foreground transition-colors cursor-pointer"
+                        className="hidden shrink-0 size-5 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground group-hover/project:flex data-[state=open]:flex data-[state=open]:bg-accent data-[state=open]:text-foreground transition-colors cursor-pointer"
                       >
                         <MoreVertical size={13} strokeWidth={1.25} />
                       </button>

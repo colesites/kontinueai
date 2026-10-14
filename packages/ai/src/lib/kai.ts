@@ -10,12 +10,15 @@ export const K_AI_MODEL_ID = "kontinue/k-ai-1.0";
 export const K_AI_DISPLAY_NAME = "K-AI 1.0";
 export const K_AI_PROVIDER = "kontinue";
 
-// OpenRouter model slugs. The first entry is the primary model; the remaining
-// entries are ordered fallbacks. We hand the whole list to OpenRouter, which
-// automatically fails over (rate limits, provider downtime, model errors)
-// across them within a single request. See router in the chat route.
-export const K_AI_PRIMARY_MODEL = "google/gemma-4-31b-it:free";
-export const K_AI_FALLBACK_MODELS = ["openai/gpt-oss-120b:free"];
+// AI Gateway model IDs. The primary model is Gemini 2.5 Flash Lite,
+// offering high-throughput sub-second responses with native reasoning and tool use.
+// Ordered fallbacks kick in transparently if the primary experiences rate limits
+// or transient errors.
+export const K_AI_PRIMARY_MODEL = "google/gemini-2.5-flash-lite";
+export const K_AI_FALLBACK_MODELS = [
+	"alibaba/qwen3.7-flash",
+	"google/gemma-4-31b-it",
+];
 export const K_AI_MODEL_CHAIN = [K_AI_PRIMARY_MODEL, ...K_AI_FALLBACK_MODELS];
 
 export function isKaiModel(modelId: string | null | undefined): boolean {

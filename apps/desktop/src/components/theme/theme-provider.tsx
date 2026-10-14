@@ -33,6 +33,9 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
 
+    // Freeze all transitions for the swap so every surface flips in the same
+    // frame (otherwise glass/blur layers lag behind the rest of the UI).
+    root.classList.add("theme-switching");
     root.classList.remove("light", "dark");
 
     if (theme === "system") {
@@ -42,10 +45,15 @@ export function ThemeProvider({
         : "light";
 
       root.classList.add(systemTheme);
-      return;
+    } else {
+      root.classList.add(theme);
     }
 
-    root.classList.add(theme);
+    void root.offsetHeight; // force style recalculation while frozen
+    const raf = requestAnimationFrame(() =>
+      requestAnimationFrame(() => root.classList.remove("theme-switching"))
+    );
+    return () => cancelAnimationFrame(raf);
   }, [theme]);
 
   const value = {

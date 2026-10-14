@@ -2839,8 +2839,7 @@ export function buildToolsAndPrompt(options: {
 	const hasKaiImageGen =
 		enableKaiImageGeneration &&
 		isKaiModel(modelId) &&
-		!!convexToken &&
-		!!openRouterKey;
+		!!convexToken;
 	const hasImageGen =
 		capabilities.includes("image-generation") || hasKaiImageGen;
 	const hasWebSearch = capabilities.includes("web-search");
@@ -2936,7 +2935,7 @@ export function buildToolsAndPrompt(options: {
 			size: size === "auto" ? "auto" : size,
 		}) as unknown as ToolSet[string];
 	}
-	if (hasKaiImageGen && convexToken && openRouterKey) {
+	if (hasKaiImageGen && convexToken) {
 		tools.image_generation = makeKaiImageTool({
 			convexToken,
 			aspectRatio: imageAspectRatio,

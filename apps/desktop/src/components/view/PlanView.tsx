@@ -6,7 +6,7 @@ import {
 } from "@repo/ai/lib/kode";
 import { useQuery } from "convex/react";
 import { useUser } from "@clerk/clerk-react";
-import { Check, Copy, Loader2, RotateCcw } from "lucide-react";
+import { Check, Copy, Loader2, RotateCcw, ArrowUpRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/convex-api";
@@ -628,10 +628,12 @@ const PlanView = () => {
         {!inChat ? (
           <div className="w-full text-center space-y-6 mb-6">
             <div className="flex items-center justify-center">
-              <img src="/kontinueai.svg" alt="Kontinue AI" className="h-10" />
+              <img src="/kontinueai.svg" alt="Kontinue AI" className="h-10 dark:invert-0 invert" />
             </div>
-            <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white">
-              How can I help you, <span className="font-bold">{firstName}</span>?
+            <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-zinc-900 dark:text-zinc-100">
+              How can I help you,{" "}
+              <span className="font-bold text-purple-600 dark:text-purple-400">{firstName}</span>
+              ?
             </h1>
           </div>
         ) : messages.length === 0 && messagesLoading ? (
@@ -809,22 +811,28 @@ const PlanView = () => {
         </div>
 
         {!inChat ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-2xl mx-auto w-full pt-4 text-left">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full pt-4 text-left">
             {KODE_STARTER_PROMPTS.map((starter, i) => (
               <button
                 key={i}
                 type="button"
                 onClick={() => submitPrompt(starter.prompt)}
-                className="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-[#121215]/60 hover:border-purple-500/40 hover:bg-purple-500/10 p-3 transition-all hover:scale-[1.01] active:scale-[0.99] group cursor-pointer shadow-lg backdrop-blur-xl"
+                className="liquid-glass-card group flex items-start gap-3 rounded-[22px] p-3.5 text-left cursor-pointer transition-all active:scale-[0.99]"
               >
-                <span className="text-base select-none shrink-0 group-hover:scale-110 transition-transform">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20 text-base shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] group-hover:scale-105 transition-transform">
                   {starter.icon}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="text-xs font-semibold text-white/90 group-hover:text-purple-200 transition-colors">
-                    {starter.title}
-                  </p>
-                  <p className="text-[11px] text-white/45 truncate mt-0.5 group-hover:text-white/60 transition-colors">
+                </div>
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100 group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
+                      {starter.title}
+                    </p>
+                    <ArrowUpRight
+                      size={12}
+                      className="text-purple-500/40 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all"
+                    />
+                  </div>
+                  <p className="text-[11.5px] text-zinc-500 dark:text-zinc-400 line-clamp-1 mt-0.5 leading-relaxed group-hover:text-zinc-700 dark:group-hover:text-zinc-300 transition-colors">
                     {starter.prompt}
                   </p>
                 </div>

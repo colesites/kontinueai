@@ -211,7 +211,7 @@ export function ChatMessage({
                 </div>
               </div>
             ) : (
-              <div className="rounded-xl bg-purple-100/90 text-purple-950 border border-purple-200/80 dark:bg-[#241738] dark:border-purple-500/20 dark:text-white/95 px-4 py-2.5 text-[13.5px] leading-relaxed shadow-sm">
+              <div className="rounded-2xl bg-purple-500/10 dark:bg-[#241738] text-purple-950 dark:text-white/95 border border-purple-300/40 dark:border-purple-500/20 shadow-[0_2px_12px_rgba(147,51,234,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] backdrop-blur-md px-4 py-2.5 text-[13.5px] leading-relaxed">
                 <div className="whitespace-pre-wrap">{content}</div>
               </div>
             )}
@@ -249,7 +249,7 @@ export function ChatMessage({
                 <button
                   type="button"
                   onClick={() => setIsReasoningOpen(!isReasoningOpen)}
-                  className="inline-flex items-center gap-1.5 text-xs text-purple-700 hover:text-purple-900 dark:text-purple-300/70 dark:hover:text-purple-200 transition-colors cursor-pointer group"
+                  className="liquid-glass-pill rounded-full inline-flex items-center gap-1.5 px-3 py-1 text-xs text-purple-700 dark:text-purple-300 transition-colors cursor-pointer group"
                 >
                   <Brain
                     size={13}
@@ -272,7 +272,7 @@ export function ChatMessage({
                   />
                 </button>
                 {isReasoningOpen && (
-                  <div className="mt-1.5 mb-2 pl-3 border-l-2 border-purple-500/40 text-xs text-purple-950/85 dark:text-purple-200/80 whitespace-pre-wrap leading-relaxed">
+                  <div className="mt-2 mb-2 p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/50 dark:border-purple-800/30 text-xs text-purple-950 dark:text-purple-200/85 whitespace-pre-wrap leading-relaxed backdrop-blur-md shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]">
                     {reasoning}
                   </div>
                 )}

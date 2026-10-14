@@ -12,13 +12,13 @@ const KODE_MODEL_ID: &str = "kontinue/kode-1.0";
 // Kode 1.0 runs on Nex N2 Pro (free, tool-capable, 262K ctx) via OpenRouter. The
 // identity lock below keeps it presenting as "Kode 1.0 by Kontinue AI".
 const KODE_OPENROUTER_MODEL_ID: &str = "nex-agi/nex-n2-pro:free";
-// K-AI 1.0 runs on Google Gemma 4 31B (free) with GPT-OSS fallback via OpenRouter,
+// K-AI 1.0 runs on Gemini 2.5 Flash Lite via Vercel AI Gateway,
 // exactly matching packages/ai/src/lib/kai.ts.
 const K_AI_MODEL_ID: &str = "kontinue/k-ai-1.0";
-const K_AI_PRIMARY_MODEL: &str = "google/gemma-4-31b-it:free";
+const K_AI_PRIMARY_MODEL: &str = "google/gemini-2.5-flash-lite";
 const K_AI_FALLBACK_MODELS: &[&str] = &[
-    "google/gemma-4-31b-it:free",
-    "openai/gpt-oss-120b:free",
+    "alibaba/qwen3.7-flash",
+    "google/gemma-4-31b-it",
 ];
 const MINIMAX_M3_MODEL_ID: &str = "minimax/minimax-m3";
 const DEEPSEEK_V4_PRO_MODEL_ID: &str = "deepseek/deepseek-v4-pro";
@@ -688,18 +688,28 @@ fn resolve_model_route(
     let is_kode = model_id == KODE_MODEL_ID || model_id == "kode-1.0";
     let is_kai = model_id == K_AI_MODEL_ID || model_id == "k-ai-1.0";
 
-    let (effective_model_id, fallback_models) = if is_kode {
-        (KODE_OPENROUTER_MODEL_ID.to_string(), None)
-    } else if is_kai {
-        (
-            K_AI_PRIMARY_MODEL.to_string(),
-            Some(
+    if is_kai {
+        return Ok(ModelRoute {
+            name: "Vercel AI Gateway",
+            url: VERCEL_AI_GATEWAY_CHAT_COMPLETIONS_URL,
+            api_key: vercel_gateway_api_key()?,
+            model_id: K_AI_PRIMARY_MODEL.to_string(),
+            fallback_models: Some(
                 K_AI_FALLBACK_MODELS
                     .iter()
                     .map(|s| s.to_string())
                     .collect(),
             ),
-        )
+            include_reasoning: true,
+            is_kode: true,
+            headers: reqwest::header::HeaderMap::new(),
+            byok: None,
+            is_anthropic_native: false,
+        });
+    }
+
+    let (effective_model_id, fallback_models) = if is_kode {
+        (KODE_OPENROUTER_MODEL_ID.to_string(), None)
     } else {
         (model_id.to_string(), None)
     };
@@ -711,7 +721,7 @@ fn resolve_model_route(
         model_id: effective_model_id,
         fallback_models,
         include_reasoning: true,
-        is_kode: is_kode || is_kai,
+        is_kode,
         headers,
         byok: None,
         is_anthropic_native: false,
@@ -1299,6 +1309,7 @@ async fn start_desktop_auth_server(app: tauri::AppHandle) -> Result<u16, String>
 // don't override variables already set in the real environment.
 fn load_env_files() {
     let _ = dotenvy::from_filename("../.env.local");
+    let _ = dotenvy::from_filename("../.env.production.local");
     let _ = dotenvy::from_filename("../.env.production");
     let _ = dotenvy::from_filename("../.env");
     let _ = dotenvy::dotenv();

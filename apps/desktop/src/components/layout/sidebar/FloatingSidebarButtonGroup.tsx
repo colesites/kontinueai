@@ -11,14 +11,14 @@ const FloatingSidebarButtonGroup = () => {
   const [searchOpen, setSearchOpen] = useState(false);
 
   const iconBtn =
-    "flex size-6 items-center justify-center rounded-md text-white/55 transition-all duration-150 hover:bg-white/[0.08] hover:text-white active:scale-95";
+    "flex size-6 items-center justify-center rounded-full text-purple-900 dark:text-purple-100 transition-colors duration-150 hover:bg-purple-500/15 active:scale-95 cursor-pointer";
 
   if (!sidebarCollapsed) return null;
 
   return (
     <>
-      <div className="absolute top-[9px] left-[78px] z-50 flex items-center">
-        <div className="flex items-center gap-1 rounded-lg bg-card/90 border border-border p-0.5 shadow-lg backdrop-blur-md">
+      <div className="absolute top-[9px] left-3.5 z-50 flex items-center">
+        <div className="flex items-center gap-1 kontinue-capsule p-1">
           {/* 1. Sidebar Toggle Icon */}
           <button
             type="button"
@@ -41,7 +41,7 @@ const FloatingSidebarButtonGroup = () => {
             <Search size={13.5} strokeWidth={1.25} />
           </button>
 
-          <span className="mx-0.5 h-3.5 w-px bg-white/[0.08]" />
+          <span className="mx-0.5 h-3.5 w-px bg-purple-400/30" />
 
           {/* 3. New Chat (+) Button */}
           <button

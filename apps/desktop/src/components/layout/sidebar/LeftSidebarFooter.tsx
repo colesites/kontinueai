@@ -26,13 +26,13 @@ import {
   UserCircle,
 } from "lucide-react";
 import { useState } from "react";
-import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { useTheme } from "@/components/theme/theme-provider";
-
+import { useKodeWorkspace } from "@/lib/kode-workspace";
 
 const LeftSidebarFooter = () => {
   const { signOut, openUserProfile } = useClerk();
   const { user } = useUser();
+  const { openSettings } = useKodeWorkspace();
 
   const name = user?.fullName || user?.firstName || user?.primaryEmailAddress?.emailAddress || "User";
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -40,7 +40,6 @@ const LeftSidebarFooter = () => {
 
   const usage = useQuery(api.kode.getUsage, {});
   const planName = usage?.plan === "pro" ? "Pro" : "Free";
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const { theme, setTheme } = useTheme();
 
@@ -48,33 +47,33 @@ const LeftSidebarFooter = () => {
     try {
       openUserProfile?.();
     } catch {
-      setSettingsOpen(true);
+      openSettings("account");
     }
   };
 
   return (
-    <div className="p-2 border-t border-border">
+    <div className="p-2 border-t border-white/60 dark:border-border">
       {/* Full Width Account Profile Dropdown */}
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground h-[32px] cursor-pointer"
+            className="flex w-full items-center justify-between gap-2 rounded-xl border border-transparent hover:border-white/80 hover:bg-white/60 dark:hover:bg-accent hover:shadow-[0_2px_8px_rgba(0,0,0,0.03),inset_0_1px_1px_rgba(255,255,255,0.85)] px-2.5 py-1.5 text-xs text-zinc-700 dark:text-muted-foreground transition-all duration-150 h-[34px] cursor-pointer"
           >
             <div className="flex min-w-0 items-center gap-2">
               {user?.imageUrl ? (
                 <img
                   src={user.imageUrl}
                   alt={name}
-                  className="size-5 shrink-0 rounded-full object-cover"
+                  className="size-5 shrink-0 rounded-full object-cover ring-1 ring-purple-500/20"
                 />
               ) : (
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-purple-500/20 text-[9px] font-bold text-purple-700 dark:text-purple-200 ring-1 ring-purple-500/30">
+                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-purple-500/15 text-[9px] font-bold text-purple-700 dark:text-purple-200 ring-1 ring-purple-500/30">
                   {initials}
                 </div>
               )}
-              <span className="font-normal text-foreground truncate text-xs">
+              <span className="font-medium text-zinc-800 dark:text-foreground truncate text-xs">
                 {name} · {planName}
               </span>
             </div>
@@ -87,7 +86,7 @@ const LeftSidebarFooter = () => {
           align="start"
           side="top"
           sideOffset={8}
-          className="w-56 rounded-xl border border-white/[0.08] bg-[#121215]/85 backdrop-blur-2xl shadow-2xl shadow-black/80 p-1"
+          className="w-56 rounded-[22px] liquid-glass-dropdown p-1.5"
         >
           {email && (
             <>
@@ -106,7 +105,7 @@ const LeftSidebarFooter = () => {
           <DropdownMenuItem
             onSelect={(event) => {
               event.preventDefault();
-              setSettingsOpen(true);
+              openSettings("general");
               setMenuOpen(false);
             }}
           >
@@ -181,8 +180,6 @@ const LeftSidebarFooter = () => {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
     </div>
   );
 };

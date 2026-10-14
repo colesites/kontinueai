@@ -147,10 +147,10 @@ export function KodeReasoningPopover({
           type="button"
           aria-label={`Reasoning settings: ${displayLabel}`}
           className={cn(
-            "flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-all cursor-pointer select-none",
+            "flex h-7 items-center gap-1.5 rounded-full px-2.5 text-xs transition-all cursor-pointer select-none",
             !isOff && supportsReasoning
-              ? "border-purple-500/35 bg-purple-500/10 text-white font-medium hover:border-purple-500/50 hover:bg-purple-500/15"
-              : "border-white/[0.08] bg-white/[0.04] text-white/70 hover:border-white/[0.15] hover:bg-white/[0.08] hover:text-white",
+              ? "bg-purple-500/12 border border-purple-400/40 text-purple-900 dark:text-purple-200 font-semibold shadow-[0_2px_10px_rgba(168,85,247,0.15),inset_0_1px_0.5px_rgba(255,255,255,0.9)] hover:border-purple-400/60 hover:bg-purple-500/18"
+              : "liquid-glass-pill text-zinc-700 dark:text-foreground/70 hover:text-zinc-950 dark:hover:text-foreground",
             className
           )}
         >
@@ -158,32 +158,32 @@ export function KodeReasoningPopover({
             size={13}
             className={cn(
               "transition-colors",
-              !isOff && supportsReasoning ? "text-purple-400" : "text-white/40"
+              !isOff && supportsReasoning ? "text-purple-600 dark:text-purple-400" : "text-muted-foreground"
             )}
           />
           <span>{displayLabel}</span>
-          <ChevronDown size={11} className="text-white/40 ml-0.5" />
+          <ChevronDown size={11} className="text-muted-foreground ml-0.5" />
         </button>
       </DropdownMenuTrigger>
 
-      {/* Popover Card matching Image 1 */}
+      {/* Popover Card */}
       <DropdownMenuContent
         align="start"
         side="top"
         sideOffset={8}
-        className="w-52 p-1.5 rounded-xl border border-white/[0.08] bg-[#121215]/80 backdrop-blur-2xl shadow-2xl shadow-black/80 text-white select-none"
+        className="w-52 p-1.5 rounded-[22px] liquid-glass-dropdown text-foreground select-none"
       >
         {/* Section 1: Reasoning */}
         <div>
           <div className="flex items-center justify-between px-2.5 pt-1 pb-1">
-            <span className="text-[11.5px] font-medium text-white/40">Reasoning</span>
+            <span className="text-[11.5px] font-medium text-muted-foreground">Reasoning</span>
             {!supportsReasoning && (
-              <span className="text-[10px] text-white/30 font-normal">N/A</span>
+              <span className="text-[10px] text-muted-foreground/60 font-normal">N/A</span>
             )}
           </div>
 
           {!supportsReasoning ? (
-            <div className="px-2.5 py-1 text-[11px] text-white/35 italic">
+            <div className="px-2.5 py-1 text-[11px] text-muted-foreground/70 italic">
               Model has no reasoning capability
             </div>
           ) : (
@@ -204,15 +204,15 @@ export function KodeReasoningPopover({
                     type="button"
                     onClick={() => handleSelectReasoning(item.id)}
                     className={cn(
-                      "flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] transition-all cursor-pointer",
+                      "flex w-full items-center justify-between px-2.5 py-1.5 rounded-xl text-[13px] transition-all cursor-pointer",
                       isSelected
-                        ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 font-medium shadow-xs"
-                        : "border border-transparent text-white/80 hover:bg-white/[0.04] hover:text-white"
+                        ? "bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-200 font-medium shadow-xs"
+                        : "border border-transparent text-foreground/80 hover:bg-accent hover:text-foreground"
                     )}
                   >
                     <span>{item.label}</span>
                     {"isDefault" in item && item.isDefault && (
-                      <span className="rounded bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-300 tracking-tight">
+                      <span className="rounded bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 tracking-tight">
                         Default
                       </span>
                     )}
@@ -223,11 +223,11 @@ export function KodeReasoningPopover({
           )}
         </div>
 
-        <div className="my-1.5 h-px bg-white/[0.06]" />
+        <div className="my-1.5 h-px bg-border dark:bg-white/[0.06]" />
 
         {/* Section 2: Context Window */}
         <div>
-          <div className="px-2.5 pt-1 pb-1 text-[11.5px] font-medium text-white/40">
+          <div className="px-2.5 pt-1 pb-1 text-[11.5px] font-medium text-muted-foreground">
             Context Window
           </div>
           <div className="space-y-0.5">
@@ -239,15 +239,15 @@ export function KodeReasoningPopover({
                   type="button"
                   onClick={() => setContextWindow(item.id)}
                   className={cn(
-                    "flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] transition-all cursor-pointer",
+                    "flex w-full items-center justify-between px-2.5 py-1.5 rounded-xl text-[13px] transition-all cursor-pointer",
                     isSelected
-                      ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 font-medium shadow-xs"
-                      : "border border-transparent text-white/80 hover:bg-white/[0.04] hover:text-white"
+                      ? "bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-200 font-medium shadow-xs"
+                      : "border border-transparent text-foreground/80 hover:bg-accent hover:text-foreground"
                   )}
                 >
                   <span>{item.label}</span>
                   {"isDefault" in item && item.isDefault && (
-                    <span className="rounded bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-300 tracking-tight">
+                    <span className="rounded bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:text-purple-300 tracking-tight">
                       Default
                     </span>
                   )}
@@ -257,11 +257,11 @@ export function KodeReasoningPopover({
           </div>
         </div>
 
-        <div className="my-1.5 h-px bg-white/[0.06]" />
+        <div className="my-1.5 h-px bg-border dark:bg-white/[0.06]" />
 
         {/* Section 3: Fast Mode */}
         <div>
-          <div className="px-2.5 pt-1 pb-1 text-[11.5px] font-medium text-white/40">
+          <div className="px-2.5 pt-1 pb-1 text-[11.5px] font-medium text-muted-foreground">
             Fast Mode
           </div>
           <div className="space-y-0.5">
@@ -278,10 +278,10 @@ export function KodeReasoningPopover({
                   type="button"
                   onClick={() => setFastMode(item.id)}
                   className={cn(
-                    "flex w-full items-center justify-between px-2.5 py-1.5 rounded-lg text-[13px] transition-all cursor-pointer",
+                    "flex w-full items-center justify-between px-2.5 py-1.5 rounded-xl text-[13px] transition-all cursor-pointer",
                     isSelected
-                      ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 font-medium shadow-xs"
-                      : "border border-transparent text-white/80 hover:bg-white/[0.04] hover:text-white"
+                      ? "bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-200 font-medium shadow-xs"
+                      : "border border-transparent text-foreground/80 hover:bg-accent hover:text-foreground"
                   )}
                 >
                   <span>{item.label}</span>

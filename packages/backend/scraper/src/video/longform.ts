@@ -16,8 +16,8 @@ import { put } from "@vercel/blob";
 // packages/ai/src/lib/canvas-models.ts, which the short-form path uses.
 const VEO_MODEL = "google/veo-3.1-fast-generate-001";
 const SCENE_SECONDS = 8; // Veo's practical per-clip max.
-// Storyboarding is a text call and stays on OpenRouter, same model as K-AI.
-const K_AI_MODEL = "google/gemma-4-31b-it:free";
+// Storyboarding is a text call and runs on the Vercel AI Gateway, same model as K-AI.
+const K_AI_MODEL = "google/gemini-2.5-flash-lite";
 
 export interface LongVideoRequest {
   jobId: string;
@@ -65,16 +65,27 @@ async function reportProgress(
 async function buildStoryboard(
   prompt: string,
   sceneCount: number,
-  openRouterKey: string,
+  aiGatewayKey: string,
+  openRouterKey?: string,
 ): Promise<string[]> {
   const fallback = Array.from(
     { length: sceneCount },
     (_, i) => `${prompt} — scene ${i + 1} of ${sceneCount}, continuous sequence.`,
   );
   try {
-    const openrouter = createOpenRouter({ apiKey: openRouterKey });
+    let modelInstance;
+    if (aiGatewayKey) {
+      const gateway = createGateway({ apiKey: aiGatewayKey });
+      modelInstance = gateway(K_AI_MODEL);
+    } else if (openRouterKey) {
+      const openrouter = createOpenRouter({ apiKey: openRouterKey });
+      modelInstance = openrouter.chat(K_AI_MODEL);
+    } else {
+      return fallback;
+    }
+
     const { text } = await generateText({
-      model: openrouter.chat(K_AI_MODEL),
+      model: modelInstance,
       prompt: [
         `Break this video idea into exactly ${sceneCount} sequential ${SCENE_SECONDS}-second scenes.`,
         `Keep characters, style and setting CONSISTENT across scenes.`,
@@ -177,6 +188,7 @@ export async function runLongVideoJob(req: LongVideoRequest): Promise<void> {
     const scenes = await buildStoryboard(
       req.prompt,
       sceneCount,
+      req.aiGatewayKey,
       req.openRouterKey,
     );
 

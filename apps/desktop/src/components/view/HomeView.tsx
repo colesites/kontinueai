@@ -16,6 +16,7 @@ import {
   PinOff,
   Copy,
   Trash2,
+  HelpCircle,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -40,7 +41,6 @@ import { ChatInput, type StagedAttachment } from "@/components/chat/ChatInput";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ShareModal } from "@/components/chat/ShareModal";
 import { DesktopChatTurnNavigator, type ChatTurn } from "@/components/chat/DesktopChatTurnNavigator";
-import { SettingsDialog } from "@/components/settings/SettingsDialog";
 import { cn } from "@/lib/utils";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/convex-api";
@@ -107,7 +107,7 @@ function CapabilityIcons({ capabilities }: { capabilities: ModelCapability[] }) 
           <span
             key={cap}
             title={meta.label}
-            className="text-purple-300/70 hover:text-purple-200 transition-colors cursor-pointer inline-flex items-center"
+            className="text-purple-600/70 hover:text-purple-700 dark:text-purple-300/70 dark:hover:text-purple-200 transition-colors cursor-pointer inline-flex items-center"
           >
             <Icon className="size-3.5" />
           </span>
@@ -118,23 +118,36 @@ function CapabilityIcons({ capabilities }: { capabilities: ModelCapability[] }) 
 }
 
 function ModelSelectorLogo({ provider, className }: { provider: string; className?: string }) {
-  const src = provider === "kontinue"
+  const p = (provider || "kontinue").toLowerCase();
+  const [imgFailed, setImgFailed] = useState(false);
+  const src = p === "kontinue"
     ? "/kontinueai-icon.png"
-    : `https://models.dev/logos/${provider}.svg`;
+    : `https://models.dev/logos/${p}.svg`;
+
+  if (!imgFailed) {
+    return (
+      <img
+        src={src}
+        alt={provider}
+        className={cn(
+          "size-4 object-contain transition-all",
+          p === "kontinue" ? "brightness-0 dark:invert" : "dark:invert",
+          className
+        )}
+        onError={() => setImgFailed(true)}
+      />
+    );
+  }
 
   return (
-    <img
-      src={src}
-      alt={provider}
+    <span
       className={cn(
-        "size-4 object-contain transition-all",
-        provider === "kontinue" ? "brightness-0 invert" : "brightness-0 invert",
+        "grid size-4 place-items-center rounded bg-purple-500/20 font-semibold text-[8px] text-purple-600 dark:text-purple-300 ring-1 ring-purple-500/30",
         className
       )}
-      onError={(e) => {
-        (e.currentTarget as HTMLImageElement).style.display = "none";
-      }}
-    />
+    >
+      {p.slice(0, 2).toUpperCase()}
+    </span>
   );
 }
 
@@ -155,15 +168,15 @@ function HowItWorksModal({ onClose }: { onClose: () => void }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="relative w-full max-w-md rounded-2xl border border-white/[0.1] bg-popover p-6 shadow-2xl backdrop-blur-xl"
+        className="liquid-glass-dropdown relative w-full max-w-md rounded-2xl p-6 shadow-2xl text-popover-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1">Get Started</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-purple-600 dark:text-purple-300 mb-1">Get Started</p>
             <h2 className="text-xl font-semibold text-foreground">How it works</h2>
           </div>
           <button
@@ -177,15 +190,15 @@ function HowItWorksModal({ onClose }: { onClose: () => void }) {
 
         {/* Steps */}
         <div className="relative mt-6">
-          <div className="absolute left-[18px] top-[20px] bottom-[20px] w-px bg-border" />
+          <div className="absolute left-[18px] top-[20px] bottom-[20px] w-px bg-purple-200/60 dark:bg-purple-900/40" />
 
           <div className="space-y-6">
             {steps.map((step, i) => (
               <div key={i} className="flex items-start gap-4">
-                <div className="relative z-10 flex size-9 shrink-0 items-center justify-center rounded-full border border-purple-500/30 bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200 text-xs font-semibold shadow-xs">
+                <div className="relative z-10 flex size-9 shrink-0 items-center justify-center rounded-xl border border-purple-500/30 bg-purple-100/90 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200 text-xs font-semibold shadow-xs">
                   {step.num}
                 </div>
-                <div className="pt-1">
+                <div className="pt-0.5">
                   <p className="text-sm font-semibold text-foreground">{step.title}</p>
                   <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">{step.desc}</p>
                 </div>
@@ -212,15 +225,15 @@ function ImportLinkModal({ onClose }: { onClose: () => void }) {
   const provider = url.trim() ? detectProvider(url) : "Unknown";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200" onClick={onClose}>
       <div
-        className="relative w-full max-w-md rounded-2xl border border-border bg-popover p-6 shadow-2xl backdrop-blur-xl text-popover-foreground"
+        className="liquid-glass-dropdown relative w-full max-w-md rounded-2xl p-6 shadow-2xl text-popover-foreground"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1">Import</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-purple-600 dark:text-purple-300 mb-1">Import</p>
             <h2 className="text-xl font-semibold text-foreground">Continue a conversation</h2>
           </div>
           <button
@@ -237,8 +250,8 @@ function ImportLinkModal({ onClose }: { onClose: () => void }) {
         </p>
 
         {/* URL Input */}
-        <div className="flex items-center gap-2.5 rounded-xl border border-border bg-secondary/50 px-3 py-2.5 focus-within:border-purple-500/50 transition-colors">
-          <Link2 size={16} className="shrink-0 text-muted-foreground" />
+        <div className="flex items-center gap-2.5 rounded-xl border border-purple-200/60 dark:border-border bg-white/70 dark:bg-secondary/50 px-3 py-2.5 focus-within:border-purple-500/50 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] transition-colors">
+          <Link2 size={16} className="shrink-0 text-purple-600 dark:text-muted-foreground" />
           <input
             type="text"
             value={url}
@@ -251,8 +264,8 @@ function ImportLinkModal({ onClose }: { onClose: () => void }) {
         {/* Detected Provider */}
         <div className="mt-4 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Detected Provider</span>
-          <span className="flex items-center gap-1.5 text-xs text-foreground/80">
-            <span className={`size-1.5 rounded-full ${provider === "Unknown" ? "bg-muted-foreground/40" : "bg-emerald-400"}`} />
+          <span className="flex items-center gap-1.5 text-xs text-foreground/80 font-medium">
+            <span className={`size-1.5 rounded-full ${provider === "Unknown" ? "bg-muted-foreground/40" : "bg-emerald-500"}`} />
             {provider}
           </span>
         </div>
@@ -269,7 +282,7 @@ function ImportLinkModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             disabled={!url.trim()}
-            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-30 transition-colors cursor-pointer shadow-sm"
+            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-30 transition-colors cursor-pointer shadow-[0_2px_10px_rgba(147,51,234,0.3)]"
           >
             Import chat
           </button>
@@ -324,24 +337,24 @@ function ChooseModelModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xl p-4 sm:p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/75 backdrop-blur-md p-4 sm:p-6 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
-        className="relative flex h-[550px] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl border border-white/[0.1] bg-popover/90 backdrop-blur-2xl text-white shadow-2xl"
+        className="liquid-glass-dropdown relative flex h-[550px] w-full max-w-[620px] flex-col overflow-hidden rounded-2xl text-foreground shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex shrink-0 items-start justify-between border-b border-white/[0.08] px-5 py-4">
+        <div className="flex shrink-0 items-start justify-between border-b border-purple-200/40 dark:border-border px-5 py-4">
           <div className="flex items-start gap-3">
-            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.06] text-white mt-0.5">
+            <div className="flex size-8 shrink-0 items-center justify-center rounded-xl border border-purple-500/20 bg-purple-500/10 text-purple-600 dark:text-purple-300 mt-0.5 shadow-inner">
               <SlidersHorizontal size={15} />
             </div>
             <div>
-              <h2 className="text-sm font-semibold tracking-tight text-white sm:text-base">
+              <h2 className="text-sm font-semibold tracking-tight text-foreground sm:text-base">
                 Choose a model
               </h2>
-              <p className="text-[12px] text-white/50 mt-0.5">
+              <p className="text-[12px] text-muted-foreground mt-0.5">
                 Find the right balance of intelligence, speed, and capability.
               </p>
             </div>
@@ -349,35 +362,35 @@ function ChooseModelModal({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-7 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.06] text-white/40 hover:bg-white/[0.12] hover:text-white transition-all"
+            className="flex size-7 items-center justify-center rounded-full border border-purple-200/50 dark:border-border bg-white/60 dark:bg-secondary/60 text-muted-foreground hover:bg-accent hover:text-foreground transition-all cursor-pointer"
           >
             <X size={14} />
           </button>
         </div>
 
         {/* Search Input */}
-        <div className="shrink-0 border-b border-white/[0.08] px-4 py-2.5">
-          <div className="flex items-center gap-2.5 rounded-xl border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-xs focus-within:border-purple-500/40 focus-within:ring-1 focus-within:ring-purple-500/20 transition-colors">
-            <SearchIcon size={14} className="text-purple-300/60 shrink-0" />
+        <div className="shrink-0 border-b border-purple-200/40 dark:border-border px-4 py-2.5">
+          <div className="flex items-center gap-2.5 rounded-xl border border-purple-200/60 dark:border-border bg-white/70 dark:bg-secondary/40 px-3 py-2 text-xs focus-within:border-purple-500/50 focus-within:ring-1 focus-within:ring-purple-500/20 shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)] transition-colors">
+            <SearchIcon size={14} className="text-purple-600 dark:text-purple-300/60 shrink-0" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={`Search ${chatModels.length} models...`}
-              className="w-full bg-transparent text-xs text-white outline-none placeholder:text-white/30"
+              className="w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
             />
           </div>
         </div>
 
         {/* Provider Filter Tabs Bar with Logos */}
-        <div className="no-scrollbar flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-white/[0.08] px-4 py-2.5">
+        <div className="no-scrollbar flex shrink-0 items-center gap-1.5 overflow-x-auto border-b border-purple-200/40 dark:border-border px-4 py-2.5">
           <button
             type="button"
             onClick={() => setActiveProvider(null)}
-            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
               activeProvider === null
                 ? "bg-purple-600 text-white font-semibold shadow-sm"
-                : "border border-white/[0.08] bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                : "liquid-glass-pill text-muted-foreground hover:text-foreground"
             }`}
           >
             <LayoutGrid size={13} />
@@ -390,10 +403,10 @@ function ChooseModelModal({
               type="button"
               key={p}
               onClick={() => setActiveProvider(p)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
                 activeProvider === p
                   ? "bg-purple-600 text-white font-semibold shadow-sm"
-                  : "border border-white/[0.08] bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white"
+                  : "liquid-glass-pill text-muted-foreground hover:text-foreground"
               }`}
             >
               <ModelSelectorLogo provider={p} className="size-3.5" />
@@ -406,7 +419,7 @@ function ChooseModelModal({
         {/* Scrollable Model List */}
         <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {visibleProviders.length === 0 ? (
-            <div className="py-12 text-center text-xs text-white/40">
+            <div className="py-12 text-center text-xs text-muted-foreground">
               No matching models found. Try a provider or capability name.
             </div>
           ) : (
@@ -417,10 +430,10 @@ function ChooseModelModal({
               return (
                 <div key={provider} className="space-y-1.5">
                   {/* Provider Header with Logo */}
-                  <div className="flex items-center gap-1.5 text-xs font-medium text-white/50 px-1 pt-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground px-1 pt-0.5">
                     <ModelSelectorLogo provider={provider} className="size-3 opacity-70" />
                     <span>{getProviderLabel(provider)}</span>
-                    <span className="text-[10px] text-white/30 font-normal">
+                    <span className="text-[10px] text-muted-foreground/60 font-normal">
                       {models.length}
                     </span>
                   </div>
@@ -440,34 +453,34 @@ function ChooseModelModal({
                             onSelectModel(model);
                             onClose();
                           }}
-                          className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-all ${
+                          className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
                             isSelected
                               ? "border-purple-500/40 bg-purple-500/10 shadow-[0_0_12px_rgba(168,85,247,0.12)]"
-                              : "border-white/[0.06] bg-white/[0.025] hover:border-purple-500/25 hover:bg-white/[0.05]"
+                              : "border-border bg-card/60 hover:border-purple-500/25 hover:bg-accent/50"
                           }`}
                         >
                           {/* Left: Icon + Info */}
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] bg-white/[0.04]">
+                            <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-border bg-secondary/50">
                               <ModelSelectorLogo provider={model.provider} className="size-4" />
                             </div>
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2">
-                                <span className="text-xs font-semibold text-white truncate">
+                                <span className="text-xs font-semibold text-foreground truncate">
                                   {model.name}
                                 </span>
                                 {isKai ? (
-                                  <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-purple-200 border border-purple-500/30">
+                                  <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700 dark:text-purple-200 border border-purple-500/30">
                                     Primary
                                   </span>
                                 ) : (
-                                  <span className="rounded bg-purple-500/15 px-1.5 py-0.5 text-[9px] font-semibold text-purple-300 border border-purple-500/25">
+                                  <span className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-purple-700 dark:text-purple-300 border border-purple-500/25">
                                     Pro
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-white/40 truncate mt-0.5 leading-relaxed">
+                              <p className="text-[11px] text-muted-foreground truncate mt-0.5 leading-relaxed">
                                 {model.description || "Capable AI language model."}
                               </p>
                             </div>
@@ -483,8 +496,8 @@ function ChooseModelModal({
                             <div
                               className={`flex size-4.5 shrink-0 items-center justify-center rounded-full border transition-colors ${
                                 isSelected
-                                  ? "border-purple-400 bg-purple-500 text-white shadow-sm"
-                                  : "border-white/20 text-transparent"
+                                  ? "border-purple-500 bg-purple-600 text-white shadow-sm"
+                                  : "border-border text-transparent"
                               }`}
                             >
                               <Check size={10} strokeWidth={3} />
@@ -539,6 +552,7 @@ export default function HomeView() {
     togglePinChat,
     deleteChat,
     renameChat,
+    openSettings,
   } = useKodeWorkspace();
   const { user } = useUser();
 
@@ -563,7 +577,6 @@ export default function HomeView() {
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [importLinkOpen, setImportLinkOpen] = useState(false);
   const [modelModalOpen, setModelModalOpen] = useState(false);
-  const [connectorsModalOpen, setConnectorsModalOpen] = useState(false);
 
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
   const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
@@ -792,7 +805,7 @@ export default function HomeView() {
   const isChatActive = Boolean(activeChatId) || displayMessages.length > 0;
 
   return (
-    <div className="relative flex h-full w-full flex-col bg-background text-foreground overflow-hidden">
+    <div className="relative flex h-full w-full flex-col bg-transparent dark:bg-background text-foreground overflow-hidden">
       {/* Floating Desktop Chat Turn Navigator on the Right Side */}
       {isChatActive && (
         <DesktopChatTurnNavigator
@@ -812,21 +825,21 @@ export default function HomeView() {
           <div
             data-tauri-drag-region
             className={cn(
-              "relative z-20 flex h-13 shrink-0 items-center justify-between px-6 bg-background",
-              isCollapsed && "pl-[180px]"
+              "relative z-20 flex h-13 shrink-0 items-center justify-between px-6 bg-white/60 dark:bg-background/95 backdrop-blur-xl border-b border-purple-200/40 dark:border-border",
+              isCollapsed && "pl-[120px]"
             )}
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="flex items-center gap-2 rounded-lg px-2.5 py-1 text-xs font-semibold text-foreground/90 transition-colors hover:bg-white/[0.06] hover:text-white cursor-pointer group outline-none"
+                  className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold text-foreground/90 transition-all hover:bg-purple-500/10 hover:text-purple-700 dark:hover:text-white cursor-pointer group outline-none border border-transparent hover:border-purple-300/40"
                 >
-                  <MessageSquare size={14} className="text-purple-400 shrink-0" />
+                  <MessageSquare size={14} className="text-purple-600 dark:text-purple-400 shrink-0" />
                   <span className="truncate max-w-[280px] sm:max-w-[420px]">
                     {activeChat?.title || (displayMessages[0] ? renderMessageContent(displayMessages[0].content).slice(0, 45) : "Chat")}
                   </span>
-                  <ChevronDown size={13} className="text-foreground/50 transition-transform group-hover:text-white shrink-0" />
+                  <ChevronDown size={13} className="text-foreground/50 transition-transform group-hover:text-purple-600 dark:group-hover:text-white shrink-0" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" sideOffset={6} className="w-52">
@@ -867,7 +880,7 @@ export default function HomeView() {
             <button
               type="button"
               onClick={() => setShareModalOpen(true)}
-              className="p-2 rounded-lg text-foreground/60 hover:text-white hover:bg-white/[0.06] transition-colors"
+              className="kontinue-capsule flex size-8 items-center justify-center text-purple-900 dark:text-purple-100 transition-all cursor-pointer"
               title="Share chat"
             >
               <LuShare size={16} />
@@ -875,7 +888,7 @@ export default function HomeView() {
           </div>
 
           {/* Top fade-out overlay under header */}
-          <div className="pointer-events-none absolute top-13 left-0 right-0 h-8 bg-gradient-to-b from-background via-background/80 to-transparent z-10" />
+          <div className="pointer-events-none absolute top-13 left-0 right-0 h-8 hidden dark:block bg-gradient-to-b from-background via-background/80 to-transparent z-10" />
 
           {/* Scrollable Messages Stream (Same max-w-3xl width as ChatInput) */}
           <div
@@ -920,17 +933,17 @@ export default function HomeView() {
           </div>
 
           {/* Bottom Chat Input Bar (Same max-w-3xl width as messages) */}
-          <div className="shrink-0 p-6 bg-gradient-to-t from-background via-background/95 to-transparent z-20 relative">
-            {/* Scroll-to-Bottom Floating Pill (subtle purple glass styling when user scrolls up) */}
+          <div className="shrink-0 p-6 dark:bg-gradient-to-t dark:from-background dark:via-background/85 dark:to-transparent z-20 relative">
+            {/* Scroll-to-Bottom Floating Pill */}
             {showScrollToBottomButton && (
               <div className="absolute -top-5 left-1/2 -translate-x-1/2 z-30 animate-fade-in">
                 <button
                   type="button"
                   onClick={scrollToBottom}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border border-purple-500/30 bg-purple-950/85 hover:bg-purple-900/90 text-purple-200 text-xs font-medium shadow-lg shadow-purple-950/50 backdrop-blur-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  className="liquid-glass-pill rounded-full inline-flex items-center gap-1.5 px-3.5 py-1.5 text-purple-700 dark:text-purple-200 text-xs font-medium transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
                   title="Scroll to bottom"
                 >
-                  <ArrowDown size={12} className="text-purple-300" />
+                  <ArrowDown size={12} className="text-purple-600 dark:text-purple-300" />
                   <span>Jump to latest</span>
                 </button>
               </div>
@@ -947,7 +960,7 @@ export default function HomeView() {
                   const found = DESKTOP_MODELS.find((m) => m.id === newId);
                   if (found) setSelectedModel(found);
                 }}
-                onOpenConnectors={() => setConnectorsModalOpen(true)}
+                onOpenConnectors={() => openSettings("integrations")}
                 reasoningEnabled={reasoningEnabled}
                 onReasoningToggle={setReasoningEnabled}
                 onSend={(text, _m, atts, _w, r) => void handleSend(text, selectedModel.id, atts, _w, r)}
@@ -961,30 +974,33 @@ export default function HomeView() {
           <div className="w-full max-w-3xl text-center space-y-6">
             {/* Kontinue AI Logo */}
             <div className="flex items-center justify-center">
-              <img src="/kontinueai.svg" alt="Kontinue AI" className="h-10" />
+              <img src="/kontinueai.svg" alt="Kontinue AI" className="h-10 dark:invert-0 invert" />
             </div>
 
             {/* Personalized Greeting */}
-            <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-white">
-              How can I help you, <span className="font-bold">{firstName}</span>?
+            <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-zinc-900 dark:text-zinc-100">
+              How can I help you,{" "}
+              <span className="font-bold text-purple-600 dark:text-purple-400">{firstName}</span>
+              ?
             </h1>
 
             {/* Action Buttons */}
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex items-center justify-center gap-3">
               <button
                 type="button"
                 onClick={() => setHowItWorksOpen(true)}
-                className="text-xs text-white/40 hover:text-white/70 transition-colors"
+                className="liquid-glass-pill rounded-full inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-600 dark:text-zinc-300 hover:text-purple-700 dark:hover:text-white cursor-pointer"
               >
-                How does this work?
+                <HelpCircle size={13} className="text-purple-500 shrink-0" />
+                <span>How does this work?</span>
               </button>
               <button
                 type="button"
                 onClick={() => setImportLinkOpen(true)}
-                className="flex items-center gap-1.5 rounded-full border border-white/[0.15] px-3.5 py-1.5 text-xs text-white/80 hover:bg-white/[0.06] hover:text-white transition-colors"
+                className="liquid-glass-pill rounded-full inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs text-zinc-700 dark:text-zinc-200 hover:text-purple-700 dark:hover:text-white cursor-pointer"
               >
-                <ArrowUpRight size={13} />
-                Import shared link
+                <ArrowUpRight size={13} className="text-purple-500 shrink-0" />
+                <span>Import shared link</span>
               </button>
             </div>
 
@@ -1000,7 +1016,7 @@ export default function HomeView() {
                   const found = DESKTOP_MODELS.find((m) => m.id === newId);
                   if (found) setSelectedModel(found);
                 }}
-                onOpenConnectors={() => setConnectorsModalOpen(true)}
+                onOpenConnectors={() => openSettings("integrations")}
                 reasoningEnabled={reasoningEnabled}
                 onReasoningToggle={setReasoningEnabled}
                 onSend={(text, _m, atts, _w, r) => void handleSend(text, selectedModel.id, atts, _w, r)}
@@ -1008,22 +1024,28 @@ export default function HomeView() {
             </div>
 
             {/* Quick Starter Prompts */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-w-2xl mx-auto w-full pt-2 text-left">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full pt-3 text-left">
               {STARTER_PROMPTS.map((starter, i) => (
                 <button
                   key={i}
                   type="button"
                   onClick={() => void handleSend(starter.prompt)}
-                  className="flex items-start gap-3 rounded-lg border border-white/[0.08] bg-[#121215]/60 hover:border-purple-500/40 hover:bg-purple-500/10 p-3 transition-all hover:scale-[1.01] active:scale-[0.99] group cursor-pointer shadow-lg backdrop-blur-xl"
+                  className="liquid-glass-card group flex items-start gap-3 rounded-[22px] p-3.5 text-left cursor-pointer transition-all active:scale-[0.99]"
                 >
-                  <span className="text-base select-none shrink-0 group-hover:scale-110 transition-transform">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20 text-base shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] group-hover:scale-105 transition-transform">
                     {starter.icon}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-white/90 group-hover:text-purple-200 transition-colors">
-                      {starter.title}
-                    </p>
-                    <p className="text-[11px] text-white/45 truncate mt-0.5 group-hover:text-white/60 transition-colors">
+                  </div>
+                  <div className="min-w-0 flex-1 pt-0.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold text-zinc-800 dark:text-zinc-100 group-hover:text-purple-600 dark:group-hover:text-purple-300 transition-colors">
+                        {starter.title}
+                      </p>
+                      <ArrowUpRight
+                        size={12}
+                        className="text-purple-500/40 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all"
+                      />
+                    </div>
+                    <p className="text-[11.5px] text-zinc-500 dark:text-zinc-400 line-clamp-1 mt-0.5 leading-relaxed group-hover:text-zinc-700 dark:group-hover:text-zinc-300 transition-colors">
                       {starter.prompt}
                     </p>
                   </div>
@@ -1050,30 +1072,23 @@ export default function HomeView() {
           onClose={() => setModelModalOpen(false)}
         />
       )}
-      {connectorsModalOpen && (
-        <SettingsDialog
-          open={connectorsModalOpen}
-          onOpenChange={setConnectorsModalOpen}
-          initialTab="connectors"
-        />
-      )}
 
       {/* Rename Conversation Modal */}
       {renameModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/75 backdrop-blur-md p-4 animate-in fade-in duration-200"
           onClick={() => setRenameModalOpen(false)}
         >
           <div
-            className="relative w-full max-w-md rounded-2xl border border-white/[0.1] bg-popover p-5 shadow-2xl backdrop-blur-xl"
+            className="liquid-glass-dropdown relative w-full max-w-md rounded-2xl p-5 shadow-2xl text-foreground"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-white">Rename conversation</h3>
+              <h3 className="text-sm font-semibold text-foreground">Rename conversation</h3>
               <button
                 type="button"
                 onClick={() => setRenameModalOpen(false)}
-                className="size-6 flex items-center justify-center rounded-full text-white/40 hover:bg-white/[0.08] hover:text-white transition-colors"
+                className="size-6 flex items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
               >
                 <X size={14} />
               </button>
@@ -1092,14 +1107,14 @@ export default function HomeView() {
                 if (e.key === "Escape") setRenameModalOpen(false);
               }}
               autoFocus
-              className="w-full rounded-xl border border-white/[0.1] bg-white/[0.05] px-3 py-2 text-xs text-white outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 mb-4"
+              className="w-full rounded-xl border border-purple-200/60 dark:border-border bg-white/70 dark:bg-secondary/50 px-3.5 py-2.5 text-xs text-foreground outline-none focus:border-purple-500/50 focus:ring-1 focus:ring-purple-500/30 mb-4 placeholder:text-muted-foreground shadow-[inset_0_1px_2px_rgba(0,0,0,0.03)]"
               placeholder="Conversation title"
             />
             <div className="flex justify-end gap-2">
               <button
                 type="button"
                 onClick={() => setRenameModalOpen(false)}
-                className="rounded-lg px-3 py-1.5 text-xs text-white/60 hover:bg-white/[0.06] hover:text-white transition-colors cursor-pointer"
+                className="rounded-xl px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -1112,7 +1127,7 @@ export default function HomeView() {
                   }
                 }}
                 disabled={!newTitle.trim()}
-                className="rounded-lg bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 transition-colors disabled:opacity-40 shadow-sm cursor-pointer"
+                className="rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 transition-colors disabled:opacity-40 shadow-[0_2px_10px_rgba(147,51,234,0.3)] cursor-pointer"
               >
                 Save
               </button>

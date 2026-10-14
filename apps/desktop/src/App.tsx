@@ -8,8 +8,9 @@ import { ensureDocsIndexed } from "@/lib/kode-docs";
 import { AuthProviders } from "@/components/auth/AuthProviders";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { UserSync } from "@/components/auth/UserSync";
-import { KodeWorkspaceProvider } from "@/lib/kode-workspace";
+import { KodeWorkspaceProvider, useKodeWorkspace } from "@/lib/kode-workspace";
 import { KodeAgentRuntimeProvider } from "@/lib/kode-agent-runtime";
+import { SettingsView } from "@/components/settings/SettingsView";
 
 function removeSplash() {
   const splash = document.getElementById("splash");
@@ -21,9 +22,26 @@ function removeSplash() {
 
 function WorkspaceContent() {
   const { isLoaded } = useAuth();
+  const { isSettingsOpen, settingsTab, closeSettings, openSettings } = useKodeWorkspace();
   const [bottomPanelOpen, setBottomPanelOpen] = useState(false);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+
+  // Global shortcut to toggle settings (⌘,)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
+        e.preventDefault();
+        if (isSettingsOpen) {
+          closeSettings();
+        } else {
+          openSettings();
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSettingsOpen, closeSettings, openSettings]);
 
   useEffect(() => {
     // Safety fallback: if Clerk auth initialization takes > 5s (offline, slow connection, etc.),
@@ -47,9 +65,13 @@ function WorkspaceContent() {
 
   return (
     <>
+      {isSettingsOpen && (
+        <SettingsView onBack={closeSettings} initialTab={settingsTab} />
+      )}
       <SignedOut>
-        <div className="relative flex h-screen w-full flex-col bg-background text-foreground overflow-hidden">
-          <div className="relative flex flex-1 w-full overflow-hidden">
+        <div className="relative flex h-screen w-full flex-col liquid-backdrop text-foreground overflow-hidden">
+
+          <div className="relative flex flex-1 w-full overflow-hidden z-10">
             <SidebarProvider>
               <LeftSidebar />
               <main className="flex min-w-0 flex-1 justify-center overflow-hidden">
@@ -68,16 +90,19 @@ function WorkspaceContent() {
       <SignedIn>
         <UserSync />
         <SidebarProvider>
-          <div className="relative flex h-screen w-full bg-background text-foreground overflow-hidden">
-            <LeftSidebar />
-            <main className="flex min-w-0 flex-1 justify-center overflow-hidden">
-              <ViewLayout
-                bottomPanelOpen={bottomPanelOpen}
-                sidePanelOpen={sidePanelOpen}
-                onBottomPanelChange={setBottomPanelOpen}
-                onSidePanelChange={setSidePanelOpen}
-              />
-            </main>
+          <div className="relative flex h-screen w-full liquid-backdrop text-foreground overflow-hidden">
+
+            <div className="relative flex flex-1 w-full overflow-hidden z-10">
+              <LeftSidebar />
+              <main className="flex min-w-0 flex-1 justify-center overflow-hidden">
+                <ViewLayout
+                  bottomPanelOpen={bottomPanelOpen}
+                  sidePanelOpen={sidePanelOpen}
+                  onBottomPanelChange={setBottomPanelOpen}
+                  onSidePanelChange={setSidePanelOpen}
+                />
+              </main>
+            </div>
           </div>
         </SidebarProvider>
       </SignedIn>

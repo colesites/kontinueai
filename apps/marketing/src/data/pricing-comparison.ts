@@ -136,11 +136,11 @@ export const pricingComparisonSections: PricingComparisonSection[] = [
 				description:
 					"Context includes system instructions, conversation history, files, tools and retrieved memory. Output is the maximum generated response.",
 				values: values(
-					"8K / 1K tokens",
-					"16K / 2K tokens",
 					"32K / 4K tokens",
-					"64K / 8K tokens",
-					"128K / 16K tokens",
+					"64K / 6K tokens",
+					"128K / 8K tokens",
+					"256K / 12K tokens",
+					"512K / 16K tokens",
 				),
 			},
 			{

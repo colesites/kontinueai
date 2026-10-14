@@ -151,25 +151,25 @@ export function ModelPickerPopover({
         ) : (
           <button
             type="button"
-            className="flex h-7 items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 text-xs text-white/80 transition-all hover:bg-white/[0.08] hover:text-white cursor-pointer select-none"
+            className="flex h-7 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none"
           >
             <ProviderIcon provider={selectedModel?.provider} className="size-3.5" />
-            <span className="font-medium text-white">{selectedModel?.name ?? "Select model"}</span>
-            <ChevronDown size={11} className="text-white/40 ml-0.5" />
+            <span className="font-medium text-foreground">{selectedModel?.name ?? "Select model"}</span>
+            <ChevronDown size={11} className="text-muted-foreground ml-0.5" />
           </button>
         )}
       </PopoverTrigger>
 
-      {/* Floating Model Picker Box with soft border & compact layout */}
+      {/* Floating Model Picker Box with liquid glass styling */}
       <PopoverContent
         align="start"
         side="top"
         sideOffset={8}
-        className="w-[410px] p-0 rounded-xl border border-white/[0.08] bg-[#121215]/80 backdrop-blur-2xl shadow-2xl shadow-black/80 text-white overflow-hidden select-none"
+        className="w-[410px] p-0 rounded-[22px] liquid-glass-dropdown text-foreground overflow-hidden select-none"
       >
         <div className="flex h-[400px] w-full">
           {/* Left Vertical Provider Icon Rail */}
-          <aside className="w-11 shrink-0 border-r border-white/[0.06] bg-white/[0.015] flex flex-col items-center py-2.5 gap-1.5">
+          <aside className="w-11 shrink-0 border-r border-border bg-muted/30 dark:bg-white/[0.015] flex flex-col items-center py-2.5 gap-1.5">
             <button
               type="button"
               title="Favorites"
@@ -177,11 +177,11 @@ export function ModelPickerPopover({
               className={cn(
                 "size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer",
                 activeProvider === "favorites"
-                  ? "bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-xs"
-                  : "text-white/40 hover:bg-white/[0.06] hover:text-white"
+                  ? "bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-500/40 shadow-xs"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
-              <Star size={13} className={activeProvider === "favorites" ? "fill-purple-400 text-purple-400" : ""} />
+              <Star size={13} className={activeProvider === "favorites" ? "fill-purple-600 dark:fill-purple-400 text-purple-600 dark:text-purple-400" : ""} />
             </button>
 
             <button
@@ -191,14 +191,14 @@ export function ModelPickerPopover({
               className={cn(
                 "size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer",
                 activeProvider === "all"
-                  ? "bg-purple-600/30 text-purple-300 border border-purple-500/40 shadow-xs"
-                  : "text-white/40 hover:bg-white/[0.06] hover:text-white"
+                  ? "bg-purple-600/30 text-purple-700 dark:text-purple-300 border border-purple-500/40 shadow-xs"
+                  : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
               <Sparkles size={13} />
             </button>
 
-            <div className="w-5 h-px bg-white/[0.06] my-0.5" />
+            <div className="w-5 h-px bg-border my-0.5" />
 
             {/* Provider Icons */}
             <div className="flex-1 overflow-y-auto space-y-1.5 w-full flex flex-col items-center">
@@ -213,8 +213,8 @@ export function ModelPickerPopover({
                     className={cn(
                       "size-7 rounded-lg flex items-center justify-center transition-all cursor-pointer",
                       isActive
-                        ? "bg-purple-600/30 border border-purple-500/40 shadow-xs text-purple-200"
-                        : "opacity-45 hover:opacity-100 hover:bg-white/[0.06]"
+                        ? "bg-purple-600/30 border border-purple-500/40 shadow-xs text-purple-700 dark:text-purple-200"
+                        : "opacity-50 hover:opacity-100 hover:bg-secondary dark:hover:bg-white/[0.06]"
                     )}
                   >
                     <ProviderIcon provider={p} className="size-3.5" />
@@ -227,21 +227,21 @@ export function ModelPickerPopover({
           {/* Right Main Content Area */}
           <main className="flex-1 flex flex-col min-w-0">
             {/* Search Header */}
-            <div className="p-2 border-b border-white/[0.06] flex items-center gap-2">
-              <Search size={13} className="text-white/40 ml-1 shrink-0" />
+            <div className="p-2 border-b border-border flex items-center gap-2">
+              <Search size={13} className="text-muted-foreground ml-1 shrink-0" />
               <input
                 type="text"
                 placeholder="Search models..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 autoFocus
-                className="w-full bg-transparent text-xs text-white outline-none placeholder:text-white/35"
+                className="w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
               />
               {search && (
                 <button
                   type="button"
                   onClick={() => setSearch("")}
-                  className="p-1 rounded-md text-white/40 hover:text-white"
+                  className="p-1 rounded-md text-muted-foreground hover:text-foreground"
                 >
                   <X size={11} />
                 </button>
@@ -251,13 +251,13 @@ export function ModelPickerPopover({
             {/* Models Scrollable List */}
             <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
               {filteredModels.length === 0 ? (
-                <div className="py-12 text-center text-xs text-white/40">
+                <div className="py-12 text-center text-xs text-muted-foreground">
                   No models found
                 </div>
               ) : (
                 groups.map(([groupName, groupModels]) => (
                   <div key={groupName} className="space-y-0.5">
-                    <div className="px-2 py-0.5 text-[10.5px] font-medium text-white/40 flex items-center justify-between">
+                    <div className="px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground flex items-center justify-between">
                       <span>{groupName}</span>
                       <span className="text-[9.5px] opacity-60 font-mono">{groupModels.length}</span>
                     </div>
@@ -278,8 +278,8 @@ export function ModelPickerPopover({
                             className={cn(
                               "group relative flex items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-left transition-all cursor-pointer",
                               isSelected
-                                ? "bg-purple-500/15 border border-purple-500/30 text-purple-200"
-                                : "border border-transparent hover:bg-white/[0.04] text-white/80 hover:text-white"
+                                ? "bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-200"
+                                : "border border-transparent hover:bg-secondary/60 dark:hover:bg-white/[0.04] text-foreground/80 hover:text-foreground"
                             )}
                           >
                             {/* Active Purple Indicator Bar on Left */}
@@ -293,16 +293,16 @@ export function ModelPickerPopover({
                               </div>
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-xs font-medium truncate text-white">
+                                  <span className="text-xs font-medium truncate text-foreground">
                                     {model.name}
                                   </span>
                                   {isByok && (
-                                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.2 text-[8px] font-semibold text-emerald-400 uppercase">
+                                    <span className="rounded bg-emerald-500/15 border border-emerald-500/30 px-1 py-0.2 text-[8px] font-semibold text-emerald-600 dark:text-emerald-400 uppercase">
                                       BYOK
                                     </span>
                                   )}
                                 </div>
-                                <p className="text-[10px] text-white/45 truncate leading-tight mt-0.5">
+                                <p className="text-[10px] text-muted-foreground truncate leading-tight mt-0.5">
                                   {model.description || `${model.provider} model`}
                                 </p>
                               </div>
@@ -311,7 +311,7 @@ export function ModelPickerPopover({
                             {/* Right Actions: Shortcut Hint + Star */}
                             <div className="flex items-center gap-1.5 shrink-0">
                               {idx < 4 && activeProvider === "all" && !search && (
-                                <span className="font-mono text-[9.5px] text-white/30 hidden group-hover:block">
+                                <span className="font-mono text-[9.5px] text-muted-foreground/60 hidden group-hover:block">
                                   ⌘{idx + 1}
                                 </span>
                               )}
@@ -321,11 +321,11 @@ export function ModelPickerPopover({
                                 className={cn(
                                   "p-1 rounded transition-colors cursor-pointer",
                                   isFav
-                                    ? "text-purple-400 fill-purple-400"
-                                    : "text-white/20 hover:text-white opacity-0 group-hover:opacity-100"
+                                    ? "text-purple-600 dark:text-purple-400 fill-purple-600 dark:fill-purple-400"
+                                    : "text-muted-foreground/30 hover:text-foreground opacity-0 group-hover:opacity-100"
                                 )}
                               >
-                                <Star size={11} className={isFav ? "fill-purple-400" : ""} />
+                                <Star size={11} className={isFav ? "fill-purple-600 dark:fill-purple-400" : ""} />
                               </button>
                             </div>
                           </div>
@@ -338,7 +338,7 @@ export function ModelPickerPopover({
             </div>
 
             {/* Bottom Footer Note with Settings Link */}
-            <div className="p-2 border-t border-white/[0.06] bg-white/[0.015] flex items-center justify-between text-[11px] text-white/45">
+            <div className="p-2 border-t border-border bg-muted/30 dark:bg-white/[0.015] flex items-center justify-between text-[11px] text-muted-foreground">
               <span>Looking for custom keys?</span>
               {onOpenSettings && (
                 <button
@@ -347,7 +347,7 @@ export function ModelPickerPopover({
                     setOpen(false);
                     onOpenSettings();
                   }}
-                  className="inline-flex items-center gap-1 text-purple-400 hover:text-purple-300 font-medium transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:text-purple-500 dark:hover:text-purple-300 font-medium transition-colors cursor-pointer"
                 >
                   Provider settings
                   <ExternalLink size={10} />

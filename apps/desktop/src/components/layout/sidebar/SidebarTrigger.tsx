@@ -11,7 +11,7 @@ const SidebarTrigger = ({children}: {children: React.ReactNode}) => {
         variant="ghost"
         size="icon-sm"
         onClick={toggleSidebar}
-        className="rounded-lg"
+        className="rounded-xl"
       >
         {children}
       </Button>

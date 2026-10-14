@@ -81,24 +81,26 @@ export async function POST(req: Request) {
 		const lastUserContent = getLastUserContent(messages);
 		console.log("[chat-debug] model string", modelId);
 
-		// K-AI 1.0 is Kontinue's own orchestration layer — it does not live in the
-		// AI Gateway catalog and is routed to OpenRouter (with failover) below. We
-		// synthesize a language-model descriptor so the rest of the pipeline (tool
-		// attachment, prompt building) works unchanged.
+		// K-AI 1.0 is Kontinue's own orchestration layer — its underlying runtime
+		// runs on Vercel AI Gateway (Gemini 2.5 Flash Lite with fallbacks).
 		const usingKai = isKaiModel(modelId);
 		// Kode 1.0 is the Kode IDE's coding model and is NOT offered in the web model
-		// picker — its real home is the IDE (Tauri). Like K-AI it lives outside the AI
-		// Gateway catalog and routes to OpenRouter via KODE_PRIMARY_MODEL/KODE_MODEL_CHAIN.
+		// picker — its real home is the IDE (Tauri). It routes to OpenRouter via KODE_PRIMARY_MODEL/KODE_MODEL_CHAIN.
 		const usingKode = isKodeModel(modelId);
-		// Both branded layers share the same OpenRouter path; pick the right chain.
-		const usingOpenRouter = usingKai || usingKode;
-		const openRouterPrimary = usingKode
-			? KODE_PRIMARY_MODEL
-			: K_AI_PRIMARY_MODEL;
-		const openRouterChain = usingKode ? KODE_MODEL_CHAIN : K_AI_MODEL_CHAIN;
+		const usingOpenRouter = usingKode;
+		const openRouterPrimary = KODE_PRIMARY_MODEL;
+		const openRouterChain = KODE_MODEL_CHAIN;
 
 		let requestedModel: AiGatewayModel;
-		if (usingOpenRouter) {
+		if (usingKai) {
+			const models = await getAiGatewayModelsCached().catch(() => []);
+			const found = models.find((model) => model.id === K_AI_PRIMARY_MODEL);
+			requestedModel = found ?? {
+				id: K_AI_PRIMARY_MODEL,
+				type: "language",
+				tags: ["reasoning", "tool-use", "structured-output"],
+			};
+		} else if (usingOpenRouter) {
 			requestedModel = { id: modelId, type: "language", tags: [] };
 		} else {
 			const models = await getAiGatewayModelsCached();
@@ -186,7 +188,7 @@ export async function POST(req: Request) {
 		if (usingOpenRouter) {
 			if (!openRouterKey) {
 				console.error(
-					"Chat API misconfigured: missing OPEN_ROUTER key for K-AI/Kode.",
+					"Chat API misconfigured: missing OPEN_ROUTER key for Kode.",
 				);
 				return new Response("AI is not configured. Please try again later.", {
 					status: 500,
@@ -353,21 +355,19 @@ export async function POST(req: Request) {
 			}
 		}
 
-		// Build the language model. K-AI routes through OpenRouter, handing it the
-		// ordered model chain (primary + fallbacks) so OpenRouter automatically
-		// fails over on rate limits, provider downtime, or model errors — all
-		// transparent to the user, who only ever sees "K-AI 1.0".
+		// Build the language model. K-AI routes through Vercel AI Gateway using
+		// K_AI_PRIMARY_MODEL (Gemini 2.5 Flash Lite), while Kode routes through OpenRouter.
 		let modelInstance: LanguageModel;
 		if (usingOpenRouter) {
 			if (!openRouterKey) {
-				throw new Error("OPEN_ROUTER must be configured for K-AI and Kode.");
+				throw new Error("OPEN_ROUTER must be configured for Kode.");
 			}
 			const openrouter = createOpenRouter({ apiKey: openRouterKey });
 			modelInstance = openrouter.chat(openRouterPrimary, {
-				// OpenRouter tries this ordered list and auto-fails-over on rate limit,
-				// provider downtime, or model error — transparent to the user.
 				models: openRouterChain,
 			}) as unknown as LanguageModel;
+		} else if (usingKai) {
+			modelInstance = gateway(K_AI_PRIMARY_MODEL) as unknown as LanguageModel;
 		} else {
 			modelInstance = gateway(modelId) as unknown as LanguageModel;
 		}

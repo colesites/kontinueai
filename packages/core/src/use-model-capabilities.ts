@@ -60,11 +60,11 @@ export function useModelCapabilities() {
 	return useMemo(
 		() => ({
 			getCapabilities: (modelId: string): ModelCapability[] => {
-				// K-AI is not a gateway model. Its underlying open-source models
-				// (Gemma, GPT-OSS) support reasoning, tool calling and web search, so
+				// K-AI 1.0 is Kontinue's native intelligence layer. Its underlying
+				// models (Gemini, Qwen) support reasoning, tool calling and web search, so
 				// advertise the full capability set.
 				if (modelId === K_AI_MODEL_ID) {
-					// Gemma / GPT-OSS support reasoning and tool calling (tool calling is
+					// Underlying models support reasoning and tool calling (tool calling is
 					// not a displayed capability — it's wired in the chat route). Web
 					// search uses K-AI's own server-side pipeline (Tavily→Serper), not the
 					// gateway Perplexity tool, so it's a real capability here.

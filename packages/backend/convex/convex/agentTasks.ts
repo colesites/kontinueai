@@ -127,9 +127,13 @@ export const run = internalAction({
     const { task } = data;
     const instruction = task.aiInstruction!;
 
-    const apiKey = process.env.OPEN_ROUTER;
+    const apiKey =
+      process.env.VERCEL_AI_GATEWAY_API_KEY ??
+      process.env.AI_GATEWAY_API_KEY ??
+      process.env.AI_GATEWAY_TOKEN ??
+      process.env.OPEN_ROUTER;
     if (!apiKey) {
-      console.error("[agent-task] OPEN_ROUTER not set on Convex deployment");
+      console.error("[agent-task] Neither AI Gateway key nor OPEN_ROUTER set on Convex deployment");
       await ctx.runMutation(internal.notifications.create, {
         ownerId: task.ownerId,
         type: "system",
@@ -178,7 +182,11 @@ export const run = internalAction({
           "Be concise and well-structured. If you lack live data access for part of the request, do what you can and clearly note what couldn't be done.",
           contextBlock ? `\nUser context:\n${contextBlock}` : "",
         ].join("\n");
-        const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        const isGateway = !apiKey.startsWith("sk-or-") && (!!process.env.VERCEL_AI_GATEWAY_API_KEY || !!process.env.AI_GATEWAY_API_KEY || !!process.env.AI_GATEWAY_TOKEN);
+        const endpoint = isGateway
+          ? "https://ai-gateway.vercel.sh/v1/chat/completions"
+          : "https://openrouter.ai/api/v1/chat/completions";
+        const res = await fetch(endpoint, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${apiKey}`,
@@ -186,16 +194,16 @@ export const run = internalAction({
           },
           body: JSON.stringify({
             model: K_AI_PRIMARY_MODEL,
-            models: K_AI_MODEL_CHAIN,
+            ...(isGateway ? {} : { models: K_AI_MODEL_CHAIN }),
             messages: [
               { role: "system", content: system },
               { role: "user", content: instruction },
             ],
-            max_tokens: 1200,
+            max_tokens: 2000,
           }),
         });
         if (!res.ok) {
-          throw new Error(`OpenRouter ${res.status}: ${await res.text().catch(() => "")}`);
+          throw new Error(`AI ${res.status}: ${await res.text().catch(() => "")}`);
         }
         const json = (await res.json()) as {
           choices?: Array<{ message?: { content?: string } }>;

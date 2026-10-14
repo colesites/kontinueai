@@ -66,9 +66,28 @@ export type KodeChat = {
 
 export type KodeTab = "home" | "canvas" | "kode";
 
+export type SettingsNavTab =
+  | "general"
+  | "appearance"
+  | "keybindings"
+  | "snapshots"
+  | "providers"
+  | "integrations"
+  | "scheduled-tasks"
+  | "source-control"
+  | "storage"
+  | "connections"
+  | "archive"
+  | "agents"
+  | "account";
+
 type KodeWorkspaceContextValue = {
   activeTab: KodeTab;
   setActiveTab: (tab: KodeTab) => void;
+  isSettingsOpen: boolean;
+  settingsTab: SettingsNavTab;
+  openSettings: (tab?: string) => void;
+  closeSettings: () => void;
   projects: KodeProject[];
   chats: KodeChat[];
   chatsLoading: boolean;
@@ -113,6 +132,22 @@ const KodeWorkspaceContext = createContext<KodeWorkspaceContextValue | null>(
 
 export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeTab, setActiveTab] = useState<KodeTab>("home");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsNavTab>("general");
+
+  const openSettings = useCallback((tab?: string) => {
+    if (tab) {
+      if (tab === "byok") setSettingsTab("providers");
+      else if (tab === "connectors") setSettingsTab("integrations");
+      else setSettingsTab(tab as SettingsNavTab);
+    }
+    setIsSettingsOpen(true);
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    setIsSettingsOpen(false);
+  }, []);
+
   const [activeHomeChatId, setActiveHomeChatId] = useState<string | null>(null);
   const [activeKodeChatId, setActiveKodeChatId] = useState<string | null>(null);
   const activeChatId = activeTab === "home" ? activeHomeChatId : activeKodeChatId;
@@ -156,9 +191,9 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     window.localStorage.setItem(CHAT_FOLDER_KEY, JSON.stringify(chatFolder));
   }, [chatFolder]);
 
-  // Projects list: Home tab shows Convex projects, Kode tab shows local imported folders
+  // Projects list: Home tab (and Canvas) shows Convex projects, Kode tab shows local imported folders
   const projects = useMemo<KodeProject[]>(() => {
-    if (activeTab === "home") {
+    if (activeTab !== "kode") {
       return (convexHomeProjects ?? []).map((project: HomeConvexProject) => ({
         id: project._id,
         name: project.name,
@@ -174,9 +209,9 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     }));
   }, [activeTab, convexHomeProjects, folders]);
 
-  // Chats list: Home tab shows `chats` table, Kode/Canvas tab shows `kodeChats` table
+  // Chats list: Home tab (and Canvas) shows `chats` table, Kode tab shows `kodeChats` table
   const chats = useMemo<KodeChat[]>(() => {
-    if (activeTab === "home") {
+    if (activeTab !== "kode") {
       return (convexHomeChats ?? [])
         .filter((chat: HomeConvexChat) => !chat.archived)
         .map((chat: HomeConvexChat) => ({
@@ -244,8 +279,11 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const newChat = useCallback((projectId: string | null = null) => {
-    if (activeTab === "home") {
+    if (activeTab !== "kode") {
       setActiveHomeChatId(null);
+      if (activeTab === "canvas") {
+        setActiveTab("home");
+      }
     } else {
       setActiveKodeChatId(null);
     }
@@ -253,8 +291,11 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   }, [activeTab]);
 
   const selectChat = useCallback((chatId: string) => {
-    if (activeTab === "home") {
+    if (activeTab !== "kode") {
       setActiveHomeChatId(chatId);
+      if (activeTab === "canvas") {
+        setActiveTab("home");
+      }
     } else {
       setActiveKodeChatId(chatId);
     }
@@ -275,7 +316,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const renameProjectRecord = useCallback(
     async (projectId: string, name: string, description?: string) => {
-      if (activeTab === "home") {
+      if (activeTab !== "kode") {
         await updateHomeProject({
           projectId,
           name: name.trim(),
@@ -301,7 +342,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       const chatTitle = toChatTitle(title);
       let chatId: string;
 
-      if (activeTab === "home") {
+      if (activeTab !== "kode") {
         chatId = await createHomeChat({
           title: chatTitle,
           provider: "manual",
@@ -332,7 +373,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       sources?: { title: string; url: string }[];
       todos?: { title: string; description?: string; status: string }[];
     }) => {
-      if (activeTab === "home") {
+      if (activeTab !== "kode") {
         await addHomeMessage({
           chatId: input.chatId as any,
           role: input.role,
@@ -358,7 +399,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const togglePinChat = useCallback(
     async (chatId: string, pinned: boolean) => {
-      if (activeTab === "home") {
+      if (activeTab !== "kode") {
         await toggleHomeChatPin({ chatId: chatId as any, pinned });
       } else {
         await toggleKodeChatPin({ chatId: chatId as any, pinned });
@@ -369,7 +410,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const archiveChat = useCallback(
     async (chatId: string, archived: boolean) => {
-      if (activeTab === "home") {
+      if (activeTab !== "kode") {
         await setHomeChatArchived({ chatId: chatId as any, archived });
       } else {
         await setKodeChatArchived({ chatId: chatId as any, archived });
@@ -380,7 +421,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const deleteChat = useCallback(
     async (chatId: string) => {
-      if (activeTab === "home") {
+      if (activeTab !== "kode") {
         await deleteHomeChatMutation({ chatId: chatId as any });
         setActiveHomeChatId((current) => (current === chatId ? null : current));
       } else {
@@ -401,7 +442,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     async (chatId: string, title: string) => {
       const clean = title.trim();
       if (!clean) return;
-      if (activeTab === "home") {
+      if (activeTab !== "kode") {
         await updateHomeChatTitle({ chatId: chatId as any, title: clean });
       } else {
         await updateKodeChatTitle({ chatId: chatId as any, title: clean });
@@ -421,10 +462,14 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     () => ({
       activeTab,
       setActiveTab,
+      isSettingsOpen,
+      settingsTab,
+      openSettings,
+      closeSettings,
       projects,
       chats,
       chatsLoading:
-        activeTab === "home"
+        activeTab !== "kode"
           ? convexHomeChats === undefined
           : convexKodeChats === undefined,
       activeChatId,
@@ -445,6 +490,10 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     }),
     [
       activeTab,
+      isSettingsOpen,
+      settingsTab,
+      openSettings,
+      closeSettings,
       activeChatId,
       addMessageRecord,
       archiveChat,

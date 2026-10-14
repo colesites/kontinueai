@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ArrowUp,
@@ -23,7 +23,11 @@ import {
   Sparkles,
   Zap,
   Palette,
+  Video,
+  Ratio,
+  Clock,
 } from "lucide-react";
+import { ASPECT_RATIOS, formatDuration } from "@repo/ai/lib/canvas-models";
 import { AGENTS, getAgent } from "@repo/ai/lib/agents";
 import { useQuery } from "convex/react";
 import { api } from "@/lib/convex-api";
@@ -128,6 +132,17 @@ type ChatInputProps = {
   onOpenAgents?: () => void;
   selectedAgentId?: string | null;
   onAgentChange?: (agentId: string | null) => void;
+  canvasControls?: CanvasControlsProps;
+};
+
+export type CanvasControlsProps = {
+  mode: "image" | "video";
+  onModeChange: (mode: "image" | "video") => void;
+  aspectRatio: string;
+  onAspectRatioChange: (ratio: string) => void;
+  duration?: number;
+  onDurationChange?: (duration: number) => void;
+  credits?: number;
 };
 
 function getAgentIcon(id: string): React.ComponentType<{ size?: number; className?: string }> {
@@ -179,6 +194,37 @@ function getConnectorLogoUrl(provider: string): string {
   }
 }
 
+function renderHighlightedTokens(
+  text: string,
+  installedConnectors: Set<string>,
+  catalogConnectors: Set<string>
+) {
+  if (!text) return null;
+  const parts = text.split(/(@[a-zA-Z0-9_-]+)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith("@")) {
+      const provider = part.slice(1).toLowerCase();
+      const isInstalled = installedConnectors.has(provider);
+      const isCatalog = catalogConnectors.has(provider);
+      if (isInstalled || isCatalog) {
+        return (
+          <span
+            key={i}
+            className="text-purple-600 dark:text-purple-400 font-medium"
+          >
+            {part}
+          </span>
+        );
+      }
+    }
+    return (
+      <span key={i} className="text-zinc-900 dark:text-foreground">
+        {part}
+      </span>
+    );
+  });
+}
+
 export function ChatInput({
   loading = false,
   onStop,
@@ -204,6 +250,7 @@ export function ChatInput({
   onOpenAgents: _onOpenAgents,
   selectedAgentId: controlledAgentId,
   onAgentChange,
+  canvasControls,
 }: ChatInputProps) {
   const activeMode =
     KODE_AGENT_MODES.find((m) => m.id === mode) ?? KODE_AGENT_MODES[0];
@@ -235,6 +282,37 @@ export function ChatInput({
 
   const connectorsQuery = useQuery(api.connectors.listConnectors, {});
 
+  const installedProviders = useMemo(() => {
+    return new Set(
+      connectorsQuery?.filter((c) => c.connected).map((c) => c.provider.toLowerCase()) ?? []
+    );
+  }, [connectorsQuery]);
+
+  const catalogProviders = useMemo(() => {
+    return new Set(CONNECTORS_CATALOG.map((c) => c.provider.toLowerCase()));
+  }, []);
+
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const [mentionStartIndex, setMentionStartIndex] = useState<number | null>(null);
+  const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
+
+  const mentionCandidates = useMemo(() => {
+    if (mentionQuery === null) return [];
+    const q = mentionQuery.toLowerCase();
+    const list = CONNECTORS_CATALOG.filter(
+      (c) =>
+        c.provider.toLowerCase().startsWith(q) ||
+        c.name.toLowerCase().startsWith(q)
+    );
+    return list.sort((a, b) => {
+      const aConn = installedProviders.has(a.provider.toLowerCase());
+      const bConn = installedProviders.has(b.provider.toLowerCase());
+      if (aConn && !bConn) return -1;
+      if (!aConn && bConn) return 1;
+      return 0;
+    });
+  }, [mentionQuery, installedProviders]);
+
   const toggleWebSearch = () => {
     const next = !webSearchEnabled;
     setInternalWebSearchEnabled(next);
@@ -245,6 +323,7 @@ export function ChatInput({
     useState(KODE_DEFAULT_MODEL_ID);
   const modelId = controlledModelId ?? uncontrolledModelId;
   const ref = useRef<HTMLTextAreaElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addFiles = async (files: FileList | null) => {
@@ -281,7 +360,11 @@ export function ChatInput({
     const el = ref.current;
     if (!el) return;
     el.style.height = "0px";
-    el.style.height = Math.min(el.scrollHeight, 260) + "px";
+    const nextH = Math.min(el.scrollHeight, 260) + "px";
+    el.style.height = nextH;
+    if (mirrorRef.current) {
+      mirrorRef.current.style.height = nextH;
+    }
   };
 
   useEffect(() => {
@@ -308,7 +391,80 @@ export function ChatInput({
     );
     setValue("");
     setAttachments([]);
+    setMentionQuery(null);
+    setMentionStartIndex(null);
     requestAnimationFrame(resize);
+  };
+
+  const handleSelectMention = (provider: string) => {
+    if (mentionStartIndex === null) return;
+    const queryLen = mentionQuery?.length ?? 0;
+    const prefix = value.slice(0, mentionStartIndex);
+    const suffix = value.slice(mentionStartIndex + 1 + queryLen);
+    const nextVal = `${prefix}@${provider} ${suffix}`;
+    setValue(nextVal);
+    setMentionQuery(null);
+    setMentionStartIndex(null);
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (el) {
+        const newPos = prefix.length + provider.length + 2;
+        el.focus();
+        el.setSelectionRange(newPos, newPos);
+        resize();
+      }
+    });
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextVal = e.target.value;
+    setValue(nextVal);
+    resize();
+
+    const caret = e.target.selectionStart;
+    const before = nextVal.slice(0, caret);
+    const match = before.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/);
+    if (match) {
+      const query = match[1];
+      setMentionQuery(query);
+      setMentionStartIndex(caret - query.length - 1);
+      setMentionActiveIndex(0);
+    } else {
+      setMentionQuery(null);
+      setMentionStartIndex(null);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionQuery !== null && mentionCandidates.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionActiveIndex((i) => (i + 1) % mentionCandidates.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionActiveIndex((i) => (i - 1 + mentionCandidates.length) % mentionCandidates.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const selected = mentionCandidates[mentionActiveIndex] ?? mentionCandidates[0];
+        if (selected) {
+          handleSelectMention(selected.provider);
+        }
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setMentionQuery(null);
+        return;
+      }
+    }
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit();
+    }
   };
 
   const canSend = (value.trim().length > 0 || attachments.length > 0) && !loading;
@@ -319,7 +475,7 @@ export function ChatInput({
 
   return (
     <div
-      className="bg-card/95 border border-border shadow-md dark:shadow-none rounded-2xl p-3 transition-all duration-200 focus-within:border-purple-500/40 focus-within:shadow-[0_0_20px_rgba(168,85,247,0.12)]"
+      className="liquid-glass-composer relative rounded-[28px] p-3.5"
     >
       <input
         ref={fileInputRef}
@@ -393,36 +549,248 @@ export function ChatInput({
         </div>
       )}
 
-      <textarea
-        ref={ref}
-        value={value}
-        rows={1}
-        onChange={(e) => {
-          setValue(e.target.value);
-          resize();
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        placeholder={placeholder}
-        aria-label="Message Kode"
-        className="min-h-[60px] max-h-[260px] w-full resize-none bg-transparent px-2 pt-1 text-[15px] leading-relaxed text-foreground placeholder:text-foreground/35 focus:outline-none disabled:cursor-not-allowed disabled:opacity-55"
-      />
+      {/* Mention Autocomplete Menu */}
+      {mentionQuery !== null && mentionCandidates.length > 0 && (
+        <div className="absolute bottom-full left-4 z-50 mb-2 w-64 rounded-2xl liquid-glass-dropdown p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6),0_0_20px_rgba(168,85,247,0.2)] border border-purple-500/30">
+          <div className="px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
+            Connectors
+          </div>
+          <div className="space-y-0.5 max-h-48 overflow-y-auto">
+            {mentionCandidates.map((conn, idx) => {
+              const isConnected = installedProviders.has(conn.provider.toLowerCase());
+              const isSelected = idx === mentionActiveIndex;
+              return (
+                <button
+                  key={conn.provider}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    handleSelectMention(conn.provider);
+                  }}
+                  onMouseEnter={() => setMentionActiveIndex(idx)}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 text-left text-xs transition-colors cursor-pointer",
+                    isSelected
+                      ? "bg-purple-500/20 text-purple-200 border border-purple-500/40 shadow-xs font-medium"
+                      : "text-foreground hover:bg-purple-500/10 border border-transparent"
+                  )}
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <img
+                      src={getConnectorLogoUrl(conn.provider)}
+                      alt={conn.name}
+                      className="size-4 object-contain shrink-0"
+                    />
+                    <span className="truncate">{conn.name}</span>
+                  </div>
+                  {isConnected ? (
+                    <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-purple-400 shrink-0">
+                      <Check size={11} className="text-purple-400" />
+                      Connected
+                    </span>
+                  ) : (
+                    <span className="text-[10.5px] text-muted-foreground/60 shrink-0">
+                      Connect
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Textarea with Highlight Mirror Overlay */}
+      <div className="relative min-h-[64px] max-h-[260px] w-full">
+        <div
+          ref={mirrorRef}
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words px-2.5 pt-1.5 text-[15px] leading-relaxed font-sans"
+        >
+          {renderHighlightedTokens(value, installedProviders, catalogProviders)}
+          {value.endsWith("\n") ? "\n " : ""}
+        </div>
+
+        <textarea
+          ref={ref}
+          value={value}
+          rows={1}
+          onChange={handleInputChange}
+          onScroll={(e) => {
+            if (mirrorRef.current) {
+              mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
+            }
+          }}
+          onClick={(e) => {
+            const caret = e.currentTarget.selectionStart;
+            const before = value.slice(0, caret);
+            const match = before.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/);
+            if (match) {
+              setMentionQuery(match[1]);
+              setMentionStartIndex(caret - match[1].length - 1);
+            } else {
+              setMentionQuery(null);
+            }
+          }}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          aria-label="Message Kode"
+          className={cn(
+            "relative z-10 min-h-[64px] max-h-[260px] w-full resize-none bg-transparent px-2.5 pt-1.5 text-[15px] leading-relaxed font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
+            value.length > 0
+              ? "text-transparent caret-zinc-900 dark:caret-white"
+              : "text-zinc-900 dark:text-foreground placeholder:text-zinc-400 dark:placeholder:text-foreground/35"
+          )}
+        />
+      </div>
 
       <div className="mt-1.5 flex items-center justify-between gap-2">
         {/* Left: tools + model */}
-        <div className="flex items-center gap-1">
+        {canvasControls ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* Attachment Button */}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach reference image"
+              aria-label="Attach reference image"
+              className="flex size-7.5 items-center justify-center rounded-full liquid-glass-pill text-zinc-700 dark:text-foreground/70 hover:text-zinc-950 dark:hover:text-foreground cursor-pointer"
+            >
+              <Plus size={14} />
+            </button>
+
+            {/* Mode Toggle: [ Image | Video ] */}
+            <div className="inline-flex h-7.5 shrink-0 items-center gap-0.5 rounded-full p-0.5 liquid-glass-pill select-none border border-white/5">
+              <button
+                type="button"
+                onClick={() => canvasControls.onModeChange("image")}
+                className={cn(
+                  "inline-flex h-6.5 items-center gap-1.5 rounded-full px-3 text-xs transition-all cursor-pointer",
+                  canvasControls.mode === "image"
+                    ? "bg-purple-500/15 border border-purple-500/50 text-white font-semibold shadow-[0_0_12px_rgba(168,85,247,0.35)]"
+                    : "border border-transparent text-zinc-600 dark:text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <ImageIcon
+                  size={12}
+                  className={canvasControls.mode === "image" ? "text-purple-400" : "text-muted-foreground"}
+                />
+                <span>Image</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => canvasControls.onModeChange("video")}
+                className={cn(
+                  "inline-flex h-6.5 items-center gap-1.5 rounded-full px-3 text-xs transition-all cursor-pointer",
+                  canvasControls.mode === "video"
+                    ? "bg-purple-500/15 border border-purple-500/50 text-white font-semibold shadow-[0_0_12px_rgba(168,85,247,0.35)]"
+                    : "border border-transparent text-zinc-600 dark:text-muted-foreground hover:text-foreground"
+                )}
+              >
+                <Video
+                  size={12}
+                  className={canvasControls.mode === "video" ? "text-purple-400" : "text-muted-foreground"}
+                />
+                <span>Video</span>
+              </button>
+            </div>
+
+            {/* Aspect Ratio Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="flex h-7.5 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none border border-purple-500/35 bg-purple-500/10 shadow-[0_0_8px_rgba(168,85,247,0.15)] hover:border-purple-500/50 hover:bg-purple-500/15"
+                >
+                  <Ratio size={12} className="text-purple-400" />
+                  <span className="font-semibold text-purple-200">{canvasControls.aspectRatio}</span>
+                  <ChevronDown size={11} className="text-purple-300 ml-0.5" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-36 p-1 rounded-2xl liquid-glass-dropdown">
+                <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
+                  Aspect Ratio
+                </div>
+                {ASPECT_RATIOS.map((r) => {
+                  const isSelected = canvasControls.aspectRatio === r.value;
+                  return (
+                    <DropdownMenuItem
+                      key={r.value}
+                      onClick={() => canvasControls.onAspectRatioChange(r.value)}
+                      className={cn(
+                        "justify-between text-xs font-medium cursor-pointer rounded-lg px-2.5 py-1.5 transition-colors",
+                        isSelected
+                          ? "bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30 shadow-[0_0_8px_rgba(168,85,247,0.2)]"
+                          : "text-foreground hover:bg-accent"
+                      )}
+                    >
+                      <span>{r.label}</span>
+                      {isSelected && <Check size={12} className="text-purple-400 shrink-0" />}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Model Picker Popover */}
+            <ModelPickerPopover
+              models={models}
+              selectedModelId={modelId}
+              onSelectModel={(selected) => {
+                setModel(selected.id);
+              }}
+              onOpenSettings={onOpenConnectors}
+            />
+
+            {/* Video Duration (if mode === video) */}
+            {canvasControls.mode === "video" && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex h-7.5 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none border border-purple-500/35 bg-purple-500/10 shadow-[0_0_8px_rgba(168,85,247,0.15)] hover:border-purple-500/50 hover:bg-purple-500/15"
+                  >
+                    <Clock size={12} className="text-purple-400" />
+                    <span className="font-semibold text-purple-200">{formatDuration(canvasControls.duration ?? 5)}</span>
+                    <ChevronDown size={11} className="text-purple-300 ml-0.5" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-32 p-1 rounded-2xl liquid-glass-dropdown">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
+                    Duration
+                  </div>
+                  {[5, 10, 15, 30].map((d) => {
+                    const isSelected = canvasControls.duration === d;
+                    return (
+                      <DropdownMenuItem
+                        key={d}
+                        onClick={() => canvasControls.onDurationChange?.(d)}
+                        className={cn(
+                          "justify-between text-xs font-medium cursor-pointer rounded-lg px-2.5 py-1.5 transition-colors",
+                          isSelected
+                            ? "bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30 shadow-[0_0_8px_rgba(168,85,247,0.2)]"
+                            : "text-foreground hover:bg-accent"
+                        )}
+                      >
+                        <span>{formatDuration(d)}</span>
+                        {isSelected && <Check size={12} className="text-purple-400 shrink-0" />}
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
                 aria-label="Add to chat"
-                className="flex size-8 items-center justify-center rounded-lg border border-border bg-secondary/50 text-foreground/70 transition-all hover:bg-secondary hover:border-border hover:text-foreground cursor-pointer"
+                className="flex size-7.5 items-center justify-center rounded-full liquid-glass-pill text-zinc-700 dark:text-foreground/70 hover:text-zinc-950 dark:hover:text-foreground cursor-pointer"
               >
-                <Plus size={15} />
+                <Plus size={14} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -443,7 +811,7 @@ export function ChatInput({
                   <span>Connectors</span>
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent sideOffset={12} className="w-60 p-1 -translate-y-[calc(100%-28px)]">
-                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                     Connectors
                   </div>
                   <DropdownMenuSeparator />
@@ -458,6 +826,10 @@ export function ChatInput({
                           if (isConnected) {
                             const mention = `@${conn.provider}`;
                             setValue((prev) => (prev ? `${prev} ${mention} ` : `${mention} `));
+                            requestAnimationFrame(() => {
+                              ref.current?.focus();
+                              resize();
+                            });
                           } else {
                             const url = `https://chat.kontinueai.com/api/connectors/${conn.provider}/start`;
                             void openUrl(url).catch(() => {
@@ -465,7 +837,12 @@ export function ChatInput({
                             });
                           }
                         }}
-                        className="justify-between"
+                        className={cn(
+                          "justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors",
+                          isConnected
+                            ? "bg-purple-500/10 border border-purple-500/25 text-purple-200"
+                            : "hover:bg-accent"
+                        )}
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <img
@@ -476,12 +853,12 @@ export function ChatInput({
                           <span className="font-normal text-xs">{conn.name}</span>
                         </div>
                         {isConnected ? (
-                          <span className="inline-flex items-center gap-1 text-[10.5px] font-medium text-purple-400">
-                            <Check size={12} />
+                          <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold text-purple-400">
+                            <Check size={12} className="text-purple-400" />
                             Connected
                           </span>
                         ) : (
-                          <span className="text-[11px] font-normal text-white hover:text-white/80 transition-colors">
+                          <span className="text-[11px] font-normal text-foreground dark:text-white hover:text-foreground/80 dark:hover:text-white/80 transition-colors">
                             Connect
                           </span>
                         )}
@@ -491,7 +868,7 @@ export function ChatInput({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={() => onOpenConnectors?.()}
-                    className="text-xs text-white/70 hover:text-white"
+                    className="text-xs text-muted-foreground hover:text-foreground cursor-pointer"
                   >
                     <Plug2 size={13} />
                     <span>Manage connectors…</span>
@@ -500,7 +877,12 @@ export function ChatInput({
               </DropdownMenuSub>
               <DropdownMenuItem
                 onClick={toggleWebSearch}
-                className="justify-between"
+                className={cn(
+                  "justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors",
+                  webSearchEnabled
+                    ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 font-medium"
+                    : "hover:bg-accent"
+                )}
               >
                 <div className="flex items-center gap-2">
                   <Globe size={14} strokeWidth={1.25} className={webSearchEnabled ? "text-purple-400" : "text-foreground/70"} />
@@ -514,7 +896,12 @@ export function ChatInput({
               </DropdownMenuItem>
               <DropdownMenuItem
                 onClick={toggleReasoning}
-                className="justify-between"
+                className={cn(
+                  "justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors",
+                  reasoningEnabled
+                    ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 font-medium"
+                    : "hover:bg-accent"
+                )}
               >
                 <div className="flex items-center gap-2">
                   <Brain
@@ -535,26 +922,31 @@ export function ChatInput({
                   <Bot size={14} strokeWidth={1.25} />
                   <span>Agents</span>
                   {activeAgent && (
-                    <span className="ml-auto text-[10.5px] font-medium text-white/50 truncate max-w-[80px]">
+                    <span className="ml-auto text-[10.5px] font-medium text-purple-400 truncate max-w-[80px]">
                       {activeAgent.name}
                     </span>
                   )}
                 </DropdownMenuSubTrigger>
                 <DropdownMenuSubContent sideOffset={12} className="w-64 p-1 -translate-y-[calc(100%-28px)]">
-                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
                     Agents
                   </div>
                   <DropdownMenuSeparator />
                   
                   <DropdownMenuItem
                     onClick={() => setSelectedAgentId(null)}
-                    className="justify-between"
+                    className={cn(
+                      "justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors",
+                      selectedAgentId === null
+                        ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 font-medium"
+                        : "hover:bg-accent"
+                    )}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <Bot size={14} strokeWidth={1.25} className="text-white/60 shrink-0" />
+                      <Bot size={14} strokeWidth={1.25} className={selectedAgentId === null ? "text-purple-400 shrink-0" : "text-muted-foreground shrink-0"} />
                       <span className="font-normal text-xs">Standard Assistant</span>
                     </div>
-                    {selectedAgentId === null && <Check size={12} className="text-white shrink-0" />}
+                    {selectedAgentId === null && <Check size={12} className="text-purple-400 shrink-0" />}
                   </DropdownMenuItem>
                   
                   <DropdownMenuSeparator />
@@ -566,7 +958,12 @@ export function ChatInput({
                       <DropdownMenuItem
                         key={agent.id}
                         onClick={() => setSelectedAgentId(agent.id)}
-                        className="justify-between items-start py-2"
+                        className={cn(
+                          "justify-between items-start py-2 cursor-pointer rounded-lg px-2 transition-colors",
+                          isSelected
+                            ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 shadow-xs"
+                            : "hover:bg-accent"
+                        )}
                       >
                         <div className="flex items-start gap-2.5 min-w-0 pr-2">
                           <div
@@ -576,11 +973,11 @@ export function ChatInput({
                             <IconComponent size={12} />
                           </div>
                           <div className="space-y-0.5 min-w-0">
-                            <span className="font-medium text-xs text-white block truncate">{agent.name}</span>
-                            <p className="text-[10.5px] text-white/45 leading-tight line-clamp-1">{agent.description}</p>
+                            <span className={cn("font-medium text-xs block truncate", isSelected ? "text-purple-100" : "text-foreground")}>{agent.name}</span>
+                            <p className={cn("text-[10.5px] leading-tight line-clamp-1", isSelected ? "text-purple-300/80" : "text-muted-foreground")}>{agent.description}</p>
                           </div>
                         </div>
-                        {isSelected && <Check size={12} className="text-white shrink-0 mt-1" />}
+                        {isSelected && <Check size={12} className="text-purple-400 shrink-0 mt-1" />}
                       </DropdownMenuItem>
                     );
                   })}
@@ -606,21 +1003,21 @@ export function ChatInput({
                 <button
                   type="button"
                   aria-label={`Execution mode: ${activeMode?.label ?? "Supervised"}`}
-                  className="flex h-7 items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 text-xs text-white/80 transition-all hover:bg-white/[0.08] hover:text-white cursor-pointer select-none"
+                  className="flex h-7 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none"
                 >
                   {(() => {
                     const ModeIcon = (mode && MODE_ICON_MAP[mode]) || Lock;
-                    return <ModeIcon className="size-3.5 text-white/80" />;
+                    return <ModeIcon className="size-3.5 text-purple-700 dark:text-foreground/80" />;
                   })()}
-                  <span className="font-medium text-white">{activeMode?.label ?? "Supervised"}</span>
-                  <ChevronDown size={11} className="text-white/40 ml-0.5" />
+                  <span className="font-semibold text-zinc-900 dark:text-foreground">{activeMode?.label ?? "Supervised"}</span>
+                  <ChevronDown size={11} className="text-muted-foreground ml-0.5" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="start"
                 side="top"
                 sideOffset={8}
-                className="w-[285px] p-1.5 rounded-xl border border-white/[0.08] bg-[#121215]/80 backdrop-blur-2xl shadow-2xl shadow-black/80 text-white select-none space-y-0.5"
+                className="w-[285px] p-1.5 rounded-2xl liquid-glass-dropdown text-foreground select-none space-y-0.5"
               >
                 {KODE_AGENT_MODES.map((modeOption) => {
                   const IconComponent = MODE_ICON_MAP[modeOption.id] || Lock;
@@ -635,17 +1032,17 @@ export function ChatInput({
                       className={cn(
                         "flex w-full flex-col items-start rounded-lg p-2.5 text-left transition-all cursor-pointer",
                         isSelected
-                          ? "bg-purple-500/15 border border-purple-500/30 text-purple-200 shadow-xs"
-                          : "border border-transparent text-white/80 hover:bg-white/[0.04] hover:text-white"
+                          ? "bg-purple-500/15 border border-purple-500/30 text-purple-700 dark:text-purple-200 shadow-xs"
+                          : "border border-transparent text-foreground/80 hover:bg-accent hover:text-foreground"
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        <IconComponent className={cn("size-4 shrink-0", isSelected ? "text-purple-400" : "text-white/80")} />
-                        <span className={cn("text-[13px] font-semibold", isSelected ? "text-purple-100" : "text-white")}>
+                        <IconComponent className={cn("size-4 shrink-0", isSelected ? "text-purple-600 dark:text-purple-400" : "text-foreground/80")} />
+                        <span className={cn("text-[13px] font-semibold", isSelected ? "text-purple-900 dark:text-purple-100" : "text-foreground")}>
                           {modeOption.label}
                         </span>
                       </div>
-                      <p className={cn("text-[11.5px] leading-relaxed mt-0.5 pl-6", isSelected ? "text-purple-200/70" : "text-white/50")}>
+                      <p className={cn("text-[11.5px] leading-relaxed mt-0.5 pl-6", isSelected ? "text-purple-700/80 dark:text-purple-200/70" : "text-muted-foreground")}>
                         {modeOption.description}
                       </p>
                     </button>
@@ -673,24 +1070,24 @@ export function ChatInput({
                   : "Thinking is OFF (Click to enable)"
               }
               className={cn(
-                "flex h-7 items-center gap-1.5 rounded-lg border px-2.5 text-xs transition-all cursor-pointer select-none",
+                "flex h-7 items-center gap-1.5 rounded-full px-3 text-xs transition-all cursor-pointer select-none",
                 reasoningEnabled
-                  ? "border-purple-500/35 bg-purple-500/10 text-white font-medium hover:border-purple-500/50 hover:bg-purple-500/15"
-                  : "border-white/[0.08] bg-white/[0.04] text-white/70 hover:border-white/[0.15] hover:bg-white/[0.08] hover:text-white"
+                  ? "bg-purple-500/15 border border-purple-500/50 text-purple-200 font-semibold shadow-[0_0_12px_rgba(168,85,247,0.35)] hover:border-purple-500/70 hover:bg-purple-500/20"
+                  : "liquid-glass-pill text-zinc-700 dark:text-foreground/70 hover:text-zinc-950 dark:hover:text-foreground"
               )}
             >
               <Brain
                 size={13}
                 className={cn(
                   "transition-colors",
-                  reasoningEnabled ? "text-purple-400" : "text-white/40"
+                  reasoningEnabled ? "text-purple-400" : "text-muted-foreground"
                 )}
               />
               <span>Thinking</span>
               <span
                 className={cn(
-                  "text-[9.5px] font-mono uppercase tracking-wider font-semibold",
-                  reasoningEnabled ? "text-purple-300" : "text-white/40"
+                  "text-[9.5px] font-mono uppercase tracking-wider font-bold",
+                  reasoningEnabled ? "text-purple-300" : "text-muted-foreground"
                 )}
               >
                 {reasoningEnabled ? "On" : "Off"}
@@ -698,9 +1095,15 @@ export function ChatInput({
             </button>
           )}
         </div>
+        )}
 
         {/* Right: dictate + send */}
         <div className="flex items-center gap-1.5">
+          {canvasControls?.credits !== undefined && (
+            <span className="text-xs text-muted-foreground font-medium px-1.5">
+              {canvasControls.credits} credits
+            </span>
+          )}
           <ToolButton label="Dictate">
             <Mic size={15} />
           </ToolButton>
@@ -709,9 +1112,10 @@ export function ChatInput({
             onClick={loading ? onStop : submit}
             disabled={loading ? !onStop : !canSend}
             aria-label={loading ? "Stop" : "Send"}
-            className="flex size-8 items-center justify-center rounded-lg border border-border bg-secondary text-foreground transition-all duration-150
+            className="flex size-7.5 items-center justify-center rounded-lg transition-all duration-150
               disabled:cursor-not-allowed disabled:opacity-30
-              enabled:hover:bg-purple-600 enabled:hover:border-purple-600 enabled:hover:text-white enabled:active:scale-95 cursor-pointer"
+              bg-purple-600 dark:bg-purple-600 text-white shadow-[0_4px_14px_rgba(147,51,234,0.35),inset_0_1px_1px_rgba(255,255,255,0.3)]
+              enabled:hover:bg-purple-500 enabled:hover:shadow-[0_6px_20px_rgba(147,51,234,0.45)] enabled:hover:scale-105 enabled:active:scale-95 cursor-pointer"
           >
             {loading ? (
               <Square
@@ -743,7 +1147,7 @@ function ToolButton({
       type="button"
       title={label}
       aria-label={label}
-      className="flex size-8 items-center justify-center rounded-lg border border-border bg-secondary/50 text-foreground/70 transition-all hover:bg-secondary hover:border-border hover:text-foreground cursor-pointer"
+      className="flex size-7.5 items-center justify-center rounded-full liquid-glass-pill text-zinc-700 dark:text-foreground/70 hover:text-zinc-950 dark:hover:text-foreground cursor-pointer"
     >
       {children}
     </button>

@@ -10,7 +10,7 @@ const LeftSidebar = () => {
       defaultSize="16rem"
       minSize="15rem"
       maxSize="36rem"
-      innerClassName="bg-sidebar border-r border-border flex flex-col h-full"
+      innerClassName="liquid-glass-sidebar flex flex-col h-full"
     >
       <LeftSidebarHeader />
       <LeftSidebarContent />

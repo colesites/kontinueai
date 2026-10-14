@@ -21,7 +21,7 @@ const faqs = [
 	{
 		question: "Does Kontinue AI have its own model?",
 		answer:
-			"K-AI 1.0 is our proprietary intelligence and orchestration layer, not a foundation model trained from scratch. Its primary language runtime is Gemma 4 31B Instruct, with gpt-oss-120b available as a reliability fallback.",
+			"K-AI 1.0 is our proprietary intelligence and orchestration layer, not a foundation model trained from scratch. Its primary language runtime is Gemini 2.5 Flash Lite, with Qwen 3.7 Flash available as a reliability fallback.",
 	},
 	{
 		question: "Can K-AI 1.0 generate images?",
@@ -172,7 +172,7 @@ export default function KontinueModelPage() {
 								Published base-model results
 							</p>
 							<h3 className="font-display mt-3 text-2xl">
-								Gemma 4 31B Instruct benchmarks
+								{product.nativeModel.primaryLanguageModel} benchmarks
 							</h3>
 						</div>
 						<a
