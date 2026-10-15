@@ -1,3 +1,4 @@
+import { isKaiModel } from "@repo/ai/lib/kai";
 import type { LanguageModel, ModelMessage, StopCondition, ToolSet } from "ai";
 import { shouldStopAfterAnswer } from "./request-utils";
 
@@ -171,7 +172,9 @@ export function buildStreamOptions(options: BuildStreamOptionsInput) {
 						},
 					}
 				: {}),
-			...(provider === "google" || modelId?.startsWith("google/")
+			...(provider === "google" ||
+			modelId?.startsWith("google/") ||
+			isKaiModel(modelId)
 				? {
 						google: {
 							thinkingConfig: {

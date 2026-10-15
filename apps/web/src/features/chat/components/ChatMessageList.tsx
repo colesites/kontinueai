@@ -1,6 +1,7 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Brain, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import type { DisplayMessage } from "../hooks/useChatMessageTransformer";
 import { getChatTurnAnchorId } from "../lib/chat-turns";
 import { ChatMessage } from "./ChatMessage";
@@ -21,6 +22,7 @@ type ChatMessageListProps = {
 	isGeneratingImage: boolean;
 	currentModelId: string;
 	modelOptionsWithAccess: Record<string, ModelOption[]> | undefined;
+	reasoningEnabled?: boolean;
 	onRetry: (id: string) => void;
 	onEdit: (id: string, newContent: string) => void;
 	onSwitchModel: (id: string, modelId: string) => void;
@@ -30,6 +32,37 @@ type ChatMessageListProps = {
 	onScrollToBottom: () => void;
 	messagesEndRef: React.RefObject<HTMLDivElement | null>;
 };
+
+function ThinkingLoader({ startTime }: { startTime: number }) {
+	const [elapsed, setElapsed] = useState(() =>
+		Math.max(1, Math.floor((Date.now() - startTime) / 1000)),
+	);
+
+	useEffect(() => {
+		const interval = setInterval(() => {
+			setElapsed(Math.max(1, Math.floor((Date.now() - startTime) / 1000)));
+		}, 1000);
+		return () => clearInterval(interval);
+	}, [startTime]);
+
+	return (
+		<div className="flex items-center gap-3.5 px-4 py-6 animate-fade-in-up">
+			<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20 shadow-[0_4px_18px_-6px_color-mix(in_oklch,var(--primary)_55%,transparent)]">
+				<Brain size={16} className="animate-pulse text-primary" />
+			</div>
+			<div className="flex items-center gap-2">
+				<span className="text-sm font-semibold text-foreground">
+					Thinking for {elapsed}s...
+				</span>
+				<span className="flex items-center gap-1">
+					<span className="typing-dot h-1.5 w-1.5 rounded-full bg-primary/70" />
+					<span className="typing-dot h-1.5 w-1.5 rounded-full bg-primary/70" />
+					<span className="typing-dot h-1.5 w-1.5 rounded-full bg-primary/70" />
+				</span>
+			</div>
+		</div>
+	);
+}
 
 function toTurnPreview(content: string, fallbackIndex: number): string {
 	const oneLine = content.replace(/\s+/g, " ").trim();
@@ -46,6 +79,7 @@ export function ChatMessageList({
 	isGeneratingImage,
 	currentModelId,
 	modelOptionsWithAccess,
+	reasoningEnabled = true,
 	onRetry,
 	onEdit,
 	onSwitchModel,
@@ -55,6 +89,18 @@ export function ChatMessageList({
 	onScrollToBottom,
 	messagesEndRef,
 }: ChatMessageListProps) {
+	const turnStartTimeRef = useRef<number | null>(null);
+	const prevStatusRef = useRef(status);
+
+	// Reset on the same render that status becomes "submitted". Waiting for
+	// an effect leaves one frame with the previous turn's start time (e.g. "194s").
+	if (status === "submitted" && prevStatusRef.current !== "submitted") {
+		turnStartTimeRef.current = Date.now();
+	} else if (status === "submitted" && !turnStartTimeRef.current) {
+		turnStartTimeRef.current = Date.now();
+	}
+	prevStatusRef.current = status;
+
 	const turns = messages
 		.filter((message) => message.role === "user")
 		.map((message, index) => {
@@ -97,6 +143,12 @@ export function ChatMessageList({
 								index === messages.length - 1 &&
 								message.role === "assistant"
 							}
+							reasoningEnabled={reasoningEnabled}
+							turnStartTime={
+								index === messages.length - 1
+									? turnStartTimeRef.current
+									: undefined
+							}
 							onRetry={
 								message.role === "assistant"
 									? () => onRetry(message.id)
@@ -125,6 +177,10 @@ export function ChatMessageList({
 				{status === "submitted" &&
 					(isGeneratingImage ? (
 						<ImageGenerationLoader />
+					) : reasoningEnabled ? (
+						<ThinkingLoader
+							startTime={turnStartTimeRef.current ?? Date.now()}
+						/>
 					) : (
 						<div className="flex items-center gap-3.5 px-4 py-6 animate-fade-in-up">
 							<div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary ring-1 ring-primary/20 shadow-[0_4px_18px_-6px_color-mix(in_oklch,var(--primary)_55%,transparent)]">

@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@repo/ui/lib/utils";
-import { Brain, ChevronDown } from "lucide-react";
+import { Brain, ChevronDown, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { GeneratedFile } from "../lib/message-transformer";
 import type { ChatMessageProps } from "../types";
@@ -19,25 +19,40 @@ function ThinkingAccordion({
 	reasoningText,
 	isStreaming,
 	hasContent,
+	turnStartTime,
 }: {
-	reasoningText: string;
+	reasoningText?: string;
 	isStreaming?: boolean;
 	hasContent: boolean;
+	turnStartTime?: number | null;
 }) {
 	const isActivelyThinking = Boolean(isStreaming && !hasContent);
-	const [isOpen, setIsOpen] = useState(isActivelyThinking);
-	const [elapsedSeconds, setElapsedSeconds] = useState(1);
+	const [isOpen, setIsOpen] = useState(false);
+	const startTimeRef = useRef<number | null>(turnStartTime ?? null);
+	const [elapsedSeconds, setElapsedSeconds] = useState(() => {
+		if (startTimeRef.current) {
+			return Math.max(
+				1,
+				Math.floor((Date.now() - startTimeRef.current) / 1000),
+			);
+		}
+		return 1;
+	});
 	const [finalDuration, setFinalDuration] = useState<number | null>(null);
-	const startTimeRef = useRef<number | null>(null);
 
-	// Start live timer when reasoning tokens are streaming
+	useEffect(() => {
+		if (turnStartTime && !startTimeRef.current) {
+			startTimeRef.current = turnStartTime;
+		}
+	}, [turnStartTime]);
+
+	// Start live timer when actively thinking
 	useEffect(() => {
 		if (isActivelyThinking) {
 			if (!startTimeRef.current) {
 				startTimeRef.current = Date.now();
 			}
-			setIsOpen(true);
-			const interval = setInterval(() => {
+			const updateElapsed = () => {
 				if (startTimeRef.current) {
 					const diff = Math.max(
 						1,
@@ -45,7 +60,9 @@ function ThinkingAccordion({
 					);
 					setElapsedSeconds(diff);
 				}
-			}, 1000);
+			};
+			updateElapsed();
+			const interval = setInterval(updateElapsed, 1000);
 			return () => clearInterval(interval);
 		} else if (startTimeRef.current && finalDuration === null) {
 			// Finished thinking — lock in duration and collapse like Claude / ChatGPT
@@ -69,7 +86,7 @@ function ThinkingAccordion({
 		finalDuration ??
 		(startTimeRef.current
 			? Math.max(1, elapsedSeconds)
-			: Math.max(1, Math.round(reasoningText.length / 150)));
+			: Math.max(1, Math.round((reasoningText?.length ?? 150) / 150)));
 
 	const label = isActivelyThinking
 		? `Thinking for ${Math.max(1, elapsedSeconds)}s...`
@@ -108,7 +125,7 @@ function ThinkingAccordion({
 			</button>
 			{isOpen && (
 				<div className="border-t border-foreground/5 px-3 py-2 text-muted-foreground/90 whitespace-pre-wrap font-mono text-[11px] leading-relaxed max-h-60 overflow-y-auto">
-					{reasoningText}
+					{reasoningText?.trim() || `Thinking completed in ${displaySeconds}s.`}
 				</div>
 			)}
 		</div>
@@ -125,6 +142,8 @@ export function ChatMessage({
 	generatedFiles = EMPTY_GENERATED_FILES,
 	isImported,
 	isStreaming,
+	reasoningEnabled = true,
+	turnStartTime,
 	onRetry,
 	onEdit,
 	onSwitchModel,
@@ -263,15 +282,24 @@ export function ChatMessage({
 								"prose-code:text-sm prose-code:bg-foreground/5 prose-code:px-1 prose-code:rounded prose-code:font-medium",
 							)}
 						>
-							{!isUser && !!reasoningText && (
-								<ThinkingAccordion
-									reasoningText={reasoningText}
-									isStreaming={isStreaming}
-									hasContent={!!content.trim()}
-								/>
-							)}
+							{!isUser &&
+								(Boolean(reasoningText) ||
+									(Boolean(reasoningEnabled) &&
+										(isStreaming || !content.trim()))) && (
+									<ThinkingAccordion
+										reasoningText={reasoningText}
+										isStreaming={isStreaming}
+										hasContent={!!content.trim()}
+										turnStartTime={turnStartTime}
+									/>
+								)}
 							{content ? (
 								<MessageContent content={content} isStreaming={isStreaming} />
+							) : !isUser && isStreaming && !reasoningEnabled ? (
+								<div className="flex items-center gap-2 py-2 text-muted-foreground">
+									<Loader2 size={14} className="animate-spin text-primary" />
+									<span className="text-xs">Loading...</span>
+								</div>
 							) : !isUser &&
 								!isStreaming &&
 								!reasoningText &&

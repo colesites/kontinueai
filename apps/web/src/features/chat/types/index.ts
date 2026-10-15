@@ -54,6 +54,8 @@ interface ChatMessageProps {
 		}>
 	>;
 	currentModelId?: string;
+	reasoningEnabled?: boolean;
+	turnStartTime?: number | null;
 }
 
 interface ImportedContextProps {

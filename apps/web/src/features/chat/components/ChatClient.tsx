@@ -3,15 +3,11 @@
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { useModelCapabilities } from "@repo/core/use-model-capabilities";
-import {
-	Alert,
-	AlertDescription,
-	AlertTitle,
-} from "@repo/ui/components/ui/alert";
 import { useSidebar } from "@repo/ui/components/ui/sidebar";
 import { useMutation, useQuery } from "convex/react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { useChatContext } from "../../../providers/ChatProvider";
 import { useChatLifecycle } from "../hooks/useChatLifecycle";
 
@@ -33,6 +29,40 @@ import { ChatInputContainer } from "./ChatInputContainer";
 // Components
 import { ChatMessageList } from "./ChatMessageList";
 import { ChatStatusView } from "./ChatStatusView";
+
+const MEMORY_LIMIT_ALERT_KEY = "kontinue.memory-limit-alert-shown";
+
+function hasShownMemoryLimitAlert(): boolean {
+	if (typeof window === "undefined") return false;
+	try {
+		return (
+			localStorage.getItem(MEMORY_LIMIT_ALERT_KEY) === "true" ||
+			sessionStorage.getItem(MEMORY_LIMIT_ALERT_KEY) === "true"
+		);
+	} catch {
+		return false;
+	}
+}
+
+function markMemoryLimitAlertShown(): void {
+	if (typeof window === "undefined") return;
+	try {
+		localStorage.setItem(MEMORY_LIMIT_ALERT_KEY, "true");
+		sessionStorage.setItem(MEMORY_LIMIT_ALERT_KEY, "true");
+	} catch {
+		// Ignore storage quota or restricted access errors
+	}
+}
+
+function clearMemoryLimitAlertShown(): void {
+	if (typeof window === "undefined") return;
+	try {
+		localStorage.removeItem(MEMORY_LIMIT_ALERT_KEY);
+		sessionStorage.removeItem(MEMORY_LIMIT_ALERT_KEY);
+	} catch {
+		// Ignore storage quota or restricted access errors
+	}
+}
 
 export function ChatClient() {
 	return (
@@ -64,6 +94,26 @@ function ChatClientContent() {
 		chatId ? { chatId } : "skip",
 	);
 	const memoryStatus = useQuery(api.memories.getMemoryStatus, {});
+
+	useEffect(() => {
+		if (memoryStatus === undefined) return;
+		if (memoryStatus?.warning) {
+			if (!hasShownMemoryLimitAlert()) {
+				markMemoryLimitAlertShown();
+				toast.error("Memory limit reached", {
+					id: "memory-limit-warning",
+					description: memoryStatus.warning,
+					action: {
+						label: "Manage",
+						onClick: () => router.push("/settings?tab=memory"),
+					},
+				});
+			}
+		} else {
+			clearMemoryLimitAlertShown();
+		}
+	}, [memoryStatus, router]);
+
 	const addMessage = useMutation(api.messages.addMessage);
 	const updateMessageContent = useMutation(api.messages.updateMessageContent);
 	const deleteMessagesAfter = useMutation(api.messages.deleteMessagesAfter);
@@ -177,14 +227,6 @@ function ChatClientContent() {
 				importFailureMessage={importFailureMessage}
 				importProgress={importProgress}
 			/>
-			{memoryStatus?.warning ? (
-				<div className="px-4 pt-4 sm:px-6">
-					<Alert>
-						<AlertTitle>Memory limit reached</AlertTitle>
-						<AlertDescription>{memoryStatus.warning}</AlertDescription>
-					</Alert>
-				</div>
-			) : null}
 			<div className="flex-1">
 				<ChatMessageList
 					messages={displayMessages}
@@ -193,6 +235,7 @@ function ChatClientContent() {
 					isGeneratingImage={isGeneratingImage}
 					currentModelId={chatState.selectedModel}
 					modelOptionsWithAccess={chatState.modelOptionsWithAccess}
+					reasoningEnabled={chatState.reasoningEnabled}
 					onRetry={handleRetry}
 					onEdit={handleEdit}
 					onSwitchModel={(id, mid) => {
