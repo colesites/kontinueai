@@ -100,10 +100,6 @@ export function ChatInputTools({
 		onWebSearchToggle?.();
 	};
 	const handleAttachClick = () => {
-		if (!canUsePaidFeatures) {
-			toast.error("File uploads are available on Starter/Pro plans.");
-			return;
-		}
 		onAttachClick();
 	};
 
@@ -272,7 +268,7 @@ export function ChatInputTools({
 				multiple
 				accept="image/*,text/*,application/json,application/xml,application/x-yaml,text/xml,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,video/mp4,video/webm,video/quicktime,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/webm,audio/flac"
 				onChange={onFileSelect}
-				disabled={!canUsePaidFeatures}
+				disabled={false}
 				className="hidden"
 			/>
 

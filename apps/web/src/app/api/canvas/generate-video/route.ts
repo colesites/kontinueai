@@ -9,7 +9,10 @@ import {
 } from "@repo/ai/lib/canvas-models";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import { canAccessPlanFeature } from "@repo/core/plan-access";
-import { put } from "@vercel/blob";
+import {
+	objectStorageConfigFromEnv,
+	putPublicObject,
+} from "@web/lib/object-storage";
 import { experimental_generateVideo as generateVideo } from "ai";
 import { fetchMutation } from "convex/nextjs";
 import { NextResponse } from "next/server";
@@ -156,7 +159,7 @@ export async function POST(req: Request) {
 					process.env.AI_GATEWAY_API_KEY ??
 					process.env.AI_GATEWAY_TOKEN;
 				const agentSecret = process.env.AGENT_TASK_SECRET;
-				const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
+				const storage = objectStorageConfigFromEnv();
 				const appUrl =
 					process.env.NEXT_PUBLIC_APP_URL ?? new URL(req.url).origin;
 
@@ -165,7 +168,7 @@ export async function POST(req: Request) {
 					!openRouterKey ||
 					!aiGatewayKey ||
 					!agentSecret ||
-					!blobToken
+					!storage
 				) {
 					return NextResponse.json(
 						{ error: "Long-form video is not fully configured." },
@@ -217,7 +220,7 @@ export async function POST(req: Request) {
 						audio: body.audio ?? false,
 						openRouterKey,
 						aiGatewayKey,
-						blobToken,
+						storage,
 						callbackUrl: `${appUrl}/api/canvas/video-job/callback`,
 						callbackSecret: agentSecret,
 					}),
@@ -269,10 +272,7 @@ export async function POST(req: Request) {
 			const extension = mediaType.split("/")[1] || "mp4";
 			const buffer = Buffer.from(videoData.uint8Array);
 			const filename = `canvas/vid_${Date.now()}_${userId.slice(-6)}.${extension}`;
-			const blob = await put(filename, buffer, {
-				access: "public",
-				contentType: mediaType,
-			});
+			const blob = await putPublicObject(filename, buffer, mediaType);
 			await fetchMutation(
 				convexApi.canvas.deductCredits,
 				{
@@ -394,10 +394,7 @@ export async function POST(req: Request) {
 		const buffer = Buffer.from(videoData.uint8Array);
 		const filename = `canvas/vid_${Date.now()}_${userId.slice(-6)}.${extension}`;
 
-		const blob = await put(filename, buffer, {
-			access: "public",
-			contentType: mediaType,
-		});
+		const blob = await putPublicObject(filename, buffer, mediaType);
 		await fetchMutation(
 			convexApi.canvas.deductCredits,
 			{

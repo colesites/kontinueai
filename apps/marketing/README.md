@@ -5,14 +5,15 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 Create a `.env.local` file with:
 
 ```bash
-RESEND_API_KEY=your_resend_api_key
-WAITLIST_NOTIFY_EMAIL=team@kontinueai.com
-WAITLIST_FROM_EMAIL=Kontinue AI <onboarding@resend.dev>
+MULTIVRS_MAIL_KEY=your_multivrs_mail_key
+MULTIVRS_NEWSLETTER_AUDIENCE_ID=your_newsletter_audience_id
+MULTIVRS_FROM="Kontinue AI <reminders@kontinue.ai>"
 NEXT_PUBLIC_WAITLIST_LAUNCH_AT=2026-04-13T00:00:00.000Z
 ```
 
-- `WAITLIST_NOTIFY_EMAIL` receives new waitlist submissions.
-- `WAITLIST_FROM_EMAIL` should be a verified sender in Resend for production.
+- `MULTIVRS_MAIL_KEY` is your Multivrs Mail API key (`mlv_live_...` or `mlv_test_...`).
+- `MULTIVRS_NEWSLETTER_AUDIENCE_ID` is the target audience ID for newsletter subscribers.
+- `MULTIVRS_FROM` is the verified active mailbox address in Multivrs Mail.
 - `NEXT_PUBLIC_WAITLIST_LAUNCH_AT` is the fixed countdown target on `/waitlist`.
 
 ## Getting Started

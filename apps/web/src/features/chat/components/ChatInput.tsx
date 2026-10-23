@@ -9,7 +9,7 @@ import {
 	TooltipTrigger,
 } from "@repo/ui/components/ui/tooltip";
 import { cn } from "@repo/ui/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { IoMicOutline } from "react-icons/io5";
 import {
 	PromptInput,
@@ -162,21 +162,13 @@ export function ChatInput({
 		handleAttachClick,
 		removeFile,
 		clearFiles,
-	} = useFileAttachments({ enabled: canUsePaidFeatures });
-
-	useEffect(() => {
-		if (!canUsePaidFeatures && attachedFiles.length > 0) {
-			clearFiles();
-		}
-	}, [attachedFiles.length, canUsePaidFeatures, clearFiles]);
+	} = useFileAttachments({ enabled: true });
 
 	const handleSubmit = () => {
 		if (!inputValue.trim()) return;
 		onSend(
 			inputValue,
-			canUsePaidFeatures && attachedFiles.length > 0
-				? attachedFiles
-				: undefined,
+			attachedFiles.length > 0 ? attachedFiles : undefined,
 		);
 		setInputValue("");
 		inputRef.current?.clear();

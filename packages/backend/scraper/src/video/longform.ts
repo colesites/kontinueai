@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { generateText, experimental_generateVideo as generateVideo } from "ai";
 import { createGateway } from "@ai-sdk/gateway";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { put } from "@vercel/blob";
+import { putPublicObject, type ObjectStorageConfig } from "../object-storage";
 
 // Veo runs on the Vercel AI Gateway — OpenRouter serves no video models at all.
 // Keep in sync with KONTINUE_CANVAS_UNDERLYING[K_VIDEO_MODEL_ID] in
@@ -29,7 +29,7 @@ export interface LongVideoRequest {
   // Storyboard (text) runs on OpenRouter; the scene clips run on the AI Gateway.
   openRouterKey: string;
   aiGatewayKey: string;
-  blobToken: string;
+  storage: ObjectStorageConfig;
   // Where to POST progress/result; secured by callbackSecret.
   callbackUrl: string;
   callbackSecret: string;
@@ -215,10 +215,11 @@ export async function runLongVideoJob(req: LongVideoRequest): Promise<void> {
       progress: 95,
       stage: "Uploading",
     });
-    const blob = await put(
+    const blob = await putPublicObject(
+      req.storage,
       `canvas/kvideo_${req.jobId}.mp4`,
-      Buffer.from(finalBytes),
-      { access: "public", contentType: "video/mp4", token: req.blobToken },
+      finalBytes,
+      "video/mp4",
     );
 
     await reportProgress(req, {

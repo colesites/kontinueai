@@ -5,7 +5,9 @@ mock.module("@clerk/nextjs/server", () => ({
 	auth: () => Promise.resolve({ userId: null }),
 	clerkClient: () => Promise.resolve({ users: { getUser: mock() } }),
 }));
-mock.module("@vercel/blob", () => ({ del: deleteBlob }));
+mock.module("@web/lib/object-storage", () => ({
+	deletePublicObject: deleteBlob,
+}));
 mock.module("server-only", () => ({}));
 mock.module("../features/kode/lib/availability", () => ({
 	isKodeComingSoon: () => true,

@@ -26,7 +26,7 @@ describe("plan authorization", () => {
 	});
 
 	test("PLAN-002 through PLAN-005: capability matrix matches each tier", () => {
-		expect(canAccessPlanFeature("free", "file-upload")).toBe(false);
+		expect(canAccessPlanFeature("free", "file-upload")).toBe(true);
 		expect(canAccessPlanFeature("free", "premium-model")).toBe(false);
 		expect(canAccessPlanFeature("free", "kode")).toBe(false);
 		expect(canAccessPlanFeature("starter", "file-upload")).toBe(true);

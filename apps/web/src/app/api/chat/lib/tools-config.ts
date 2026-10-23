@@ -11,7 +11,7 @@ import { deriveCapabilities } from "@repo/ai/lib/model-capabilities";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { markdownToBlocks } from "@tryfabric/martian";
-import { put } from "@vercel/blob";
+import { putPublicObject } from "@web/lib/object-storage";
 import {
 	experimental_generateImage as generateImage,
 	type ToolSet,
@@ -92,10 +92,10 @@ function makeCodeInterpreterTool(options: {
 			const files: Array<{ name: string; url: string; bytes: number }> = [];
 			for (const file of run.files) {
 				try {
-					const blob = await put(
+					const blob = await putPublicObject(
 						`code/${options.userId.slice(-8)}/${Date.now()}_${file.name}`,
 						file.bytes,
-						{ access: "public", contentType: contentTypeFor(file.name) },
+						contentTypeFor(file.name),
 					);
 					files.push({
 						name: file.name,
@@ -2837,9 +2837,7 @@ export function buildToolsAndPrompt(options: {
 	const webSearchEnabled = webSearchMode !== "off";
 	const capabilities = deriveCapabilities(requestedModel);
 	const hasKaiImageGen =
-		enableKaiImageGeneration &&
-		isKaiModel(modelId) &&
-		!!convexToken;
+		enableKaiImageGeneration && isKaiModel(modelId) && !!convexToken;
 	const hasImageGen =
 		capabilities.includes("image-generation") || hasKaiImageGen;
 	const hasWebSearch = capabilities.includes("web-search");

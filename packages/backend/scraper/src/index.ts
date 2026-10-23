@@ -17,10 +17,38 @@ import { extractManus } from "./scraper/extractors/manus";
 import { extractGrok } from "./scraper/extractors/grok";
 import { extractKimi } from "./scraper/extractors/kimi";
 import { extractMetaAI } from "./scraper/extractors/metaai";
+import type { ObjectStorageConfig } from "./object-storage";
 import { runLongVideoJob, type LongVideoRequest } from "./video/longform";
 import { normalizeMessages } from "./scraper/normalize";
 import { withRetry } from "./scraper/retry";
 import type { ScrapeResult, Platform, IngestRequest, RawMessage } from "./types";
+
+function storageConfig(value: unknown): ObjectStorageConfig {
+  if (!value || typeof value !== "object") {
+    throw new Error("Missing field: storage");
+  }
+  const record = value as Record<string, unknown>;
+  const region = record.region;
+  const accessKeyId = record.accessKeyId;
+  const secretAccessKey = record.secretAccessKey;
+  const bucket = record.bucket;
+  const publicBaseUrl = record.publicBaseUrl;
+  if (
+    typeof region !== "string" ||
+    typeof accessKeyId !== "string" ||
+    typeof secretAccessKey !== "string" ||
+    typeof bucket !== "string" ||
+    typeof publicBaseUrl !== "string" ||
+    !region ||
+    !accessKeyId ||
+    !secretAccessKey ||
+    !bucket ||
+    !publicBaseUrl
+  ) {
+    throw new Error("Missing field: storage");
+  }
+  return { region, accessKeyId, secretAccessKey, bucket, publicBaseUrl };
+}
 
 const ALLOWED_ORIGINS = (Bun.env.ALLOWED_ORIGINS ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
@@ -82,7 +110,7 @@ app.post("/generate-long-video", async (c) => {
     "aspectRatio",
     "openRouterKey",
     "aiGatewayKey",
-    "blobToken",
+    "storage",
     "callbackUrl",
     "callbackSecret",
   ];
@@ -90,6 +118,15 @@ app.post("/generate-long-video", async (c) => {
     if (body[k] === undefined || body[k] === null || body[k] === "") {
       return c.json({ error: `Missing field: ${k}` }, 400);
     }
+  }
+  let storage: LongVideoRequest["storage"];
+  try {
+    storage = storageConfig(body.storage);
+  } catch (error) {
+    return c.json(
+      { error: error instanceof Error ? error.message : "Missing field: storage" },
+      400,
+    );
   }
   const req: LongVideoRequest = {
     jobId: String(body.jobId),
@@ -100,7 +137,7 @@ app.post("/generate-long-video", async (c) => {
     audio: Boolean(body.audio),
     openRouterKey: String(body.openRouterKey),
     aiGatewayKey: String(body.aiGatewayKey),
-    blobToken: String(body.blobToken),
+    storage,
     callbackUrl: String(body.callbackUrl),
     callbackSecret: String(body.callbackSecret),
   };

@@ -213,7 +213,7 @@ export const pricingComparisonSections: PricingComparisonSection[] = [
 				description:
 					"Files attached directly to conversations for analysis. Daily limits reset at 00:00 UTC.",
 				values: values(
-					"Not included",
+					`${free.limits.chatFileUploadsPerDay}/day`,
 					`${starter.limits.chatFileUploadsPerDay}/day`,
 					`${plus.limits.chatFileUploadsPerDay}/day`,
 					`${pro.limits.chatFileUploadsPerDay}/day`,
@@ -223,7 +223,7 @@ export const pricingComparisonSections: PricingComparisonSection[] = [
 			{
 				label: "Maximum chat file size",
 				values: values(
-					"Not included",
+					formatFileSize(free.limits.maxChatFileBytes),
 					formatFileSize(starter.limits.maxChatFileBytes),
 					formatFileSize(plus.limits.maxChatFileBytes),
 					formatFileSize(pro.limits.maxChatFileBytes),
@@ -235,7 +235,7 @@ export const pricingComparisonSections: PricingComparisonSection[] = [
 				description:
 					"Storage for uploaded documents and media. This is separate from searchable AI memory.",
 				values: values(
-					"Not included",
+					formatFileSize(free.limits.storedFileBytes),
 					formatFileSize(starter.limits.storedFileBytes),
 					formatFileSize(plus.limits.storedFileBytes),
 					formatFileSize(pro.limits.storedFileBytes),

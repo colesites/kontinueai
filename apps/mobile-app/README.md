@@ -74,7 +74,7 @@ EAS keystore changes, update both registrations before publishing another APK.
 ## Email verification delivery
 
 Mobile email/password sign-up uses Clerk's built-in email delivery through
-`signUp.verifications.sendEmailCode()`; it does not call Resend directly. The
+`signUp.verifications.sendEmailCode()`; it does not call Multivrs Mail directly. The
 verification screen supports retry with a 30-second cooldown and surfaces the
 provider error when Clerk rejects a send. For production delivery incidents,
 check Clerk Dashboard → Logs → Email logs and confirm the recipient shown in

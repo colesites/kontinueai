@@ -10,6 +10,7 @@
 
 import type * as agentTasks from "../agentTasks.js";
 import type * as aiUsage from "../aiUsage.js";
+import type * as assetUrls from "../assetUrls.js";
 import type * as canvas from "../canvas.js";
 import type * as chats from "../chats.js";
 import type * as connectors from "../connectors.js";
@@ -54,6 +55,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentTasks: typeof agentTasks;
   aiUsage: typeof aiUsage;
+  assetUrls: typeof assetUrls;
   canvas: typeof canvas;
   chats: typeof chats;
   connectors: typeof connectors;

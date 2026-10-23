@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
-import { put } from "@vercel/blob";
+import { putPublicObject } from "@web/lib/object-storage";
 import { fetchQuery } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { getUserPlanTier } from "../../chat/lib/plan-limits";
@@ -126,14 +126,10 @@ export async function POST(request: Request) {
 			);
 		}
 
-		// Upload to Vercel Blob
-		// Store in user-specific folder for better organization
-		const blobPath = `continue-ai/${userId}/${Date.now()}-${filename}`;
+		const safeName = filename.replace(/[/\\]/g, "_");
+		const blobPath = `continue-ai/${userId}/${Date.now()}-${safeName}`;
 
-		const result = await put(blobPath, blob, {
-			access: "public",
-			contentType,
-		});
+		const result = await putPublicObject(blobPath, blob, contentType);
 
 		// Return the blob info
 		return NextResponse.json({

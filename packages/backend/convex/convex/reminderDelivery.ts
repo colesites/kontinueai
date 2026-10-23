@@ -28,8 +28,8 @@ async function sendEmail(
   subject: string,
   body: string,
 ): Promise<void> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM ?? "Kontinue AI <reminders@kontinue.ai>";
+  const apiKey = process.env.MULTIVRS_MAIL_KEY;
+  const from = process.env.MULTIVRS_FROM ?? "Kontinue AI <reminders@kontinue.ai>";
   if (!apiKey) return; // email channel not configured — skip silently
 
   const html = `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:480px">
@@ -38,16 +38,22 @@ async function sendEmail(
     <p style="color:#888;font-size:12px;margin-top:24px">Sent by Kontinue AI reminders.</p>
   </div>`;
 
-  const res = await fetch("https://api.resend.com/emails", {
+  const res = await fetch("https://multivrs.space/api/v1/mail/send", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from, to, subject, html }),
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject,
+      html,
+    }),
   });
   if (!res.ok) {
-    console.error("[reminder] email send failed", res.status, await res.text());
+    const errorText = await res.text().catch(() => "");
+    console.error("[reminder] email send failed", res.status, errorText);
   }
 }
 

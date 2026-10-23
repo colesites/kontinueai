@@ -556,8 +556,8 @@ export default defineSchema({
 		ownerId: v.id("users"),
 		chatId: v.optional(v.id("chats")),
 		messageId: v.optional(v.id("messages")),
-		blobUrl: v.string(), // Full Vercel Blob URL
-		pathname: v.string(), // Blob pathname/key for deletion
+		blobUrl: v.string(), // Public asset URL (CloudFront)
+		pathname: v.string(), // Object key for deletion
 		filename: v.string(),
 		contentType: v.string(),
 		size: v.number(), // bytes
@@ -725,8 +725,8 @@ export default defineSchema({
 		ownerName: v.optional(v.string()),
 		ownerImageUrl: v.optional(v.string()),
 		mediaType: v.union(v.literal("image"), v.literal("video")),
-		mediaUrl: v.string(), // Vercel Blob URL
-		pathname: v.string(), // Blob pathname for deletion
+		mediaUrl: v.string(), // Public asset URL (CloudFront)
+		pathname: v.string(), // Object key for deletion
 		prompt: v.string(),
 		modelId: v.string(),
 		aspectRatio: v.string(), // e.g. "16:9", "1:1"

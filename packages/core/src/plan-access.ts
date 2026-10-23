@@ -27,6 +27,9 @@ export function canAccessPlanFeature(
 	if (feature === "premium-model") return isPlanAtLeast(tier, "plus");
 	// Sandboxed code execution boots a microVM per run, so it is paid-only.
 	if (feature === "code-execution") return isPlanAtLeast(tier, "plus");
+	// Every plan includes a daily chat-file quota. Size and storage caps live
+	// on the plan definition.
+	if (feature === "file-upload") return true;
 	return isPlanAtLeast(tier, "starter");
 }
 

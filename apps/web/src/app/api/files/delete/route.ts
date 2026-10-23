@@ -1,5 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
-import { del } from "@vercel/blob";
+import { deletePublicObject } from "@web/lib/object-storage";
 import { NextResponse } from "next/server";
 
 export async function DELETE(request: Request) {
@@ -34,8 +34,7 @@ export async function DELETE(request: Request) {
 			);
 		}
 
-		// Delete from Vercel Blob
-		await del(pathname);
+		await deletePublicObject(pathname);
 
 		return NextResponse.json({
 			success: true,

@@ -1,5 +1,5 @@
 /**
- * Client-side helper functions for file uploads to Vercel Blob
+ * Client-side helper functions for file uploads.
  */
 import { assertValidUploadFile, validateFile } from "./file-upload.validators";
 
@@ -27,7 +27,7 @@ async function readJsonOrThrow(response: Response): Promise<unknown> {
 }
 
 /**
- * Upload a file to Vercel Blob via our API
+ * Upload a file via our API
  * @param file - The file to upload
  * @returns Promise with uploaded file metadata
  */
@@ -80,7 +80,7 @@ export async function uploadFiles(
 }
 
 /**
- * Delete a file from Vercel Blob via our API
+ * Delete a file via our API
  * @param pathname - The blob pathname to delete
  * @returns Promise that resolves when file is deleted
  */

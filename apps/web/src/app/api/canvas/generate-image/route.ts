@@ -5,7 +5,7 @@ import { IMAGE_MODELS, resolveCanvasModelId } from "@repo/ai/lib/canvas-models";
 import { fetchAiGatewayModels } from "@repo/ai/lib/model-capabilities";
 import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import { canAccessPlanFeature } from "@repo/core/plan-access";
-import { put } from "@vercel/blob";
+import { putPublicObject } from "@web/lib/object-storage";
 import {
 	experimental_generateImage as generateImage,
 	generateText,
@@ -197,10 +197,7 @@ export async function POST(req: Request) {
 					throw new Error("uint8Array is missing in tool result object");
 				const buffer = Buffer.from(uint8Array as Uint8Array);
 				const filename = `canvas/img_${Date.now()}_${userId.slice(-6)}.png`;
-				const blob = await put(filename, buffer, {
-					access: "public",
-					contentType: "image/png",
-				});
+				const blob = await putPublicObject(filename, buffer, "image/png");
 				mediaUrl = blob.url;
 				pathname = blob.pathname;
 			} else {
@@ -243,10 +240,7 @@ export async function POST(req: Request) {
 			const buffer = Buffer.from(imageData.uint8Array);
 			const filename = `canvas/img_${Date.now()}_${userId.slice(-6)}.png`;
 
-			const blob = await put(filename, buffer, {
-				access: "public",
-				contentType: "image/png",
-			});
+			const blob = await putPublicObject(filename, buffer, "image/png");
 
 			mediaUrl = blob.url;
 			pathname = blob.pathname;

@@ -4,7 +4,6 @@ import { api } from "@repo/convex/convex/_generated/api";
 import { cn } from "@repo/ui/lib/utils";
 import { useQuery } from "convex/react";
 import { Loader2 } from "lucide-react";
-import { useIsProPlan } from "../lib/use-plan-tier";
 import { AttachmentEmptyState } from "./attachment-uploader/AttachmentEmptyState";
 import { AttachmentFileList } from "./attachment-uploader/AttachmentFileList";
 import { AttachmentUploadControl } from "./attachment-uploader/AttachmentUploadControl";
@@ -17,7 +16,7 @@ export function AttachmentUploader({
 	onFileUploaded,
 	className,
 }: AttachmentUploaderProps) {
-	const canUpload = useIsProPlan();
+	const canUpload = true;
 	const files = useQuery(api.files.listByChat, { chatId });
 	const { isUploading, uploadProgress, handleFileSelect, handleDeleteFile } =
 		useAttachmentUploader({
