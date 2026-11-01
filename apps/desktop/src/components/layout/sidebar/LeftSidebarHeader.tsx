@@ -13,12 +13,14 @@ import {
 import { useSidebar } from "@/components/ui/sidebar";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { SearchModal } from "@/components/search/SearchModal";
+import { useIsFullscreen } from "@/hooks/use-is-fullscreen";
 import { cn } from "@/lib/utils";
 
 export default function LeftSidebarHeader() {
   const { toggleSidebar } = useSidebar();
   const { activeTab, setActiveTab, newChat, activeChatId, openSettings } = useKodeWorkspace();
   const [searchOpen, setSearchOpen] = useState(false);
+  const isFullscreen = useIsFullscreen();
 
   const isHomeActive = activeTab !== "kode";
   const isNewActive = activeTab !== "canvas" && activeChatId === null;
@@ -28,7 +30,10 @@ export default function LeftSidebarHeader() {
       {/* 1. Top Icons Row: PanelLeft Toggle + Search Icon with macOS window drag region */}
       <div
         data-tauri-drag-region
-        className="flex items-center gap-1.5 pt-1.5 pb-1 px-1"
+        className={cn(
+          "flex items-center gap-1.5 pt-1.5 pb-1",
+          isFullscreen ? "px-1" : "pl-[100px] pr-1",
+        )}
       >
         <button
           type="button"
@@ -107,7 +112,7 @@ export default function LeftSidebarHeader() {
                 "flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] transition-all active:scale-[0.99] h-[28px] cursor-pointer",
                 activeTab === "canvas"
                   ? "bg-gradient-to-r from-purple-500/12 to-purple-600/8 hover:from-purple-500/20 hover:to-purple-600/15 border border-purple-300/60 dark:bg-purple-600/20 dark:border-purple-500/25 text-purple-900 dark:text-purple-100 font-semibold shadow-[0_2px_8px_rgba(168,85,247,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)]"
-                  : "text-zinc-600 dark:text-muted-foreground hover:bg-white/50 dark:hover:bg-accent hover:text-zinc-950 dark:hover:text-foreground border border-transparent font-normal"
+                  : "text-zinc-600 dark:text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-zinc-950 dark:hover:text-foreground border border-transparent font-normal"
               )}
             >
               <Palette size={12.5} strokeWidth={1.5} className={activeTab === "canvas" ? "text-purple-600 dark:text-purple-300" : "text-zinc-500 dark:text-muted-foreground"} />
@@ -117,7 +122,7 @@ export default function LeftSidebarHeader() {
             {/* Tasks */}
             <button
               type="button"
-              className="flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all hover:bg-white/50 dark:hover:bg-accent hover:text-zinc-950 dark:hover:text-foreground border border-transparent h-[28px] cursor-pointer"
+              className="flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-zinc-950 dark:hover:text-foreground border border-transparent h-[28px] cursor-pointer"
             >
               <ListTodo size={12.5} strokeWidth={1.5} className="text-zinc-500 dark:text-muted-foreground" />
               <span>Tasks</span>
@@ -130,7 +135,7 @@ export default function LeftSidebarHeader() {
         <button
           type="button"
           onClick={() => openSettings("agents")}
-          className="flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all hover:bg-white/50 dark:hover:bg-accent hover:text-zinc-950 dark:hover:text-foreground border border-transparent h-[28px] cursor-pointer"
+          className="flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-zinc-950 dark:hover:text-foreground border border-transparent h-[28px] cursor-pointer"
         >
           <Bot size={12.5} strokeWidth={1.5} className="text-zinc-500 dark:text-muted-foreground" />
           <span>Agents</span>
@@ -140,7 +145,7 @@ export default function LeftSidebarHeader() {
         <button
           type="button"
           onClick={() => openSettings("integrations")}
-          className="flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all hover:bg-white/50 dark:hover:bg-accent hover:text-zinc-950 dark:hover:text-foreground border border-transparent h-[28px] cursor-pointer"
+          className="flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-zinc-950 dark:hover:text-foreground border border-transparent h-[28px] cursor-pointer"
         >
           <Plug2 size={12.5} strokeWidth={1.5} className="text-zinc-500 dark:text-muted-foreground" />
           <span>Connectors</span>

@@ -3,12 +3,15 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { PanelLeft, Search, Plus } from "lucide-react";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { SearchModal } from "@/components/search/SearchModal";
+import { useIsFullscreen } from "@/hooks/use-is-fullscreen";
+import { cn } from "@/lib/utils";
 
 const FloatingSidebarButtonGroup = () => {
   const { toggleSidebar, state } = useSidebar();
   const sidebarCollapsed = state === "collapsed";
   const { newChat } = useKodeWorkspace();
   const [searchOpen, setSearchOpen] = useState(false);
+  const isFullscreen = useIsFullscreen();
 
   const iconBtn =
     "flex size-6 items-center justify-center rounded-full text-purple-900 dark:text-purple-100 transition-colors duration-150 hover:bg-purple-500/15 active:scale-95 cursor-pointer";
@@ -17,7 +20,12 @@ const FloatingSidebarButtonGroup = () => {
 
   return (
     <>
-      <div className="absolute top-[9px] left-3.5 z-50 flex items-center">
+      <div
+        className={cn(
+          "absolute top-[9px] z-50 flex items-center",
+          isFullscreen ? "left-3.5" : "left-[112px]",
+        )}
+      >
         <div className="flex items-center gap-1 kontinue-capsule p-1">
           {/* 1. Sidebar Toggle Icon */}
           <button

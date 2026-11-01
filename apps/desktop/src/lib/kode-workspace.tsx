@@ -17,6 +17,7 @@ import {
   type HomeConvexProject,
   type KodeConvexChat,
 } from "@/lib/convex-api";
+import { removeImportContext } from "@/lib/kode-import";
 
 // Projects are LOCAL imported folders (stored on this machine), and the
 // chat → folder grouping is kept locally too. Chats themselves live in Convex.
@@ -66,6 +67,21 @@ export type KodeChat = {
 
 export type KodeTab = "home" | "canvas" | "kode";
 
+export type KodeImportInput = {
+  title: string;
+  provider: string;
+  sessionId: string;
+  projectPath?: string | null;
+  lastActivity?: number | null;
+  model?: string | null;
+  messages: {
+    role: "user" | "assistant" | "system";
+    content: string;
+    timestamp?: number | null;
+  }[];
+  folderId?: string | null;
+};
+
 export type SettingsNavTab =
   | "general"
   | "appearance"
@@ -95,6 +111,17 @@ type KodeWorkspaceContextValue = {
   draftProjectId: string | null;
   importFolder: () => Promise<void>;
   removeFolder: (folderId: string) => void;
+  /** Reuse a folder for `path`, or add it and return its new local id. */
+  ensureFolder: (path: string) => string;
+  /** Persist a normalized imported coding session as a Kode chat. */
+  importKodeSession: (input: KodeImportInput) => Promise<string>;
+  /** Append new turns from a previously imported coding session. */
+  appendImportedMessages: (input: {
+    chatId: string;
+    expectedMessageCount: number;
+    model?: string | null;
+    messages: KodeImportInput["messages"];
+  }) => Promise<number>;
   newChat: (projectId?: string | null) => void;
   selectChat: (chatId: string) => void;
   createProjectRecord: (input: {
@@ -177,6 +204,10 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
 
   // Mutations for Kode tab (kodeChats / kodeMessages)
   const createKodeChat = useMutation(api.kode.createChat);
+  const importKodeSessionMutation = useMutation(api.kode.importSession);
+  const appendImportedMessagesMutation = useMutation(
+    api.kode.appendImportedMessages,
+  );
   const addKodeMessage = useMutation(api.kode.addMessage);
   const toggleKodeChatPin = useMutation(api.kode.toggleChatPin);
   const setKodeChatArchived = useMutation(api.kode.setChatArchived);
@@ -277,6 +308,80 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     });
     setDraftProjectId((current) => (current === folderId ? null : current));
   }, []);
+
+  // Importing a coding session may point at a folder that is not in the local
+  // project list yet. Add it (idempotently) so the imported chat has a real
+  // project root for file tools, and return the id to attach to the chat.
+  const ensureFolder = useCallback(
+    (path: string) => {
+      const existing = folders.find((folder) => folder.path === path);
+      if (existing) return existing.id;
+
+      const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+      const folder: KodeFolder = {
+        id: `folder-${hashPath(path)}`,
+        name,
+        path,
+      };
+      setFolders((current) =>
+        current.some((entry) => entry.path === path)
+          ? current
+          : [...current, folder],
+      );
+      return folder.id;
+    },
+    [folders],
+  );
+
+  const importKodeSession = useCallback(
+    async (input: KodeImportInput) => {
+      const chatId = await importKodeSessionMutation({
+        title: toChatTitle(input.title),
+        provider: input.provider,
+        sessionId: input.sessionId,
+        projectPath: input.projectPath ?? undefined,
+        lastActivity: input.lastActivity ?? undefined,
+        model: input.model ?? undefined,
+        messages: input.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          timestamp: message.timestamp ?? undefined,
+        })),
+      });
+
+      if (input.folderId) {
+        const folderId = input.folderId;
+        setChatFolder((current) => ({ ...current, [chatId]: folderId }));
+      }
+
+      setActiveKodeChatId(chatId);
+      setDraftProjectId(null);
+      setActiveTab("kode");
+      return chatId;
+    },
+    [importKodeSessionMutation],
+  );
+
+  const appendImportedMessages = useCallback(
+    async (input: {
+      chatId: string;
+      expectedMessageCount: number;
+      model?: string | null;
+      messages: KodeImportInput["messages"];
+    }) => {
+      return await appendImportedMessagesMutation({
+        chatId: input.chatId as any,
+        expectedMessageCount: input.expectedMessageCount,
+        model: input.model ?? undefined,
+        messages: input.messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+          timestamp: message.timestamp ?? undefined,
+        })),
+      });
+    },
+    [appendImportedMessagesMutation],
+  );
 
   const newChat = useCallback((projectId: string | null = null) => {
     if (activeTab !== "kode") {
@@ -434,6 +539,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
         delete next[chatId];
         return next;
       });
+      removeImportContext(chatId);
     },
     [activeTab, deleteHomeChatMutation, deleteKodeChatMutation],
   );
@@ -476,6 +582,9 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       draftProjectId,
       importFolder,
       removeFolder,
+      ensureFolder,
+      importKodeSession,
+      appendImportedMessages,
       newChat,
       selectChat,
       createProjectRecord,
@@ -506,6 +615,9 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       deleteChat,
       draftProjectId,
       importFolder,
+      ensureFolder,
+      importKodeSession,
+      appendImportedMessages,
       newChat,
       projects,
       removeFolder,
@@ -539,4 +651,13 @@ function toChatTitle(input: string) {
   if (!title) return "New chat";
   if (title.length <= 60) return title;
   return `${title.slice(0, 57).trim()}...`;
+}
+
+/** Stable local folder id for a path (folder may not exist in the list yet). */
+function hashPath(path: string) {
+  let hash = 0;
+  for (let index = 0; index < path.length; index += 1) {
+    hash = (hash * 31 + path.charCodeAt(index)) | 0;
+  }
+  return `${Math.abs(hash).toString(36)}-${path.length.toString(36)}`;
 }

@@ -202,6 +202,179 @@ export const createChat = mutation({
 	},
 });
 
+/**
+ * Create a Kode chat from a local coding-session import in one transaction.
+ *
+ * The desktop app parses + redacts the transcript locally, then sends the
+ * normalized turns here so the entire conversation lands atomically (one
+ * mutation instead of one write per message). Imported tokens are NOT metered:
+ * that usage was already paid for in Claude Code / Codex.
+ */
+export const importSession = mutation({
+	args: {
+		title: v.string(),
+		provider: v.string(),
+		sessionId: v.string(),
+		projectPath: v.optional(v.string()),
+		lastActivity: v.optional(v.number()),
+		model: v.optional(v.string()),
+		messages: v.array(
+			v.object({
+				role: v.union(
+					v.literal("user"),
+					v.literal("assistant"),
+					v.literal("system"),
+				),
+				content: v.string(),
+				timestamp: v.optional(v.number()),
+			}),
+		),
+	},
+	handler: async (ctx, args) => {
+		const user = await requireUser(ctx);
+		const now = Date.now();
+
+		// The desktop importer already bounds this, but the mutation is public —
+		// reject pathological payloads rather than writing them.
+		if (args.messages.length > 500) {
+			throw new Error("This session has too many messages to import.");
+		}
+		if (args.messages.some((message) => message.content.length > 50_000)) {
+			throw new Error("An imported message is too large.");
+		}
+
+		const chatId = await ctx.db.insert("kodeChats", {
+			ownerId: user._id,
+			title: args.title.trim() || "Imported coding session",
+			archived: false,
+			lastMessageAt: now,
+			createdAt: now,
+			updatedAt: now,
+			importSource: {
+				provider: args.provider,
+				sessionId: args.sessionId,
+				projectPath: args.projectPath,
+				lastActivity: args.lastActivity,
+				importedAt: now,
+				syncedMessageCount: args.messages.length,
+				syncedAt: now,
+			},
+		});
+
+		for (const [index, message] of args.messages.entries()) {
+			const timestamp = message.timestamp;
+			// Preserve transcript timestamps when they look sane; otherwise fall
+			// back to an evenly-spaced synthetic time so the chat reads in order.
+			const createdAt =
+				typeof timestamp === "number" &&
+				timestamp > 0 &&
+				timestamp <= now + 86_400_000
+					? timestamp
+					: now - (args.messages.length - index) * 1_000;
+
+			await ctx.db.insert("kodeMessages", {
+				chatId,
+				ownerId: user._id,
+				role: message.role,
+				content: message.content,
+				createdAt,
+				order: index,
+				metadata: args.model ? { model: args.model } : undefined,
+			});
+		}
+
+		return chatId;
+	},
+});
+
+/**
+ * Append new turns from a previously imported coding session.
+ *
+ * Sync is append-only: the client sends the normalized turns after the last
+ * imported message and the expected persisted count. If the chat has changed
+ * (another sync ran, messages were added/removed, or an out-of-band edit
+ * happened), the order check fails instead of duplicating or interleaving turns.
+ */
+export const appendImportedMessages = mutation({
+	args: {
+		chatId: v.id("kodeChats"),
+		expectedMessageCount: v.number(),
+		model: v.optional(v.string()),
+		messages: v.array(
+			v.object({
+				role: v.union(
+					v.literal("user"),
+					v.literal("assistant"),
+					v.literal("system"),
+				),
+				content: v.string(),
+				timestamp: v.optional(v.number()),
+			}),
+		),
+	},
+	handler: async (ctx, args) => {
+		const user = await requireUser(ctx);
+		const chat = await requireOwnedChat(ctx, args.chatId, user._id);
+
+		if (!chat.importSource) {
+			throw new Error("This chat was not created from an imported session.");
+		}
+		if (args.messages.length > 500) {
+			throw new Error("This session has too many new messages to sync.");
+		}
+		if (args.messages.some((message) => message.content.length > 50_000)) {
+			throw new Error("An imported message is too large.");
+		}
+
+		const lastMessage = await ctx.db
+			.query("kodeMessages")
+			.withIndex("by_chat_order", (q) => q.eq("chatId", args.chatId))
+			.order("desc")
+			.first();
+		const nextOrder = lastMessage ? lastMessage.order + 1 : 0;
+
+		if (nextOrder !== args.expectedMessageCount) {
+			throw new Error(
+				"This chat is out of sync with the imported session. Refresh it and try again.",
+			);
+		}
+
+		const now = Date.now();
+		for (const [index, message] of args.messages.entries()) {
+			const timestamp = message.timestamp;
+			const createdAt =
+				typeof timestamp === "number" &&
+				timestamp > 0 &&
+				timestamp <= now + 86_400_000
+					? timestamp
+					: now - (args.messages.length - index) * 1_000;
+
+			await ctx.db.insert("kodeMessages", {
+				chatId: args.chatId,
+				ownerId: user._id,
+				role: message.role,
+				content: message.content,
+				createdAt,
+				order: nextOrder + index,
+				metadata: args.model ? { model: args.model } : undefined,
+			});
+		}
+
+		const syncedMessageCount = nextOrder + args.messages.length;
+		await ctx.db.patch(args.chatId, {
+			lastMessageAt: now,
+			updatedAt: now,
+			importSource: {
+				...chat.importSource,
+				syncedMessageCount,
+				syncedAt: now,
+			},
+		});
+
+		return syncedMessageCount;
+	},
+});
+
 export const getMessages = query({
 	args: { chatId: v.id("kodeChats") },
 	handler: async (ctx, args) => {
@@ -375,18 +548,18 @@ export const deleteMessagesAfter = mutation({
 
 		await requireOwnedChat(ctx, target.chatId, user._id);
 
-		const cutoff = target._creationTime;
+		// Order is the stable per-chat sequence. Using `_creationTime` here would
+		// be wrong for imported chats, whose turns are all inserted in one
+		// transaction and therefore share a creation timestamp.
 		const inclusive = args.inclusive ?? false;
-
-		const laterMessages = await ctx.db
+		const allMessages = await ctx.db
 			.query("kodeMessages")
-			.withIndex("by_chat", (q) => q.eq("chatId", target.chatId))
-			.filter((q) =>
-				inclusive
-					? q.gte(q.field("_creationTime"), cutoff)
-					: q.gt(q.field("_creationTime"), cutoff),
-			)
+			.withIndex("by_chat_order", (q) => q.eq("chatId", target.chatId))
 			.collect();
+
+		const laterMessages = allMessages.filter((message) =>
+			inclusive ? message.order >= target.order : message.order > target.order,
+		);
 
 		await Promise.all(laterMessages.map((m) => ctx.db.delete(m._id)));
 	},

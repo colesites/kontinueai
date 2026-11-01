@@ -48,6 +48,15 @@ export type KodeConvexChat = {
   pinnedAt?: number;
   createdAt: number;
   updatedAt: number;
+  importSource?: {
+    provider: string;
+    sessionId: string;
+    projectPath?: string;
+    lastActivity?: number;
+    importedAt: number;
+    syncedMessageCount?: number;
+    syncedAt?: number;
+  };
 };
 
 export type KodeConvexMessage = {
@@ -207,6 +216,39 @@ type KodeConvexApi = {
       "public",
       { title: string },
       string
+    >;
+    importSession: FunctionReference<
+      "mutation",
+      "public",
+      {
+        title: string;
+        provider: string;
+        sessionId: string;
+        projectPath?: string;
+        lastActivity?: number;
+        model?: string;
+        messages: {
+          role: "user" | "assistant" | "system";
+          content: string;
+          timestamp?: number;
+        }[];
+      },
+      string
+    >;
+    appendImportedMessages: FunctionReference<
+      "mutation",
+      "public",
+      {
+        chatId: string;
+        expectedMessageCount: number;
+        model?: string;
+        messages: {
+          role: "user" | "assistant" | "system";
+          content: string;
+          timestamp?: number;
+        }[];
+      },
+      number
     >;
     getMessages: FunctionReference<
       "query",

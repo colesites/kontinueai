@@ -33,6 +33,7 @@ import { ImEmbed2 } from "react-icons/im";
 
 import { useSidebar } from "@/components/ui/sidebar";
 import FloatingSidebarButtonGroup from "@/components/layout/sidebar/FloatingSidebarButtonGroup";
+import { useIsFullscreen } from "@/hooks/use-is-fullscreen";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { sendKodeChat, type KodeChatMessage, type KodeContentPart } from "@/lib/kode-chat";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
@@ -543,6 +544,7 @@ const STARTER_PROMPTS = [
 export default function HomeView() {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
+  const isFullscreen = useIsFullscreen();
   const {
     chats,
     activeChatId,
@@ -825,8 +827,8 @@ export default function HomeView() {
           <div
             data-tauri-drag-region
             className={cn(
-              "relative z-20 flex h-13 shrink-0 items-center justify-between px-6 bg-white/60 dark:bg-background/95 backdrop-blur-xl border-b border-purple-200/40 dark:border-border",
-              isCollapsed && "pl-[120px]"
+              "relative z-20 flex h-13 shrink-0 items-center justify-between px-6",
+              isCollapsed && (isFullscreen ? "pl-[120px]" : "pl-[234px]")
             )}
           >
             <DropdownMenu>
@@ -886,9 +888,6 @@ export default function HomeView() {
               <LuShare size={16} />
             </button>
           </div>
-
-          {/* Top fade-out overlay under header */}
-          <div className="pointer-events-none absolute top-13 left-0 right-0 h-8 hidden dark:block bg-gradient-to-b from-background via-background/80 to-transparent z-10" />
 
           {/* Scrollable Messages Stream (Same max-w-3xl width as ChatInput) */}
           <div

@@ -206,9 +206,9 @@ export function SettingsView({ onBack, initialTab = "general" }: SettingsViewPro
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex h-screen w-screen bg-[#090a0d] text-zinc-100 antialiased overflow-hidden select-none font-sans">
+    <div className="fixed inset-0 z-50 flex h-screen w-screen bg-[#0a0a0a] text-zinc-100 antialiased overflow-hidden select-none font-sans">
       {/* LEFT SIDEBAR */}
-      <aside className="relative flex w-60 shrink-0 flex-col justify-between border-r border-zinc-800/70 bg-[#090a0d]">
+      <aside className="relative flex w-60 shrink-0 flex-col justify-between border-r border-zinc-800/70 bg-[#050506]">
         {/* Subtle Cosmic Nebula Glow behind the logo */}
         <div className="pointer-events-none absolute left-0 top-0 h-44 w-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/25 via-indigo-950/15 to-transparent opacity-80" />
 
@@ -313,11 +313,11 @@ export function SettingsView({ onBack, initialTab = "general" }: SettingsViewPro
       </aside>
 
       {/* RIGHT MAIN CONTENT AREA */}
-      <main className="flex flex-1 flex-col overflow-y-auto bg-[#08090b]">
+      <main className="flex flex-1 flex-col overflow-y-auto bg-[#0a0a0a]">
         {/* Top Header Bar - No line/border at all */}
         <header
           data-tauri-drag-region
-          className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between bg-[#08090b] px-8"
+          className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between bg-[#0a0a0a] px-8"
         >
           {/* Breadcrumb Navigation */}
           <div className="flex items-center gap-2 text-xs">

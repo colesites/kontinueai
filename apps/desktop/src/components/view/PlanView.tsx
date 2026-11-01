@@ -6,7 +6,17 @@ import {
 } from "@repo/ai/lib/kode";
 import { useQuery } from "convex/react";
 import { useUser } from "@clerk/clerk-react";
-import { Check, Copy, Loader2, RotateCcw, ArrowUpRight } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowUpRight,
+  Check,
+  Copy,
+  Info,
+  Loader2,
+  RefreshCw,
+  RotateCcw,
+  Terminal,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { api } from "@/lib/convex-api";
@@ -69,6 +79,21 @@ import {
   useKodeWorkspace,
   type KodeWorkspaceMessage,
 } from "@/lib/kode-workspace";
+import {
+  buildContinuationBundle,
+  diffSessionMessages,
+  formatActivity,
+  getImportContext,
+  providerIcon,
+  providerLabel,
+  readCodingSession,
+  readProjectState,
+  saveImportContext,
+  sessionUpdatedAt,
+  type CodingProvider,
+  type StoredImportContext,
+} from "@/lib/kode-import";
+import KodeSessionImport from "@/components/kode/KodeSessionImport";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
 
 const KODE_STARTER_PROMPTS = [
@@ -100,6 +125,8 @@ type ChatMessage = KodeWorkspaceMessage & {
   // Plan/todos and docs sources — now persisted in Convex message metadata.
   toolTodos?: KodeTodo[];
   sources?: DocSourceRef[];
+  // Imported retry/limit events render as system notices, not chat bubbles.
+  notice?: boolean;
 };
 
 // Key for an in-flight send started on the home page before a chat exists.
@@ -179,6 +206,42 @@ function MessageMeta({
   );
 }
 
+function SystemNotice({
+  content,
+  createdAt,
+}: {
+  content: string;
+  createdAt?: number;
+}) {
+  const normalized = content.trim();
+  const warning = /limit|reached/i.test(normalized);
+  const terminal = normalized.startsWith("Ran:");
+
+  return (
+    <div
+      className={`flex items-center justify-center gap-2 py-1 text-center text-[11px] ${
+        warning ? "text-amber-500/80" : "text-foreground/40"
+      }`}
+    >
+      <span className="h-px w-8 bg-white/10" />
+      {warning ? (
+        <AlertTriangle size={11} className="shrink-0" />
+      ) : terminal ? (
+        <Terminal size={11} className="shrink-0" />
+      ) : (
+        <Info size={11} className="shrink-0" />
+      )}
+      <span className="max-w-md truncate">{normalized}</span>
+      {createdAt ? (
+        <span className="shrink-0 text-foreground/25">
+          {formatRelativeTime(createdAt)}
+        </span>
+      ) : null}
+      <span className="h-px w-8 bg-white/10" />
+    </div>
+  );
+}
+
 const PlanView = () => {
   const { user } = useUser();
   const firstName = user?.firstName || user?.fullName || "there";
@@ -229,6 +292,7 @@ const PlanView = () => {
     draftProjectId,
     createChatRecord,
     addMessageRecord,
+    appendImportedMessages,
     selectChat,
     rewindAfter,
   } = useKodeWorkspace();
@@ -238,8 +302,127 @@ const PlanView = () => {
     (activeChatId
       ? chats.find((chat) => chat.id === activeChatId)?.projectId
       : draftProjectId) ?? null;
+  const activeProject =
+    projects.find((project) => project.id === activeProjectId) ?? null;
+
+  // Continuation context for imported Claude Code / Codex sessions. Kept in
+  // localStorage (per chat) and appended to the agent's system context so the
+  // project state captured at import time keeps grounding later turns.
+  const [importContext, setImportContext] =
+    useState<StoredImportContext | null>(null);
+  const [syncingImport, setSyncingImport] = useState(false);
+  const [syncError, setSyncError] = useState<string | null>(null);
+  // Guards the auto-sync interval against overlapping manual/background syncs.
+  const syncInFlight = useRef(false);
+  useEffect(() => {
+    setImportContext(activeChatId ? getImportContext(activeChatId) : null);
+    setSyncError(null);
+  }, [activeChatId]);
+
+  const syncImportedSession = async (options?: { silent?: boolean }) => {
+    if (!importContext || !activeChatId || syncInFlight.current) return;
+    if (!importContext.sourcePath) {
+      if (!options?.silent) {
+        setSyncError("Re-import this session to enable syncing.");
+      }
+      return;
+    }
+
+    syncInFlight.current = true;
+    setSyncingImport(true);
+    if (!options?.silent) setSyncError(null);
+    try {
+      const session = await readCodingSession(
+        importContext.provider as CodingProvider,
+        importContext.sourcePath,
+      );
+      const importedCount =
+        importContext.syncedMessageCount ?? importContext.messageCount;
+      // Older imports have no fingerprint. Refresh their context, but do not
+      // attempt an append: re-importing is required to enable incremental sync.
+      const diff = importContext.lastMessageHash
+        ? diffSessionMessages(
+            session,
+            importedCount,
+            importContext.lastMessageHash,
+          )
+        : null;
+
+      if (diff && diff.newMessages.length > 0) {
+        await appendImportedMessages({
+          chatId: activeChatId,
+          expectedMessageCount: importedCount,
+          model: importContext.model,
+          messages: diff.newMessages,
+        });
+      }
+
+      let project = null;
+      if (importContext.projectPath) {
+        try {
+          project = await readProjectState(importContext.projectPath);
+        } catch {
+          project = null;
+        }
+      }
+
+      const bundle = buildContinuationBundle(session, project);
+      const next: StoredImportContext = {
+        ...importContext,
+        lastActivity: session.lastActivity,
+        filesChanged: session.filesChanged,
+        redactions: session.redactions,
+        contextPrompt: bundle.contextPrompt,
+        syncedAt: Date.now(),
+        ...(diff
+          ? {
+              messageCount: diff.messageCount,
+              syncedMessageCount: diff.messageCount,
+              lastMessageHash: diff.lastMessageHash,
+            }
+          : {}),
+      };
+      saveImportContext(next);
+      setImportContext(next);
+      setSyncError(null);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Could not sync the imported session.";
+      setSyncError(message);
+      // Stop background retries for imports that can only be fixed by
+      // re-importing (changed transcript shape, divergent chat history).
+      if (
+        message.includes("Re-import") ||
+        message.includes("out of sync") ||
+        message.includes("appended safely")
+      ) {
+        const next = { ...importContext, autoSync: false };
+        saveImportContext(next);
+        setImportContext(next);
+      }
+    } finally {
+      syncInFlight.current = false;
+      setSyncingImport(false);
+    }
+  };
+
+  const toggleAutoSync = () => {
+    if (!importContext) return;
+    const next = {
+      ...importContext,
+      autoSync: importContext.autoSync === false,
+    };
+    saveImportContext(next);
+    setImportContext(next);
+  };
+
+  // Fall back to the imported session's captured project root so tools still
+  // work in the first render, before the Convex chat → folder mapping arrives.
   const projectRoot =
-    projects.find((project) => project.id === activeProjectId)?.path ?? null;
+    activeProject?.path ??
+    (activeChatId ? importContext?.projectPath ?? null : null);
 
   const resolveApproval = runtime.resolveApproval;
   const resolveOptions = runtime.resolveOptions;
@@ -266,23 +449,29 @@ const PlanView = () => {
   // turn before it runs when the budget is exhausted.
   const kodeUsage = useQuery(api.kode.getUsage, {});
 
-  const persistedMessages: ChatMessage[] = (convexMessages ?? [])
-    .filter((message) => message.role !== "system")
-    .map((message) => {
+  const persistedMessages: ChatMessage[] = (convexMessages ?? []).map(
+    (message) => {
       const meta = message.metadata as
         | { model?: string; todos?: KodeTodo[]; sources?: DocSourceRef[] }
         | undefined;
+      const isNotice = message.role === "system";
       return {
         id: message._id,
-        role: message.role === "assistant" ? "assistant" : "user",
+        role: isNotice
+          ? "assistant"
+          : message.role === "assistant"
+            ? "assistant"
+            : "user",
         content: message.content,
         modelId: meta?.model ?? selectedModelId,
         createdAt: message.createdAt,
         status: "complete",
+        notice: isNotice,
         toolTodos: meta?.todos,
         sources: meta?.sources,
       } satisfies ChatMessage;
-    });
+    },
+  );
 
   const currentKey = activeChatId ?? DRAFT_KEY;
   const overlay = pendingByChat[currentKey] ?? [];
@@ -292,6 +481,47 @@ const PlanView = () => {
   const latestUsage = usageByChat[currentKey];
   const messagesLoading =
     activeChatId !== null && convexMessages === undefined;
+
+  // Keep an imported chat in sync with its source transcript while it is open.
+  // The interval only stats the file; a full parse + Convex append happens when
+  // the transcript actually changed. Auto-sync can be turned off per chat.
+  const syncRef = useRef(syncImportedSession);
+  syncRef.current = syncImportedSession;
+  const sendingRef = useRef(isCurrentSending);
+  sendingRef.current = isCurrentSending;
+  useEffect(() => {
+    if (!importContext?.sourcePath) return;
+    if (importContext.autoSync === false) return;
+    if (!importContext.lastMessageHash) return;
+    let cancelled = false;
+    const check = async () => {
+      if (cancelled || syncInFlight.current || sendingRef.current) return;
+      try {
+        const updated = await sessionUpdatedAt(
+          importContext.provider,
+          importContext.sourcePath!,
+        );
+        if (updated > (importContext.syncedAt ?? importContext.importedAt)) {
+          await syncRef.current({ silent: true });
+        }
+      } catch {
+        // Polling errors are non-fatal; a manual sync surfaces them.
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 45_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [
+    importContext?.sourcePath,
+    importContext?.autoSync,
+    importContext?.lastMessageHash,
+    importContext?.syncedAt,
+    importContext?.importedAt,
+    importContext?.provider,
+  ]);
 
   const submitPrompt = async (
     text: string,
@@ -411,6 +641,7 @@ const PlanView = () => {
     const history = persistedMessages.reduce<
       { role: "user" | "assistant"; content: string }[]
     >((items, message) => {
+      if (message.notice) return items;
       if (message.content) {
         items.push({ role: message.role, content: message.content });
       }
@@ -528,6 +759,7 @@ const PlanView = () => {
         userContent,
         mode,
         projectRoot,
+        extraSystemContext: importContext?.contextPrompt,
         reasoningEnabled: sendReasoningEnabled ?? reasoningEnabled,
         onText: (delta) => applyDelta("content", delta),
         onReasoning: (delta) => applyDelta("reasoning", delta),
@@ -612,7 +844,10 @@ const PlanView = () => {
   // model's window, so switching models reprices the SAME conversation against the
   // new window (numerator unchanged) — like Codex / Claude Code. Only compaction
   // (kode-compact) shrinks it, not a new turn.
-  const persistedEstimate = estimateTokens(messages) + KODE_SYSTEM_PROMPT_TOKENS;
+  const persistedEstimate =
+    estimateTokens(messages) +
+    KODE_SYSTEM_PROMPT_TOKENS +
+    (importContext ? Math.ceil(importContext.contextPrompt.length / 4) : 0);
   const usedTokens = Math.max(persistedEstimate, latestUsage?.totalTokens ?? 0);
   const contextWindow = getContextWindow(selectedModelId, contextWindows);
   const inChat = activeChatId !== null || messages.length > 0;
@@ -621,10 +856,98 @@ const PlanView = () => {
       <div
         className={
           inChat
-            ? "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col pt-20"
-            : "mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center"
+            ? "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col pt-6"
+            : "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-start overflow-y-auto pt-10 pb-6"
         }
       >
+        {inChat && importContext ? (
+          <div className="mb-2 flex w-full items-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/[0.06] px-3 py-1.5 text-[11px] text-foreground/60">
+            <img
+              src={providerIcon(importContext.provider)}
+              alt=""
+              className="size-3.5 shrink-0 dark:invert-0 invert"
+            />
+            <span className="min-w-0 truncate">
+              Imported from{" "}
+              <span className="font-medium text-foreground/80">
+                {providerLabel(importContext.provider)}
+              </span>
+              {importContext.lastActivity
+                ? ` · last active ${formatActivity(importContext.lastActivity)}`
+                : ""}
+              {importContext.projectPath
+                ? ` · ${
+                    importContext.projectPath
+                      .split(/[\\/]/)
+                      .filter(Boolean)
+                      .pop() ?? "project"
+                  }`
+                : " · no project attached"}
+            </span>
+            <div className="ml-auto flex shrink-0 items-center gap-2">
+              <span className="hidden text-foreground/35 sm:inline">
+                context{" "}
+                {formatActivity(
+                  importContext.syncedAt ?? importContext.importedAt,
+                )}
+              </span>
+              {importContext.redactions > 0 ? (
+                <span className="text-foreground/40">
+                  {importContext.redactions} secrets redacted
+                </span>
+              ) : null}
+              {importContext.lastMessageHash ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleAutoSync}
+                    title="Automatically append new Claude Code / Codex turns while this chat is open"
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-foreground/40 transition-colors hover:bg-white/[0.05] hover:text-foreground/70"
+                  >
+                    <span
+                      className={`size-1.5 rounded-full ${
+                        importContext.autoSync === false
+                          ? "bg-foreground/25"
+                          : "bg-emerald-500"
+                      }`}
+                    />
+                    Auto {importContext.autoSync === false ? "off" : "on"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void syncImportedSession()}
+                    disabled={syncingImport}
+                    title="Read new turns from the source transcript and update the project context"
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-foreground/40 transition-colors hover:bg-white/[0.05] hover:text-foreground/70 disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      className={`size-3 ${syncingImport ? "animate-spin" : ""}`}
+                    />
+                    {syncingImport ? "Syncing" : "Sync"}
+                  </button>
+                </>
+              ) : importContext.sourcePath ? (
+                <button
+                  type="button"
+                  onClick={() => void syncImportedSession()}
+                  disabled={syncingImport}
+                  title="Refresh the imported context. Re-import the session to enable appending new turns."
+                  className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-foreground/40 transition-colors hover:bg-white/[0.05] hover:text-foreground/70 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={`size-3 ${syncingImport ? "animate-spin" : ""}`}
+                  />
+                  {syncingImport ? "Refreshing" : "Refresh"}
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {syncError ? (
+          <p className="mb-2 w-full text-[10.5px] text-amber-500">
+            {syncError}
+          </p>
+        ) : null}
         {!inChat ? (
           <div className="w-full text-center space-y-6 mb-6">
             <div className="flex items-center justify-center">
@@ -643,8 +966,15 @@ const PlanView = () => {
         ) : (
           <Conversation className="min-h-0 flex-1 overflow-hidden">
             <ConversationContent className="gap-6 px-0 pt-0 pb-5">
-              {messages.map((message) => (
-                <Message from={message.role} key={message.id}>
+              {messages.map((message) =>
+                message.notice ? (
+                  <SystemNotice
+                    key={message.id}
+                    content={message.content}
+                    createdAt={message.createdAt}
+                  />
+                ) : (
+                  <Message from={message.role} key={message.id}>
                   <MessageContent>
                     {message.role === "assistant" ? (
                       <>
@@ -725,8 +1055,9 @@ const PlanView = () => {
                         : undefined
                     }
                   />
-                </Message>
-              ))}
+                  </Message>
+                ),
+              )}
             </ConversationContent>
             <ConversationScrollButton />
           </Conversation>
@@ -809,6 +1140,13 @@ const PlanView = () => {
             </Context>
           </div>
         </div>
+
+        {!inChat ? (
+          <KodeSessionImport
+            projectPath={projectRoot}
+            projectName={activeProject?.name ?? null}
+          />
+        ) : null}
 
         {!inChat ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full pt-4 text-left">

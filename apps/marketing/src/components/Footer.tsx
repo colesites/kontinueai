@@ -26,6 +26,7 @@ const columns = [
 		title: "Get started",
 		links: [
 			{ href: "/download", label: "Download" },
+			{ href: "/desktop-waitlist", label: "Desktop waitlist" },
 			{ href: appLinks.signUp, label: "Create account", external: true },
 			{ href: appLinks.signIn, label: "Sign in", external: true },
 			{ href: "/legal/privacy-policy", label: "Privacy policy" },

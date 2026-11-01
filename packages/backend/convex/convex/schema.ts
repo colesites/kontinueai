@@ -129,6 +129,21 @@ export default defineSchema({
 		pinnedAt: v.optional(v.number()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
+		// Set when the chat was created by importing a local coding session, so
+		// the desktop app can show where it came from after a reload.
+		importSource: v.optional(
+			v.object({
+				provider: v.string(),
+				sessionId: v.string(),
+				projectPath: v.optional(v.string()),
+				lastActivity: v.optional(v.number()),
+				importedAt: v.number(),
+				// Incremental sync state. `syncedMessageCount` is the number of
+				// imported turns currently persisted in this chat.
+				syncedMessageCount: v.optional(v.number()),
+				syncedAt: v.optional(v.number()),
+			}),
+		),
 	})
 		.index("by_owner", ["ownerId"])
 		.index("by_updated", ["updatedAt"]),

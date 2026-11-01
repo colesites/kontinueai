@@ -56,6 +56,8 @@ export type RunKodeAgentParams = {
   mode: KodeAgentMode;
   /** Absolute on-disk path of the active project, or null if none is open. */
   projectRoot: string | null;
+  /** Extra system guidance (e.g. an imported coding-session continuation brief). */
+  extraSystemContext?: string;
   onText: (delta: string) => void;
   onReasoning: (delta: string) => void;
   /** Upsert a tool step by id (render or update its card). */
@@ -157,6 +159,7 @@ export async function runKodeAgent(
     userContent,
     mode,
     projectRoot,
+    extraSystemContext,
     onText,
     onReasoning,
     onToolStep,
@@ -218,7 +221,9 @@ export async function runKodeAgent(
   } catch {
     // Ignore — proceed without docs grounding.
   }
-  const systemContext = `${buildKodeSkillsContext(userText, repoProfile)}${docsContext}`;
+  const systemContext = `${buildKodeSkillsContext(userText, repoProfile)}${docsContext}${
+    extraSystemContext ? `\n\n${extraSystemContext}` : ""
+  }`;
 
   let finalContent = "";
   // `usage` = the latest call (context-size signal for the meter).

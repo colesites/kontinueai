@@ -5,6 +5,11 @@ use std::path::{Component, PathBuf};
 use tauri::ipc::Channel;
 use tauri::Manager;
 
+mod kode_import;
+
+#[cfg(target_os = "macos")]
+mod macos_window;
+
 const OPENROUTER_CHAT_COMPLETIONS_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
 const VERCEL_AI_GATEWAY_CHAT_COMPLETIONS_URL: &str =
     "https://ai-gateway.vercel.sh/v1/chat/completions";
@@ -1345,6 +1350,33 @@ pub fn run() {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 let _ = _app.deep_link().register_all();
             }
+
+            // Tauri only exposes the traffic-light group position. Set the
+            // individual macOS buttons so their spacing matches the sidebar
+            // icon group (close/minimize/zoom are normally tighter).
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+
+                if let Some(window) = _app.get_webview_window("main") {
+                    let delayed = window.clone();
+                    tauri::async_runtime::spawn(async move {
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                        let _ = macos_window::apply_traffic_light_spacing(&delayed, 30.0);
+                    });
+
+                    let resize_window = window.clone();
+                    window.on_window_event(move |event| {
+                        if matches!(event, tauri::WindowEvent::Resized(_)) {
+                            let _ = macos_window::apply_traffic_light_spacing(
+                                &resize_window,
+                                30.0,
+                            );
+                        }
+                    });
+                }
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1364,6 +1396,10 @@ pub fn run() {
             ,kode_byok_set_key
             ,kode_byok_remove_key
             ,kode_byok_get_key
+            ,kode_import::kode_scan_coding_sessions
+            ,kode_import::kode_read_coding_session
+            ,kode_import::kode_project_state
+            ,kode_import::kode_session_updated_at
             ,start_desktop_auth_server
         ])
         .run(tauri::generate_context!())

@@ -19,6 +19,7 @@ const publicPaths = [
 	"/blog/all",
 	"/authors/aderibigbe-adedamola",
 	"/download",
+	"/desktop-waitlist",
 	"/legal/privacy-policy",
 	"/legal/terms-of-service",
 ] as const;

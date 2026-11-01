@@ -14,9 +14,10 @@
 		"typegen": "sanity schema extract && sanity typegen generate"
 	},
 	"dependencies": {
-		"@repo/core": "workspace:*",
+		"@clerk/nextjs": "^7.4.3",
 		"@gsap/react": "^2.1.2",
 		"@next/third-parties": "^16.1.6",
+		"@repo/core": "workspace:*",
 		"@sanity/image-url": "^2.1.1",
 		"@sanity/vision": "^6.1.0",
 		"@sentry/nextjs": "^10",

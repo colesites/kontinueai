@@ -130,41 +130,42 @@
 }
 
 .dark {
-  --background: #09090b;
+  --background: #0a0a0a;
   --foreground: #f4f4f7;
-  --card: #121216;
+  --card: #0a0a0a;
   --card-foreground: #f4f4f7;
-  --popover: #121216;
+  --popover: #0a0a0a;
   --popover-foreground: #f4f4f7;
   --primary: #9333ea;
   --primary-foreground: #ffffff;
-  --secondary: #18181e;
+  --secondary: #151515;
   --secondary-foreground: #f4f4f7;
-  --muted: #18181e;
+  --muted: #151515;
   --muted-foreground: #8a8a98;
-  --accent: #1e1e26;
+  --accent: #1d1d1d;
   --accent-foreground: #f4f4f7;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: rgba(255, 255, 255, 0.07);
+  --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.10);
   --ring: #a855f7;
-  --sidebar: #09090b;
+  /* Sidebar is darker than the main canvas (which is #0a0a0a). */
+  --sidebar: #050506;
   --sidebar-foreground: #d1d1db;
   --sidebar-primary: #9333ea;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #16161c;
+  --sidebar-accent: #141414;
   --sidebar-accent-foreground: #f4f4f7;
   --sidebar-border: rgba(255, 255, 255, 0.06);
   --sidebar-ring: #a855f7;
 
-  /* Kode surface system in true sleek dark mode */
+  /* Every main surface shares the #0a0a0a canvas; depth comes from 3D edges. */
   --brand: #a855f7;
   --brand-soft: rgba(168, 85, 247, 0.15);
-  --surface-0: #09090b;
-  --surface-canvas: #09090b;
-  --surface-1: #121216;
-  --surface-2: #18181e;
-  --surface-3: #202028;
+  --surface-0: #0a0a0a;
+  --surface-canvas: #0a0a0a;
+  --surface-1: #0a0a0a;
+  --surface-2: #101010;
+  --surface-3: #171717;
   --edge: rgba(255, 255, 255, 0.07);
   --edge-strong: rgba(255, 255, 255, 0.12);
 }
@@ -310,7 +311,7 @@ code:not(pre code) {
   box-shadow: 4px 0 28px 0 rgba(140, 120, 180, 0.04), inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
 }
 .dark .liquid-glass-sidebar {
-  background: #09090b;
+  background: #050506;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow: none;
   backdrop-filter: none;
@@ -337,7 +338,7 @@ code:not(pre code) {
     inset 0 1.5px 1px 0 rgba(255, 255, 255, 1);
 }
 .dark .liquid-glass-composer {
-  background: rgba(18, 18, 22, 0.8);
+  background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.08);
   box-shadow: none;
 }
@@ -368,15 +369,22 @@ code:not(pre code) {
   transform: translateY(-2px);
 }
 .dark .liquid-glass-card {
-  background: rgba(18, 18, 22, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+  background-color: #0a0a0a;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.015) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.5),
+    0 10px 24px -12px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 .dark .liquid-glass-card:hover {
-  background: rgba(168, 85, 247, 0.1);
-  border-color: rgba(168, 85, 247, 0.4);
-  box-shadow: 0 12px 30px -5px rgba(168, 85, 247, 0.15);
-  transform: translateY(-2px);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border-color: rgba(255, 255, 255, 0.14);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.5),
+    0 12px 28px -12px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transform: none;
 }
 
 .liquid-glass-pill {
@@ -397,15 +405,20 @@ code:not(pre code) {
     inset 0 1px 1px 0 #ffffff;
 }
 .dark .liquid-glass-pill {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: none;
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.45),
+    0 4px 12px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 .dark .liquid-glass-pill:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.15);
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border-color: rgba(255, 255, 255, 0.16);
 }
 
 .liquid-glass-dropdown {
@@ -419,8 +432,8 @@ code:not(pre code) {
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
 }
 .dark .liquid-glass-dropdown {
-  background: rgba(18, 18, 22, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(16, 16, 16, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.09);
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
 }
 
@@ -465,11 +478,11 @@ code:not(pre code) {
   backdrop-filter: blur(40px) saturate(210%);
   -webkit-backdrop-filter: blur(40px) saturate(210%);
 }
-.dark .liquid-glass-sidebar { background: #09090b; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.dark .liquid-glass-composer { background: rgba(18, 18, 22, 0.8); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.dark .liquid-glass-card { background: rgba(18, 18, 22, 0.6); backdrop-filter: none; -webkit-backdrop-filter: none; }
-.dark .liquid-glass-pill { background: rgba(255, 255, 255, 0.04); }
-.dark .liquid-glass-dropdown { background: rgba(18, 18, 22, 0.85); }
+.dark .liquid-glass-sidebar { background: #050506; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.dark .liquid-glass-composer { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.dark .liquid-glass-card { background-color: #0a0a0a; backdrop-filter: none; -webkit-backdrop-filter: none; }
+.dark .liquid-glass-pill { background-color: transparent; }
+.dark .liquid-glass-dropdown { background: #0a0a0a; }
 
 /* Light mode: let the backdrop through the shell surfaces */
 :root:not(.dark) [data-slot="sidebar-inner"],
@@ -488,8 +501,8 @@ code:not(pre code) {
   border-color: rgba(168, 85, 247, 0.4);
   transform: none;
 }
-.dark .liquid-glass-pill:hover { background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.15); }
-.dark .liquid-glass-card:hover { background: rgba(168, 85, 247, 0.1); border-color: rgba(168, 85, 247, 0.4); transform: none; }
+.dark .liquid-glass-pill:hover { background-color: transparent; background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%); border-color: rgba(255, 255, 255, 0.16); }
+.dark .liquid-glass-card:hover { background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%); border-color: rgba(255, 255, 255, 0.14); }
 
 /* Purple capsule: identical material to the sidebar "New" / "Home" buttons */
 .kontinue-capsule {
@@ -506,6 +519,61 @@ code:not(pre code) {
   box-shadow: 0 2px 8px rgba(168, 85, 247, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
 }
 .kontinue-capsule:hover { background-image: linear-gradient(to right, rgba(168, 85, 247, 0.2), rgba(147, 51, 234, 0.15)); }
+
+/* Neutral 3D control — same depth/inset language as the purple capsules,
+   without turning secondary buttons purple. */
+.kontinue-3d {
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.45),
+    0 4px 12px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14);
+  transition: background-image 0.15s ease, border-color 0.15s ease,
+    box-shadow 0.15s ease, transform 0.1s ease;
+}
+.kontinue-3d:hover {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.kontinue-3d:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+:root:not(.dark) .kontinue-3d {
+  background-image: linear-gradient(180deg, #ffffff 0%, #f1f1f3 100%);
+  border-color: rgba(0, 0, 0, 0.10);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 #ffffff;
+}
+:root:not(.dark) .kontinue-3d:hover {
+  background-image: linear-gradient(180deg, #ffffff 0%, #e9e9ec 100%);
+}
+
+/* Purple 3D control — only for already-primary actions (send, import, new). */
+.kontinue-3d-primary {
+  background-image: linear-gradient(180deg, #a855f7 0%, #7e22ce 100%);
+  border: 1px solid rgba(216, 180, 254, 0.5);
+  color: #ffffff;
+  box-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.3),
+    0 6px 18px rgba(147, 51, 234, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.kontinue-3d-primary:hover {
+  background-image: linear-gradient(180deg, #b56cf8 0%, #8b2fe0 100%);
+}
+.kontinue-3d-primary:active {
+  transform: translateY(1px);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
 
 /* Theme swap: no staggered transitions */
 .theme-switching *, .theme-switching *::before, .theme-switching *::after {
