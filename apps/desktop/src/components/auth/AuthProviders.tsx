@@ -16,7 +16,7 @@ export function AuthProviders({ children }: { children: ReactNode }) {
     <ClerkProvider
       publishableKey={publishableKey}
       afterSignOutUrl="/"
-      allowedRedirectProtocols={["tauri:"]}
+      allowedRedirectProtocols={["tauri:", "kontinueai:"]}
     >
       <ConvexClientProvider>{children}</ConvexClientProvider>
     </ClerkProvider>

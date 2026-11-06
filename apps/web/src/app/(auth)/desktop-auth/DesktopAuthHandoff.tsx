@@ -52,6 +52,7 @@ export function DesktopAuthHandoff({
 			if (callbackPort) {
 				const loopbackUrl = `http://127.0.0.1:${callbackPort}/?${params}`;
 				setStatus({ kind: "ready", ticket: data.ticket, deepLink: loopbackUrl });
+				window.location.assign(loopbackUrl);
 				return;
 			}
 

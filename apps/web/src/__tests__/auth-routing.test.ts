@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	clerkPostAuthRedirect,
 	isPublicAuthRoute,
 	PROTECTED_APP_ROUTES,
 	protectedAppRedirect,
@@ -27,5 +28,23 @@ describe("authentication routing", () => {
 
 	test("AUTH-006: unresolved authentication cannot render protected content", () => {
 		expect(protectedAppRedirect(null)).not.toBeNull();
+	});
+
+	test("AUTH-007: desktop handoff redirect_url is kept, other targets are dropped", () => {
+		const origin = "https://chat.kontinueai.com";
+		const state = "a".repeat(64);
+		expect(
+			clerkPostAuthRedirect(`/desktop-auth?state=${state}&mode=sign-in`, origin),
+		).toBe(`/desktop-auth?state=${state}&mode=sign-in`);
+		expect(clerkPostAuthRedirect("/", origin)).toBeUndefined();
+		expect(
+			clerkPostAuthRedirect(
+				`https://clerk.chat.kontinueai.com/desktop-auth?state=${state}`,
+				origin,
+			),
+		).toBeUndefined();
+		expect(
+			clerkPostAuthRedirect(`/desktop-auth?state=not-valid`, origin),
+		).toBeUndefined();
 	});
 });

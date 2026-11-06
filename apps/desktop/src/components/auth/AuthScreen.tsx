@@ -1,4 +1,4 @@
-import { useSignIn } from "@clerk/clerk-react";
+import { useAuth, useSignIn } from "@clerk/clerk-react";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import {
 	ArrowLeft,
@@ -39,6 +39,8 @@ function errorMessage(caught: unknown) {
 
 export function AuthScreen() {
 	const { isLoaded: signInLoaded, setActive, signIn } = useSignIn();
+	const { isSignedIn } = useAuth();
+	const ticketLock = useRef(false);
 	const [step, setStep] = useState<AuthStep>(() =>
 		hasPendingBrowserSignIn() ? "browser" : "welcome",
 	);
@@ -51,7 +53,8 @@ export function AuthScreen() {
 	/** Exchanges a one-time sign-in token minted by the web app for a session. */
 	const signInWithTicket = useCallback(
 		async (ticket: string) => {
-			if (!signInLoaded) return;
+			if (!signInLoaded || ticketLock.current || isSignedIn) return;
+			ticketLock.current = true;
 			setBusy("ticket");
 			setError(null);
 			try {
@@ -62,17 +65,19 @@ export function AuthScreen() {
 				clearPendingBrowserSignIn();
 				await setActive({ session: attempt.createdSessionId });
 			} catch (caught) {
+				ticketLock.current = false;
 				setError(errorMessage(caught));
 				setBusy(null);
 			}
 		},
-		[signIn, signInLoaded, setActive],
+		[isSignedIn, signIn, signInLoaded, setActive],
 	);
 
 	// Deep-link callbacks (`kontinueai://auth/callback?...`) can arrive before
 	// Clerk finishes loading, so always call the latest handler via a ref.
 	const handleUrlsRef = useRef<(urls: string[]) => void>(() => {});
 	handleUrlsRef.current = (urls: string[]) => {
+		if (isSignedIn || ticketLock.current) return;
 		for (const url of urls) {
 			const result = parseAuthCallback(url);
 			if (!result) continue;
