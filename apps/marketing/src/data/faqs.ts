@@ -5,14 +5,24 @@ export interface Faq {
 
 export const faqs: Faq[] = [
 	{
+		question: "What happens when I hit a limit on Claude or ChatGPT?",
+		answer:
+			"Share the conversation, paste the link into Kontinue AI and send your next message. The chat comes over with its messages in order, so you can keep going without waiting for a reset.",
+	},
+	{
 		question: "What is Kontinue AI?",
 		answer:
-			"Kontinue AI is a multi-model AI platform with K-AI 1.0, access to selected models from leading providers, and technology for importing and continuing supported AI conversations.",
+			"Kontinue AI is where you continue AI conversations when you hit a limit. It imports chats from ChatGPT, Claude and Gemini and lets you keep going on K-AI 1.0 or selected models from leading providers.",
+	},
+	{
+		question: "Does the full context come with the chat?",
+		answer:
+			"Kontinue AI imports the messages included in the shared conversation, in order. Files, images or tool output that the provider leaves out of a share may not come across.",
 	},
 	{
 		question: "Does Kontinue AI have its own model?",
 		answer:
-			"Yes. K-AI 1.0 is Kontinue AI’s native intelligence and orchestration layer. It works with underlying open-source models and Kontinue product capabilities; it is not presented as a foundation model trained from scratch.",
+			"Yes. K-AI 1.0 is Kontinue AI’s native intelligence and orchestration layer. It works with underlying open-source models and Kontinue product capabilities. It is not presented as a foundation model trained from scratch.",
 	},
 	{
 		question: "Can I import conversations from ChatGPT, Claude, or Gemini?",

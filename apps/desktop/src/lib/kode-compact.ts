@@ -53,6 +53,7 @@ async function summarize(
     ? `Existing summary so far:\n${priorSummary}\n\nNew messages to fold into it:\n`
     : `Conversation to summarize:\n`;
   const response = await sendKodeChat({
+    kontinueServer: true,
     modelId,
     messages: [{ role: "user", content: `${SUMMARY_INSTRUCTION}\n\n${prefix}${convo}` }],
   });

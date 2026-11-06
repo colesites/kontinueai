@@ -58,14 +58,14 @@ function PendingAnswer({ step }: { step: KodeToolStep }) {
         <button
           type="button"
           onClick={() => resolveApproval(step.id, true)}
-          className="flex-1 rounded-md bg-white px-3 py-1.5 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-90"
+          className="flex-1 rounded-full bg-white px-3 py-1.5 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-90"
         >
           Approve
         </button>
         <button
           type="button"
           onClick={() => resolveApproval(step.id, false)}
-          className="flex-1 rounded-md border border-white/10 px-3 py-1.5 text-[12.5px] font-medium text-foreground/65 transition-colors hover:bg-white/[0.06] hover:text-foreground"
+          className="flex-1 rounded-full border border-white/10 px-3 py-1.5 text-[12.5px] font-medium text-foreground/65 transition-colors hover:bg-white/[0.06] hover:text-foreground"
         >
           Reject
         </button>

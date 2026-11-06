@@ -73,6 +73,18 @@ export type KodeChatResponse = {
 // "none" forbids tools. Used to force action on the first turn of file-work asks.
 export type KodeToolChoice = "auto" | "required" | "none";
 
+type ClerkGlobal = { session?: { getToken: () => Promise<string | null> } | null };
+
+/** Clerk session token for the Kontinue server (Clerk sets window.Clerk). */
+export async function getSessionToken(): Promise<string | null> {
+  const clerk = (window as unknown as { Clerk?: ClerkGlobal }).Clerk;
+  try {
+    return (await clerk?.session?.getToken()) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function sendKodeChat({
   messages,
   modelId,
@@ -80,6 +92,10 @@ export async function sendKodeChat({
   toolChoice,
   systemContext,
   reasoningEnabled,
+  kontinueServer = false,
+  surface = "kode",
+  fast = false,
+  reasoningEffort,
   onEvent,
 }: {
   messages: KodeChatMessage[];
@@ -88,6 +104,14 @@ export async function sendKodeChat({
   toolChoice?: KodeToolChoice;
   systemContext?: string;
   reasoningEnabled?: boolean;
+  /** Send through the Kontinue server (plan access + usage). Used by Kode. */
+  kontinueServer?: boolean;
+  /** Which server route: Kode (cost-metered) or the Home chat (per request). */
+  surface?: "kode" | "home";
+  /** Fast mode (server uses the model's fast variant when the plan allows). */
+  fast?: boolean;
+  /** Reasoning effort; the server maps it to the model's nearest level. */
+  reasoningEffort?: string;
   onEvent?: (event: KodeStreamEvent) => void;
 }): Promise<KodeChatResponse> {
   const channel = new Channel<KodeStreamEvent>();
@@ -107,6 +131,11 @@ export async function sendKodeChat({
       byok_key: activeByok?.key ?? null,
       byok_provider: activeByok?.provider ?? null,
       reasoning_enabled: reasoningEnabled !== undefined ? reasoningEnabled : null,
+      kontinue_server: kontinueServer,
+      session_token: kontinueServer ? await getSessionToken() : null,
+      fast,
+      kontinue_surface: surface,
+      reasoning_effort: reasoningEffort ?? null,
     },
     onEvent: channel,
   });

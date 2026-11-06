@@ -1,38 +1,70 @@
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export interface ChatTurn {
+  /** DOM id of the element that starts this turn. */
   id: string;
   preview: string;
 }
 
 interface DesktopChatTurnNavigatorProps {
   turns: ChatTurn[];
-  activeTurnId: string | null;
   onJumpToTurn: (turnId: string) => void;
+  /** Controlled active turn. When omitted it follows the scroll position. */
+  activeTurnId?: string | null;
+  /** Scroll container used to work out which turn is in view. */
+  getScrollElement?: () => HTMLElement | null;
+  className?: string;
 }
 
+// Collapsed: a slim pill of ticks, one per user message, pinned to the right
+// edge of the chat. Hover: a menu of message previews opens to its left.
 export function DesktopChatTurnNavigator({
   turns,
-  activeTurnId,
   onJumpToTurn,
+  activeTurnId: controlledActive,
+  getScrollElement,
+  className,
 }: DesktopChatTurnNavigatorProps) {
+  const [trackedActive, setTrackedActive] = useState<string | null>(null);
+  const activeTurnId = controlledActive ?? trackedActive;
+
+  useEffect(() => {
+    const root = getScrollElement?.();
+    if (!root || turns.length < 2) return;
+
+    const update = () => {
+      const top = root.getBoundingClientRect().top + 120;
+      let current: string | null = null;
+      for (const turn of turns) {
+        const el = document.getElementById(turn.id);
+        if (el && el.getBoundingClientRect().top <= top) current = turn.id;
+      }
+      setTrackedActive(current ?? turns[0]?.id ?? null);
+    };
+
+    update();
+    root.addEventListener("scroll", update, { passive: true });
+    return () => root.removeEventListener("scroll", update);
+  }, [getScrollElement, turns]);
+
   if (turns.length < 2) return null;
 
   return (
-    <aside className="pointer-events-none fixed right-4 top-1/2 z-30 -translate-y-1/2">
-      <div
-        className={cn(
-          "group pointer-events-auto w-8 overflow-hidden rounded-2xl border border-white/[0.1] bg-card/85 p-1.5 backdrop-blur-xl transition-all duration-200 shadow-xl",
-          "hover:w-[290px] hover:p-3 hover:shadow-2xl focus-within:w-[290px] focus-within:p-3 focus-within:shadow-2xl"
-        )}
-      >
-        {/* Expanded User Turns List (On Hover/Focus) */}
-        <div className="hidden space-y-2 group-hover:block group-focus-within:block">
-          <p className="px-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground/80">
-            User Turns
+    <aside
+      className={cn(
+        "group/nav pointer-events-none absolute top-1/2 right-3 z-30 -translate-y-1/2",
+        className,
+      )}
+    >
+      {/* Hover menu, opens to the left of the rail */}
+      <div className="pointer-events-none absolute top-1/2 right-full -translate-y-1/2 pr-2 opacity-0 transition-opacity duration-150 group-hover/nav:pointer-events-auto group-hover/nav:opacity-100 group-focus-within/nav:pointer-events-auto group-focus-within/nav:opacity-100">
+        <div className="liquid-glass-dropdown w-72 p-1.5">
+          <p className="px-3 pt-1 pb-1.5 text-[10.5px] font-medium text-muted-foreground/70">
+            Your messages
           </p>
-          <div className="max-h-[48vh] space-y-1.5 overflow-y-auto pr-1">
-            {turns.map((turn) => {
+          <div className="max-h-[50vh] space-y-0.5 overflow-y-auto">
+            {turns.map((turn, index) => {
               const isActive = turn.id === activeTurnId;
               return (
                 <button
@@ -40,46 +72,46 @@ export function DesktopChatTurnNavigator({
                   type="button"
                   onClick={() => onJumpToTurn(turn.id)}
                   className={cn(
-                    "group/item flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-xs transition-all",
+                    "flex w-full cursor-pointer items-center gap-2.5 rounded-full px-3 py-1.5 text-left text-xs transition-colors",
                     isActive
-                      ? "border-brand/40 bg-brand/10 text-white font-medium"
-                      : "border-white/[0.06] bg-white/[0.03] text-muted-foreground hover:border-white/15 hover:bg-white/[0.08] hover:text-white"
+                      ? "kontinue-menu-active"
+                      : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
                   )}
                 >
+                  <span className="w-4 shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
+                    {index + 1}
+                  </span>
                   <span className="min-w-0 flex-1 truncate">{turn.preview}</span>
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "h-0.5 w-3 shrink-0 rounded-full transition-all",
-                      isActive ? "bg-brand" : "bg-white/30 group-hover/item:bg-white/60"
-                    )}
-                  />
                 </button>
               );
             })}
           </div>
         </div>
+      </div>
 
-        {/* Collapsed Vertical Indicator Bar (Default state) */}
-        <div className="flex flex-col items-center gap-1.5 py-1 group-hover:hidden group-focus-within:hidden">
-          {turns.map((turn) => {
-            const isActive = turn.id === activeTurnId;
-            return (
-              <button
-                key={turn.id}
-                type="button"
-                onClick={() => onJumpToTurn(turn.id)}
+      {/* Collapsed rail */}
+      <div className="liquid-glass-dropdown pointer-events-auto flex max-h-[40vh] w-7 flex-col items-center gap-1.5 overflow-hidden !rounded-full py-2.5">
+        {turns.map((turn) => {
+          const isActive = turn.id === activeTurnId;
+          return (
+            <button
+              key={turn.id}
+              type="button"
+              onClick={() => onJumpToTurn(turn.id)}
+              aria-label={`Go to: ${turn.preview}`}
+              className="flex h-1.5 w-full shrink-0 cursor-pointer items-center justify-center"
+            >
+              <span
                 className={cn(
-                  "h-1.5 w-3 rounded-full transition-all",
+                  "h-[3px] rounded-full transition-all duration-150",
                   isActive
-                    ? "bg-white shadow-[0_0_8px_rgba(255,255,255,0.6)]"
-                    : "bg-white/30 hover:bg-white/60"
+                    ? "w-3.5 bg-purple-500 shadow-[0_0_6px_rgba(168,85,247,0.7)] dark:bg-purple-400"
+                    : "w-2.5 bg-foreground/25 hover:bg-foreground/50",
                 )}
-                aria-label={`Go to: ${turn.preview}`}
               />
-            );
-          })}
-        </div>
+            </button>
+          );
+        })}
       </div>
     </aside>
   );

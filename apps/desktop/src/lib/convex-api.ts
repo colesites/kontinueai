@@ -78,17 +78,27 @@ type KodeMessageMetadataArgs = {
   todos?: { title: string; description?: string; status: string }[];
 };
 
-// `used` / `limit` are in TOKENS (input+output summed across the agent turn).
-export type KodeUsageWindow = {
-  used: number;
-  limit: number;
-  resetAt: number;
-};
-
+// Kode usage in micro-dollars of model cost (see convex/kodeUsage.ts).
+export type KodeUsageWindow = { used: number; limit: number; resetAt: number | null };
 export type KodeUsage = {
-  plan: "free" | "starter" | "pro";
-  daily: KodeUsageWindow;
-  weekly: KodeUsageWindow;
+  plan: "free" | "starter" | "plus" | "pro" | "max";
+  session: KodeUsageWindow;
+  weekly: { used: number; limit: number; resetAt: number };
+  relaxed: { used: number; limit: number };
+  creditsMicros: number;
+  credits: {
+    balance: number;
+    autoUse: boolean;
+    monthlyLimit: number;
+    monthSpent: number;
+    monthResetAt: number;
+  };
+} | null;
+
+export type KodeUsageHistory = {
+  weekStartMs: number;
+  hours: { hourStartMs: number; micros: number; requests: number }[];
+  models: { modelId: string; micros: number; requests: number }[];
 } | null;
 
 type KodeConvexApi = {
@@ -175,7 +185,7 @@ type KodeConvexApi = {
       "query",
       "public",
       Record<string, never>,
-      { _id: string; provider: string; connected: boolean; accountLabel?: string }[]
+      { _id: string; provider: string; connected: boolean; accountLabel?: string; tokenExpiresAt?: number }[]
     >;
   };
   messages: {
@@ -298,11 +308,25 @@ type KodeConvexApi = {
       { chatId: string },
       unknown
     >;
+  };
+  kodeUsage: {
     getUsage: FunctionReference<
       "query",
       "public",
       Record<string, never>,
       KodeUsage
+    >;
+    getUsageHistory: FunctionReference<
+      "query",
+      "public",
+      Record<string, never>,
+      KodeUsageHistory
+    >;
+    setCreditSettings: FunctionReference<
+      "mutation",
+      "public",
+      { autoUse?: boolean; monthlyLimitMicros?: number },
+      null
     >;
   };
   canvas: {

@@ -11,14 +11,13 @@ export function KontinueModelSection() {
 				<Reveal className="max-w-2xl">
 					<p className="eyebrow text-brand">The Kontinue AI model</p>
 					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
-						Our own intelligence, built into the platform.
+						Always something to keep going with.
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						K-AI 1.0 is Kontinue AI’s proprietary intelligence and orchestration
-						layer. It combines supported underlying models with Kontinue
-						capabilities such as memory, retrieval, projects, tasks, connectors,
-						and specialised agents—without pretending to be a foundation model
-						trained from scratch.
+						K-AI 1.0 is Kontinue AI’s own intelligence layer, on every plan. It
+						runs on supported underlying models and adds Kontinue memory,
+						retrieval, projects and connectors, so even on the free plan you are
+						never left waiting for a reset.
 					</p>
 					<div className="mt-9 flex flex-col gap-3 sm:flex-row">
 						<Link
@@ -46,7 +45,7 @@ export function KontinueModelSection() {
 									<BrainCircuit className="size-6" />
 								</span>
 								<span className="rounded-full border border-background/15 px-3 py-1 font-mono text-[0.65rem] uppercase tracking-widest text-background/60">
-									Native option
+									On every plan
 								</span>
 							</div>
 							<p className="font-display mt-12 text-4xl tracking-tight">

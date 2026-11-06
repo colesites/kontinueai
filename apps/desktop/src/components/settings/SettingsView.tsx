@@ -1,43 +1,35 @@
-"use client";
-
-import React, { useState, useEffect, useMemo, useRef } from "react";
-import { useClerk } from "@clerk/clerk-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useClerk, useUser } from "@clerk/clerk-react";
+import { useQuery } from "convex/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useTheme } from "@/components/theme/theme-provider";
+import { getVersion } from "@tauri-apps/api/app";
 import {
-  Search,
-  ArrowLeft,
-  Settings2,
-  SlidersHorizontal,
-  Globe,
-  Keyboard,
-  Scan,
-  Cpu,
-  Plug2,
-  CalendarClock,
-  CalendarCheck,
-  GitBranch,
-  HardDrive,
-  Link2,
   Archive,
-  RotateCcw,
-  Sparkles,
-  Lock,
-  ChevronDown,
-  Check,
-  ExternalLink,
-  Laptop,
-  Moon,
-  Sun,
+  ArrowLeft,
   Bot,
+  CalendarCheck,
+  Check,
+  ChevronDown,
   Code2,
-  Trash2,
-  RefreshCw,
-  Telescope,
-  Megaphone,
+  ExternalLink,
+  Gauge,
+  Keyboard,
+  Laptop,
   LogOut,
+  Megaphone,
+  Moon,
+  Palette,
+  Plug2,
+  RefreshCw,
+  Search,
+  SlidersHorizontal,
+  Sun,
+  Telescope,
+  Terminal,
+  Trash2,
+  UserRound,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useTheme } from "@/components/theme/theme-provider";
 import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
@@ -45,1380 +37,773 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ByokSection } from "./ByokSection";
+import { ProvidersSection } from "./ProvidersSection";
+import { UsageSection } from "./UsageSection";
 import { useKodeWorkspace, type SettingsNavTab } from "@/lib/kode-workspace";
-import { cn } from "@/lib/utils";
-import { useQuery } from "convex/react";
-import { api } from "@/lib/convex-api";
+import {
+  resetSettings,
+  updateSettings,
+  useAppSettings,
+  type TextSize,
+} from "@/lib/app-settings";
+import { KODE_AGENT_MODES } from "@/lib/kode-tools";
+import { KODE_DEFAULT_MODEL_ID, KODE_MODELS } from "@repo/ai/lib/kode";
 import { AGENTS, type AgentDefinition } from "@repo/ai/lib/agents";
+import { usePlanTier } from "@/hooks/use-plan-tier";
+import { api } from "@/lib/convex-api";
+import { cn } from "@/lib/utils";
+
+const WEB_APP = "https://chat.kontinueai.com";
 
 export interface SettingsViewProps {
   onBack: () => void;
   initialTab?: SettingsNavTab | string;
 }
 
-interface NavItemDef {
+type NavItem = {
   id: SettingsNavTab;
   label: string;
-  icon: React.ComponentType<{ size?: number; className?: string }>;
-}
+  description: string;
+  icon: typeof SlidersHorizontal;
+};
 
-const NAV_ITEMS: NavItemDef[] = [
-  { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "appearance", label: "Appearance", icon: Globe },
-  { id: "keybindings", label: "Keybindings", icon: Keyboard },
-  { id: "snapshots", label: "SnapShots", icon: Scan },
-  { id: "providers", label: "Providers", icon: Cpu },
-  { id: "integrations", label: "Integrations", icon: Plug2 },
-  { id: "scheduled-tasks", label: "Scheduled Tasks", icon: CalendarClock },
-  { id: "source-control", label: "Source Control", icon: GitBranch },
-  { id: "storage", label: "Storage", icon: HardDrive },
-  { id: "connections", label: "Connections", icon: Link2 },
-  { id: "archive", label: "Archive", icon: Archive },
+const NAV: NavItem[] = [
+  { id: "general", label: "General", description: "How chats and Kode sessions behave.", icon: SlidersHorizontal },
+  { id: "appearance", label: "Appearance", description: "Theme, text size and motion.", icon: Palette },
+  { id: "usage", label: "Usage", description: "Plan limits, activity and usage credits.", icon: Gauge },
+  { id: "providers", label: "Providers", description: "How Kode reaches each model: your Claude or ChatGPT subscription, your own API key, or Kode.", icon: Terminal },
+  { id: "connectors", label: "Connectors", description: "Accounts Kontinue can read and act on for you.", icon: Plug2 },
+  { id: "agents", label: "Agents", description: "Specialized agents for focused work.", icon: Bot },
+  { id: "shortcuts", label: "Keyboard shortcuts", description: "Every shortcut in the app.", icon: Keyboard },
+  { id: "account", label: "Account", description: "Your profile, plan and sign-in.", icon: UserRound },
+  { id: "data", label: "Data", description: "Archived chats and data stored on this device.", icon: Archive },
 ];
 
-const CONNECTORS_CATALOG = [
-  { provider: "github", name: "GitHub", description: "Read repositories, pull requests and issues." },
-  { provider: "gmail", name: "Gmail", description: "Search, compose and reference email messages." },
-  { provider: "google_calendar", name: "Google Calendar", description: "Create events and check your schedule." },
-  { provider: "google_drive", name: "Google Drive", description: "Read and reference files from your Google Drive." },
-  { provider: "google_sheets", name: "Google Sheets", description: "Read, create and update spreadsheets." },
-  { provider: "notion", name: "Notion", description: "Search and read workspace pages and databases." },
-  { provider: "vercel", name: "Vercel", description: "Monitor deployments, logs and project status." },
-  { provider: "todoist", name: "Todoist", description: "Sync tasks and action items directly with Todoist." },
-];
+// Older ids used by openSettings() callers.
+const ALIASES: Record<string, SettingsNavTab> = {
+  byok: "providers",
+  models: "providers",
+  integrations: "connectors",
+  keybindings: "shortcuts",
+  archive: "data",
+};
 
-function getConnectorLogoUrl(provider: string): string {
-  switch (provider) {
-    case "github":
-      return "/connectors/GitHub_dark.svg";
-    case "vercel":
-      return "/connectors/Vercel_dark.svg";
-    case "gmail":
-      return "/connectors/gmail.svg";
-    case "google_calendar":
-      return "/connectors/google-calendar.svg";
-    case "google_drive":
-      return "/connectors/google-drive.svg";
-    case "google_sheets":
-      return "/connectors/google-sheets.svg";
-    case "notion":
-      return "/connectors/notion.svg";
-    case "todoist":
-      return "/connectors/todoist.svg";
-    default:
-      return "/connectors/gmail.svg";
-  }
+function normalizeTab(tab: string | undefined): SettingsNavTab {
+  if (!tab) return "general";
+  if (ALIASES[tab]) return ALIASES[tab];
+  return NAV.some((item) => item.id === tab) ? (tab as SettingsNavTab) : "general";
 }
 
-export function SettingsView({ onBack, initialTab = "general" }: SettingsViewProps) {
-  // Normalize initial tab
-  const getNormalizedTab = (tab: string): SettingsNavTab => {
-    if (tab === "byok") return "providers";
-    if (tab === "connectors" || tab === "agents") return "integrations";
-    if (NAV_ITEMS.some((i) => i.id === tab)) return tab as SettingsNavTab;
-    return "general";
-  };
+export function SettingsView({ onBack, initialTab }: SettingsViewProps) {
+  const [active, setActive] = useState<SettingsNavTab>(() => normalizeTab(initialTab));
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
-  const [activeTab, setActiveTab] = useState<SettingsNavTab>(() => getNormalizedTab(initialTab));
-  const [searchQuery, setSearchQuery] = useState("");
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const { signOut } = useClerk();
+  useEffect(() => setActive(normalizeTab(initialTab)), [initialTab]);
 
-  // Synchronize when initialTab prop changes
   useEffect(() => {
-    setActiveTab(getNormalizedTab(initialTab));
-  }, [initialTab]);
-
-  // General Settings state
-  const [selectedModel, setSelectedModel] = useState("Claude Opus 4.6");
-  const [thinkingLevel, setThinkingLevel] = useState("High · 1M");
-  const [permissions, setPermissions] = useState("Full access");
-  const [workspaceMode, setWorkspaceMode] = useState("Current checkout");
-  const [submodulesMode, setSubmodulesMode] = useState("Recursive");
-
-  // Organization settings state
-  const [projectGrouping, setProjectGrouping] = useState(true);
-  const [projectOrder, setProjectOrder] = useState("Last user message");
-  const [autoResume, setAutoResume] = useState(false);
-  const [snoozeLimited, setSnoozeLimited] = useState(false);
-  const [workingSection, setWorkingSection] = useState(false);
-  const [autoSettleMerged, setAutoSettleMerged] = useState(true);
-  const [autoSettleInactive, setAutoSettleInactive] = useState(true);
-  const [daysBeforeSettle, setDaysBeforeSettle] = useState(3);
-
-  // Behavior settings state
-  const [sendOnEnter, setSendOnEnter] = useState(true);
-  const [soundEffects, setSoundEffects] = useState(true);
-  const [telemetry, setTelemetry] = useState(true);
-
-  // Appearance settings state
-  const { theme, setTheme } = useTheme();
-  const [chatFont, setChatFont] = useState("Inter");
-  const [uiScaling, setUiScaling] = useState("100%");
-  const [lineNumbers, setLineNumbers] = useState(true);
-
-  // Context filters
-  const [selectedProject, setSelectedProject] = useState("All projects");
-  const [selectedEnvironment, setSelectedEnvironment] = useState("All environments");
-
-  // Handle keyboard shortcuts (Escape to go back, "/" to focus search)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
+    const onKey = (event: KeyboardEvent) => {
+      const typing =
+        event.target instanceof HTMLElement &&
+        (event.target.tagName === "INPUT" || event.target.tagName === "TEXTAREA");
+      if (event.key === "Escape") {
+        // Let open menus close first.
+        if (document.querySelector("[data-radix-popper-content-wrapper]")) return;
+        event.preventDefault();
         onBack();
-      } else if (e.key === "/" && document.activeElement !== searchInputRef.current) {
-        e.preventDefault();
-        searchInputRef.current?.focus();
+      } else if (event.key === "/" && !typing) {
+        event.preventDefault();
+        searchRef.current?.focus();
       }
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [onBack]);
 
-  const filteredNavItems = useMemo(() => {
-    if (!searchQuery.trim()) return NAV_ITEMS;
-    return NAV_ITEMS.filter((item) =>
-      item.label.toLowerCase().includes(searchQuery.toLowerCase())
+  const visibleNav = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return NAV;
+    return NAV.filter((item) =>
+      `${item.label} ${item.description}`.toLowerCase().includes(needle),
     );
-  }, [searchQuery]);
+  }, [query]);
 
-  const activeItemDef = NAV_ITEMS.find((item) => item.id === activeTab) ?? NAV_ITEMS[0];
-
-  const handleRestoreDefaults = () => {
-    setSelectedModel("Claude Opus 4.6");
-    setThinkingLevel("High · 1M");
-    setPermissions("Full access");
-    setWorkspaceMode("Current checkout");
-    setSubmodulesMode("Recursive");
-    setProjectGrouping(true);
-    setProjectOrder("Last user message");
-    setAutoResume(false);
-    setSnoozeLimited(false);
-    setWorkingSection(false);
-    setAutoSettleMerged(true);
-    setAutoSettleInactive(true);
-    setDaysBeforeSettle(3);
-    setSendOnEnter(true);
-    setSoundEffects(true);
-    setTelemetry(true);
-  };
+  const current = NAV.find((item) => item.id === active) ?? NAV[0];
 
   return (
-    <div className="fixed inset-0 z-50 flex h-screen w-screen bg-[#0a0a0a] text-zinc-100 antialiased overflow-hidden select-none font-sans">
-      {/* LEFT SIDEBAR */}
-      <aside className="relative flex w-60 shrink-0 flex-col justify-between border-r border-zinc-800/70 bg-[#050506]">
-        {/* Subtle Cosmic Nebula Glow behind the logo */}
-        <div className="pointer-events-none absolute left-0 top-0 h-44 w-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-purple-900/25 via-indigo-950/15 to-transparent opacity-80" />
-
-        {/* Top Area */}
-        <div className="relative z-10 flex flex-col">
-          {/* Window Drag Title Bar Header */}
-          <div
-            data-tauri-drag-region
-            className="flex h-12 items-center gap-2.5 px-4 pt-1"
-          >
-            {/* App Icon */}
-            <div className="flex size-5 items-center justify-center rounded-md bg-gradient-to-br from-purple-500/30 to-indigo-600/40 border border-purple-500/40 shadow-xs">
-              <span className="text-[10px] font-bold text-purple-200">K</span>
-            </div>
-            <span className="text-xs font-semibold tracking-tight text-zinc-100">
-              Kontinue Code
-            </span>
-          </div>
-
-          {/* Quick Search Input */}
-          <div className="px-3 pt-1 pb-2">
-            <div className="relative flex items-center rounded-lg border border-zinc-800/80 bg-zinc-900/60 px-2.5 py-1.5 transition-colors focus-within:border-purple-500/60 focus-within:bg-zinc-900">
-              <Search size={13} className="text-zinc-500 shrink-0" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search"
-                className="w-full bg-transparent px-2 text-xs text-zinc-200 placeholder:text-zinc-500 outline-none"
-              />
-              <span className="flex size-4 items-center justify-center rounded border border-zinc-700/60 bg-zinc-800/80 text-[10px] font-medium text-zinc-400">
-                /
-              </span>
-            </div>
-          </div>
-
-          {/* Navigation List Items */}
-          <nav className="space-y-0.5 px-2 py-1">
-            {filteredNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = activeTab === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setActiveTab(item.id)}
-                  className={cn(
-                    "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-xs font-medium transition-all duration-100 cursor-pointer",
-                    isActive
-                      ? "bg-zinc-800/90 text-white shadow-xs border border-zinc-700/50"
-                      : "text-zinc-400 hover:bg-zinc-800/40 hover:text-zinc-200 border border-transparent"
-                  )}
-                >
-                  <Icon
-                    size={14}
-                    className={cn(
-                      "shrink-0",
-                      isActive ? "text-white" : "text-zinc-400"
-                    )}
-                  />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </nav>
-        </div>
-
-        {/* Sidebar Footer Area */}
-        <div className="relative z-10 px-3 pb-3 pt-2 space-y-1">
-          {/* Logout */}
+    <div className="liquid-backdrop fixed inset-0 z-50 flex text-foreground antialiased dark:bg-background">
+      {/* Left nav: same material as the main sidebar */}
+      <aside className="liquid-glass-sidebar flex w-60 shrink-0 flex-col">
+        <div data-tauri-drag-region className="h-11 shrink-0" />
+        <div className="px-2.5">
           <button
             type="button"
-            onClick={() => void signOut()}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-zinc-400 hover:text-red-400 hover:bg-red-500/10 transition-colors text-left cursor-pointer"
+            onClick={onBack}
+            className="flex h-8 w-full cursor-pointer items-center gap-2 rounded-full px-2.5 text-[12px] text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
           >
-            <LogOut size={13} className="shrink-0" />
-            <span>Log out</span>
+            <ArrowLeft size={13} />
+            Back to app
           </button>
-
-          {/* Bottom Back Button & Settings Icon Row */}
-          <div className="flex items-center justify-between pt-1">
-            <button
-              type="button"
-              onClick={onBack}
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium text-zinc-400 hover:bg-zinc-800/50 hover:text-white transition-colors cursor-pointer"
-            >
-              <ArrowLeft size={13} />
-              <span>Back</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveTab("general")}
-              className="flex size-6 items-center justify-center rounded-md text-zinc-400 hover:bg-zinc-800/50 hover:text-white transition-colors cursor-pointer"
-              title="Settings"
-            >
-              <Settings2 size={13} />
-            </button>
+          <div className="kontinue-3d mt-2 flex h-8 items-center gap-2 rounded-full px-3">
+            <Search size={12} className="shrink-0 text-muted-foreground" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search settings"
+              className="w-full bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/60"
+            />
+            <kbd className="text-[10px] text-muted-foreground/60">/</kbd>
           </div>
         </div>
+
+        <nav className="mt-3 flex-1 space-y-0.5 overflow-y-auto px-2.5">
+          {visibleNav.map((item) => {
+            const Icon = item.icon;
+            const selected = item.id === active;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActive(item.id)}
+                className={cn(
+                  "flex h-[30px] w-full cursor-pointer items-center gap-2 rounded-full border px-2.5 text-[12px] transition-colors",
+                  selected
+                    ? "kontinue-capsule font-semibold text-purple-900 dark:text-purple-100"
+                    : "border-transparent text-zinc-600 hover:bg-black/[0.04] hover:text-foreground dark:text-muted-foreground dark:hover:bg-white/[0.05]",
+                )}
+              >
+                <Icon
+                  size={13}
+                  strokeWidth={1.6}
+                  className={selected ? "text-purple-600 dark:text-purple-300" : undefined}
+                />
+                {item.label}
+              </button>
+            );
+          })}
+          {visibleNav.length === 0 ? (
+            <p className="px-3 py-2 text-[11.5px] text-muted-foreground">No matching settings.</p>
+          ) : null}
+        </nav>
+        <AppVersion />
       </aside>
 
-      {/* RIGHT MAIN CONTENT AREA */}
-      <main className="flex flex-1 flex-col overflow-y-auto bg-[#0a0a0a]">
-        {/* Top Header Bar - No line/border at all */}
-        <header
-          data-tauri-drag-region
-          className="sticky top-0 z-20 flex h-14 shrink-0 items-center justify-between bg-[#0a0a0a] px-8"
+      {/* Content */}
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        <div data-tauri-drag-region className="sticky top-0 z-10 h-11" />
+        <div
+          className={cn(
+            "mx-auto w-full px-8 pb-16",
+            active === "providers" ? "max-w-4xl" : "max-w-2xl",
+          )}
         >
-          {/* Breadcrumb Navigation */}
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-zinc-500 font-normal">Settings</span>
-            <span className="text-zinc-600">/</span>
-            <span className="font-semibold text-zinc-200">{activeItemDef.label}</span>
-          </div>
-
-          {/* Right Action: Restore device defaults */}
-          <button
-            type="button"
-            onClick={handleRestoreDefaults}
-            className="flex items-center gap-1.5 text-[11.5px] font-medium text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-          >
-            <RotateCcw size={12} />
-            <span>Restore device defaults</span>
-          </button>
-        </header>
-
-        {/* Scrollable Settings Body - Horizontally centered */}
-        <div className="flex-1 max-w-[700px] w-full mx-auto px-4 pt-3 pb-24">
-          {/* Subtitle with Context Dropdowns */}
-          <div className="flex items-center gap-1.5 text-xs text-zinc-400 mb-6">
-            <span>Applying settings for</span>
-
-            {/* Project Context Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-zinc-200 underline decoration-zinc-700 underline-offset-4 hover:text-white transition-colors cursor-pointer"
-                >
-                  <span>{selectedProject}</span>
-                  <ChevronDown size={11} className="text-zinc-400" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-44 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                <DropdownMenuItem onSelect={() => setSelectedProject("All projects")}>
-                  All projects
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setSelectedProject("Current project")}>
-                  Current project
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <span>across</span>
-
-            {/* Environment Context Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-zinc-200 underline decoration-zinc-700 underline-offset-4 hover:text-white transition-colors cursor-pointer"
-                >
-                  <span>{selectedEnvironment}</span>
-                  <ChevronDown size={11} className="text-zinc-400" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-44 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                <DropdownMenuItem onSelect={() => setSelectedEnvironment("All environments")}>
-                  All environments
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setSelectedEnvironment("Local development")}>
-                  Local development
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setSelectedEnvironment("Production")}>
-                  Production
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-
-          {/* TAB 1: GENERAL (Pixel-perfect replica of the screenshot) */}
-          {activeTab === "general" && (
-            <div className="space-y-7">
-              {/* SECTION: New threads */}
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">New threads</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  {/* Row: Model */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Model</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Default model for new threads. Projects can override it.
-                      </p>
-                      <span className="text-[10px] text-zinc-600 block pt-0.5">Automatic</span>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {/* Model Dropdown */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors cursor-pointer"
-                          >
-                            <Sparkles size={12} className="text-amber-500" />
-                            <span>{selectedModel}</span>
-                            <ChevronDown size={11} className="text-zinc-400" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-52 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                          <DropdownMenuItem onSelect={() => setSelectedModel("Claude Opus 4.6")}>
-                            Claude Opus 4.6
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setSelectedModel("Claude 3.7 Sonnet")}>
-                            Claude 3.7 Sonnet
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setSelectedModel("Claude 3.5 Sonnet")}>
-                            Claude 3.5 Sonnet
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setSelectedModel("GPT-4o")}>
-                            GPT-4o
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setSelectedModel("o3-mini")}>
-                            o3-mini
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      {/* Thinking Level Dropdown */}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors cursor-pointer"
-                          >
-                            <Cpu size={12} className="text-zinc-400" />
-                            <span>{thinkingLevel}</span>
-                            <ChevronDown size={11} className="text-zinc-400" />
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-44 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                          <DropdownMenuItem onSelect={() => setThinkingLevel("High · 1M")}>
-                            High · 1M
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setThinkingLevel("Medium · 500k")}>
-                            Medium · 500k
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setThinkingLevel("Low · 128k")}>
-                            Low · 128k
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => setThinkingLevel("Disabled")}>
-                            Disabled
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
-                  </div>
-
-                  {/* Row: Permissions */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Permissions</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Default permissions for new threads. Projects can override them.
-                      </p>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors cursor-pointer"
-                        >
-                          <Lock size={12} className="text-zinc-400" />
-                          <span>{permissions}</span>
-                          <ChevronDown size={11} className="text-zinc-400" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-44 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                        <DropdownMenuItem onSelect={() => setPermissions("Full access")}>
-                          Full access
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setPermissions("Ask before write")}>
-                          Ask before write
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setPermissions("Read only")}>
-                          Read only
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Row: Workspace */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Workspace</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Where new threads start. Projects and their t3.json can override it.
-                      </p>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors cursor-pointer"
-                        >
-                          <span>{workspaceMode}</span>
-                          <ChevronDown size={11} className="text-zinc-400" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-48 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                        <DropdownMenuItem onSelect={() => setWorkspaceMode("Current checkout")}>
-                          Current checkout
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setWorkspaceMode("Workspace root")}>
-                          Workspace root
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setWorkspaceMode("Scratchpad")}>
-                          Scratchpad
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Row: Submodules */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Submodules</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        How new worktrees populate git submodules. Projects and their t3.json can override it.
-                      </p>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors cursor-pointer"
-                        >
-                          <span>{submodulesMode}</span>
-                          <ChevronDown size={11} className="text-zinc-400" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-44 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                        <DropdownMenuItem onSelect={() => setSubmodulesMode("Recursive")}>
-                          Recursive
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setSubmodulesMode("Shallow")}>
-                          Shallow
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setSubmodulesMode("None")}>
-                          None
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-                </div>
-              </section>
-
-              {/* SECTION: Organization */}
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Organization</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  {/* Row: Project grouping */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Project grouping</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Combine matching repositories across environments.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={projectGrouping}
-                      onCheckedChange={setProjectGrouping}
-                    />
-                  </div>
-
-                  {/* Row: Project order */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Project order</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Order of projects in the sidebar project picker and command palette.
-                      </p>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors cursor-pointer"
-                        >
-                          <span>{projectOrder}</span>
-                          <ChevronDown size={11} className="text-zinc-400" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-48 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                        <DropdownMenuItem onSelect={() => setProjectOrder("Last user message")}>
-                          Last user message
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setProjectOrder("Alphabetical")}>
-                          Alphabetical
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setProjectOrder("Recently created")}>
-                          Recently created
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Row: Auto-resume limited threads */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Auto-resume limited threads</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Resume usage-limit stops at the reported reset time. Each thread can cancel its scheduled continuation.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={autoResume}
-                      onCheckedChange={setAutoResume}
-                    />
-                  </div>
-
-                  {/* Row: Snooze limited threads */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Snooze limited threads</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Snooze usage-limit stops until the reported reset time. Combine with auto-resume to continue when they wake.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={snoozeLimited}
-                      onCheckedChange={setSnoozeLimited}
-                    />
-                  </div>
-
-                  {/* Row: Working section (beta) */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Working section (beta)</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Fold working and monitoring threads into a Working section. They return to the top of the inbox when they need you.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={workingSection}
-                      onCheckedChange={setWorkingSection}
-                    />
-                  </div>
-
-                  {/* Row: Auto-settle merged threads */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Auto-settle merged threads</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Settle a thread when its pull request merges. Closed pull requests still settle automatically.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={autoSettleMerged}
-                      onCheckedChange={setAutoSettleMerged}
-                    />
-                  </div>
-
-                  {/* Row: Auto-settle inactive threads */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Auto-settle inactive threads</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Sidebar threads with no activity for this long settle automatically.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={autoSettleInactive}
-                      onCheckedChange={setAutoSettleInactive}
-                    />
-                  </div>
-
-                  {/* Row: Days of inactivity before auto-settle */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-medium text-zinc-200">Days of inactivity before auto-settle</span>
-                        <Settings2 size={11} className="text-zinc-500" />
-                      </div>
-                      <p className="text-[11px] text-zinc-500">
-                        Any new activity un-settles a thread automatically.
-                      </p>
-                    </div>
-                    <input
-                      type="number"
-                      min={1}
-                      max={30}
-                      value={daysBeforeSettle}
-                      onChange={(e) => setDaysBeforeSettle(Number(e.target.value) || 1)}
-                      className="w-16 rounded-lg border border-zinc-800 bg-zinc-900/90 py-1 px-2.5 text-center text-xs font-medium text-zinc-200 outline-none focus:border-purple-500"
-                    />
-                  </div>
-                </div>
-              </section>
-
-              {/* SECTION: Behavior */}
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Behavior</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Send message on Enter</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Press Enter to send, Shift+Enter for a new line.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={sendOnEnter}
-                      onCheckedChange={setSendOnEnter}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Sound effects</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Play subtle audio cues when agents finish tasks or hit checkpoints.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={soundEffects}
-                      onCheckedChange={setSoundEffects}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Diagnostics & Error Reporting</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Anonymous crash diagnostics to help improve agent reliability and latency.
-                      </p>
-                    </div>
-                    <Switch
-                      checked={telemetry}
-                      onCheckedChange={setTelemetry}
-                    />
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 2: APPEARANCE */}
-          {activeTab === "appearance" && (
-            <div className="space-y-7">
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Theme & Typography</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  {/* Theme Switcher */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Interface Theme</span>
-                      <p className="text-[11px] text-zinc-500">Select application visual tone</p>
-                    </div>
-
-                    <div className="flex rounded-lg border border-zinc-800 bg-zinc-900/80 p-0.5 gap-1">
-                      <button
-                        type="button"
-                        onClick={() => setTheme("dark")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-                          theme === "dark"
-                            ? "bg-zinc-800 text-white font-medium"
-                            : "text-zinc-400 hover:text-zinc-200"
-                        )}
-                      >
-                        <Moon size={12} /> Dark
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTheme("light")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-                          theme === "light"
-                            ? "bg-zinc-800 text-white font-medium"
-                            : "text-zinc-400 hover:text-zinc-200"
-                        )}
-                      >
-                        <Sun size={12} /> Light
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTheme("system")}
-                        className={cn(
-                          "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors",
-                          theme === "system"
-                            ? "bg-zinc-800 text-white font-medium"
-                            : "text-zinc-400 hover:text-zinc-200"
-                        )}
-                      >
-                        <Laptop size={12} /> System
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Chat Font */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Editor & Chat Font</span>
-                      <p className="text-[11px] text-zinc-500">Typography style for message text and code editor</p>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors"
-                        >
-                          <span>{chatFont}</span>
-                          <ChevronDown size={11} className="text-zinc-400" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-48 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                        <DropdownMenuItem onSelect={() => setChatFont("Inter")}>
-                          Inter (Sans-Serif)
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setChatFont("JetBrains Mono")}>
-                          JetBrains Mono
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setChatFont("Fira Code")}>
-                          Fira Code
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setChatFont("System Serif")}>
-                          System Serif
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* UI Scaling */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">UI Zoom & Scaling</span>
-                      <p className="text-[11px] text-zinc-500">Interface magnification level</p>
-                    </div>
-
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <button
-                          type="button"
-                          className="flex items-center gap-1.5 rounded-lg border border-zinc-800/90 bg-zinc-900/80 px-2.5 py-1.5 text-xs text-zinc-200 hover:border-zinc-700 hover:bg-zinc-850 transition-colors"
-                        >
-                          <span>{uiScaling}</span>
-                          <ChevronDown size={11} className="text-zinc-400" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent className="w-36 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 shadow-xl">
-                        <DropdownMenuItem onSelect={() => setUiScaling("90%")}>90%</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setUiScaling("100%")}>100% (Default)</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setUiScaling("110%")}>110%</DropdownMenuItem>
-                        <DropdownMenuItem onSelect={() => setUiScaling("120%")}>120%</DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
-
-                  {/* Code Line Numbers */}
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Show Line Numbers</span>
-                      <p className="text-[11px] text-zinc-500">Display line numbers in code diffs and scratchpad</p>
-                    </div>
-                    <Switch
-                      checked={lineNumbers}
-                      onCheckedChange={setLineNumbers}
-                    />
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 3: KEYBINDINGS */}
-          {activeTab === "keybindings" && (
-            <div className="space-y-7">
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Global Keyboard Shortcuts</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  {[
-                    { action: "New Conversation", shortcut: "⌘ N", category: "Navigation" },
-                    { action: "Quick Search", shortcut: "⌘ K or /", category: "Navigation" },
-                    { action: "Open Settings", shortcut: "⌘ ,", category: "System" },
-                    { action: "Toggle Left Sidebar", shortcut: "⌘ B", category: "View" },
-                    { action: "Toggle Thinking Mode", shortcut: "⌘ T", category: "Composer" },
-                    { action: "Send Message", shortcut: "Return", category: "Composer" },
-                    { action: "Insert New Line", shortcut: "Shift + Return", category: "Composer" },
-                    { action: "Switch to Canvas View", shortcut: "⌘ 1", category: "Mode" },
-                    { action: "Switch to Kode View", shortcut: "⌘ 2", category: "Mode" },
-                    { action: "Close / Dismiss Modal", shortcut: "Esc", category: "System" },
-                  ].map((kb) => (
-                    <div key={kb.action} className="flex items-center justify-between p-4">
-                      <div className="space-y-0.5">
-                        <span className="text-xs font-medium text-zinc-200">{kb.action}</span>
-                        <p className="text-[11px] text-zinc-500">{kb.category}</p>
-                      </div>
-                      <kbd className="rounded border border-zinc-700/70 bg-zinc-800/90 px-2 py-0.5 text-xs font-mono font-medium text-zinc-300 shadow-xs">
-                        {kb.shortcut}
-                      </kbd>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 4: SNAPSHOTS */}
-          {activeTab === "snapshots" && (
-            <div className="space-y-7">
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Workspace Snapshots & Checkpoints</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Auto-Snapshot on Agent Writes</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Create an automatic rollback checkpoint before an agent applies multi-file code modifications.
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Maximum Snapshots per Thread</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Number of historic rollback checkpoints kept in local storage.
-                      </p>
-                    </div>
-                    <span className="text-xs font-medium text-zinc-300">25 checkpoints</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Snapshot Diff Format</span>
-                      <p className="text-[11px] text-zinc-500">Unified git diff representation</p>
-                    </div>
-                    <span className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300">
-                      Unified Diff
-                    </span>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 5: PROVIDERS (Embeds BYOK) */}
-          {activeTab === "providers" && (
-            <div className="space-y-6">
-              <div>
-                <h3 className="text-xs font-semibold text-zinc-300">API Keys & Model Providers (BYOK)</h3>
-                <p className="text-[11px] text-zinc-500 mt-0.5">
-                  Bring your own API keys for Anthropic, OpenAI, Agent Router, and custom endpoints.
-                </p>
-              </div>
-
-              <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4">
-                <ByokSection />
-              </div>
-            </div>
-          )}
-
-          {/* TAB 6: INTEGRATIONS (Embeds Connectors & Specialized Agents) */}
-          {(activeTab === "integrations" || activeTab === "agents") && (
-            <IntegrationsSection
-              defaultSubTab={activeTab === "agents" ? "agents" : "connectors"}
-              onCloseSettings={onBack}
-            />
-          )}
-
-          {/* TAB 7: SCHEDULED TASKS */}
-          {activeTab === "scheduled-tasks" && (
-            <div className="space-y-7">
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Background Tasks & Automation</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Background Automation Cron</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Allow scheduled agent runs while Kontinue AI is running in the background.
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Task Failure Notifications</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Surface system notification banners if an automated task encounters an error.
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 8: SOURCE CONTROL */}
-          {activeTab === "source-control" && (
-            <div className="space-y-7">
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Git & Version Control</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Automatic Staging</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Stage modified files automatically before running git commit tools.
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Conventional Commits</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Enforce conventional commit syntax (feat:, fix:, chore:, refactor:) on generated messages.
-                      </p>
-                    </div>
-                    <Switch defaultChecked />
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Default Target Branch</span>
-                      <p className="text-[11px] text-zinc-500">Base branch for worktrees and PRs</p>
-                    </div>
-                    <span className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-300">
-                      main
-                    </span>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 9: STORAGE */}
-          {activeTab === "storage" && (
-            <div className="space-y-7">
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Local Cache & App Storage</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Indexed Documentation Cache</span>
-                      <p className="text-[11px] text-zinc-500">Local vectors and embeddings for offline search grounding</p>
-                    </div>
-                    <span className="text-xs font-medium text-zinc-400">~14.2 MB</span>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Clear Cache</span>
-                      <p className="text-[11px] text-zinc-500">
-                        Purge cached tokens, temporary image downloads, and regenerated artifacts.
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => alert("Local cache cleared successfully.")}
-                      className="border-zinc-800 bg-zinc-900 text-xs text-zinc-300 hover:text-white"
-                    >
-                      <Trash2 size={12} className="mr-1.5" />
-                      Clear Cache
-                    </Button>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 10: CONNECTIONS */}
-          {activeTab === "connections" && (
-            <div className="space-y-7">
-              <section className="space-y-2">
-                <h3 className="text-xs font-semibold text-zinc-300">Remote Connections & Bridges</h3>
-
-                <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Convex Real-time Sync</span>
-                      <p className="text-[11px] text-zinc-500">Durable cloud synchronization for threads and workspaces</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
-                      <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
-                      Connected
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between p-4">
-                    <div className="space-y-0.5">
-                      <span className="text-xs font-medium text-zinc-200">Local Bridge Server</span>
-                      <p className="text-[11px] text-zinc-500">Loopback port for Tauri IPC and native system commands</p>
-                    </div>
-                    <span className="text-xs font-mono text-zinc-400">127.0.0.1:4483</span>
-                  </div>
-                </div>
-              </section>
-            </div>
-          )}
-
-          {/* TAB 11: ARCHIVE */}
-          {activeTab === "archive" && <ArchiveSection />}
+          <header className="mb-6">
+            <h1 className="text-[20px] font-semibold tracking-tight">{current.label}</h1>
+            <p className="mt-1 text-[12.5px] text-muted-foreground">{current.description}</p>
+          </header>
+          {active === "general" && <GeneralSection />}
+          {active === "appearance" && <AppearanceSection />}
+          {active === "usage" && <UsageSection onOpenModels={() => setActive("providers")} />}
+          {active === "providers" && <ProvidersSection />}
+          {active === "connectors" && <ConnectorsSection />}
+          {active === "agents" && <AgentsSection onClose={onBack} />}
+          {active === "shortcuts" && <ShortcutsSection />}
+          {active === "account" && <AccountSection />}
+          {active === "data" && <DataSection />}
         </div>
       </main>
     </div>
   );
 }
 
-const AGENT_ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  Telescope,
-  Code2,
-  Megaphone,
-  CalendarCheck,
-  Bot,
-};
+// ---------------------------------------------------------------------------
+// Building blocks
+// ---------------------------------------------------------------------------
 
-function IntegrationsSection({
-  defaultSubTab = "connectors",
-  onCloseSettings,
-}: {
-  defaultSubTab?: "connectors" | "agents";
-  onCloseSettings?: () => void;
-}) {
-  const [subTab, setSubTab] = useState<"connectors" | "agents">(defaultSubTab);
-  const connectors = useQuery(api.connectors.listConnectors, {});
-  const connectedProviders = new Set((connectors ?? []).filter((c) => c.connected).map((c) => c.provider));
-  const { createChatRecord, setActiveTab, selectChat } = useKodeWorkspace();
-
-  const handleConnect = async (provider: string) => {
-    try {
-      await openUrl(`https://chat.kontinueai.com/api/connectors/${provider}/start`);
-    } catch {
-      window.open(`https://chat.kontinueai.com/api/connectors/${provider}/start`, "_blank");
-    }
-  };
-
-  const handleStartAgentChat = async (agent: AgentDefinition, prompt?: string) => {
-    try {
-      onCloseSettings?.();
-      const chatId = await createChatRecord({
-        title: prompt?.trim().slice(0, 60) || agent.name,
-      });
-      setActiveTab("home");
-      selectChat(chatId);
-    } catch (err) {
-      console.error("[SettingsView] Failed to start agent chat:", err);
-    }
-  };
-
+function Card({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <div className="space-y-6">
-      {/* Subtab Switcher */}
-      <div className="flex items-center gap-2 border-b border-zinc-800 pb-3">
-        <button
-          type="button"
-          onClick={() => setSubTab("connectors")}
-          className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-            subTab === "connectors"
-              ? "bg-zinc-800 text-white"
-              : "text-zinc-400 hover:text-zinc-200"
-          )}
-        >
-          Connectors ({CONNECTORS_CATALOG.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setSubTab("agents")}
-          className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-            subTab === "agents"
-              ? "bg-zinc-800 text-white"
-              : "text-zinc-400 hover:text-zinc-200"
-          )}
-        >
-          Specialized Agents ({AGENTS.length})
-        </button>
+    <section className="mb-6">
+      {title ? (
+        <h2 className="mb-2 px-1 text-[11.5px] font-medium text-muted-foreground">{title}</h2>
+      ) : null}
+      <div className="liquid-glass-dropdown divide-y divide-black/[0.05] !rounded-[20px] dark:divide-white/[0.05]">
+        {children}
       </div>
+    </section>
+  );
+}
 
-      {subTab === "connectors" ? (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-xs font-semibold text-zinc-300">Connectors & External Services</h3>
-              <p className="text-[11px] text-zinc-500 mt-0.5">
-                Connect third-party accounts so Kontinue AI agents can read and write data on your behalf.
-              </p>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-            {CONNECTORS_CATALOG.map((conn) => {
-              const isConnected = connectedProviders.has(conn.provider);
-              return (
-                <div
-                  key={conn.provider}
-                  className="flex items-center justify-between p-4"
-                >
-                  <div className="flex items-center gap-3 min-w-0 pr-4">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-zinc-800/70 border border-zinc-700/60 p-1.5">
-                      <img
-                        src={getConnectorLogoUrl(conn.provider)}
-                        alt={conn.name}
-                        className="size-5 object-contain"
-                      />
-                    </div>
-                    <div className="space-y-0.5 min-w-0">
-                      <span className="font-medium text-xs text-zinc-200 block">{conn.name}</span>
-                      <p className="text-[11px] text-zinc-500 truncate">{conn.description}</p>
-                    </div>
-                  </div>
-
-                  {isConnected ? (
-                    <span className="inline-flex items-center gap-1 shrink-0 rounded-md bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-400">
-                      <Check size={12} />
-                      Connected
-                    </span>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void handleConnect(conn.provider)}
-                      className="inline-flex items-center gap-1 shrink-0 rounded-lg bg-zinc-800 hover:bg-zinc-750 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:text-white transition-colors cursor-pointer border border-zinc-700/60"
-                    >
-                      <span>Connect</span>
-                      <ExternalLink size={11} className="opacity-60" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      ) : (
-        <section className="space-y-3">
-          <div>
-            <h3 className="text-xs font-semibold text-zinc-300">Specialized Domain Agents</h3>
-            <p className="text-[11px] text-zinc-500 mt-0.5">
-              Targeted AI agents with tailored prompts, toolkits, and memory focus.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {AGENTS.map((agent) => {
-              const Icon = AGENT_ICONS[agent.icon] ?? Bot;
-              return (
-                <div
-                  key={agent.id}
-                  className="flex flex-col justify-between rounded-xl border border-zinc-800/80 bg-zinc-900/30 p-4 transition-all hover:border-zinc-700"
-                >
-                  <div>
-                    <div className="flex items-start gap-3">
-                      <div
-                        className="flex size-9 shrink-0 items-center justify-center rounded-lg border"
-                        style={{
-                          backgroundColor: `${agent.color}15`,
-                          borderColor: `${agent.color}35`,
-                          color: agent.color,
-                        }}
-                      >
-                        <Icon size={18} />
-                      </div>
-                      <div className="min-w-0 pr-1">
-                        <span className="font-semibold text-xs text-zinc-200 block leading-tight">
-                          {agent.name}
-                        </span>
-                        <p className="text-[11px] text-zinc-500 mt-1 leading-normal">
-                          {agent.description}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-1">
-                      {agent.capabilities.map((cap) => (
-                        <span
-                          key={cap}
-                          className="rounded-md bg-zinc-800/80 border border-zinc-700/50 px-2 py-0.5 text-[10px] font-medium text-zinc-400"
-                        >
-                          {cap}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => void handleStartAgentChat(agent)}
-                    className="mt-4 flex w-full items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-all cursor-pointer"
-                    style={{
-                      backgroundColor: `${agent.color}20`,
-                      border: `1px solid ${agent.color}40`,
-                      color: agent.color,
-                    }}
-                  >
-                    <Icon size={12} />
-                    <span>Chat with {agent.name}</span>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </section>
-      )}
+function Row({
+  label,
+  description,
+  children,
+}: {
+  label: string;
+  description?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-6 px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-[12.5px] font-medium text-foreground/90">{label}</p>
+        {description ? (
+          <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-foreground">{description}</p>
+        ) : null}
+      </div>
+      {children ? <div className="shrink-0">{children}</div> : null}
     </div>
   );
 }
 
-function ArchiveSection() {
-  const { chats, archiveChat, deleteChat } = useKodeWorkspace();
-  const archivedChats = useMemo(() => chats.filter((c) => c.archived), [chats]);
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: { value: T; label: string; icon?: ReactNode }[];
+  onChange: (value: T) => void;
+}) {
+  return (
+    <div className="kontinue-3d flex items-center gap-0.5 rounded-full p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11.5px] transition-colors",
+            value === option.value
+              ? "kontinue-capsule font-semibold text-purple-900 dark:text-purple-100"
+              : "border border-transparent text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {option.icon}
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Select({
+  value,
+  options,
+  onChange,
+}: {
+  value: string;
+  options: { value: string; label: string; description?: string }[];
+  onChange: (value: string) => void;
+}) {
+  const selected = options.find((o) => o.value === value) ?? options[0];
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="kontinue-3d flex h-8 min-w-[150px] cursor-pointer items-center justify-between gap-2 rounded-full px-3.5 text-[12px] text-foreground/90"
+        >
+          <span className="truncate">{selected?.label}</span>
+          <ChevronDown size={12} className="shrink-0 text-muted-foreground" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-64">
+        {options.map((option) => (
+          <DropdownMenuItem key={option.value} onClick={() => onChange(option.value)}>
+            <div className="min-w-0 flex-1">
+              <p className="truncate">{option.label}</p>
+              {option.description ? (
+                <p className="truncate text-[10.5px] text-muted-foreground">{option.description}</p>
+              ) : null}
+            </div>
+            {option.value === value ? <Check size={13} className="shrink-0 text-purple-500" /> : null}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function PillButton({
+  children,
+  onClick,
+  tone = "neutral",
+  disabled,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  tone?: "neutral" | "primary" | "danger";
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium transition-colors disabled:cursor-default disabled:opacity-50",
+        tone === "primary" && "kontinue-3d-primary",
+        tone === "neutral" && "kontinue-3d text-foreground/85 hover:text-foreground",
+        tone === "danger" && "kontinue-3d text-rose-500 hover:text-rose-400",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Sections
+// ---------------------------------------------------------------------------
+
+function GeneralSection() {
+  const settings = useAppSettings();
+  const modes = KODE_AGENT_MODES.filter(
+    (mode) => mode.id !== "ask" && mode.id !== "design",
+  );
 
   return (
-    <div className="space-y-7">
-      <section className="space-y-2">
-        <h3 className="text-xs font-semibold text-zinc-300">Archived Conversations</h3>
-        <p className="text-[11px] text-zinc-500 mt-0.5">
-          Archived threads are hidden from the sidebar but preserved for your reference.
+    <>
+      <Card title="Chat">
+        <Row
+          label="Send messages with"
+          description={
+            settings.sendOnEnter
+              ? "Enter sends. Shift+Enter adds a new line."
+              : "⌘ Enter sends. Enter adds a new line."
+          }
+        >
+          <Segmented
+            value={settings.sendOnEnter ? "enter" : "mod"}
+            options={[
+              { value: "enter", label: "Enter" },
+              { value: "mod", label: "⌘ Enter" },
+            ]}
+            onChange={(value) => updateSettings({ sendOnEnter: value === "enter" })}
+          />
+        </Row>
+        <Row
+          label="Message navigator"
+          description="The slim rail on the right of a chat that jumps between your messages."
+        >
+          <Switch
+            checked={settings.showTurnNavigator}
+            onCheckedChange={(checked) => updateSettings({ showTurnNavigator: checked })}
+          />
+        </Row>
+      </Card>
+
+      <Card title="Kode defaults">
+        <Row label="Default model" description="New Kode sessions start with this model.">
+          <Select
+            value={settings.defaultKodeModel ?? KODE_DEFAULT_MODEL_ID}
+            options={KODE_MODELS.map((model) => ({
+              value: model.id,
+              label: model.name,
+              description: model.description,
+            }))}
+            onChange={(value) => updateSettings({ defaultKodeModel: value })}
+          />
+        </Row>
+        <Row label="Default mode" description="How much the agent may do without asking.">
+          <Select
+            value={settings.defaultKodeMode}
+            options={modes.map((mode) => ({
+              value: mode.id,
+              label: mode.label,
+              description: mode.description,
+            }))}
+            onChange={(value) =>
+              updateSettings({ defaultKodeMode: value as typeof settings.defaultKodeMode })
+            }
+          />
+        </Row>
+      </Card>
+
+      <div className="flex justify-end">
+        <PillButton onClick={resetSettings}>
+          <RefreshCw size={12} />
+          Restore defaults
+        </PillButton>
+      </div>
+    </>
+  );
+}
+
+function AppearanceSection() {
+  const { theme, setTheme } = useTheme();
+  const settings = useAppSettings();
+
+  return (
+    <Card>
+      <Row label="Theme" description="System follows your Mac's appearance.">
+        <Segmented
+          value={theme}
+          options={[
+            { value: "system", label: "System", icon: <Laptop size={12} /> },
+            { value: "light", label: "Light", icon: <Sun size={12} /> },
+            { value: "dark", label: "Dark", icon: <Moon size={12} /> },
+          ]}
+          onChange={setTheme}
+        />
+      </Row>
+      <Row label="Text size" description="Scales all text and controls in the app.">
+        <Segmented<TextSize>
+          value={settings.textSize}
+          options={[
+            { value: "small", label: "Small" },
+            { value: "default", label: "Default" },
+            { value: "large", label: "Large" },
+          ]}
+          onChange={(value) => updateSettings({ textSize: value })}
+        />
+      </Row>
+      <Row label="Reduce motion" description="Turn off animations and transitions.">
+        <Switch
+          checked={settings.reduceMotion}
+          onCheckedChange={(checked) => updateSettings({ reduceMotion: checked })}
+        />
+      </Row>
+    </Card>
+  );
+}
+
+const CONNECTORS = [
+  { provider: "github", name: "GitHub", description: "Repositories, issues and pull requests" },
+  { provider: "gmail", name: "Gmail", description: "Read, search and draft email" },
+  { provider: "google_calendar", name: "Google Calendar", description: "Events and availability" },
+  { provider: "google_drive", name: "Google Drive", description: "Docs, Sheets and files" },
+  { provider: "notion", name: "Notion", description: "Pages and databases" },
+  { provider: "vercel", name: "Vercel", description: "Projects and deployments" },
+  { provider: "todoist", name: "Todoist", description: "Tasks and projects" },
+];
+
+const CONNECTOR_LOGO: Record<string, string> = {
+  github: "https://cdn.simpleicons.org/github/white",
+  gmail: "https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png",
+  google_calendar: "https://www.gstatic.com/images/branding/product/2x/calendar_2020q4_48dp.png",
+  google_drive: "https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png",
+  notion: "https://cdn.simpleicons.org/notion/white",
+  vercel: "https://cdn.simpleicons.org/vercel/white",
+  todoist: "https://cdn.simpleicons.org/todoist",
+};
+
+function openExternal(url: string) {
+  void openUrl(url).catch(() => window.open(url, "_blank"));
+}
+
+function ConnectorsSection() {
+  const connectors = useQuery(api.connectors.listConnectors, {});
+  const connected = new Set(
+    (connectors ?? []).filter((c) => c.connected).map((c) => c.provider),
+  );
+
+  return (
+    <Card>
+      {CONNECTORS.map((conn) => {
+        const isConnected = connected.has(conn.provider);
+        return (
+          <div key={conn.provider} className="flex items-center gap-3 px-4 py-3">
+            <div className="kontinue-3d flex size-9 shrink-0 items-center justify-center rounded-full">
+              <img
+                src={CONNECTOR_LOGO[conn.provider]}
+                alt=""
+                className="size-4.5 object-contain [:root:not(.dark)_&]:invert-[.85]"
+              />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[12.5px] font-medium text-foreground/90">{conn.name}</p>
+              <p className="truncate text-[11.5px] text-muted-foreground">{conn.description}</p>
+            </div>
+            {connectors === undefined ? null : isConnected ? (
+              <span className="flex items-center gap-1.5 text-[11.5px] text-emerald-500">
+                <span className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
+                Connected
+              </span>
+            ) : (
+              <PillButton onClick={() => openExternal(`${WEB_APP}/api/connectors/${conn.provider}/start`)}>
+                Connect
+                <ExternalLink size={11} className="opacity-60" />
+              </PillButton>
+            )}
+          </div>
+        );
+      })}
+      <div className="flex items-center justify-between px-4 py-3">
+        <p className="text-[11.5px] text-muted-foreground">
+          Disconnect or change permissions on the web.
         </p>
+        <button
+          type="button"
+          onClick={() => openExternal(`${WEB_APP}/settings/connectors`)}
+          className="flex cursor-pointer items-center gap-1 text-[11.5px] font-medium text-purple-500 hover:underline"
+        >
+          Manage connectors
+          <ExternalLink size={11} />
+        </button>
+      </div>
+    </Card>
+  );
+}
 
-        {archivedChats.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/20 p-8 text-center text-xs text-zinc-500">
-            No archived threads found.
-          </div>
-        ) : (
-          <div className="rounded-xl border border-zinc-800/80 bg-zinc-900/30 divide-y divide-zinc-800/60 overflow-hidden">
-            {archivedChats.map((chat) => (
-              <div key={chat.id} className="flex items-center justify-between p-4">
-                <div className="min-w-0 pr-4">
-                  <span className="text-xs font-medium text-zinc-200 block truncate">
-                    {chat.title}
-                  </span>
-                  <span className="text-[10.5px] text-zinc-500">
-                    Archived on {new Date(chat.updatedAt).toLocaleDateString()}
-                  </span>
-                </div>
+const AGENT_ICONS: Record<string, typeof Bot> = { Telescope, Code2, Megaphone, CalendarCheck, Bot };
 
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void archiveChat(chat.id, false)}
-                    className="border-zinc-800 bg-zinc-900 text-xs text-zinc-300 hover:text-white"
-                  >
-                    <RefreshCw size={11} className="mr-1" />
-                    Restore
-                  </Button>
+function AgentsSection({ onClose }: { onClose: () => void }) {
+  const { createChatRecord, setActiveTab, selectChat } = useKodeWorkspace();
+  const [starting, setStarting] = useState<string | null>(null);
 
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => void deleteChat(chat.id)}
-                    className="text-xs"
-                  >
-                    <Trash2 size={11} className="mr-1" />
-                    Delete
-                  </Button>
-                </div>
+  const start = async (agent: AgentDefinition) => {
+    setStarting(agent.id);
+    try {
+      const chatId = await createChatRecord({ title: agent.name });
+      onClose();
+      setActiveTab("home");
+      selectChat(chatId);
+    } catch (err) {
+      console.error("[Settings] Could not start agent chat:", err);
+    } finally {
+      setStarting(null);
+    }
+  };
+
+  return (
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {AGENTS.map((agent) => {
+        const Icon = AGENT_ICONS[agent.icon] ?? Bot;
+        return (
+          <div key={agent.id} className="liquid-glass-dropdown flex flex-col !rounded-[20px] p-4">
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-full border border-purple-500/20 bg-purple-500/10 text-purple-600 shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] dark:bg-purple-500/15 dark:text-purple-300">
+                <Icon size={16} />
               </div>
-            ))}
+              <p className="text-[13px] font-semibold">{agent.name}</p>
+            </div>
+            <p className="mt-2.5 flex-1 text-[11.5px] leading-relaxed text-muted-foreground">
+              {agent.description}
+            </p>
+            <div className="mt-3 flex flex-wrap gap-1">
+              {agent.capabilities.slice(0, 4).map((cap) => (
+                <span key={cap} className="kontinue-3d rounded-full px-2 py-0.5 text-[10px] text-foreground/70">
+                  {cap}
+                </span>
+              ))}
+            </div>
+            <div className="mt-4">
+              <PillButton onClick={() => void start(agent)} disabled={starting === agent.id}>
+                {starting === agent.id ? "Starting…" : `Chat with ${agent.name}`}
+              </PillButton>
+            </div>
           </div>
-        )}
-      </section>
+        );
+      })}
     </div>
+  );
+}
+
+const SHORTCUTS: { group: string; items: { keys: string[]; label: string }[] }[] = [
+  {
+    group: "App",
+    items: [
+      { keys: ["⌘", ","], label: "Open or close settings" },
+      { keys: ["⌘", "B"], label: "Toggle the sidebar" },
+      { keys: ["⌘", "J"], label: "Toggle the workspace panel (Kode)" },
+      { keys: ["Esc"], label: "Close settings, menus and dialogs" },
+      { keys: ["/"], label: "Search settings" },
+    ],
+  },
+  {
+    group: "Chat",
+    items: [
+      { keys: ["Enter"], label: "Send (or new line, if ⌘ Enter sends)" },
+      { keys: ["⌘", "Enter"], label: "Send, or save an edited message" },
+      { keys: ["Shift", "Enter"], label: "New line" },
+      { keys: ["@"], label: "Mention a connector" },
+    ],
+  },
+];
+
+function ShortcutsSection() {
+  return (
+    <>
+      {SHORTCUTS.map((group) => (
+        <Card key={group.group} title={group.group}>
+          {group.items.map((item) => (
+            <div key={item.label} className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-[12.5px] text-foreground/85">{item.label}</span>
+              <span className="flex items-center gap-1">
+                {item.keys.map((key) => (
+                  <kbd
+                    key={key}
+                    className="kontinue-3d flex h-6 min-w-6 items-center justify-center rounded-full px-2 font-sans text-[11px] text-foreground/80"
+                  >
+                    {key}
+                  </kbd>
+                ))}
+              </span>
+            </div>
+          ))}
+        </Card>
+      ))}
+    </>
+  );
+}
+
+const PLAN_LABEL: Record<string, string> = {
+  free: "Free",
+  starter: "Starter",
+  plus: "Plus",
+  pro: "Pro",
+  max: "Max",
+};
+
+function AccountSection() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+  const plan = usePlanTier();
+  const email = user?.primaryEmailAddress?.emailAddress;
+
+  return (
+    <>
+      <Card>
+        <div className="flex items-center gap-4 px-4 py-4">
+          {user?.imageUrl ? (
+            <img src={user.imageUrl} alt="" className="size-12 rounded-full object-cover ring-1 ring-purple-500/25" />
+          ) : (
+            <div className="flex size-12 items-center justify-center rounded-full bg-purple-500/15 text-sm font-semibold text-purple-300">
+              {(user?.fullName ?? email ?? "?").slice(0, 1).toUpperCase()}
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[14px] font-semibold">{user?.fullName || "Your account"}</p>
+            <p className="truncate text-[12px] text-muted-foreground">{email}</p>
+          </div>
+          <span className="kontinue-capsule px-3 py-1 text-[11.5px] font-semibold text-purple-900 dark:text-purple-100">
+            {PLAN_LABEL[plan] ?? plan}
+          </span>
+        </div>
+      </Card>
+
+      <Card>
+        <Row label="Plan and billing" description="Change plan, payment method or invoices.">
+          <PillButton onClick={() => openExternal(`${WEB_APP}/pricing`)}>
+            {plan === "free" ? "Upgrade" : "Manage"}
+            <ExternalLink size={11} className="opacity-60" />
+          </PillButton>
+        </Row>
+        <Row label="Profile and security" description="Name, email, password and sessions.">
+          <PillButton onClick={() => openExternal(`${WEB_APP}/settings`)}>
+            Open on web
+            <ExternalLink size={11} className="opacity-60" />
+          </PillButton>
+        </Row>
+        <Row label="Sign out" description="Signs out of Kontinue on this device.">
+          <PillButton tone="danger" onClick={() => void signOut()}>
+            <LogOut size={12} />
+            Sign out
+          </PillButton>
+        </Row>
+      </Card>
+    </>
+  );
+}
+
+// Local keys this app writes. Clearing them never touches account data.
+const LOCAL_KEYS = [
+  "kontinue:kode-import-context:v1",
+  "kontinue.favorite-models",
+  "kontinue.panel.width",
+  "kontinue.panel.tab",
+];
+
+function DataSection() {
+  const { chats, archiveChat, deleteChat } = useKodeWorkspace();
+  const archived = useMemo(() => chats.filter((chat) => chat.archived), [chats]);
+  const [confirmClear, setConfirmClear] = useState(false);
+  const [cleared, setCleared] = useState(false);
+
+  const clearLocal = () => {
+    for (const key of LOCAL_KEYS) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        // ignore
+      }
+    }
+    resetSettings();
+    setConfirmClear(false);
+    setCleared(true);
+  };
+
+  return (
+    <>
+      <Card title={`Archived chats${archived.length ? ` (${archived.length})` : ""}`}>
+        {archived.length === 0 ? (
+          <p className="px-4 py-6 text-center text-[12px] text-muted-foreground">
+            No archived chats. Archive a chat from its menu to hide it from the sidebar.
+          </p>
+        ) : (
+          archived.map((chat) => (
+            <div key={chat.id} className="flex items-center gap-3 px-4 py-2.5">
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[12.5px] text-foreground/90">{chat.title}</p>
+                <p className="text-[11px] text-muted-foreground">
+                  {new Date(chat.updatedAt).toLocaleDateString()}
+                </p>
+              </div>
+              <PillButton onClick={() => void archiveChat(chat.id, false)}>Restore</PillButton>
+              <button
+                type="button"
+                title="Delete permanently"
+                aria-label={`Delete ${chat.title}`}
+                onClick={() => void deleteChat(chat.id)}
+                className="flex size-8 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-rose-500"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))
+        )}
+      </Card>
+
+      <Card title="This device">
+        <Row
+          label="Clear local data"
+          description={
+            cleared
+              ? "Cleared. Preferences are back to their defaults."
+              : "Resets preferences, import sync state, favorite models and panel layout on this Mac. Your chats and account are not affected."
+          }
+        >
+          {confirmClear ? (
+            <div className="flex items-center gap-1.5">
+              <PillButton onClick={() => setConfirmClear(false)}>Cancel</PillButton>
+              <PillButton tone="danger" onClick={clearLocal}>
+                Clear
+              </PillButton>
+            </div>
+          ) : (
+            <PillButton tone="danger" onClick={() => setConfirmClear(true)}>
+              Clear…
+            </PillButton>
+          )}
+        </Row>
+      </Card>
+    </>
+  );
+}
+
+function AppVersion() {
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    getVersion()
+      .then(setVersion)
+      .catch(() => setVersion(null));
+  }, []);
+  return (
+    <p className="px-5 py-3 text-[10.5px] text-muted-foreground/60">
+      Kontinue AI{version ? ` · v${version}` : ""}
+    </p>
   );
 }

@@ -226,41 +226,43 @@
   .text-brand { color: var(--brand); }
   .bg-brand { background-color: var(--brand); }
 
-  /* Tiny, subtle monochrome scrollbar — only the bar shows, no track, low opacity. */
-  .kode-scroll::-webkit-scrollbar {
-    width: 3px;
-    height: 3px;
-  }
-  .kode-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .kode-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
-    border-radius: 9999px;
-  }
-  .kode-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.35);
-  }
 }
 
-/* Global scrollbars: transparent track, subtle monochrome thumb visible in both light & dark mode. */
+/* Scrollbars: slim pills that only appear while an element is scrolling.
+   src/lib/scrollbar-activity.ts sets [data-scrolling] on the scrolled element
+   and clears it shortly after scrolling stops. The 2px transparent border
+   insets the 4px thumb from the edge. Hovering the thumb area also shows it. */
+:root { color-scheme: light; }
+:root.dark, .dark { color-scheme: dark; }
+
 *::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
+  width: 8px;
+  height: 8px;
   background: transparent;
 }
-*::-webkit-scrollbar-track {
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
   background: transparent;
 }
 *::-webkit-scrollbar-thumb {
-  background: rgba(140, 130, 160, 0.3);
+  min-height: 36px;
+  border: 2px solid transparent;
   border-radius: 9999px;
+  background-clip: padding-box;
+  background-color: transparent;
+}
+[data-scrolling]::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.22);
 }
 *::-webkit-scrollbar-thumb:hover {
-  background: rgba(140, 130, 160, 0.55);
+  background-color: rgba(147, 51, 234, 0.45);
 }
-*::-webkit-scrollbar-corner {
-  background: transparent;
+.dark [data-scrolling]::-webkit-scrollbar-thumb,
+.dark[data-scrolling]::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(192, 132, 252, 0.55);
 }
 
 /* ── Code Block Enhancements (Kontinue Purple Theme) ─────────────────────── */
@@ -579,4 +581,109 @@ code:not(pre code) {
 .theme-switching *, .theme-switching *::before, .theme-switching *::after {
   transition: none !important;
   animation-duration: 0s !important;
+}
+
+/* ── Sleek overlay surface ─────────────────────────────────────────────
+   Menus, dropdowns, popovers and modals share the .kontinue-3d button
+   material: soft top-lit gradient, hairline border, inset highlight.
+   Opaque base so text under the overlay never bleeds through. */
+.liquid-glass-dropdown {
+  border-radius: 14px;
+  background-color: #ffffff;
+  background-image: linear-gradient(180deg, #ffffff 0%, #f4f4f6 100%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.04),
+    0 18px 44px -14px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 #ffffff;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.dark .liquid-glass-dropdown {
+  background-color: #0c0c0d;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.025) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.5),
+    0 22px 48px -16px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+/* Fully rounded language: every menu row and active state is a pill. The
+   20px surface radius keeps pills concentric with the 6px menu padding. */
+.liquid-glass-dropdown { border-radius: 20px; }
+.liquid-glass-dropdown [role="menuitem"],
+.liquid-glass-dropdown [role="menuitemcheckbox"],
+.liquid-glass-dropdown [role="menuitemradio"],
+.liquid-glass-dropdown [role="option"],
+.liquid-glass-dropdown [data-highlighted],
+.kontinue-menu-active {
+  border-radius: 9999px !important;
+}
+
+/* Active menu row: the .kontinue-3d button material, drawn with inset
+   shadows instead of a border so rows never shift by a pixel. Used for the
+   hovered/keyboard-focused row and for the selected option in any menu. */
+.kontinue-menu-active,
+.liquid-glass-dropdown [data-highlighted] {
+  color: var(--foreground) !important;
+  background-color: transparent !important;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.035) 100%) !important;
+  border-color: transparent !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 1px 0 rgba(0, 0, 0, 0.45),
+    0 3px 8px rgba(0, 0, 0, 0.22);
+}
+:root:not(.dark) .kontinue-menu-active,
+:root:not(.dark) .liquid-glass-dropdown [data-highlighted] {
+  background-image: linear-gradient(180deg, #ffffff 0%, #ececef 100%) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.08),
+    inset 0 1px 0 #ffffff,
+    0 1px 0 rgba(0, 0, 0, 0.05),
+    0 3px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Horizontal scrollers (filter chips) without a visible scrollbar. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* User message bubble (Home + Kode): the same purple capsule material as
+   the Share button and the active sidebar chat (.kontinue-capsule). */
+.kontinue-user-bubble,
+.is-user > .message-content {
+  border-radius: 20px;
+  color: var(--foreground);
+  background-color: rgba(147, 51, 234, 0.2);
+  background-image: linear-gradient(to right, rgba(168, 85, 247, 0.12), rgba(147, 51, 234, 0.08));
+  border: 1px solid rgba(168, 85, 247, 0.25);
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+}
+:root:not(.dark) .kontinue-user-bubble,
+:root:not(.dark) .is-user > .message-content {
+  color: #3b0764;
+  background-color: transparent;
+  border-color: rgba(216, 180, 254, 0.6);
+}
+
+/* Markdown inside a user bubble stays at message size: no giant headings. */
+.is-user > .message-content :is(h1, h2, h3, h4, h5, h6) {
+  margin: 0.6em 0 0.25em;
+  font-size: 1em;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.is-user > .message-content :is(h1, h2, h3, h4, h5, h6):first-child {
+  margin-top: 0;
+}
+
+/* Settings → Appearance → Reduce motion. */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+  scroll-behavior: auto !important;
 }

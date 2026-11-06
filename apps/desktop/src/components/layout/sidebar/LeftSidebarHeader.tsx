@@ -31,15 +31,18 @@ export default function LeftSidebarHeader() {
       <div
         data-tauri-drag-region
         className={cn(
-          "flex items-center gap-1.5 pt-1.5 pb-1",
-          isFullscreen ? "px-1" : "pl-[100px] pr-1",
+          "flex items-center gap-1 pt-1.5 pb-1",
+          // Same x positions as the icons in FloatingSidebarButtonGroup
+          // (left-[92px] + p-1 capsule, size-6 icons, gap-1), so the toggle
+          // and search don't jump when the sidebar opens or closes.
+          isFullscreen ? "pl-2.5 pr-1" : "pl-[88px] pr-1",
         )}
       >
         <button
           type="button"
           onClick={toggleSidebar}
           title="Toggle sidebar"
-          className="flex size-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+          className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
         >
           <PanelLeft size={14} strokeWidth={1.25} />
         </button>
@@ -47,7 +50,7 @@ export default function LeftSidebarHeader() {
           type="button"
           onClick={() => setSearchOpen(true)}
           title="Search threads"
-          className="flex size-6 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
+          className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground cursor-pointer"
         >
           <Search size={14} strokeWidth={1.25} />
         </button>

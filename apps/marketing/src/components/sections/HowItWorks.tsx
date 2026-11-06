@@ -84,13 +84,13 @@ export function HowItWorks() {
 		>
 			<div className="mx-auto max-w-6xl px-5 lg:px-8">
 				<Reveal className="max-w-2xl">
-					<p className="eyebrow">How it works</p>
+					<p className="eyebrow">After the import</p>
 					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
-						From scattered chats to one continuous workspace
+						Once you are here, no more walls
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						Three steps to stop starting over. Import what you have, switch
-						models when you want, and keep one plan for all of it.
+						Kontinue is built so a limit never stops your work again. One
+						thread, any model, one plan.
 					</p>
 				</Reveal>
 

@@ -23,7 +23,7 @@ const FloatingSidebarButtonGroup = () => {
       <div
         className={cn(
           "absolute top-[9px] z-50 flex items-center",
-          isFullscreen ? "left-3.5" : "left-[112px]",
+          isFullscreen ? "left-3.5" : "left-[92px]",
         )}
       >
         <div className="flex items-center gap-1 kontinue-capsule p-1">

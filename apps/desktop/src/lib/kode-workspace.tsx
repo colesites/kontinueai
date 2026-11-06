@@ -85,17 +85,14 @@ export type KodeImportInput = {
 export type SettingsNavTab =
   | "general"
   | "appearance"
-  | "keybindings"
-  | "snapshots"
+  | "usage"
+  | "models"
   | "providers"
-  | "integrations"
-  | "scheduled-tasks"
-  | "source-control"
-  | "storage"
-  | "connections"
-  | "archive"
+  | "connectors"
   | "agents"
-  | "account";
+  | "shortcuts"
+  | "account"
+  | "data";
 
 type KodeWorkspaceContextValue = {
   activeTab: KodeTab;
@@ -164,9 +161,15 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
 
   const openSettings = useCallback((tab?: string) => {
     if (tab) {
-      if (tab === "byok") setSettingsTab("providers");
-      else if (tab === "connectors") setSettingsTab("integrations");
-      else setSettingsTab(tab as SettingsNavTab);
+      // Older ids still used by some callers.
+      const aliases: Record<string, SettingsNavTab> = {
+        byok: "providers",
+        models: "providers",
+        integrations: "connectors",
+        keybindings: "shortcuts",
+        archive: "data",
+      };
+      setSettingsTab(aliases[tab] ?? (tab as SettingsNavTab));
     }
     setIsSettingsOpen(true);
   }, []);

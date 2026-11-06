@@ -1,19 +1,11 @@
-// Per-model context window resolution. Windows come from OpenRouter (its slugs)
-// and the Vercel AI Gateway (MiniMax), fetched once via Rust and cached. The
-// meter's denominator follows the SELECTED model, so switching models changes it
-// (e.g. Kode 1.0 → 262K, GPT 5.5 → its own window).
+// Per-model context window for the context meter. Kode models carry their
+// window in the catalog (packages/ai/src/lib/kode.ts); anything else falls back
+// to the live gateway catalog fetched once via Rust.
 
 import { invoke } from "@tauri-apps/api/core";
-import { KODE_MODEL_ID, KODE_PRIMARY_MODEL } from "@repo/ai/lib/kode";
+import { getKodeModelById, kodeContextBudget } from "@repo/ai/lib/kode";
 
-// Used only if a fetch fails or a slug is missing from the catalogs.
 const DEFAULT_WINDOW = 128_000;
-const FALLBACK: Record<string, number> = {
-  // Kode 1.0 runs on Nex N2 Pro (262K ctx) — covers the offline/first-run case
-  // before the live OpenRouter catalog window is fetched.
-  [KODE_MODEL_ID]: 262_144,
-  [KODE_PRIMARY_MODEL]: 262_144,
-};
 
 export type ContextWindows = Record<string, number>;
 
@@ -30,15 +22,16 @@ export async function loadContextWindows(): Promise<ContextWindows> {
   return cache;
 }
 
-// Kode 1.0 is branded — resolve it to its real underlying slug for lookup.
-function underlyingSlug(modelId: string): string {
-  return modelId === KODE_MODEL_ID ? KODE_PRIMARY_MODEL : modelId;
-}
-
+/**
+ * Context budget for the meter and auto-compaction: for Kode models, the size
+ * chosen in the reasoning/context picker (capped to the model's window).
+ */
 export function getContextWindow(
   modelId: string,
   windows: ContextWindows,
+  chosen: number | null = null,
 ): number {
-  const slug = underlyingSlug(modelId);
-  return windows[slug] ?? FALLBACK[modelId] ?? FALLBACK[slug] ?? DEFAULT_WINDOW;
+  const kodeModel = getKodeModelById(modelId);
+  if (kodeModel) return kodeContextBudget(kodeModel, chosen);
+  return windows[modelId] ?? DEFAULT_WINDOW;
 }

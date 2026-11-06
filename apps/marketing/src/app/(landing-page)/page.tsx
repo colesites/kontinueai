@@ -17,9 +17,9 @@ import { pageMetadata } from "@/lib/metadata";
 import { softwareSchema } from "@/lib/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-	title: "Kontinue AI | Multi-Model AI Platform",
+	title: "Kontinue AI | Hit your AI limit? Keep going.",
 	description:
-		"Use K-AI 1.0, access leading AI models and import supported conversations with their context.",
+		"Out of messages on Claude or ChatGPT? Bring the conversation to Kontinue AI and continue with the full context on K-AI 1.0 or any leading model.",
 	path: "/",
 });
 
@@ -28,12 +28,12 @@ export default function Home() {
 		<>
 			<JsonLd data={softwareSchema} />
 			<HeroSection />
-			<ProductDefinitionSection />
-			<KontinueModelSection />
+			<ProblemSection />
 			<ImportSection />
 			<DemoVideo />
 			<ModelStrip />
-			<ProblemSection />
+			<ProductDefinitionSection />
+			<KontinueModelSection />
 			<HowItWorks />
 			<FeaturesSection />
 			<UseCasesSection items={marketingScenarios} />

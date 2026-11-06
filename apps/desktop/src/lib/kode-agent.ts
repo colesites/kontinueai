@@ -1,7 +1,16 @@
+import { htmlToText } from "@repo/ai/lib/docs/indexer";
+import { getSessionToken } from "./kode-chat";
 import { invoke } from "@tauri-apps/api/core";
 import type { LanguageModelUsage } from "ai";
 
-import { buildKodeSkillsContext, type RepoProfile } from "./kode-skills";
+import {
+  buildKodeSkillsContext,
+  findSkill,
+  loadAllSkills,
+  renderSkill,
+  type KodeSkill,
+  type RepoProfile,
+} from "./kode-skills";
 import { retrieveDocsContext, type DocSourceRef } from "./kode-docs";
 import { createContentFilter, stripKodeArtifacts } from "./kode-sanitize";
 import {
@@ -20,6 +29,13 @@ import {
   executeFileTool,
   impliesFileWork,
   isToolAllowedInMode,
+  buildWebToolDefinitions,
+  buildKnowledgeToolDefinitions,
+  KODE_LOAD_SKILL_TOOL,
+  KODE_SEARCH_DOCS_TOOL,
+  KODE_WEB_TOOLS,
+  KODE_WEB_SEARCH_TOOL,
+  KODE_PLAN_MODE_PROMPT,
   needsApproval,
   KODE_ASK_TOOL,
   KODE_TODOS_TOOL,
@@ -47,6 +63,10 @@ export type KodeToolStep = {
 };
 
 export type RunKodeAgentParams = {
+  /** Fast mode: use the model's fast variant when the plan allows it. */
+  fast?: boolean;
+  /** Requested reasoning effort (the server maps it to what the model supports). */
+  reasoningEffort?: string;
   modelId: string;
   /** Prior user/assistant text turns (no tool messages). */
   history: KodeChatMessage[];
@@ -134,6 +154,8 @@ function toolsForMode(mode: KodeAgentMode): KodeToolDefinition[] {
       ),
       ask,
       todos,
+      ...buildWebToolDefinitions(),
+      ...buildKnowledgeToolDefinitions(),
     ];
   }
   return [
@@ -141,7 +163,35 @@ function toolsForMode(mode: KodeAgentMode): KodeToolDefinition[] {
     buildShellToolDefinition(),
     ask,
     todos,
+    ...buildWebToolDefinitions(),
+    ...buildKnowledgeToolDefinitions(),
   ];
+}
+
+const MAX_WEB_RESULT_CHARS = 8000;
+
+/** Run web_search (Kontinue server) or fetch_url (local fetch → text). */
+async function executeWebTool(name: string, args: Record<string, unknown>): Promise<string> {
+  if (name === KODE_WEB_SEARCH_TOOL) {
+    const query = typeof args.query === "string" ? args.query.trim() : "";
+    if (!query) throw new Error("Missing search query.");
+    const token = await getSessionToken();
+    if (!token) throw new Error("Sign in to search the web.");
+    const result = await invoke<{ results: string; sources: { title: string; url: string }[] }>(
+      "kontinue_api_post",
+      { path: "/api/kode/search", sessionToken: token, body: { query } },
+    );
+    if (!result.results) return "No results found.";
+    const sources = result.sources.map((s, i) => `[${i + 1}] ${s.title} — ${s.url}`).join("\n");
+    return `${result.results}\n\nSources:\n${sources}`.slice(0, MAX_WEB_RESULT_CHARS);
+  }
+  const url = typeof args.url === "string" ? args.url.trim() : "";
+  if (!/^https?:\/\//i.test(url)) throw new Error("fetch_url needs a full http(s) URL.");
+  const raw = await invoke<string>("kode_fetch_text", { url });
+  const text = /<\/?[a-z][\s\S]*>/i.test(raw) ? htmlToText(raw) : raw;
+  return text.length > MAX_WEB_RESULT_CHARS
+    ? `${text.slice(0, MAX_WEB_RESULT_CHARS)}\n…(truncated)`
+    : text || "(empty page)";
 }
 
 /**
@@ -171,6 +221,8 @@ export async function runKodeAgent(
     // generous without risking an infinite loop.
     maxIterations = 25,
     reasoningEnabled,
+    fast = false,
+    reasoningEffort,
     signal,
   } = params;
 
@@ -210,20 +262,19 @@ export async function runKodeAgent(
       // Ignore — proceed without repo context.
     }
   }
-  // Skills + repo context, plus retrieved official docs (best-effort; the docs
-  // index is local and built in the background, so this never blocks the chat).
-  let docsContext = "";
-  let sources: DocSourceRef[] = [];
+  // Skills index (bundled + project skills) and repo summary. Full skills and
+  // docs are loaded on demand with load_skill / search_docs, so they only cost
+  // context when the task needs them.
+  let skills: KodeSkill[] = [];
   try {
-    const docs = await retrieveDocsContext(userText, repoProfile.framework);
-    docsContext = docs.context;
-    sources = docs.sources;
+    skills = await loadAllSkills(projectRoot);
   } catch {
-    // Ignore — proceed without docs grounding.
+    // Proceed without skills.
   }
-  const systemContext = `${buildKodeSkillsContext(userText, repoProfile)}${docsContext}${
+  const sources: DocSourceRef[] = [];
+  const systemContext = `${buildKodeSkillsContext(repoProfile, skills)}${
     extraSystemContext ? `\n\n${extraSystemContext}` : ""
-  }`;
+  }${mode === "plan" ? `\n\n${KODE_PLAN_MODE_PROMPT}` : ""}`;
 
   let finalContent = "";
   // `usage` = the latest call (context-size signal for the meter).
@@ -258,6 +309,9 @@ export async function runKodeAgent(
           tools,
           systemContext,
           reasoningEnabled,
+          kontinueServer: true,
+          fast,
+          reasoningEffort,
           // Only force on the very first turn; later turns use "auto" so the model
           // can stop calling tools and write its final answer.
           toolChoice: iteration === 0 && forceFirstTool ? "required" : "auto",
@@ -304,6 +358,13 @@ export async function runKodeAgent(
         requestApproval,
         requestOptions,
         onTodos,
+        skills,
+        framework: repoProfile.framework ?? null,
+        addSources: (found) => {
+          for (const source of found) {
+            if (!sources.some((existing) => existing.url === source.url)) sources.push(source);
+          }
+        },
       });
       messages.push({
         role: "tool",
@@ -347,6 +408,9 @@ async function handleToolCall(
     requestApproval: (step: KodeToolStep) => Promise<boolean>;
     requestOptions: (step: KodeToolStep) => Promise<string[]>;
     onTodos?: (todos: KodeTodo[]) => void;
+    skills: KodeSkill[];
+    framework: string | null;
+    addSources: (sources: DocSourceRef[]) => void;
   },
 ): Promise<string> {
   const name = call.function.name;
@@ -383,6 +447,45 @@ async function handleToolCall(
     return step.result;
   }
 
+  // Skills and docs: read-only, no project needed.
+  if (name === KODE_LOAD_SKILL_TOOL || name === KODE_SEARCH_DOCS_TOOL) {
+    let output: string;
+    if (name === KODE_LOAD_SKILL_TOOL) {
+      const skill = findSkill(ctx.skills, typeof args.name === "string" ? args.name : "");
+      output = skill
+        ? renderSkill(skill)
+        : `No skill named "${String(args.name)}". Available: ${ctx.skills.map((s) => s.name).join(", ")}`;
+    } else {
+      const query = typeof args.query === "string" ? args.query : "";
+      const docs = await retrieveDocsContext(query, ctx.framework).catch(() => ({ context: "", sources: [] }));
+      ctx.addSources(docs.sources);
+      output = docs.context.trim() || "No matching docs found. Try web_search.";
+    }
+    step.state = "done";
+    step.result = output;
+    ctx.onToolStep(step);
+    return output;
+  }
+
+  // Web tools don't touch the project and never need approval.
+  if (KODE_WEB_TOOLS.has(name)) {
+    step.state = "running";
+    ctx.onToolStep(step);
+    try {
+      const output = await executeWebTool(name, args);
+      step.state = "done";
+      step.result = output;
+      ctx.onToolStep(step);
+      return output;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      step.state = "error";
+      step.result = message;
+      ctx.onToolStep(step);
+      return `Error: ${message}`;
+    }
+  }
+
   if (!ctx.projectRoot) {
     step.state = "error";
     step.result = "No project folder is open, so file tools are unavailable.";
@@ -397,7 +500,7 @@ async function handleToolCall(
     return step.result;
   }
 
-  if (needsApproval(name, ctx.mode)) {
+  if (needsApproval(name, ctx.mode, args)) {
     step.state = "pending-approval";
     ctx.onToolStep(step);
     const approved = await ctx.requestApproval(step);

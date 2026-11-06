@@ -2,13 +2,14 @@ import {
   canUseKodeModel,
   KODE_DEFAULT_MODEL_ID,
   KODE_MODELS,
-  type KodePlanTier,
+  type KodePlan,
 } from "@repo/ai/lib/kode";
 import { useQuery } from "convex/react";
 import { useUser } from "@clerk/clerk-react";
 import {
   AlertTriangle,
   ArrowUpRight,
+  ClipboardList,
   Check,
   Copy,
   Info,
@@ -17,7 +18,12 @@ import {
   RotateCcw,
   Terminal,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useStickToBottomContext } from "use-stick-to-bottom";
+import {
+  DesktopChatTurnNavigator,
+  type ChatTurn,
+} from "@/components/chat/DesktopChatTurnNavigator";
 
 import { api } from "@/lib/convex-api";
 
@@ -30,11 +36,7 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   Context,
   ContextContent,
-  ContextContentBody,
   ContextContentHeader,
-  ContextInputUsage,
-  ContextOutputUsage,
-  ContextReasoningUsage,
   ContextTrigger,
 } from "@/components/ai-elements/context";
 import {
@@ -94,7 +96,28 @@ import {
   type StoredImportContext,
 } from "@/lib/kode-import";
 import KodeSessionImport from "@/components/kode/KodeSessionImport";
+import { publishChatContext } from "@/lib/kode-chat-context";
+import { KodeComposerBar } from "@/components/kode/KodeComposerBar";
+import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
+import { getSettings, useAppSettings } from "@/lib/app-settings";
+import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
+import {
+  cliLoginCommand,
+  cliModelDisplayName,
+  cliNeedsLogin,
+  getProvider,
+  cliPickerModels,
+  cliPlanLabel,
+  cliTodos,
+  cliToolStep,
+  cliVersionIssue,
+  getCliSession,
+  runCliTurn,
+  parseCliModelId,
+  saveCliSession,
+  useCliStore,
+} from "@/lib/kode-cli";
 
 const KODE_STARTER_PROMPTS = [
   {
@@ -132,17 +155,40 @@ type ChatMessage = KodeWorkspaceMessage & {
 // Key for an in-flight send started on the home page before a chat exists.
 const DRAFT_KEY = "draft";
 
-// Approximate tokens the IDE adds to every request on top of the visible messages
-// (identity + agent guidance + per-request skills/docs/repo context). Folded into
-// the context meter so a fresh chat isn't reported as 0% when the model already
-// sees the system prompt.
-const KODE_SYSTEM_PROMPT_TOKENS = 1200;
+// Real context size per chat, as reported by the provider on the last turn
+// (prompt incl. system instructions + tools, plus the reply). Saved so the
+// meter survives a restart; chats with no saved value fall back to a
+// message-only estimate.
+const CONTEXT_STORE_KEY = "kontinue.kode.context-tokens";
+
+function readContextTokens(chatId: string): number | null {
+  try {
+    const store = JSON.parse(localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}") as Record<string, number>;
+    return typeof store[chatId] === "number" ? store[chatId] : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveContextTokens(chatId: string, tokens: number) {
+  try {
+    const store = JSON.parse(localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}") as Record<string, number>;
+    store[chatId] = tokens;
+    localStorage.setItem(CONTEXT_STORE_KEY, JSON.stringify(store));
+  } catch {
+    // Storage unavailable: the meter just falls back to the estimate.
+  }
+}
 
 const getModelName = (modelId: string) =>
-  KODE_MODELS.find((model) => model.id === modelId)?.name ?? "Kode 1.0";
+  cliModelDisplayName(modelId) ??
+  KODE_MODELS.find((model) => model.id === modelId)?.name ??
+  "Kode 1.0";
 
-const normalizePlanTier = (tier: string): KodePlanTier =>
-  tier === "starter" || tier === "pro" ? tier : "free";
+const normalizePlanTier = (tier: string): KodePlan =>
+  tier === "starter" || tier === "plus" || tier === "pro" || tier === "max"
+    ? tier
+    : "free";
 
 const formatRelativeTime = (timestamp?: number) => {
   if (!timestamp) return "";
@@ -182,7 +228,7 @@ function MessageMeta({
   };
 
   return (
-    <MessageActions className="-mt-0.5 w-fit px-1 text-foreground/40 group-[.is-user]:ml-auto">
+    <MessageActions className="-mt-0.5 w-fit px-1 text-foreground/40 transition-opacity group-[.is-user]:ml-auto group-[.is-user]:opacity-0 group-hover:opacity-100 focus-within:opacity-100">
       <MessageAction
         tooltip="Copy"
         onClick={copy}
@@ -246,8 +292,38 @@ const PlanView = () => {
   const { user } = useUser();
   const firstName = user?.firstName || user?.fullName || "there";
   const planTier = normalizePlanTier(usePlanTier());
-  const { reasoningEnabled, setReasoningEnabled } = useReasoningPreference();
-  const [selectedModelId, setSelectedModelId] = useState(KODE_DEFAULT_MODEL_ID);
+  const { reasoningEnabled: legacyReasoningEnabled, setReasoningEnabled } = useReasoningPreference();
+  const { kodeContextWindow, kodeReasoning } = useAppSettings();
+  // Reasoning comes from the picker (Settings store); "off" only where allowed.
+  const reasoningEnabled = kodeReasoning !== "off";
+  void legacyReasoningEnabled;
+  // New sessions start from Settings → General defaults.
+  const [selectedModelId, setSelectedModelId] = useState(() => {
+    const preferred = getSettings().defaultKodeModel;
+    return preferred && KODE_MODELS.some((m) => m.id === preferred)
+      ? preferred
+      : KODE_DEFAULT_MODEL_ID;
+  });
+  // Settings → Providers: Claude / GPT models can run through the user's own
+  // Claude Code / Codex CLI (their subscription) instead of Kode.
+  // Settings → Providers: enabled models from the user's own Claude Code /
+  // Codex / Cursor show in the picker after Kode's models.
+  const cliStore = useCliStore();
+  const cliStatuses = cliStore.statuses;
+  const appSettings = useAppSettings();
+  const kodeModels = useMemo(
+    () => [...KODE_MODELS, ...cliPickerModels(appSettings, cliStore)],
+    [appSettings, cliStore],
+  );
+  // A CLI model that was turned off (or whose CLI went away) falls back to Kode.
+  useEffect(() => {
+    if (!cliStatuses || !parseCliModelId(selectedModelId)) return;
+    if (!kodeModels.some((m) => m.id === selectedModelId)) {
+      setSelectedModelId(KODE_DEFAULT_MODEL_ID);
+    }
+  }, [cliStatuses, kodeModels, selectedModelId]);
+  const selectedCliId = parseCliModelId(selectedModelId)?.instanceId;
+  const selectedCli = selectedCliId ? getProvider(selectedCliId, appSettings) ?? null : null;
   // All in-flight state is keyed by chat id (or DRAFT_KEY for an unsaved home
   // chat) so multiple chats/projects can run concurrently and switching chats
   // shows the correct per-chat loading + overlay.
@@ -266,7 +342,11 @@ const PlanView = () => {
     text: "",
     nonce: 0,
   });
-  const [mode, setMode] = useState<KodeAgentMode>("supervised");
+  const [mode, setMode] = useState<KodeAgentMode>(() => {
+    // Design mode isn't available yet; fall back to Supervised.
+    const preferred = getSettings().defaultKodeMode;
+    return preferred === "design" ? "supervised" : preferred;
+  });
   // Per-model context windows (OpenRouter + Vercel gateway), loaded once.
   const [contextWindows, setContextWindows] = useState<ContextWindows>({});
   useEffect(() => {
@@ -286,6 +366,7 @@ const PlanView = () => {
   // option picker — in-chat or in the sidebar popover — resolve them.
   const runtime = useKodeAgentRuntime();
   const {
+    openSettings,
     projects,
     chats,
     activeChatId,
@@ -447,7 +528,6 @@ const PlanView = () => {
 
   // General token budget for the signed-in user (daily + weekly). Used to block a
   // turn before it runs when the budget is exhausted.
-  const kodeUsage = useQuery(api.kode.getUsage, {});
 
   const persistedMessages: ChatMessage[] = (convexMessages ?? []).map(
     (message) => {
@@ -528,7 +608,11 @@ const PlanView = () => {
     modelId = selectedModelId,
     attachments?: StagedAttachment[],
     sendReasoningEnabled?: boolean,
+    modeOverride?: KodeAgentMode,
   ) => {
+    // Approving a plan switches mode and sends in the same tick, so use the
+    // override instead of the (not yet updated) state.
+    const activeMode = modeOverride ?? mode;
     const key = activeChatId ?? DRAFT_KEY;
     if (sendingChats[key]) return;
 
@@ -565,7 +649,26 @@ const PlanView = () => {
       createdAt: now,
     };
 
-    if (!canUseKodeModel(modelId, planTier)) {
+    const cliTarget = parseCliModelId(modelId);
+    // The provider instance (Settings → Providers) that runs this model.
+    const cliProvider = cliTarget ? getProvider(cliTarget.instanceId) ?? null : null;
+    if (cliTarget && !cliProvider) {
+      setPendingByChat((current) => ({
+        ...current,
+        [key]: [
+          userMessage,
+          {
+            id: `assistant-${now}`,
+            role: "assistant",
+            content: "This provider was removed. Pick another model, or add it again in Settings → Providers.",
+            modelId,
+            status: "error",
+          },
+        ],
+      }));
+      return;
+    }
+    if (!cliProvider && !canUseKodeModel(modelId, planTier)) {
       setPendingByChat((current) => ({
         ...current,
         [key]: [
@@ -582,41 +685,8 @@ const PlanView = () => {
       return;
     }
 
-    // Token-budget enforcement: block the turn before it runs if the user's general
-    // budget is already exhausted for this day or week. We can't know the turn's
-    // cost up front, so we gate on "already at/over the limit".
-    if (kodeUsage) {
-      const overWeekly = kodeUsage.weekly.used >= kodeUsage.weekly.limit;
-      const overDaily = kodeUsage.daily.used >= kodeUsage.daily.limit;
-      if (overWeekly || overDaily) {
-        const win = overWeekly ? kodeUsage.weekly : kodeUsage.daily;
-        const resetLabel = overWeekly
-          ? new Date(win.resetAt).toLocaleDateString([], {
-              month: "short",
-              day: "numeric",
-            })
-          : new Date(win.resetAt).toLocaleTimeString([], {
-              hour: "numeric",
-              minute: "2-digit",
-            });
-        const upgradeHint =
-          planTier === "pro" ? "" : " Upgrade your plan for a higher limit.";
-        setPendingByChat((current) => ({
-          ...current,
-          [key]: [
-            userMessage,
-            {
-              id: `assistant-${now}`,
-              role: "assistant",
-              content: `You've reached your ${overWeekly ? "weekly" : "daily"} usage limit. It resets ${resetLabel}.${upgradeHint}`,
-              modelId,
-              status: "error",
-            },
-          ],
-        }));
-        return;
-      }
-    }
+    // Usage limits are enforced by the Kontinue server for every model call
+    // (apps/web/src/app/api/kode/chat); its message is shown if a limit is hit.
 
     const thinkingMessage: ChatMessage = {
       id: `assistant-${now}`,
@@ -730,11 +800,113 @@ const PlanView = () => {
         }));
       };
 
+      // Your-subscription turn: run the local Claude Code / Codex CLI. Never
+      // touches the Kontinue server and is not counted in Kode usage.
+      if (cliTarget && cliProvider) {
+        if (!projectRoot) {
+          throw new Error("Open a project folder to use your Claude Code or Codex subscription.");
+        }
+        const versionIssue = cliVersionIssue(cliTarget.model, cliProvider, cliStatuses);
+        if (versionIssue) {
+          throw new Error(
+            `${versionIssue} Use Update in Settings → Providers, or pick one of Kode's models.`,
+          );
+        }
+        const cliChatId = chatId;
+        const sessionId = getCliSession(cliChatId, cliProvider.id);
+        // A fresh CLI session in an existing chat gets the earlier turns as context.
+        let prompt = modelText;
+        if (!sessionId) {
+          const earlier = history
+            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+            .join("\n\n")
+            .slice(-24000);
+          const preface = [
+            importContext?.contextPrompt,
+            earlier ? `Earlier conversation in this chat:\n\n${earlier}` : "",
+          ]
+            .filter(Boolean)
+            .join("\n\n");
+          if (preface) prompt = `${preface}\n\n---\n\n${modelText}`;
+        }
+        if (imageAtts.length > 0) {
+          applyDelta("content", "_Images are not sent to the CLI; only text is._\n\n");
+        }
+
+        const steps = new Map<string, KodeToolStep>();
+        const notices: string[] = [];
+        const result = await runCliTurn({
+          instance: cliProvider,
+          root: projectRoot,
+          prompt,
+          sessionId,
+          model: cliTarget.model,
+          mode: activeMode,
+          signal: abortController.signal,
+          onEvent: (event) => {
+            switch (event.type) {
+              case "session":
+                saveCliSession(cliChatId, cliProvider.id, event.sessionId);
+                break;
+              case "text":
+                applyDelta("content", event.delta);
+                break;
+              case "reasoning":
+                applyDelta("reasoning", event.delta);
+                break;
+              case "toolStart":
+              case "toolEnd": {
+                const step = cliToolStep(event, steps.get(event.id));
+                steps.set(event.id, step);
+                upsertToolStep(step);
+                break;
+              }
+              case "todos":
+                upsertTodos(cliTodos(event.items));
+                break;
+              case "notice":
+                notices.push(event.message);
+                break;
+            }
+          },
+        });
+        if (result.sessionId) saveCliSession(cliChatId, cliProvider.id, result.sessionId);
+        if (result.error) {
+          // Common causes: a signed-out CLI, or one too old for this model.
+          const signedOut = /log ?in|logged out|not logged|authenticat|\/login/i.test(result.error);
+          const badModel = /model/i.test(result.error);
+          const hint = signedOut
+            ? `Sign in from Settings → Providers → ${cliProvider.label}${cliLoginCommand(cliProvider) ? ` (or run \`${cliLoginCommand(cliProvider)}\` in a terminal)` : ""}, then send again.`
+            : badModel
+              ? `${cliProvider.label} could not use ${getModelName(modelId)}. It may be too old (use Update in Settings → Providers) or your plan may not include this model.`
+              : "";
+          throw new Error(hint ? `${result.error}\n\n${hint}` : result.error);
+        }
+
+        const noticeText = notices.length ? `\n\n> ${notices.join("\n> ")}` : "";
+        const content =
+          (result.text || (result.stopped ? "_Stopped._" : "")) + noticeText;
+        await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
+        await addMessageRecord({
+          chatId,
+          role: "assistant",
+          content,
+          model: modelId,
+          todos: latestTodos.length > 0 ? latestTodos : undefined,
+        });
+        setPendingByChat((current) => {
+          const next = { ...current };
+          delete next[runKey];
+          return next;
+        });
+        return;
+      }
+
       // Auto-compaction: if the conversation is near the model's window, summarize
       // older turns and send [summary, ...recent] instead. Original messages stay.
       // Surface a "Compacting context…" indicator only when it will actually run
       // (summarizing a large history can take a moment).
-      const window = getContextWindow(modelId, contextWindows);
+      const window = getContextWindow(modelId, contextWindows, getSettings().kodeContextWindow);
       if (needsCompaction(history, window)) {
         setCompactingChats((current) => ({ ...current, [runKey]: true }));
       }
@@ -753,14 +925,17 @@ const PlanView = () => {
       }
 
       const response = await runKodeAgent({
+        // Fast mode (Settings / model picker); the server re-checks the plan.
+        fast: getSettings().kodeFastMode,
         modelId,
         history: sentHistory,
         userText: modelText,
         userContent,
-        mode,
+        mode: activeMode,
         projectRoot,
         extraSystemContext: importContext?.contextPrompt,
         reasoningEnabled: sendReasoningEnabled ?? reasoningEnabled,
+        reasoningEffort: kodeReasoning === "off" ? undefined : kodeReasoning,
         onText: (delta) => applyDelta("content", delta),
         onReasoning: (delta) => applyDelta("reasoning", delta),
         onToolStep: upsertToolStep,
@@ -798,6 +973,7 @@ const PlanView = () => {
 
       const finishedId = chatId;
       setUsageByChat((current) => ({ ...current, [finishedId]: response.usage }));
+      if (response.usage?.totalTokens) saveContextTokens(finishedId, response.usage.totalTokens);
       // Clear this chat's overlay — Convex now renders the persisted turns
       // (with sources/todos from metadata).
       setPendingByChat((current) => {
@@ -844,24 +1020,53 @@ const PlanView = () => {
   // model's window, so switching models reprices the SAME conversation against the
   // new window (numerator unchanged) — like Codex / Claude Code. Only compaction
   // (kode-compact) shrinks it, not a new turn.
-  const persistedEstimate =
-    estimateTokens(messages) +
-    KODE_SYSTEM_PROMPT_TOKENS +
-    (importContext ? Math.ceil(importContext.contextPrompt.length / 4) : 0);
-  const usedTokens = Math.max(persistedEstimate, latestUsage?.totalTokens ?? 0);
-  const contextWindow = getContextWindow(selectedModelId, contextWindows);
+  // Empty chat → 0. Otherwise the provider's real count from the last turn
+  // (this session, or saved), else an estimate from the messages alone.
+  const reportedTokens =
+    latestUsage?.totalTokens ?? (activeChatId ? readContextTokens(activeChatId) : null);
+  const usedTokens =
+    messages.length === 0
+      ? 0
+      : (reportedTokens ??
+        estimateTokens(messages) +
+          (importContext ? Math.ceil(importContext.contextPrompt.length / 4) : 0));
+  const contextWindow = getContextWindow(selectedModelId, contextWindows, kodeContextWindow);
+  useEffect(() => {
+    publishChatContext({ used: usedTokens, max: contextWindow, modelName: getModelName(selectedModelId) });
+  }, [usedTokens, contextWindow, selectedModelId]);
   const inChat = activeChatId !== null || messages.length > 0;
+  const userTurns = useMemo<ChatTurn[]>(
+    () =>
+      messages
+        .filter((message) => message.role === "user" && !message.notice)
+        .map((message, index) => {
+          const text = (message.content ?? "").replace(/\s+/g, " ").trim();
+          return {
+            id: `kode-turn-${message.id}`,
+            preview: text
+              ? text.length > 60
+                ? `${text.slice(0, 60).trimEnd()}…`
+                : text
+              : `Message ${index + 1}`,
+          };
+        }),
+    [messages],
+  );
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden px-6 pb-5">
+    <div
+      className={`flex h-full w-full flex-col overflow-hidden pb-5 ${inChat ? "" : "px-6"}`}
+    >
       <div
         className={
           inChat
-            ? "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col pt-6"
-            : "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center justify-start overflow-y-auto pt-10 pb-6"
+            ? // Full width so the conversation's scrollbar sits at the pane
+              // edge; each child centers itself at the 48rem column.
+              "flex min-h-0 w-full flex-1 flex-col pt-6"
+            : "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center [justify-content:safe_center] overflow-y-auto py-6"
         }
       >
         {inChat && importContext ? (
-          <div className="mb-2 flex w-full items-center gap-2 rounded-xl border border-purple-500/20 bg-purple-500/[0.06] px-3 py-1.5 text-[11px] text-foreground/60">
+          <div className="mx-auto mb-2 flex w-[min(48rem,calc(100%-3rem))] items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/[0.06] px-3 py-1.5 text-[11px] text-foreground/60">
             <img
               src={providerIcon(importContext.provider)}
               alt=""
@@ -944,7 +1149,7 @@ const PlanView = () => {
           </div>
         ) : null}
         {syncError ? (
-          <p className="mb-2 w-full text-[10.5px] text-amber-500">
+          <p className="mx-auto mb-2 w-[min(48rem,calc(100%-3rem))] text-[10.5px] text-amber-500">
             {syncError}
           </p>
         ) : null}
@@ -958,6 +1163,12 @@ const PlanView = () => {
               <span className="font-bold text-purple-600 dark:text-purple-400">{firstName}</span>
               ?
             </h1>
+            <div className="flex items-center justify-center">
+              <KodeSessionImport
+                projectPath={projectRoot}
+                projectName={activeProject?.name ?? null}
+              />
+            </div>
           </div>
         ) : messages.length === 0 && messagesLoading ? (
           <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -965,7 +1176,7 @@ const PlanView = () => {
           </div>
         ) : (
           <Conversation className="min-h-0 flex-1 overflow-hidden">
-            <ConversationContent className="gap-6 px-0 pt-0 pb-5">
+            <ConversationContent className="mx-auto w-full max-w-[51rem] gap-6 px-6 pt-0 pb-5">
               {messages.map((message) =>
                 message.notice ? (
                   <SystemNotice
@@ -974,7 +1185,11 @@ const PlanView = () => {
                     createdAt={message.createdAt}
                   />
                 ) : (
-                  <Message from={message.role} key={message.id}>
+                  <Message
+                    from={message.role}
+                    key={message.id}
+                    id={message.role === "user" ? `kode-turn-${message.id}` : undefined}
+                  >
                   <MessageContent>
                     {message.role === "assistant" ? (
                       <>
@@ -1044,7 +1259,9 @@ const PlanView = () => {
                         ) : null}
                       </>
                     ) : (
-                      <MessageResponse>{message.content}</MessageResponse>
+                      <CollapsibleUserText>
+                        <MessageResponse>{message.content}</MessageResponse>
+                      </CollapsibleUserText>
                     )}
                   </MessageContent>
                   <MessageMeta
@@ -1058,16 +1275,63 @@ const PlanView = () => {
                   </Message>
                 ),
               )}
+              {(() => {
+                // Plan mode: offer to approve the latest plan and start building.
+                const last = messages[messages.length - 1];
+                if (mode !== "plan" || isCurrentSending || !last || last.role !== "assistant" || !last.content?.trim()) {
+                  return null;
+                }
+                const approve = (next: KodeAgentMode) => {
+                  setMode(next);
+                  void submitPrompt(
+                    "Approved. Implement the plan above.",
+                    selectedModelId,
+                    undefined,
+                    undefined,
+                    next,
+                  );
+                };
+                return (
+                  <div className="kontinue-3d flex flex-wrap items-center gap-2 rounded-[20px] px-4 py-3">
+                    <ClipboardList size={14} className="shrink-0 text-purple-500" />
+                    <p className="min-w-0 flex-1 text-[12.5px] text-foreground/85">
+                      Ready to build this plan?
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => approve("supervised")}
+                      className="kontinue-3d h-8 cursor-pointer rounded-full px-3.5 text-[12px] text-foreground/85 hover:text-foreground"
+                    >
+                      Approve, review each edit
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => approve("auto_edits")}
+                      className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-3.5 text-[12px] font-medium"
+                    >
+                      Approve &amp; build
+                    </button>
+                  </div>
+                );
+              })()}
             </ConversationContent>
+            <KodeTurnNavigator turns={userTurns} />
             <ConversationScrollButton />
           </Conversation>
         )}
 
-        <div className="w-full max-w-3xl mx-auto">
+        <div
+          className={
+            inChat
+              ? "mx-auto w-[min(48rem,calc(100%-3rem))]"
+              : "mx-auto w-full max-w-3xl"
+          }
+        >
           <ChatInput
+            topBar={!inChat ? <KodeComposerBar project={activeProject} /> : undefined}
             loading={isCurrentSending}
             onStop={stopCurrentRun}
-            models={KODE_MODELS}
+            models={kodeModels}
             modelId={selectedModelId}
             onModelChange={setSelectedModelId}
             onSend={(text, mId, atts, _w, r) => submitPrompt(text, mId, atts, r)}
@@ -1106,6 +1370,16 @@ const PlanView = () => {
           ) : null}
 
           <div className="mt-2 flex items-center justify-end gap-2">
+            {selectedCli ? (
+              <span
+                className="mr-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
+                title="Runs the CLI installed on this computer with your own sign-in. Not counted in Kode usage."
+              >
+                {cliNeedsLogin(cliStatuses, selectedCli.id)
+                  ? `${selectedCli.label} is not signed in. Sign in from Settings → Providers`
+                  : `${selectedCli.label} · ${cliPlanLabel(selectedCli).replace("Uses", "uses")} · not counted in Kode usage`}
+              </span>
+            ) : null}
             {isCompacting ? (
               <span className="mr-auto flex items-center gap-1.5 text-[11px] text-foreground/45">
                 <Loader2 className="size-3 animate-spin" />
@@ -1127,26 +1401,26 @@ const PlanView = () => {
               modelId={selectedModelId}
               usage={latestUsage}
               usedTokens={usedTokens}
+              openDelay={120}
+              closeDelay={250}
             >
-              <ContextTrigger className="h-7 gap-1.5 rounded-lg px-2 text-[12px] text-foreground/45 hover:bg-white/[0.05] hover:text-foreground/70" />
-              <ContextContent className="border-white/[0.08] bg-[oklch(0.17_0.004_260)] text-foreground">
-                <ContextContentHeader />
-                <ContextContentBody className="space-y-2">
-                  <ContextInputUsage />
-                  <ContextOutputUsage />
-                  <ContextReasoningUsage />
-                </ContextContentBody>
+              <ContextTrigger className="h-7 gap-1.5 rounded-full px-2 text-[12px] text-foreground/45 hover:bg-white/[0.05] hover:text-foreground/70" />
+              <ContextContent
+                align="end"
+                side="top"
+                sideOffset={8}
+                className="liquid-glass-dropdown w-80 divide-y divide-black/[0.05] p-0 text-foreground dark:divide-white/[0.06]"
+              >
+                {/* This chat's context window */}
+                <ContextContentHeader className="space-y-2 px-4 py-3.5">
+                  <ChatContextSummary used={usedTokens} max={contextWindow} />
+                </ContextContentHeader>
+                {/* Plan limits; "See all" opens Settings → Usage */}
+                <PlanUsageLimits className="px-4 py-3.5" onSeeAll={() => openSettings("usage")} />
               </ContextContent>
             </Context>
           </div>
         </div>
-
-        {!inChat ? (
-          <KodeSessionImport
-            projectPath={projectRoot}
-            projectName={activeProject?.name ?? null}
-          />
-        ) : null}
 
         {!inChat ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full pt-4 text-left">
@@ -1157,7 +1431,7 @@ const PlanView = () => {
                 onClick={() => submitPrompt(starter.prompt)}
                 className="liquid-glass-card group flex items-start gap-3 rounded-[22px] p-3.5 text-left cursor-pointer transition-all active:scale-[0.99]"
               >
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20 text-base shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] group-hover:scale-105 transition-transform">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20 text-base shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] group-hover:scale-105 transition-transform">
                   {starter.icon}
                 </div>
                 <div className="min-w-0 flex-1 pt-0.5">
@@ -1182,5 +1456,48 @@ const PlanView = () => {
     </div>
   );
 };
+
+// Turn navigator for the Kode chat. Lives inside <Conversation> so it can
+// stop the stick-to-bottom behavior before jumping to an older message.
+function KodeTurnNavigator({ turns }: { turns: ChatTurn[] }) {
+  const { scrollRef, stopScroll } = useStickToBottomContext();
+  const { showTurnNavigator } = useAppSettings();
+  const getScrollElement = useCallback(() => scrollRef.current, [scrollRef]);
+  if (!showTurnNavigator) return null;
+  return (
+    <DesktopChatTurnNavigator
+      turns={turns}
+      getScrollElement={getScrollElement}
+      onJumpToTurn={(turnId) => {
+        stopScroll();
+        document
+          .getElementById(turnId)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }}
+    />
+  );
+}
+
+function ChatContextSummary({ used, max }: { used: number; max: number }) {
+  const pct = max > 0 ? Math.min(100, (used / max) * 100) : 0;
+  const compact = new Intl.NumberFormat("en-US", { notation: "compact" });
+  return (
+    <>
+      <div className="flex items-center justify-between text-[12px]">
+        <span className="text-foreground/90">Context · this chat</span>
+        <span className="font-mono text-[11px] text-muted-foreground">
+          {compact.format(used)} / {compact.format(max)}
+          <span className="ml-2 font-sans tabular-nums text-foreground/75">
+            {pct < 1 && pct > 0 ? pct.toFixed(1) : Math.round(pct)}%
+          </span>
+        </span>
+      </div>
+      <UsageBar pct={pct} />
+      <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+        Older messages are summarized automatically when the chat gets close to the limit.
+      </p>
+    </>
+  );
+}
 
 export default PlanView;

@@ -92,10 +92,10 @@ export function ShareModal({
               type="button"
               onClick={handleCopyLink}
               className={cn(
-                "inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold transition-all shrink-0 cursor-pointer",
+                "inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-semibold transition-all shrink-0 cursor-pointer",
                 copySuccess
                   ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30"
-                  : "bg-purple-600 text-white hover:bg-purple-500 shadow-[0_2px_10px_rgba(147,51,234,0.3)]"
+                  : "kontinue-3d-primary"
               )}
             >
               {copySuccess ? (

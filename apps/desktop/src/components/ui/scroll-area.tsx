@@ -12,6 +12,7 @@ function ScrollArea({
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
   return (
     <ScrollAreaPrimitive.Root
+      type="scroll"
       data-slot="scroll-area"
       className={cn("relative", className)}
       {...props}

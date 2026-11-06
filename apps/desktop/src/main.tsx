@@ -1,6 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./styles/globals.css";
+import { installScrollbarActivity } from "./lib/scrollbar-activity";
+import { installAppSettings } from "./lib/app-settings";
+
+installScrollbarActivity();
+installAppSettings();
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
@@ -30,6 +35,30 @@ function StartupError({ error }: { error: unknown }) {
   );
 }
 
+class StartupErrorBoundary extends React.Component<
+  React.PropsWithChildren,
+  { error: unknown | null }
+> {
+  state: { error: unknown | null } = { error: null };
+
+  static getDerivedStateFromError(error: unknown) {
+    return { error };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error("[startup] React failed to render Kontinue AI", error);
+    dismissSplash();
+  }
+
+  render() {
+    return this.state.error ? (
+      <StartupError error={this.state.error} />
+    ) : (
+      this.props.children
+    );
+  }
+}
+
 // This is deliberately registered before importing App: a failed App dependency
 // used to prevent this callback from ever being installed, trapping the window on
 // the static HTML splash screen.
@@ -41,7 +70,9 @@ void import("./App")
   .then(({ default: App }) => {
     root.render(
       <React.StrictMode>
-        <App />
+        <StartupErrorBoundary>
+          <App />
+        </StartupErrorBoundary>
       </React.StrictMode>,
     );
   })

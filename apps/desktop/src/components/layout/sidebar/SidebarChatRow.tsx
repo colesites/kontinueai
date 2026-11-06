@@ -54,7 +54,7 @@ const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
   return (
     <div
       className={cn(
-        "group/chat flex items-center justify-between gap-2 rounded-xl px-2.5 py-1 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all duration-150 hover:bg-white/60 dark:hover:bg-white/[0.06] hover:text-zinc-950 dark:hover:text-foreground h-[27px]",
+        "group/chat flex items-center justify-between gap-2 rounded-full px-2.5 py-1 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all duration-150 hover:bg-white/60 dark:hover:bg-white/[0.06] hover:text-zinc-950 dark:hover:text-foreground h-[27px]",
         isActive &&
           "bg-white/90 dark:bg-purple-500/15 text-purple-950 dark:text-purple-200 border border-purple-300/60 dark:border-purple-500/30 font-semibold shadow-[0_2px_10px_rgba(168,85,247,0.1),inset_0_1px_0.5px_rgba(255,255,255,1)]",
       )}
@@ -101,7 +101,7 @@ const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
           <button
             type="button"
             aria-label="Chat actions"
-            className="hidden shrink-0 size-5 flex items-center justify-center rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground group-hover/chat:flex data-[state=open]:flex data-[state=open]:bg-accent data-[state=open]:text-foreground transition-colors"
+            className="hidden shrink-0 size-5 flex items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground group-hover/chat:flex data-[state=open]:flex data-[state=open]:bg-accent data-[state=open]:text-foreground transition-colors"
           >
             <MoreVertical size={13} strokeWidth={1.25} />
           </button>

@@ -7,6 +7,10 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
+  // Tauri serves bundled files from a custom app:// origin. Root-absolute URLs
+  // such as /assets/index.js resolve outside the packaged asset directory on
+  // macOS, leaving the window black before the frontend can start.
+  base: "./",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

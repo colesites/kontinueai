@@ -6,6 +6,7 @@ import schema from "./schema";
 const modules = {
 	"./_generated/server.ts": () => import("./_generated/server"),
 	"./kode.ts": () => import("./kode"),
+	"./kodeUsage.ts": () => import("./kodeUsage"),
 };
 
 const USER = {
@@ -85,8 +86,8 @@ describe("kode.importSession", () => {
 
 		// Imported turns were already paid for in Claude Code — they must not
 		// consume the user's Kontinue token budget.
-		const usage = await t.withIdentity(USER).query(api.kode.getUsage, {});
-		expect(usage?.daily.used).toBe(0);
+		const usage = await t.withIdentity(USER).query(api.kodeUsage.getUsage, {});
+		expect(usage?.session.used).toBe(0);
 		expect(usage?.weekly.used).toBe(0);
 	});
 

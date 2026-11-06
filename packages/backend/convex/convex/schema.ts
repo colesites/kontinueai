@@ -465,11 +465,51 @@ export default defineSchema({
 			// counted the same. The `requestCount` field stores summed tokens here.
 			v.literal("day_kode"),
 			v.literal("week_kode"),
+			// Kode cost metering (requestCount holds micro-dollars of model cost):
+			// 5-hour session (bucketStartMs = session start), Monday-UTC week,
+			// and the weekly "relaxed" Kode 1.0 allowance used after limits.
+			v.literal("session_kode_cost"),
+			v.literal("week_kode_cost"),
+			v.literal("week_kode_relaxed"),
+			// Credits spent this UTC month (spendable micro-dollars).
+			v.literal("month_kode_credits"),
 		),
 		bucketStartMs: v.number(),
 		requestCount: v.number(),
 		updatedAt: v.number(),
 	}).index("by_owner_bucket", ["ownerId", "bucketType", "bucketStartMs"]),
+
+	// Kode extra usage credits (micro-dollars). Spent after plan limits run out,
+	// and for credit-only models (e.g. ultra models on Pro).
+	kodeCredits: defineTable({
+		ownerId: v.id("users"),
+		balanceMicros: v.number(),
+		// Spend credits automatically once a plan limit is hit (default on).
+		autoUse: v.optional(v.boolean()),
+		// Monthly cap on credit spending (micro-dollars); default in kode-usage.ts.
+		monthlyLimitMicros: v.optional(v.number()),
+		updatedAt: v.number(),
+	}).index("by_ownerId", ["ownerId"]),
+
+	// One row per credit purchase, so a payment webhook can never grant twice.
+	kodeCreditGrants: defineTable({
+		ownerId: v.id("users"),
+		paymentId: v.string(),
+		micros: v.number(),
+		amountCents: v.number(),
+		createdAt: v.number(),
+	})
+		.index("by_paymentId", ["paymentId"])
+		.index("by_ownerId", ["ownerId"]),
+
+	// Hourly Kode usage per model, for the Usage page charts and pace estimate.
+	kodeUsageHourly: defineTable({
+		ownerId: v.id("users"),
+		hourStartMs: v.number(),
+		modelId: v.string(),
+		micros: v.number(),
+		requests: v.number(),
+	}).index("by_ownerId_and_hourStartMs_and_modelId", ["ownerId", "hourStartMs", "modelId"]),
 
 	// Realtime voice is metered by active conversation time, separately from
 	// message quotas. One usage row exists per user per UTC month.

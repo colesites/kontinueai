@@ -10,7 +10,12 @@ import { BottomBlur } from "@/components/BottomBlur";
 import { JsonLd } from "@/components/marketing/JsonLd";
 import { SmoothScroll } from "@/components/SmoothScroll";
 import { product } from "@/data/product";
-import { DEFAULT_OG_IMAGE, SITE_URL } from "@/lib/metadata";
+import {
+	DEFAULT_OG_IMAGE,
+	OG_IMAGE_HEIGHT,
+	OG_IMAGE_WIDTH,
+	SITE_URL,
+} from "@/lib/metadata";
 import { organizationSchema, websiteSchema } from "@/lib/structured-data";
 import "./globals.css";
 
@@ -33,9 +38,9 @@ const mono = JetBrains_Mono({
 	display: "swap",
 });
 
-const siteTitle = "Kontinue AI | Multi-Model AI Platform";
+const siteTitle = "Kontinue AI | Hit your AI limit? Keep going.";
 const siteDescription =
-	"Use Kontinue AI’s own native intelligence layer, access leading AI models and import existing conversations with their context.";
+	"Out of messages on Claude or ChatGPT? Bring the conversation to Kontinue AI and continue with the full context on K-AI 1.0 or any leading model.";
 
 export const metadata: Metadata = {
 	metadataBase: new URL(SITE_URL),
@@ -69,9 +74,9 @@ export const metadata: Metadata = {
 		images: [
 			{
 				url: DEFAULT_OG_IMAGE,
-				width: 1200,
-				height: 630,
-				alt: "Kontinue AI",
+				width: OG_IMAGE_WIDTH,
+				height: OG_IMAGE_HEIGHT,
+				alt: "Kontinue AI — Hit your AI limit? Keep going.",
 				type: "image/png",
 			},
 		],
@@ -82,7 +87,14 @@ export const metadata: Metadata = {
 		card: "summary_large_image",
 		title: siteTitle,
 		description: siteDescription,
-		images: [DEFAULT_OG_IMAGE],
+		images: [
+			{
+				url: DEFAULT_OG_IMAGE,
+				width: OG_IMAGE_WIDTH,
+				height: OG_IMAGE_HEIGHT,
+				alt: "Kontinue AI — Hit your AI limit? Keep going.",
+			},
+		],
 	},
 	icons: {
 		icon: "/favicon.ico",

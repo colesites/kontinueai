@@ -1,7 +1,6 @@
 import { KeyRound, Loader2, Trash2, Eye, EyeOff, Check, Globe, ShieldCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 
-import { Button } from "@/components/ui/button";
 import {
   saveByokKey,
   removeByokKey,
@@ -26,7 +25,15 @@ const PROVIDERS: { id: ByokProvider; name: string; hint: string }[] = [
  * Standalone BYOK section — supports Direct Anthropic, Direct OpenAI, and
  * Agent Router / Custom API keys with persistent storage & base URL options.
  */
-export function ByokSection() {
+export function ByokSection({
+  only,
+  hideIntro = false,
+}: {
+  /** Show just these providers (Settings → Providers detail pane). */
+  only?: ByokProvider[];
+  hideIntro?: boolean;
+} = {}) {
+  const shown = only ? PROVIDERS.filter((p) => only.includes(p.id)) : PROVIDERS;
   const configured = useByokProviders();
 
   // Store current input values per provider
@@ -145,19 +152,19 @@ export function ByokSection() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
-          <KeyRound size={15} className="text-brand" />
-          Bring Your Own Key / Agent Router
-        </h3>
-        <p className="mt-1 text-xs leading-5 text-foreground/50">
-          Add keys from Anthropic, OpenAI, or Agent Router.
-          Keys are stored securely on your machine and never sent to Kontinue servers.
+      {hideIntro ? null : (
+      <div className="flex items-start gap-2.5 px-1">
+        <KeyRound size={14} className="mt-0.5 shrink-0 text-purple-500" />
+        <p className="text-[12px] leading-relaxed text-muted-foreground">
+          Add keys from Anthropic, OpenAI or Agent Router to use your own quota in
+          Kode. Keys are kept in your Mac's keychain and are never sent to Kontinue
+          servers.
         </p>
       </div>
+      )}
 
       <div className="space-y-3">
-        {PROVIDERS.map((provider) => {
+        {shown.map((provider) => {
           const isConfigured = configured.has(provider.id) || !!savedKeys[provider.id];
           const isBusy = busy === provider.id;
           const currentVal = keys[provider.id];
@@ -173,16 +180,16 @@ export function ByokSection() {
           return (
             <section
               key={provider.id}
-              className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4 space-y-3"
+              className="liquid-glass-dropdown !rounded-[20px] space-y-3 p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h4 className="font-medium text-foreground">{provider.name}</h4>
-                  <p className="mt-0.5 text-xs text-foreground/52">{provider.hint}</p>
+                  <h4 className="text-[13px] font-semibold text-foreground">{provider.name}</h4>
+                  <p className="mt-0.5 text-[11.5px] text-muted-foreground">{provider.hint}</p>
                 </div>
                 {isConfigured ? (
-                  <span className="flex items-center gap-1 shrink-0 rounded-md bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-300">
-                    <Check size={12} /> Key connected
+                  <span className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-emerald-500">
+                    <Check size={12} /> Connected
                   </span>
                 ) : null}
               </div>
@@ -200,7 +207,7 @@ export function ByokSection() {
                       value={baseUrl}
                       onChange={(e) => setBaseUrl(e.target.value)}
                       placeholder="https://co.agentrouter.org"
-                      className="w-full rounded-xl border border-white/[0.1] bg-black/40 px-3 py-2 text-xs text-foreground outline-none placeholder:text-foreground/35 focus:border-brand/60"
+                      className="kontinue-3d h-8 w-full rounded-full px-3.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
                     />
                   </div>
 
@@ -214,7 +221,7 @@ export function ByokSection() {
                       value={systemKey}
                       onChange={(e) => setSystemKey(e.target.value)}
                       placeholder="e.g. P3euDB1k5areVnMQIg0TXYNoCPuGcCw="
-                      className="w-full rounded-xl border border-white/[0.1] bg-black/40 px-3 py-2 text-xs text-foreground outline-none placeholder:text-foreground/35 focus:border-brand/60"
+                      className="kontinue-3d h-8 w-full rounded-full px-3.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
                     />
                   </div>
                 </>
@@ -233,7 +240,7 @@ export function ByokSection() {
                       }))
                     }
                     placeholder={`Paste ${provider.name} key`}
-                    className="w-full rounded-xl border border-white/[0.1] bg-black/40 px-3 py-2 pr-9 text-sm text-foreground outline-none placeholder:text-foreground/35 focus:border-brand/60"
+                    className="kontinue-3d h-8 w-full rounded-full px-3.5 pr-9 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
                   />
                   {currentVal ? (
                     <button
@@ -247,31 +254,33 @@ export function ByokSection() {
                   ) : null}
                 </div>
 
-                <Button
-                  size="sm"
+                <button
+                  type="button"
                   disabled={isBusy || !isDirty}
                   onClick={() => void save(provider.id)}
+                  className="kontinue-3d-primary flex h-8 min-w-16 shrink-0 cursor-pointer items-center justify-center rounded-full px-3.5 text-[12px] font-medium disabled:cursor-default disabled:opacity-40"
                 >
-                  {isBusy ? <Loader2 size={16} className="animate-spin" /> : "Save"}
-                </Button>
+                  {isBusy ? <Loader2 size={14} className="animate-spin" /> : "Save"}
+                </button>
 
                 {isConfigured ? (
-                  <Button
-                    size="icon-sm"
-                    variant="destructive"
+                  <button
+                    type="button"
                     aria-label={`Remove ${provider.name} API key`}
+                    title="Remove key"
                     disabled={isBusy}
                     onClick={() => void remove(provider.id)}
+                    className="kontinue-3d flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-rose-500 disabled:opacity-40"
                   >
-                    <Trash2 size={16} />
-                  </Button>
+                    <Trash2 size={13} />
+                  </button>
                 ) : null}
               </div>
             </section>
           );
         })}
       </div>
-      {error ? <p className="text-sm text-red-300">{error}</p> : null}
+      {error ? <p className="px-1 text-[12px] text-rose-400">{error}</p> : null}
     </div>
   );
 }

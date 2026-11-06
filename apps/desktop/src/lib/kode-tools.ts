@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { envVarsFor } from "@/lib/kode-environments";
 import type { KodeToolDefinition } from "./kode-chat";
 
 // Agent permission & execution modes:
@@ -14,42 +15,48 @@ export type KodeAgentMode =
   | "full_access"
   | "design"
   | "ask"  // backward-compat alias for supervised
-  | "plan"; // backward-compat alias for supervised
+  | "plan"; // read-only: investigate, then propose a plan
 
 export const KODE_AGENT_MODES: {
   id: KodeAgentMode;
   label: string;
   description: string;
-  icon: "Lock" | "FileEdit" | "Sparkles" | "Zap" | "Palette";
+  icon: "Lock" | "FileEdit" | "Sparkles" | "Zap" | "Palette" | "ClipboardList";
 }[] = [
+  {
+    id: "plan",
+    label: "Plan",
+    description: "Explores read-only, then proposes a plan",
+    icon: "ClipboardList",
+  },
   {
     id: "supervised",
     label: "Supervised",
-    description: "Ask before commands and file changes.",
+    description: "Asks before edits and commands",
     icon: "Lock",
   },
   {
     id: "auto_edits",
     label: "Auto-accept edits",
-    description: "Auto-approve edits, ask before other actions.",
+    description: "Edits freely, asks before commands",
     icon: "FileEdit",
   },
   {
     id: "auto",
     label: "Auto",
-    description: "Supported providers approve routine actions; others still ask.",
+    description: "Approves routine actions, asks for risky ones",
     icon: "Sparkles",
   },
   {
     id: "full_access",
     label: "Full access",
-    description: "Allow commands and edits without prompts.",
+    description: "Never asks. Use in trusted projects",
     icon: "Zap",
   },
   {
     id: "design",
     label: "Design",
-    description: "Design-first mode, prioritize visual UI/UX layout and styles.",
+    description: "Focus on UI, layout and visual polish",
     icon: "Palette",
   },
 ];
@@ -64,6 +71,9 @@ export const KODE_FILE_TOOLS = [
 export type KodeFileTool = (typeof KODE_FILE_TOOLS)[number];
 
 export const KODE_SHELL_TOOL = "run_command";
+
+/** Extra instructions for Plan mode (read-only investigation → a plan). */
+export const KODE_PLAN_MODE_PROMPT = `PLAN MODE (read-only): Do not create, edit or delete files and do not run commands. Investigate with the read-only tools, ask the user with ask_options when a decision is genuinely theirs, then reply with a concise plan under a "## Plan" heading: numbered steps naming the files you'll change and how you'll verify the result. End by saying the user can approve the plan to start building.`;
 // Elicitation tool — the model asks the user to pick option(s). Handled by the
 // agent loop (renders an Options card), not executed against the filesystem.
 export const KODE_ASK_TOOL = "ask_options";
@@ -78,33 +88,166 @@ export type KodeTodo = {
   status: KodeTodoStatus;
 };
 
+// Web tools — look things up online (docs, error messages, APIs).
+export const KODE_WEB_SEARCH_TOOL = "web_search";
+export const KODE_FETCH_URL_TOOL = "fetch_url";
+export const KODE_WEB_TOOLS: ReadonlySet<string> = new Set([KODE_WEB_SEARCH_TOOL, KODE_FETCH_URL_TOOL]);
+
+// Knowledge tools — skills and bundled official docs, loaded on demand.
+export const KODE_LOAD_SKILL_TOOL = "load_skill";
+export const KODE_SEARCH_DOCS_TOOL = "search_docs";
+
 // Tools that only inspect / ask — never need approval and are allowed in any mode.
 const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   "read_file",
   "list_dir",
   KODE_ASK_TOOL,
   KODE_TODOS_TOOL,
+  KODE_WEB_SEARCH_TOOL,
+  KODE_FETCH_URL_TOOL,
+  KODE_LOAD_SKILL_TOOL,
+  KODE_SEARCH_DOCS_TOOL,
 ]);
+
+/** Tool schemas for loading a skill and searching the bundled docs index. */
+export function buildKnowledgeToolDefinitions(): KodeToolDefinition[] {
+  return [
+    {
+      type: "function",
+      function: {
+        name: KODE_LOAD_SKILL_TOOL,
+        description:
+          "Load the full text of a skill from the SKILLS list in your instructions. Do this before work the skill covers.",
+        parameters: {
+          type: "object",
+          properties: { name: { type: "string", description: "Skill name exactly as listed." } },
+          required: ["name"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: KODE_SEARCH_DOCS_TOOL,
+        description:
+          "Search the bundled official framework docs (Next.js, React, Tailwind, Prisma, Supabase, Expo and more). Faster than web_search for documented APIs.",
+        parameters: {
+          type: "object",
+          properties: { query: { type: "string", description: "What to look up, e.g. 'server actions revalidatePath'." } },
+          required: ["query"],
+        },
+      },
+    },
+  ];
+}
+
+/** Tool schemas for searching the web and reading a page. */
+export function buildWebToolDefinitions(): KodeToolDefinition[] {
+  return [
+    {
+      type: "function",
+      function: {
+        name: KODE_WEB_SEARCH_TOOL,
+        description:
+          "Search the web for current information: library docs, API changes, error messages, release notes. Use it when you're unsure about something that may have changed or isn't in the codebase. Returns a summary with source links.",
+        parameters: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "A specific search query, e.g. 'Next.js 16 proxy.ts middleware'." },
+          },
+          required: ["query"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: KODE_FETCH_URL_TOOL,
+        description:
+          "Read a web page (docs, a GitHub issue, a changelog) as plain text. Use after web_search, or when the user gives a URL.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: { type: "string", description: "Full http(s) URL." },
+          },
+          required: ["url"],
+        },
+      },
+    },
+  ];
+}
 
 export function isKnownTool(name: string): name is KodeFileTool {
   return (KODE_FILE_TOOLS as readonly string[]).includes(name);
 }
 
+// ─── Shell command risk (used by Auto mode) ─────────────────────────────────
+// A command is risky if any part of it (split on && || ; |) is destructive,
+// affects things outside the project, needs elevated rights, or pipes a
+// download into a shell. Everything else (reads, git status/diff, builds,
+// tests, linters, package installs) is routine.
+const RISKY_PATTERNS: RegExp[] = [
+  /^(sudo|doas)\b/,
+  /^rm(dir)?\b/,
+  /^(shred|dd|mkfs\S*|diskutil|fdisk)\b/,
+  /^(chmod|chown|chgrp)\b/,
+  /^(kill|killall|pkill)\b/,
+  /^(shutdown|reboot|halt|launchctl)\b/,
+  /^git\s+(push|reset\s+--hard|clean\b|rebase|filter-branch|update-ref|reflog\s+expire)/,
+  /^git\s+(branch|tag)\s+.*-(d|D)\b/,
+  /^git\s+checkout\s+(--|\.)/,
+  /^git\s+(restore|stash\s+(drop|clear))\b/,
+  /\b(npm|pnpm|yarn|bun)\s+(publish|unpublish|deprecate)\b/,
+  /^(vercel|netlify|fly|flyctl|railway|wrangler|firebase|heroku)\b.*\b(deploy|--prod|publish|delete|remove|rm)\b/,
+  /^(vercel|wrangler)\s+(--prod|deploy)/,
+  /\bconvex\s+(deploy|import|env\s+(set|remove))\b/,
+  /^(docker|podman)\s+(rm|rmi|system\s+prune|volume\s+rm|compose\s+down\s+-v)/,
+  /^(kubectl|helm|terraform|pulumi)\b.*\b(delete|destroy|apply|uninstall|up)\b/,
+  /^(brew|apt|apt-get|yum|dnf|pacman)\s+(uninstall|remove|purge)/,
+  /^(curl|wget)\b.*\b(-X\s*(POST|PUT|DELETE|PATCH)|--data|-d\s)/,
+  /^(scp|rsync|ssh|sftp)\b/,
+  /^(mv|cp)\b.*\s(\/|~)/,
+  /^(crontab|security|defaults\s+write)\b/,
+];
+
+/** True when Auto mode should still ask before running this command. */
+export function isRiskyCommand(command: string): boolean {
+  const text = command.trim();
+  if (!text) return false;
+  // Downloads piped straight into a shell or eval.
+  if (/(curl|wget)\b[^|]*\|\s*(sudo\s+)?(ba|z|fi)?sh\b/.test(text) || /\beval\b/.test(text)) return true;
+  // Redirects that write outside the project (absolute or home paths).
+  if (/>{1,2}\s*(\/(?!dev\/null)|~)/.test(text)) return true;
+  return text
+    .split(/&&|\|\||;|\||\n/)
+    .map((part) => part.trim().replace(/^(env\s+)?(\w+=\S+\s+)+/, ""))
+    .filter(Boolean)
+    .some((part) => RISKY_PATTERNS.some((pattern) => pattern.test(part)));
+}
+
 /** Does this tool call require user approval under the active mode? */
-export function needsApproval(toolName: string, mode: KodeAgentMode): boolean {
+export function needsApproval(
+  toolName: string,
+  mode: KodeAgentMode,
+  args: Record<string, unknown> = {},
+): boolean {
   if (READ_ONLY_TOOLS.has(toolName)) return false;
   switch (mode) {
+    case "plan": // mutations are refused in Plan mode anyway (isToolAllowedInMode)
     case "supervised":
     case "ask":
-    case "plan":
       // Supervised: ask before all mutations and shell commands
       return true;
     case "auto_edits":
       // Auto-accept edits: writes and edits run freely, ask for shell commands and deletes
       return toolName === KODE_SHELL_TOOL || toolName === "delete_file";
     case "auto":
-      // Auto: safe commands and file edits are auto-approved, only destructive deletes confirm
-      return toolName === "delete_file";
+      // Auto: edits and routine commands run; deletes and risky commands ask.
+      if (toolName === "delete_file") return true;
+      if (toolName === KODE_SHELL_TOOL) {
+        return isRiskyCommand(typeof args.command === "string" ? args.command : "");
+      }
+      return false;
     case "full_access":
       // Full access: execute commands and edits without any prompts
       return false;
@@ -387,6 +530,7 @@ export async function executeFileTool(
         root,
         command: str(args, "command"),
         cwd: typeof args.cwd === "string" ? args.cwd : null,
+        env: envVarsFor(root),
       });
       const parts = [
         `exit code: ${result.exit_code ?? "unknown"} (${result.success ? "success" : "failure"})`,
@@ -420,6 +564,14 @@ export function describeToolCall(toolName: string, args: ToolArgs): string {
       return `Run: ${typeof args.command === "string" ? args.command : ""}`;
     case KODE_ASK_TOOL:
       return typeof args.question === "string" ? args.question : "Choose an option";
+    case KODE_WEB_SEARCH_TOOL:
+      return `Search the web: ${typeof args.query === "string" ? args.query : ""}`;
+    case KODE_LOAD_SKILL_TOOL:
+      return `Load skill: ${typeof args.name === "string" ? args.name : ""}`;
+    case KODE_SEARCH_DOCS_TOOL:
+      return `Search docs: ${typeof args.query === "string" ? args.query : ""}`;
+    case KODE_FETCH_URL_TOOL:
+      return `Read ${typeof args.url === "string" ? args.url : "a web page"}`;
     default:
       return toolName;
   }

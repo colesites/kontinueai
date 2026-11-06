@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Search, X, MessageSquare } from "lucide-react";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { formatWhen } from "@/components/layout/sidebar/SidebarChatRow";
@@ -30,13 +31,15 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
     c.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  return (
+  // Portal to <body>: the sidebar is its own stacking context, so rendering
+  // the modal inside it let the main view (composer) paint on top.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-md p-4 animate-in fade-in duration-200"
       onClick={() => onOpenChange(false)}
     >
       <div
-        className="w-full max-w-2xl rounded-2xl border border-white/[0.1] bg-popover/90 backdrop-blur-xl shadow-2xl overflow-hidden flex flex-col text-white"
+        className="w-full max-w-2xl liquid-glass-dropdown overflow-hidden flex flex-col text-white"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header Search Bar */}
@@ -74,7 +77,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
                   selectChat(c.id);
                   onOpenChange(false);
                 }}
-                className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-1.5 h-[26px] text-left transition-colors hover:bg-black/60 group"
+                className="flex w-full items-center justify-between gap-3 rounded-full px-3 py-1.5 h-[26px] text-left transition-colors hover:bg-white/[0.06] group"
               >
                 <div className="flex items-center gap-2.5 min-w-0 flex-1">
                   <MessageSquare
@@ -94,6 +97,7 @@ export function SearchModal({ open, onOpenChange }: SearchModalProps) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

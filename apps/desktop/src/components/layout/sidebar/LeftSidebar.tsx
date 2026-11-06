@@ -7,7 +7,7 @@ const LeftSidebar = () => {
   return (
     <Sidebar
       variant="sidebar"
-      defaultSize="16rem"
+      defaultSize="18.5rem"
       minSize="15rem"
       maxSize="36rem"
       innerClassName="liquid-glass-sidebar flex flex-col h-full"

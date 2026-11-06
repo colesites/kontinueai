@@ -4,22 +4,22 @@ import { Reveal } from "@/components/anim/Reveal";
 
 const pillars = [
 	{
-		title: "K-AI 1.0",
+		title: "Continue any chat",
 		description:
-			"Use Kontinue AI’s native intelligence layer for supported everyday work, writing, research assistance, reasoning, and coding.",
-		href: "/kontinue-model",
-	},
-	{
-		title: "Import and continue",
-		description:
-			"Bring a supported conversation into Kontinue AI and continue from the available message context instead of rebuilding it manually.",
+			"Bring a conversation over from ChatGPT, Claude or Gemini and finish what you started, with the history in place.",
 		href: "/import-ai-conversations",
 	},
 	{
-		title: "Access leading models",
+		title: "Never wait on a reset",
 		description:
-			"Choose from selected models across leading providers without scattering your work across disconnected applications.",
+			"When one model runs out, switch to another in the same thread. Your conversation stays exactly where it is.",
 		href: "/supported-models",
+	},
+	{
+		title: "K-AI 1.0 included",
+		description:
+			"Our own model comes with every plan, free included, so there is always something to keep going with.",
+		href: "/kontinue-model",
 	},
 ];
 
@@ -30,13 +30,13 @@ export function ProductDefinitionSection() {
 				<Reveal className="max-w-3xl">
 					<p className="eyebrow">What is Kontinue AI?</p>
 					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
-						More than a multi-model workspace
+						Where your chats go when the limit hits
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						Kontinue AI is a multi-model AI platform with K-AI 1.0, access to
-						other leading models, and technology for moving supported AI
-						conversations into one place. Ask, create, research, reason, and
-						code while keeping your conversations portable.
+						Kontinue AI picks up conversations from ChatGPT, Claude and Gemini
+						so you can finish what you started. Once you are here, K-AI 1.0 and
+						leading models live in one place, so one app’s limit never stops
+						your work again.
 					</p>
 				</Reveal>
 

@@ -7,15 +7,15 @@ const stack = [
 		name: "ChatGPT",
 		src: "/openai.svg",
 		price: "$20",
-		note: "Separate history",
+		note: "Limit reached",
 	},
 	{
 		name: "Claude",
 		src: "/claude-ai-icon.svg",
 		price: "$20",
-		note: "Own limits",
+		note: "Back in 5 hours",
 	},
-	{ name: "Gemini", src: "/gemini.svg", price: "$20", note: "Lost context" },
+	{ name: "Gemini", src: "/gemini.svg", price: "$20", note: "Starts from zero" },
 ];
 
 export function ProblemSection() {
@@ -25,29 +25,29 @@ export function ProblemSection() {
 				<Reveal className="max-w-xl">
 					<p className="eyebrow">The problem</p>
 					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
-						Five subscriptions, one big{" "}
+						The limit always hits in the middle of your{" "}
 						<RotatingWord
-							words={["mess", "hassle", "bill", "headache"]}
+							words={["essay", "bug fix", "pitch", "thesis"]}
 							className="text-brand"
 						/>
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						You move between ChatGPT, Claude and Gemini depending on the month.
-						Your conversations scatter across apps, every one has its own limit,
-						and the bills quietly climb past $60.
+						You are deep in a thread when the app tells you to come back later.
+						Starting fresh somewhere else means pasting, explaining it all again
+						and losing your flow.
 					</p>
 
 					<div className="mt-10 flex gap-10">
 						<div>
-							<div className="font-display text-4xl tracking-tight">$60+</div>
+							<div className="font-display text-4xl tracking-tight">5 hrs</div>
 							<div className="mt-1 text-sm text-muted-foreground">
-								Typical monthly AI stack
+								Can pass before a limit resets
 							</div>
 						</div>
 						<div className="border-l border-border pl-10">
 							<div className="font-display text-4xl tracking-tight">0</div>
 							<div className="mt-1 text-sm text-muted-foreground">
-								Context shared between them
+								Context that follows you to a new app
 							</div>
 						</div>
 					</div>
@@ -96,7 +96,7 @@ export function ProblemSection() {
 							</span>
 							<span className="text-sm font-semibold">Kontinue AI</span>
 							<span className="ml-auto rounded-full bg-brand px-2.5 py-1 text-[11px] font-semibold text-brand-foreground">
-								One workspace
+								Keep going
 							</span>
 							<span className="w-20 text-right text-sm font-semibold tabular-nums">
 								from $5.99<span className="opacity-70">/mo</span>

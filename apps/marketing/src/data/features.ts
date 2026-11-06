@@ -8,25 +8,25 @@ export interface HowItWorksStep {
 export const howItWorksSteps: HowItWorksStep[] = [
 	{
 		index: "01",
-		title: "Import a supported conversation",
+		title: "Pick up the thread",
 		description:
-			"Paste a supported shared-conversation link or upload an available export. Supported messages are prepared in sequence for the next model.",
+			"Your imported messages stay in order, so the next model sees everything the last one saw.",
 		image:
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229188/import_d8xvho.jpg",
 	},
 	{
 		index: "02",
-		title: "Switch models in one click",
+		title: "Switch models when one runs out",
 		description:
-			"Continue the same thread with K-AI 1.0 or another supported model. The available conversation history stays in the thread.",
+			"Out of one model? Pick another for the next reply. The conversation stays in the same thread.",
 		image:
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229140/anymodel_vdvx4h.jpg",
 	},
 	{
 		index: "03",
-		title: "One plan, every model",
+		title: "One plan instead of three",
 		description:
-			"Use selected models and Kontinue tools from one account. Model availability and usage limits depend on your plan.",
+			"Get leading models and Kontinue tools in a single subscription. Model access and limits depend on your plan.",
 		image:
 			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229062/lessmoney_umvfhq.jpg",
 	},

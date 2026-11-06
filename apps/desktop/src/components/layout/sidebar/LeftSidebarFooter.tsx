@@ -28,6 +28,7 @@ import {
 import { useState } from "react";
 import { useTheme } from "@/components/theme/theme-provider";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
+import { PLAN_LABEL } from "@/components/usage/KodeUsageCard";
 
 const LeftSidebarFooter = () => {
   const { signOut, openUserProfile } = useClerk();
@@ -35,11 +36,13 @@ const LeftSidebarFooter = () => {
   const { openSettings } = useKodeWorkspace();
 
   const name = user?.fullName || user?.firstName || user?.primaryEmailAddress?.emailAddress || "User";
+  // The footer shows the first name, like "Cole · Pro".
+  const shortName = user?.firstName || name.split(" ")[0] || name;
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const initials = (user?.firstName?.[0] ?? "U") + (user?.lastName?.[0] ?? "");
 
-  const usage = useQuery(api.kode.getUsage, {});
-  const planName = usage?.plan === "pro" ? "Pro" : "Free";
+  const usage = useQuery(api.kodeUsage.getUsage, {});
+  const planName = PLAN_LABEL[usage?.plan ?? "free"];
   const [menuOpen, setMenuOpen] = useState(false);
   const { theme, setTheme } = useTheme();
 
@@ -52,32 +55,31 @@ const LeftSidebarFooter = () => {
   };
 
   return (
-    <div className="p-2 border-t border-white/60 dark:border-border">
-      {/* Full Width Account Profile Dropdown */}
+    <div className="flex items-center gap-1 border-t border-white/60 p-2 dark:border-border">
+      {/* Account menu: avatar, "Name · Plan" and a chevron; Settings sits on the right. */}
       <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-2 rounded-xl border border-transparent hover:border-white/80 hover:bg-white/60 dark:hover:bg-accent hover:shadow-[0_2px_8px_rgba(0,0,0,0.03),inset_0_1px_1px_rgba(255,255,255,0.85)] px-2.5 py-1.5 text-xs text-zinc-700 dark:text-muted-foreground transition-all duration-150 h-[34px] cursor-pointer"
+            className="flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-full py-1 pr-2.5 pl-1 text-left transition-colors duration-150 hover:bg-black/[0.04] data-[state=open]:bg-black/[0.04] dark:hover:bg-white/[0.05] dark:data-[state=open]:bg-white/[0.05]"
           >
-            <div className="flex min-w-0 items-center gap-2">
-              {user?.imageUrl ? (
-                <img
-                  src={user.imageUrl}
-                  alt={name}
-                  className="size-5 shrink-0 rounded-full object-cover ring-1 ring-purple-500/20"
-                />
-              ) : (
-                <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-purple-500/15 text-[9px] font-bold text-purple-700 dark:text-purple-200 ring-1 ring-purple-500/30">
-                  {initials}
-                </div>
-              )}
-              <span className="font-medium text-zinc-800 dark:text-foreground truncate text-xs">
-                {name} · {planName}
+            {user?.imageUrl ? (
+              <img
+                src={user.imageUrl}
+                alt=""
+                className="size-7 shrink-0 rounded-full object-cover"
+              />
+            ) : (
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-[11px] font-medium text-zinc-700 dark:bg-white/[0.12] dark:text-foreground/85">
+                {initials.slice(0, 1).toUpperCase()}
               </span>
-            </div>
-            <ChevronDown size={13} className="shrink-0 text-muted-foreground" />
+            )}
+            <span className="flex min-w-0 items-center gap-1 text-[13px]">
+              <span className="truncate font-medium text-zinc-800 dark:text-foreground">{shortName}</span>
+              <span className="shrink-0 text-muted-foreground">· {planName}</span>
+            </span>
+            <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
           </button>
         </DropdownMenuTrigger>
 
@@ -96,6 +98,7 @@ const LeftSidebarFooter = () => {
               <DropdownMenuSeparator />
             </>
           )}
+
 
           <DropdownMenuItem onSelect={() => handleOpenProfile()}>
             <UserCircle size={14} strokeWidth={1.25} />
@@ -180,6 +183,15 @@ const LeftSidebarFooter = () => {
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+      <button
+        type="button"
+        aria-label="Settings"
+        title="Settings (⌘,)"
+        onClick={() => openSettings("general")}
+        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+      >
+        <Settings size={17} strokeWidth={1.5} />
+      </button>
     </div>
   );
 };

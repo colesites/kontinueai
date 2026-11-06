@@ -7,8 +7,15 @@ use tauri::Manager;
 
 mod kode_import;
 
+mod panel;
+mod cli_agents;
+
 #[cfg(target_os = "macos")]
 mod macos_window;
+
+// Center-to-center distance (points) between the macOS traffic lights.
+#[cfg(target_os = "macos")]
+const TRAFFIC_LIGHT_SPACING: f64 = 22.0;
 
 const OPENROUTER_CHAT_COMPLETIONS_URL: &str = "https://openrouter.ai/api/v1/chat/completions";
 const VERCEL_AI_GATEWAY_CHAT_COMPLETIONS_URL: &str =
@@ -67,6 +74,21 @@ struct KodeChatRequest {
     // Optional thinking / reasoning toggle from the user
     #[serde(default)]
     reasoning_enabled: Option<bool>,
+    // Route through the Kontinue server (plan access + usage metering) with
+    // the user's Clerk session token. Personal-key (BYOK) routes stay direct.
+    #[serde(default)]
+    kontinue_server: Option<bool>,
+    #[serde(default)]
+    session_token: Option<String>,
+    // Fast mode: the server swaps in the model's fast variant when allowed.
+    #[serde(default)]
+    fast: Option<bool>,
+    // "kode" (default) → /api/kode/chat, "home" → /api/desktop/chat.
+    #[serde(default)]
+    kontinue_surface: Option<String>,
+    // Requested reasoning effort ("low" | "medium" | "high" | "xhigh" | "max").
+    #[serde(default)]
+    reasoning_effort: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -122,12 +144,25 @@ async fn kode_chat(
     request: KodeChatRequest,
     on_event: Channel<KodeStreamEvent>,
 ) -> Result<KodeChatResponse, String> {
-    let route = resolve_model_route(
+    let direct = resolve_model_route(
         &request.model_id,
         request.byok_key.as_deref(),
         request.byok_provider.as_deref(),
-    )?;
-    let payload = route.payload(
+    );
+    let is_byok_direct = matches!(&direct, Ok(route) if route.name.ends_with("(BYOK)"));
+    let use_server = request.kontinue_server.unwrap_or(false) && !is_byok_direct;
+    let route = if use_server {
+        let token = request
+            .session_token
+            .clone()
+            .filter(|token| !token.trim().is_empty())
+            .ok_or("Your session expired. Sign in again to use Kode.")?;
+        let home = request.kontinue_surface.as_deref() == Some("home");
+        kontinue_route(&request.model_id, token, home)
+    } else {
+        direct?
+    };
+    let mut payload = route.payload(
         request.messages,
         request.tools.as_ref(),
         request.tool_choice.as_ref(),
@@ -135,6 +170,17 @@ async fn kode_chat(
         request.reasoning_enabled,
         true,
     );
+    if use_server && request.reasoning_enabled != Some(false) {
+        if let Some(effort) = request.reasoning_effort.as_deref() {
+            payload["reasoning"] = json!({ "enabled": true, "effort": effort });
+        }
+    }
+    if use_server {
+        payload["kontinue"] = json!({
+            "modelId": request.model_id,
+            "fast": request.fast.unwrap_or(false),
+        });
+    }
     let client = reqwest::Client::new();
 
     // Open the streaming connection. We only retry the *connection* (transient
@@ -165,6 +211,20 @@ async fn kode_chat(
                     } else {
                         ""
                     };
+                    if route.name == KONTINUE_ROUTE_NAME {
+                        // The server sends user-facing messages (limits, plan access).
+                        // An HTML page instead (e.g. a 404) means the route isn't there.
+                        let looks_like_html = message.trim_start().starts_with('<')
+                            || message.contains("<html")
+                            || message.contains("next-error");
+                        if looks_like_html || status.as_u16() == 404 {
+                            return Err(format!(
+                                "Couldn't reach Kontinue's model server ({status} from {}). If you're developing, run the web app and set KONTINUE_API_URL in apps/desktop/.env; otherwise deploy the latest web app.",
+                                route.url
+                            ));
+                        }
+                        return Err(message);
+                    }
                     return Err(format!("{} returned {status}: {message}{hint}", route.name));
                 }
                 break response;
@@ -733,6 +793,74 @@ fn resolve_model_route(
     })
 }
 
+const KONTINUE_ROUTE_NAME: &str = "Kontinue";
+
+/// Kontinue's Kode model proxy (apps/web/src/app/api/kode/chat). Override with
+/// KONTINUE_API_URL (e.g. http://localhost:3001 while developing the web app).
+fn kontinue_base_url() -> &'static str {
+    static URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    URL.get_or_init(|| {
+        // KONTINUE_API_URL if set, else the same web app URL the frontend uses
+        // (VITE_WEB_APP_URL), else production.
+        std::env::var("KONTINUE_API_URL")
+            .or_else(|_| std::env::var("VITE_WEB_APP_URL"))
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "https://chat.kontinueai.com".to_string())
+            .trim_end_matches('/')
+            .to_string()
+    })
+}
+
+/// POST JSON to the Kontinue API as the signed-in user (e.g. starting a Stripe
+/// checkout). Runs in Rust so the web view isn't subject to CORS.
+#[tauri::command]
+async fn kontinue_api_post(path: String, session_token: String, body: Value) -> Result<Value, String> {
+    if !path.starts_with("/api/") || path.contains("..") {
+        return Err("Invalid API path".to_string());
+    }
+    let response = reqwest::Client::new()
+        .post(format!("{}{}", kontinue_base_url(), path))
+        .bearer_auth(session_token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|error| format!("Couldn't reach Kontinue: {error}"))?;
+    let status = response.status();
+    let text = response.text().await.unwrap_or_default();
+    if !status.is_success() {
+        return Err(extract_error_message(&text).unwrap_or_else(|| format!("Request failed ({status})")));
+    }
+    serde_json::from_str(&text).map_err(|error| format!("Unexpected response: {error}"))
+}
+
+fn kontinue_chat_url(home: bool) -> &'static str {
+    static KODE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    static HOME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    if home {
+        HOME.get_or_init(|| format!("{}/api/desktop/chat", kontinue_base_url()))
+    } else {
+        KODE.get_or_init(|| format!("{}/api/kode/chat", kontinue_base_url()))
+    }
+}
+
+fn kontinue_route(model_id: &str, session_token: String, home: bool) -> ModelRoute {
+    let is_kai = model_id == K_AI_MODEL_ID || model_id == "k-ai-1.0";
+    ModelRoute {
+        name: KONTINUE_ROUTE_NAME,
+        url: kontinue_chat_url(home),
+        api_key: session_token,
+        model_id: model_id.to_string(),
+        fallback_models: None,
+        include_reasoning: true,
+        // Branded models (Kode 1.0, K-AI) get the identity lock.
+        is_kode: is_kai || model_id == KODE_MODEL_ID || model_id == "kode-1.0",
+        headers: reqwest::header::HeaderMap::new(),
+        byok: None,
+        is_anthropic_native: false,
+    }
+}
+
 fn is_gateway_model(model_id: &str) -> bool {
     model_id != KODE_MODEL_ID
         && model_id != "kode-1.0"
@@ -1091,6 +1219,7 @@ async fn kode_run_command(
     root: String,
     command: String,
     cwd: Option<String>,
+    env: Option<std::collections::HashMap<String, String>>,
 ) -> Result<KodeCommandResult, String> {
     let working_dir = safe_join(&root, cwd.as_deref().unwrap_or(""))?;
     if !working_dir.is_dir() {
@@ -1107,6 +1236,10 @@ async fn kode_run_command(
         c
     };
     cmd.current_dir(&working_dir);
+    // Environment variables from the project's environment settings.
+    for (name, value) in panel::allowed_env(env) {
+        cmd.env(name, value);
+    }
 
     // Cap runtime so a hung/interactive command can't block the agent forever.
     let output = match tokio::time::timeout(
@@ -1313,9 +1446,14 @@ async fn start_desktop_auth_server(app: tauri::AppHandle) -> Result<u16, String>
 // are available to `std::env::var`. Best-effort: ignore if a file is absent, and
 // don't override variables already set in the real environment.
 fn load_env_files() {
-    let _ = dotenvy::from_filename("../.env.local");
-    let _ = dotenvy::from_filename("../.env.production.local");
-    let _ = dotenvy::from_filename("../.env.production");
+    // Dev builds (`tauri dev`) read .env.local; release builds read
+    // .env.production. Earlier files win (dotenvy never overrides a set value).
+    if cfg!(debug_assertions) {
+        let _ = dotenvy::from_filename("../.env.local");
+    } else {
+        let _ = dotenvy::from_filename("../.env.production.local");
+        let _ = dotenvy::from_filename("../.env.production");
+    }
     let _ = dotenvy::from_filename("../.env");
     let _ = dotenvy::dotenv();
 }
@@ -1342,6 +1480,8 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .manage(panel::PtyState::default())
+        .manage(cli_agents::CliRunState::default())
         .setup(|_app| {
             // Linux and Windows dev builds need the scheme registered at runtime;
             // macOS registers it from the bundle's Info.plist.
@@ -1362,7 +1502,12 @@ pub fn run() {
                     let delayed = window.clone();
                     tauri::async_runtime::spawn(async move {
                         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                        let _ = macos_window::apply_traffic_light_spacing(&delayed, 30.0);
+                        // AppKit must be touched on the main thread; calling it
+                        // from this tokio worker throws an ObjC exception and aborts.
+                        let target = delayed.clone();
+                        let _ = delayed.run_on_main_thread(move || {
+                            let _ = macos_window::apply_traffic_light_spacing(&target, TRAFFIC_LIGHT_SPACING);
+                        });
                     });
 
                     let resize_window = window.clone();
@@ -1370,7 +1515,7 @@ pub fn run() {
                         if matches!(event, tauri::WindowEvent::Resized(_)) {
                             let _ = macos_window::apply_traffic_light_spacing(
                                 &resize_window,
-                                30.0,
+                                TRAFFIC_LIGHT_SPACING,
                             );
                         }
                     });
@@ -1401,6 +1546,26 @@ pub fn run() {
             ,kode_import::kode_project_state
             ,kode_import::kode_session_updated_at
             ,start_desktop_auth_server
+            ,kontinue_api_post
+            ,panel::panel_git_status
+            ,panel::panel_git_diff
+            ,panel::panel_git_branches
+            ,panel::panel_git_switch
+            ,panel::panel_git_worktree_add
+            ,panel::pty_spawn
+            ,panel::pty_write
+            ,panel::pty_resize
+            ,panel::pty_kill
+            ,cli_agents::kode_cli_detect
+            ,cli_agents::kode_cli_new_run
+            ,cli_agents::kode_cli_run
+            ,cli_agents::kode_cli_stop
+            ,cli_agents::kode_cli_update
+            ,cli_agents::kode_cli_auth
+            ,cli_agents::kode_cli_models
+            ,cli_agents::kode_cli_secret_set
+            ,cli_agents::kode_cli_secret_remove
+            ,cli_agents::kode_cli_secret_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

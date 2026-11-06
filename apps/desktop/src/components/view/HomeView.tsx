@@ -3,7 +3,6 @@ import {
   Check,
   ChevronDown,
   ArrowUpRight,
-  ArrowDown,
   X,
   Link2,
   SlidersHorizontal,
@@ -41,6 +40,8 @@ import { useUser } from "@clerk/clerk-react";
 import { ChatInput, type StagedAttachment } from "@/components/chat/ChatInput";
 import { ChatMessage } from "@/components/chat/ChatMessage";
 import { ShareModal } from "@/components/chat/ShareModal";
+import { ScrollJumpControls } from "@/components/chat/ScrollJumpControls";
+import { useAppSettings } from "@/lib/app-settings";
 import { DesktopChatTurnNavigator, type ChatTurn } from "@/components/chat/DesktopChatTurnNavigator";
 import { cn } from "@/lib/utils";
 import { useQuery } from "convex/react";
@@ -190,13 +191,11 @@ function HowItWorksModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Steps */}
-        <div className="relative mt-6">
-          <div className="absolute left-[18px] top-[20px] bottom-[20px] w-px bg-purple-200/60 dark:bg-purple-900/40" />
-
-          <div className="space-y-6">
+        <div className="mt-6">
+          <div className="space-y-5">
             {steps.map((step, i) => (
               <div key={i} className="flex items-start gap-4">
-                <div className="relative z-10 flex size-9 shrink-0 items-center justify-center rounded-xl border border-purple-500/30 bg-purple-100/90 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200 text-xs font-semibold shadow-xs">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20 text-xs font-semibold text-purple-700 dark:text-purple-200 shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)]">
                   {step.num}
                 </div>
                 <div className="pt-0.5">
@@ -276,14 +275,14 @@ function ImportLinkModal({ onClose }: { onClose: () => void }) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            className="kontinue-3d h-9 rounded-full px-4 text-sm text-foreground/80 cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="button"
             disabled={!url.trim()}
-            className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-30 transition-colors cursor-pointer shadow-[0_2px_10px_rgba(147,51,234,0.3)]"
+            className="kontinue-3d-primary h-9 rounded-full px-4 text-sm font-semibold cursor-pointer disabled:cursor-default disabled:opacity-40"
           >
             Import chat
           </button>
@@ -390,7 +389,7 @@ function ChooseModelModal({
             onClick={() => setActiveProvider(null)}
             className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
               activeProvider === null
-                ? "bg-purple-600 text-white font-semibold shadow-sm"
+                ? "kontinue-menu-active font-semibold"
                 : "liquid-glass-pill text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -406,7 +405,7 @@ function ChooseModelModal({
               onClick={() => setActiveProvider(p)}
               className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all cursor-pointer ${
                 activeProvider === p
-                  ? "bg-purple-600 text-white font-semibold shadow-sm"
+                  ? "kontinue-menu-active font-semibold"
                   : "liquid-glass-pill text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -581,7 +580,7 @@ export default function HomeView() {
   const [modelModalOpen, setModelModalOpen] = useState(false);
 
   const [showScrollToBottomButton, setShowScrollToBottomButton] = useState(false);
-  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
+  const [showScrollToTopButton, setShowScrollToTopButton] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -638,6 +637,14 @@ export default function HomeView() {
     const { scrollTop, scrollHeight, clientHeight } = el;
     const shouldShowBottom = scrollHeight - scrollTop - clientHeight > 200;
     setShowScrollToBottomButton(shouldShowBottom);
+    setShowScrollToTopButton(scrollTop > 400);
+  }, []);
+
+  const getScrollElement = useCallback(() => scrollContainerRef.current, []);
+  const { showTurnNavigator } = useAppSettings();
+
+  const scrollToTop = useCallback(() => {
+    scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -645,7 +652,6 @@ export default function HomeView() {
   }, []);
 
   const handleJumpToTurn = useCallback((turnId: string) => {
-    setActiveTurnId(turnId);
     const el = document.getElementById(turnId);
     if (el) {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -739,6 +745,9 @@ export default function HomeView() {
       let assistantReasoning = "";
 
       await sendKodeChat({
+        // Through the Kontinue server: plan access + monthly request quota.
+        kontinueServer: true,
+        surface: "home",
         messages: messagesPayload,
         modelId: selectedModel.id,
         reasoningEnabled: sendReasoningEnabled ?? reasoningEnabled,
@@ -809,10 +818,10 @@ export default function HomeView() {
   return (
     <div className="relative flex h-full w-full flex-col bg-transparent dark:bg-background text-foreground overflow-hidden">
       {/* Floating Desktop Chat Turn Navigator on the Right Side */}
-      {isChatActive && (
+      {isChatActive && showTurnNavigator && (
         <DesktopChatTurnNavigator
           turns={turns}
-          activeTurnId={activeTurnId}
+          getScrollElement={getScrollElement}
           onJumpToTurn={handleJumpToTurn}
         />
       )}
@@ -828,7 +837,7 @@ export default function HomeView() {
             data-tauri-drag-region
             className={cn(
               "relative z-20 flex h-13 shrink-0 items-center justify-between px-6",
-              isCollapsed && (isFullscreen ? "pl-[120px]" : "pl-[234px]")
+              isCollapsed && (isFullscreen ? "pl-[120px]" : "pl-[214px]")
             )}
           >
             <DropdownMenu>
@@ -933,20 +942,13 @@ export default function HomeView() {
 
           {/* Bottom Chat Input Bar (Same max-w-3xl width as messages) */}
           <div className="shrink-0 p-6 dark:bg-gradient-to-t dark:from-background dark:via-background/85 dark:to-transparent z-20 relative">
-            {/* Scroll-to-Bottom Floating Pill */}
-            {showScrollToBottomButton && (
-              <div className="absolute -top-5 left-1/2 -translate-x-1/2 z-30 animate-fade-in">
-                <button
-                  type="button"
-                  onClick={scrollToBottom}
-                  className="liquid-glass-pill rounded-full inline-flex items-center gap-1.5 px-3.5 py-1.5 text-purple-700 dark:text-purple-200 text-xs font-medium transition-all hover:scale-105 active:scale-95 cursor-pointer shadow-md"
-                  title="Scroll to bottom"
-                >
-                  <ArrowDown size={12} className="text-purple-600 dark:text-purple-300" />
-                  <span>Jump to latest</span>
-                </button>
-              </div>
-            )}
+            <ScrollJumpControls
+              className="-top-5"
+              showTop={showScrollToTopButton}
+              showLatest={showScrollToBottomButton}
+              onTop={scrollToTop}
+              onLatest={scrollToBottom}
+            />
 
             <div className="max-w-3xl mx-auto">
               <ChatInput
@@ -1031,7 +1033,7 @@ export default function HomeView() {
                   onClick={() => void handleSend(starter.prompt)}
                   className="liquid-glass-card group flex items-start gap-3 rounded-[22px] p-3.5 text-left cursor-pointer transition-all active:scale-[0.99]"
                 >
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20 text-base shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] group-hover:scale-105 transition-transform">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-full bg-purple-500/10 dark:bg-purple-500/15 border border-purple-500/20 text-base shadow-[inset_0_1px_1px_rgba(255,255,255,0.8)] group-hover:scale-105 transition-transform">
                     {starter.icon}
                   </div>
                   <div className="min-w-0 flex-1 pt-0.5">
@@ -1113,7 +1115,7 @@ export default function HomeView() {
               <button
                 type="button"
                 onClick={() => setRenameModalOpen(false)}
-                className="rounded-xl px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
+                className="kontinue-3d rounded-full px-3 py-1.5 text-xs text-foreground/80 cursor-pointer"
               >
                 Cancel
               </button>
@@ -1126,7 +1128,7 @@ export default function HomeView() {
                   }
                 }}
                 disabled={!newTitle.trim()}
-                className="rounded-xl bg-purple-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 transition-colors disabled:opacity-40 shadow-[0_2px_10px_rgba(147,51,234,0.3)] cursor-pointer"
+                className="kontinue-3d-primary rounded-full px-3.5 py-1.5 text-xs font-semibold disabled:opacity-40 cursor-pointer"
               >
                 Save
               </button>

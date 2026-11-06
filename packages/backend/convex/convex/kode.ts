@@ -1,47 +1,10 @@
 import { v } from "convex/values";
-import { getPersistedPlanTier, type PersistedPlanTier } from "../lib/plan";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 
-// ─── Usage metering ──────────────────────────────────────────────────────────
-// The Kode IDE is AGENTIC: one prompt fans out into many model calls + tool runs,
-// so a per-MESSAGE count badly mismatches real cost ("build goliath in 2 prompts").
-// We therefore meter by TOKENS — the sum of input+output tokens across every model
-// call in a turn — against ONE GENERAL daily + weekly budget per tier (all models
-// counted the same), like the general allowance Claude Code / Codex show users.
-// Stored in the shared `usage` table (the `requestCount` field holds summed tokens
-// for these kode buckets). Budgets are tunable.
-const DAY_MS = 86_400_000;
-const WEEK_MS = 7 * DAY_MS;
-
-type KodeUsageLimits = { daily: number; weekly: number };
-
-// General token budgets per tier (input+output, summed across the whole turn).
-function getKodeUsageLimits(plan: PersistedPlanTier): KodeUsageLimits {
-	switch (plan) {
-		case "pro":
-			return { daily: 50_000_000, weekly: 250_000_000 };
-		case "starter":
-			return { daily: 10_000_000, weekly: 50_000_000 };
-		default:
-			return { daily: 1_000_000, weekly: 5_000_000 };
-	}
-}
-
-/** First ms of the current UTC day. */
-function utcDayStart(now: number): number {
-	const d = new Date(now);
-	return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
-}
-
-/** First ms of the current UTC week (weeks start Monday). */
-function utcWeekStart(now: number): number {
-	const dayStart = utcDayStart(now);
-	const dayOfWeek = new Date(dayStart).getUTCDay(); // 0=Sun … 6=Sat
-	const daysSinceMonday = (dayOfWeek + 6) % 7;
-	return dayStart - daysSinceMonday * DAY_MS;
-}
+// Usage is metered by model cost in ./kodeUsage.ts (authorized + recorded by
+// the Kontinue server for every model request), not by saved messages.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Kode IDE chat backend.
@@ -96,49 +59,6 @@ async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
 	}
 
 	return user;
-}
-
-/** Add a turn's token cost to the user's general daily + weekly budgets. */
-async function recordKodeTokens(
-	ctx: MutationCtx,
-	userId: Id<"users">,
-	tokens: number,
-	now: number,
-): Promise<void> {
-	if (tokens <= 0) return;
-
-	const windows = [
-		{ bucketType: "day_kode" as const, bucketStartMs: utcDayStart(now) },
-		{ bucketType: "week_kode" as const, bucketStartMs: utcWeekStart(now) },
-	];
-
-	for (const { bucketType, bucketStartMs } of windows) {
-		const existing = await ctx.db
-			.query("usage")
-			.withIndex("by_owner_bucket", (q) =>
-				q
-					.eq("ownerId", userId)
-					.eq("bucketType", bucketType)
-					.eq("bucketStartMs", bucketStartMs),
-			)
-			.unique();
-
-		if (existing) {
-			// `requestCount` stores summed tokens for these kode buckets.
-			await ctx.db.patch(existing._id, {
-				requestCount: existing.requestCount + tokens,
-				updatedAt: now,
-			});
-		} else {
-			await ctx.db.insert("usage", {
-				ownerId: userId,
-				bucketType,
-				bucketStartMs,
-				requestCount: tokens,
-				updatedAt: now,
-			});
-		}
-	}
 }
 
 /** Load a Kode chat the caller owns, or throw. */
@@ -462,70 +382,10 @@ export const addMessage = mutation({
 			updatedAt: now,
 		});
 
-		// Meter token usage on the assistant turn (the turn that did the work).
-		if (args.role === "assistant" && args.tokens && args.tokens > 0) {
-			await recordKodeTokens(ctx, user._id, args.tokens, now);
-		}
+		// `tokens` is accepted for older desktop builds but no longer metered
+		// here; the server records real model cost per request (kodeUsage.ts).
 
 		return messageId;
-	},
-});
-
-/**
- * General token usage for the signed-in user: daily + weekly used/limit and the
- * next reset for each. Powers the sidebar "Usage remaining" menu. (`requestCount`
- * stores summed tokens for these kode buckets.)
- */
-export const getUsage = query({
-	args: {},
-	handler: async (ctx) => {
-		const identity = await ctx.auth.getUserIdentity();
-		if (!identity) return null;
-
-		const user = await ctx.db
-			.query("users")
-			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
-			.unique();
-
-		if (!user) return null;
-
-		const now = Date.now();
-		const dayStart = utcDayStart(now);
-		const weekStart = utcWeekStart(now);
-		const plan = getPersistedPlanTier(user.plan);
-		const limits = getKodeUsageLimits(plan);
-
-		const bucketUsed = async (
-			bucketType: "day_kode" | "week_kode",
-			bucketStartMs: number,
-		): Promise<number> => {
-			const row = await ctx.db
-				.query("usage")
-				.withIndex("by_owner_bucket", (q) =>
-					q
-						.eq("ownerId", user._id)
-						.eq("bucketType", bucketType)
-						.eq("bucketStartMs", bucketStartMs),
-				)
-				.unique();
-			return row?.requestCount ?? 0;
-		};
-
-		const [dayUsed, weekUsed] = await Promise.all([
-			bucketUsed("day_kode", dayStart),
-			bucketUsed("week_kode", weekStart),
-		]);
-
-		return {
-			plan,
-			// Unit of `used`/`limit` is TOKENS.
-			daily: { used: dayUsed, limit: limits.daily, resetAt: dayStart + DAY_MS },
-			weekly: {
-				used: weekUsed,
-				limit: limits.weekly,
-				resetAt: weekStart + WEEK_MS,
-			},
-		};
 	},
 });
 

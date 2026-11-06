@@ -1,5 +1,7 @@
 "use client";
 
+import { getKodeModelAccess, KODE_MODELS } from "@repo/ai/lib/kode";
+import { getKodeUsageLimits } from "@repo/ai/lib/kode-usage";
 import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import {
 	getImportUploadLimitBytes,
@@ -222,7 +224,13 @@ const sections: Array<{ title: string; rows: Row[] }> = [
 				values: values((tier) => PLAN_DEFINITIONS[tier].canvas),
 			},
 			{
-				label: "Kode",
+				label: "Kode desktop",
+				description:
+					"The Kode coding app. Usage is measured by real model cost, so lighter models go further. A 5-hour and a weekly limit apply; paid plans keep Kode 1.0 working after a limit is reached. Usage shown relative to Free.",
+				values: values((tier) => kodeDesktopSummary(tier)),
+			},
+			{
+				label: "Kode on the web",
 				description:
 					"Access and build ceilings are included. Kode reserves AI units while it works, then returns unused units. One unit covers up to 25K model tokens and costs 25 shared AI usage credits.",
 				values: values((tier) => {
@@ -234,6 +242,22 @@ const sections: Array<{ title: string; rows: Row[] }> = [
 		],
 	},
 ];
+
+function kodeDesktopSummary(tier: PlanTier): string {
+	const usage = Math.round(
+		getKodeUsageLimits(tier).monthlyMicros / getKodeUsageLimits("free").monthlyMicros,
+	);
+	const models = KODE_MODELS.filter((model) => getKodeModelAccess(model, tier) === "included");
+	const access =
+		tier === "free"
+			? `Kode 1.0 + ${models.length - 1} light models`
+			: tier === "starter" || tier === "plus"
+				? `${models.length} light models`
+				: tier === "pro"
+					? "All models · Fast mode"
+					: "All models incl. Fable & Astra · Fast mode";
+	return tier === "free" ? access : `${access} · ${usage}× usage`;
+}
 
 function Help({ label, children }: { label: string; children: ReactNode }) {
 	return (

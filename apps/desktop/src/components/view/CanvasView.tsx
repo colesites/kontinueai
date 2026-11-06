@@ -635,7 +635,7 @@ function CreationLightboxModal({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 mx-auto flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-card ring-1 ring-foreground/10 shadow-2xl lg:flex-row"
+        className="relative z-10 mx-auto flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden liquid-glass-dropdown lg:flex-row"
       >
         {/* Close Button */}
         <button

@@ -436,18 +436,27 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       if (gap) gap.style.transition = "none"
       if (container) container.style.transition = "none"
 
+      // Resize by writing the CSS variable directly, at most once per frame.
+      // No React state updates while dragging, so nothing re-renders.
+      let frame: number | null = null
+      let pendingWidth = startWidth
       const onPointerMove = (moveEvent: PointerEvent) => {
         const delta =
           side === "left"
             ? moveEvent.clientX - startX
             : startX - moveEvent.clientX
-        const nextWidth = Math.min(max, Math.max(min, startWidth + delta))
-        setOpenForId(sidebarId, true)
-        sidebar.style.setProperty("--sidebar-width", `${nextWidth}px`)
+        pendingWidth = Math.min(max, Math.max(min, startWidth + delta))
         isDraggingRef.current = true
+        if (frame !== null) return
+        frame = requestAnimationFrame(() => {
+          frame = null
+          sidebar.style.setProperty("--sidebar-width", `${pendingWidth}px`)
+        })
       }
 
       const onPointerUp = () => {
+        if (frame !== null) cancelAnimationFrame(frame)
+        sidebar.style.setProperty("--sidebar-width", `${pendingWidth}px`)
         sidebar.removeAttribute("data-resizing")
         document.body.style.cursor = ""
         document.body.style.userSelect = ""
@@ -489,7 +498,8 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
       }}
       title="Drag to resize sidebar"
       className={cn(
-        "absolute inset-y-0 z-20 hidden w-2 transition-colors duration-150 group-data-[side=left]:-right-1 group-data-[side=right]:-left-1 sm:flex cursor-col-resize hover:bg-white/[0.08]",
+        // Same hover cue as the right workspace panel: a thin purple line.
+        "absolute inset-y-0 z-20 hidden w-2 group-data-[side=left]:-right-1 group-data-[side=right]:-left-1 sm:flex cursor-col-resize after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors after:duration-150 hover:after:bg-purple-500/50",
         className
       )}
       {...props}
@@ -569,7 +579,7 @@ function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
       data-slot="sidebar-content"
       data-sidebar="content"
       className={cn(
-        "no-scrollbar flex min-h-0 flex-1 flex-col gap-2 overflow-auto [--radius:var(--radius-xl)] group-data-[collapsible=icon]:overflow-hidden",
+        "flex min-h-0 flex-1 flex-col gap-2 overflow-auto [--radius:var(--radius-xl)] group-data-[collapsible=icon]:overflow-hidden",
         className
       )}
       {...props}

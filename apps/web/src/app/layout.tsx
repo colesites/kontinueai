@@ -8,7 +8,7 @@ import { ThemeProviders } from "./providers";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://kontinueai.com";
 const siteTitle = "Kontinue AI";
 const siteDescription = "Continue your AI conversations from any platform";
-const ogImage = "/og.png";
+const ogImage = "/og.png?v=4";
 
 export const metadata: Metadata = {
 	metadataBase: new URL(siteUrl),
@@ -29,6 +29,7 @@ export const metadata: Metadata = {
 				width: 1200,
 				height: 630,
 				alt: siteTitle,
+				type: "image/png",
 			},
 		],
 	},
@@ -36,7 +37,14 @@ export const metadata: Metadata = {
 		card: "summary_large_image",
 		title: siteTitle,
 		description: siteDescription,
-		images: [ogImage],
+		images: [
+			{
+				url: ogImage,
+				width: 1200,
+				height: 630,
+				alt: siteTitle,
+			},
+		],
 	},
 };
 

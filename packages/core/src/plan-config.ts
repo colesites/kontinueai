@@ -216,35 +216,35 @@ export function getPlanCardHighlights(tier: PlanTier): string[] {
 				`${count(plan.monthlyRequests.kai)} K-AI requests per month`,
 				`${count(plan.chatImports ?? 0)} conversation imports per month`,
 				`${count(plan.webSearches)} K-AI web searches per month`,
-				"512 KB of AI memory",
+				"Kode desktop with Kode 1.0",
 			];
 		case "starter":
 			return [
 				`${count(plan.monthlyRequests.kai)} K-AI requests per month`,
 				`${count(plan.monthlyRequests.basic)} Basic-model requests per month`,
 				`${count(plan.aiUsageCredits)} AI usage credits`,
-				`${count(plan.imageGenerations)} K-Image generations per month`,
+				"Kode desktop with light models",
 			];
 		case "plus":
 			return [
 				`${count(plan.monthlyRequests.kai)} K-AI requests per month`,
 				`${count(plan.monthlyRequests.basic)} Basic + ${count(plan.monthlyRequests.pro)} Pro-model requests`,
 				`${count(plan.aiUsageCredits)} AI usage credits`,
-				`${count(plan.chatImports ?? 0)} conversation imports per month`,
+				"Kode desktop with more usage",
 			];
 		case "pro":
 			return [
 				`${count(plan.monthlyRequests.kai)} K-AI requests per month`,
 				"Basic, Pro and Frontier models",
 				`${count(plan.aiUsageCredits)} AI usage credits`,
-				"Kontinue Live, Canvas and Kode Lite",
+				"Kode desktop with every model, plus Live and Canvas",
 			];
 		case "max":
 			return [
 				`${count(plan.monthlyRequests.kai)} K-AI requests per month`,
 				"Our highest model and context limits",
 				`${count(plan.aiUsageCredits)} AI usage credits`,
-				`Full Kode, Canvas and ${plan.liveVoiceMinutes} min of Live`,
+				`Kode with every model incl. Fable, plus ${plan.liveVoiceMinutes} min of Live`,
 			];
 	}
 }

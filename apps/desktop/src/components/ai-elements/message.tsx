@@ -12,10 +12,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
+import { loadMermaidPlugin, streamdownPlugins } from "@/lib/streamdown-plugins";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
@@ -55,7 +52,7 @@ export const MessageContent = ({
   <div
     className={cn(
       "is-user:dark flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm",
-      "group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground",
+      "message-content group-[.is-user]:ml-auto group-[.is-user]:px-4 group-[.is-user]:py-2.5",
       "group-[.is-assistant]:text-foreground",
       className
     )}
@@ -321,19 +318,40 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
-const streamdownPlugins = { cjk, code, math, mermaid };
-
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
-    <Streamdown
-      className={cn(
-        "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-        className
-      )}
-      plugins={streamdownPlugins}
-      {...props}
-    />
-  ),
+  ({ className, children, ...props }: MessageResponseProps) => {
+    const [mermaid, setMermaid] = useState<typeof import("@streamdown/mermaid")["mermaid"]>();
+    const needsMermaid = typeof children === "string" && /```\s*mermaid\b/i.test(children);
+
+    useEffect(() => {
+      if (!needsMermaid || mermaid) return;
+      let active = true;
+      void loadMermaidPlugin().then(({ mermaid: plugin }) => {
+        if (active) setMermaid(() => plugin);
+      }).catch((error: unknown) => {
+        console.error("[markdown] Failed to load Mermaid renderer", error);
+      });
+      return () => { active = false; };
+    }, [needsMermaid, mermaid]);
+
+    const plugins = useMemo(
+      () => mermaid ? { ...streamdownPlugins, mermaid } : streamdownPlugins,
+      [mermaid],
+    );
+
+    return (
+      <Streamdown
+        className={cn(
+          "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+          className
+        )}
+        plugins={plugins}
+        {...props}
+      >
+        {children}
+      </Streamdown>
+    );
+  },
   (prevProps, nextProps) =>
     prevProps.children === nextProps.children &&
     nextProps.isAnimating === prevProps.isAnimating

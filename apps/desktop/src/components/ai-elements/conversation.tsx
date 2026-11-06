@@ -3,9 +3,10 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
-import { ArrowDownIcon, DownloadIcon } from "lucide-react";
+import { DownloadIcon } from "lucide-react";
 import type { ComponentProps } from "react";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { ScrollJumpControls } from "@/components/chat/ScrollJumpControls";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
 
 export type ConversationProps = ComponentProps<typeof StickToBottom>;
@@ -69,34 +70,38 @@ export const ConversationEmptyState = ({
   </div>
 );
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>;
+export type ConversationScrollButtonProps = { className?: string };
 
+// Back-to-top + "Jump to latest" controls (shared design with the Home chat).
 export const ConversationScrollButton = ({
   className,
-  ...props
 }: ConversationScrollButtonProps) => {
-  const { isAtBottom, scrollToBottom } = useStickToBottomContext();
+  const { isAtBottom, scrollToBottom, scrollRef, stopScroll } =
+    useStickToBottomContext();
+  const [awayFromTop, setAwayFromTop] = useState(false);
 
-  const handleScrollToBottom = useCallback(() => {
-    scrollToBottom();
-  }, [scrollToBottom]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => setAwayFromTop(el.scrollTop > 400);
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    return () => el.removeEventListener("scroll", update);
+  }, [scrollRef]);
+
+  const handleTop = useCallback(() => {
+    stopScroll();
+    scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [scrollRef, stopScroll]);
 
   return (
-    !isAtBottom && (
-      <Button
-        className={cn(
-          "absolute bottom-4 left-[50%] translate-x-[-50%] rounded-full dark:bg-background dark:hover:bg-muted",
-          className
-        )}
-        onClick={handleScrollToBottom}
-        size="icon"
-        type="button"
-        variant="outline"
-        {...props}
-      >
-        <ArrowDownIcon className="size-4" />
-      </Button>
-    )
+    <ScrollJumpControls
+      className={cn("bottom-4", className)}
+      showTop={awayFromTop}
+      showLatest={!isAtBottom}
+      onTop={handleTop}
+      onLatest={() => void scrollToBottom()}
+    />
   );
 };
 

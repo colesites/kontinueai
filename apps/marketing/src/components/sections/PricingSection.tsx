@@ -20,8 +20,8 @@ export function PricingSection({ tiers }: PricingSectionProps) {
 						Choose the plan that fits your work
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						Start with K-AI 1.0 and core features. Upgrade for higher usage
-						limits, premium models, imports, voice, and advanced tools.
+						Start free with K-AI 1.0 and 10 chat imports. Upgrade for higher
+						limits, premium models, voice and advanced tools.
 					</p>
 				</Reveal>
 

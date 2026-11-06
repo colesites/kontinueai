@@ -45,12 +45,13 @@ export function DesktopAuthHandoff({
 				state,
 			}).toString();
 
-			// If a localhost callback port was provided (desktop app dev loopback),
-			// redirect to that localhost port first.
+			// The Tauri OAuth listener binds specifically to IPv4 127.0.0.1.
+			// Using "localhost" may resolve to IPv6 ::1 on macOS, where that
+			// listener is not bound. Keep this handoff page open so the one-time
+			// code remains available if the callback still cannot reach the app.
 			if (callbackPort) {
-				const loopbackUrl = `http://localhost:${callbackPort}/?${params}`;
+				const loopbackUrl = `http://127.0.0.1:${callbackPort}/?${params}`;
 				setStatus({ kind: "ready", ticket: data.ticket, deepLink: loopbackUrl });
-				window.location.href = loopbackUrl;
 				return;
 			}
 
@@ -115,6 +116,8 @@ export function DesktopAuthHandoff({
 
 					<a
 						href={status.deepLink}
+						target="_blank"
+						rel="noreferrer"
 						className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground transition hover:opacity-90"
 					>
 						<ExternalLink className="size-4" /> Open Kontinue AI

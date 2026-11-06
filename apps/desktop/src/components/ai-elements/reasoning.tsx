@@ -7,10 +7,7 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { cjk } from "@streamdown/cjk";
-import { code } from "@streamdown/code";
-import { math } from "@streamdown/math";
-import { mermaid } from "@streamdown/mermaid";
+import { loadMermaidPlugin, streamdownPlugins } from "@/lib/streamdown-plugins";
 import { BrainIcon, ChevronDownIcon } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import {
@@ -204,21 +201,40 @@ export type ReasoningContentProps = ComponentProps<
   children: string;
 };
 
-const streamdownPlugins = { cjk, code, math, mermaid };
-
 export const ReasoningContent = memo(
-  ({ className, children, ...props }: ReasoningContentProps) => (
-    <CollapsibleContent
-      className={cn(
-        "mt-4 text-sm",
-        "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
-        className
-      )}
-      {...props}
-    >
-      <Streamdown plugins={streamdownPlugins}>{children}</Streamdown>
-    </CollapsibleContent>
-  )
+  ({ className, children, ...props }: ReasoningContentProps) => {
+    const [mermaid, setMermaid] = useState<typeof import("@streamdown/mermaid")["mermaid"]>();
+    const needsMermaid = /```\s*mermaid\b/i.test(children);
+
+    useEffect(() => {
+      if (!needsMermaid || mermaid) return;
+      let active = true;
+      void loadMermaidPlugin().then(({ mermaid: plugin }) => {
+        if (active) setMermaid(() => plugin);
+      }).catch((error: unknown) => {
+        console.error("[markdown] Failed to load Mermaid renderer", error);
+      });
+      return () => { active = false; };
+    }, [needsMermaid, mermaid]);
+
+    const plugins = useMemo(
+      () => mermaid ? { ...streamdownPlugins, mermaid } : streamdownPlugins,
+      [mermaid],
+    );
+
+    return (
+      <CollapsibleContent
+        className={cn(
+          "mt-4 text-sm",
+          "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
+          className
+        )}
+        {...props}
+      >
+        <Streamdown plugins={plugins}>{children}</Streamdown>
+      </CollapsibleContent>
+    );
+  }
 );
 
 Reasoning.displayName = "Reasoning";

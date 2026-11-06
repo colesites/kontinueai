@@ -3,7 +3,9 @@ import { product } from "@/data/product";
 
 export const SITE_URL = product.company.website;
 export const APP_URL = product.company.appUrl;
-export const DEFAULT_OG_IMAGE = "/og.png?v=3";
+export const DEFAULT_OG_IMAGE = "/og.png?v=4";
+export const OG_IMAGE_WIDTH = 1200;
+export const OG_IMAGE_HEIGHT = 630;
 
 export function pageMetadata({
 	title,
@@ -36,9 +38,10 @@ export function pageMetadata({
 			images: [
 				{
 					url: image,
-					width: 1200,
-					height: 630,
+					width: OG_IMAGE_WIDTH,
+					height: OG_IMAGE_HEIGHT,
 					alt: imageAlt,
+					type: "image/png",
 				},
 			],
 		},
@@ -46,7 +49,14 @@ export function pageMetadata({
 			card: "summary_large_image",
 			title,
 			description,
-			images: [image],
+			images: [
+				{
+					url: image,
+					width: OG_IMAGE_WIDTH,
+					height: OG_IMAGE_HEIGHT,
+					alt: imageAlt,
+				},
+			],
 		},
 		robots: noIndex
 			? { index: false, follow: false }

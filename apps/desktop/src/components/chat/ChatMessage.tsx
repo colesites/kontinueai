@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
 import { Copy, Check, Pencil, RefreshCw, Brain, ChevronRight } from "lucide-react";
 import { HiSpeakerWave } from "react-icons/hi2";
 import { MessageResponse } from "@/components/ai-elements/message";
@@ -166,7 +167,7 @@ export function ChatMessage({
             )}
 
             {isEditing && onEdit ? (
-              <div className="w-full min-w-[280px] sm:min-w-[420px] rounded-2xl bg-card p-3 shadow-md border border-purple-500/25">
+              <div className="kontinue-user-bubble w-full min-w-[280px] p-3 sm:min-w-[420px]">
                 <textarea
                   ref={textareaRef}
                   value={draft}
@@ -196,7 +197,7 @@ export function ChatMessage({
                   <button
                     type="button"
                     onClick={cancelEdit}
-                    className="rounded-lg px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                    className="kontinue-3d rounded-full px-3 py-1 text-xs text-foreground/80 cursor-pointer"
                   >
                     Cancel
                   </button>
@@ -204,27 +205,29 @@ export function ChatMessage({
                     type="button"
                     onClick={saveEdit}
                     disabled={!draft.trim() || draft.trim() === content.trim()}
-                    className="inline-flex items-center justify-center rounded-lg px-3 py-1 text-xs font-semibold bg-purple-600 text-white hover:bg-purple-500 transition-all disabled:opacity-40 cursor-pointer shadow-sm"
+                    className="kontinue-3d-primary inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40 cursor-pointer"
                   >
                     Save
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="rounded-2xl bg-purple-500/10 dark:bg-[#241738] text-purple-950 dark:text-white/95 border border-purple-300/40 dark:border-purple-500/20 shadow-[0_2px_12px_rgba(147,51,234,0.08),inset_0_1px_1px_rgba(255,255,255,0.95)] backdrop-blur-md px-4 py-2.5 text-[13.5px] leading-relaxed">
-                <div className="whitespace-pre-wrap">{content}</div>
+              <div className="kontinue-user-bubble px-4 py-2.5 text-[13.5px] leading-relaxed">
+                <CollapsibleUserText>
+                  <div className="whitespace-pre-wrap">{content}</div>
+                </CollapsibleUserText>
               </div>
             )}
 
             {/* Subtle Time & Actions beneath user bubble */}
             {!isEditing && (
-              <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground/60 pr-1">
-                {timeStr && <span>{timeStr}</span>}
+              <div className="flex items-center gap-0.5 pr-1 text-[11px] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                {timeStr && <span className="mr-1">{timeStr}</span>}
                 <button
                   type="button"
                   onClick={handleCopy}
                   title="Copy"
-                  className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                  className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06] cursor-pointer"
                 >
                   {copied ? <Check size={12} className="text-purple-600 dark:text-purple-400" /> : <Copy size={12} />}
                 </button>
@@ -233,7 +236,7 @@ export function ChatMessage({
                     type="button"
                     onClick={startEdit}
                     title="Edit"
-                    className="p-1 rounded text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
+                    className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06] cursor-pointer"
                   >
                     <Pencil size={12} />
                   </button>

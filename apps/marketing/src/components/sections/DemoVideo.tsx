@@ -12,11 +12,11 @@ export function DemoVideo() {
 				<Reveal className="mx-auto max-w-2xl text-center">
 					<p className="eyebrow">See it in action</p>
 					<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
-						From a share link to a living conversation
+						From limit reached to back at work
 					</h2>
 					<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
-						Import a supported shared conversation, choose the next model, and
-						continue with the available message context.
+						Paste a shared link, pick a model and send your next message. That
+						is the whole flow.
 					</p>
 				</Reveal>
 

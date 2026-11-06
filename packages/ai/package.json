@@ -5,6 +5,8 @@
     "type": "module",
     "exports": {
         ".": "./src/index.ts",
+        "./lib/kode": "./src/lib/kode.ts",
+        "./lib/kode-usage": "./src/lib/kode-usage.ts",
         "./lib/*": "./src/lib/*",
         "./models": "./src/lib/models.ts"
     },

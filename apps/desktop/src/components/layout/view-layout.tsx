@@ -4,18 +4,11 @@ import CanvasView from "@/components/view/CanvasView";
 import KodeView from "@/components/view/KodeView";
 
 type ViewLayoutProps = {
-  bottomPanelOpen: boolean;
-  sidePanelOpen: boolean;
-  onBottomPanelChange: (open: boolean) => void;
-  onSidePanelChange: (open: boolean) => void;
+  panelOpen: boolean;
+  onPanelChange: (open: boolean) => void;
 };
 
-const ViewLayout = ({
-  bottomPanelOpen,
-  sidePanelOpen,
-  onBottomPanelChange,
-  onSidePanelChange,
-}: ViewLayoutProps) => {
+const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
   const { activeTab } = useKodeWorkspace();
 
   if (activeTab === "home") {
@@ -27,12 +20,7 @@ const ViewLayout = ({
   }
 
   return (
-    <KodeView
-      bottomPanelOpen={bottomPanelOpen}
-      sidePanelOpen={sidePanelOpen}
-      onBottomPanelChange={onBottomPanelChange}
-      onSidePanelChange={onSidePanelChange}
-    />
+    <KodeView panelOpen={panelOpen} onPanelChange={onPanelChange} />
   );
 };
 

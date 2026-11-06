@@ -24,6 +24,7 @@ import type * as importParsers from "../importParsers.js";
 import type * as imports from "../imports.js";
 import type * as importsWorker from "../importsWorker.js";
 import type * as kode from "../kode.js";
+import type * as kodeUsage from "../kodeUsage.js";
 import type * as kodeWeb from "../kodeWeb.js";
 import type * as kodeWebWorker from "../kodeWebWorker.js";
 import type * as lib_aiUsageCredits from "../lib/aiUsageCredits.js";
@@ -69,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   imports: typeof imports;
   importsWorker: typeof importsWorker;
   kode: typeof kode;
+  kodeUsage: typeof kodeUsage;
   kodeWeb: typeof kodeWeb;
   kodeWebWorker: typeof kodeWebWorker;
   "lib/aiUsageCredits": typeof lib_aiUsageCredits;

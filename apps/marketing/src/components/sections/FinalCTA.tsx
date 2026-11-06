@@ -18,11 +18,11 @@ export function FinalCTA() {
 								Stop starting over
 							</p>
 							<h2 className="font-display tracking-tightest mx-auto mt-5 max-w-2xl text-4xl leading-[1.05] text-background sm:text-6xl">
-								Bring the context. Choose the next model. Keep moving.
+								Your chat isn’t over. Keep going.
 							</h2>
 							<p className="mx-auto mt-6 max-w-md text-lg leading-relaxed text-background/70">
-								Start with K-AI 1.0, import supported conversations, and access
-								selected models from leading providers.
+								Bring the conversation from ChatGPT, Claude or Gemini and pick up
+								right where you left off. Free to start.
 							</p>
 							<div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
 								<Button
@@ -36,7 +36,7 @@ export function FinalCTA() {
 										target="_blank"
 										rel="noopener noreferrer"
 									>
-										Start free
+										Continue a chat
 									</Link>
 								</Button>
 								<Button
