@@ -52,6 +52,19 @@ export function clearPendingBrowserSignIn() {
 	localStorage.removeItem(PENDING_KEY);
 }
 
+const claimedTickets = new Set<string>();
+
+/** One-shot: the same ticket can arrive from loopback and the deep link. */
+export function claimAuthTicket(ticket: string) {
+	if (claimedTickets.has(ticket)) return false;
+	claimedTickets.add(ticket);
+	return true;
+}
+
+export function releaseAuthTicket(ticket: string) {
+	claimedTickets.delete(ticket);
+}
+
 export function browserSignInUrl(
 	state: string,
 	mode: "sign-in" | "sign-up" = "sign-in",

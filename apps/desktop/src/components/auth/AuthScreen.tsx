@@ -9,9 +9,11 @@ import {
 import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import {
+	claimAuthTicket,
 	clearPendingBrowserSignIn,
 	hasPendingBrowserSignIn,
 	parseAuthCallback,
+	releaseAuthTicket,
 	startBrowserSignIn,
 } from "@/lib/desktop-auth";
 
@@ -40,7 +42,6 @@ function errorMessage(caught: unknown) {
 export function AuthScreen() {
 	const { isLoaded: signInLoaded, setActive, signIn } = useSignIn();
 	const { isSignedIn } = useAuth();
-	const ticketLock = useRef(false);
 	const [step, setStep] = useState<AuthStep>(() =>
 		hasPendingBrowserSignIn() ? "browser" : "welcome",
 	);
@@ -53,8 +54,7 @@ export function AuthScreen() {
 	/** Exchanges a one-time sign-in token minted by the web app for a session. */
 	const signInWithTicket = useCallback(
 		async (ticket: string) => {
-			if (!signInLoaded || ticketLock.current || isSignedIn) return;
-			ticketLock.current = true;
+			if (!signInLoaded || isSignedIn || !claimAuthTicket(ticket)) return;
 			setBusy("ticket");
 			setError(null);
 			try {
@@ -65,7 +65,7 @@ export function AuthScreen() {
 				clearPendingBrowserSignIn();
 				await setActive({ session: attempt.createdSessionId });
 			} catch (caught) {
-				ticketLock.current = false;
+				releaseAuthTicket(ticket);
 				setError(errorMessage(caught));
 				setBusy(null);
 			}
@@ -77,7 +77,7 @@ export function AuthScreen() {
 	// Clerk finishes loading, so always call the latest handler via a ref.
 	const handleUrlsRef = useRef<(urls: string[]) => void>(() => {});
 	handleUrlsRef.current = (urls: string[]) => {
-		if (isSignedIn || ticketLock.current) return;
+		if (isSignedIn) return;
 		for (const url of urls) {
 			const result = parseAuthCallback(url);
 			if (!result) continue;

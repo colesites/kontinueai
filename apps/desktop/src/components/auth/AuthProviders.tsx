@@ -17,6 +17,11 @@ export function AuthProviders({ children }: { children: ReactNode }) {
       publishableKey={publishableKey}
       afterSignOutUrl="/"
       allowedRedirectProtocols={["tauri:", "kontinueai:"]}
+      // Tauri's webview cannot persist Clerk's cross-site cookies. Cookie
+      // mode signs in in memory, then a client sync ~1s later returns an
+      // empty session and the auth modal comes back.
+      standardBrowser={false}
+      touchSession={false}
     >
       <ConvexClientProvider>{children}</ConvexClientProvider>
     </ClerkProvider>
