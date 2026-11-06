@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@clerk/clerk-js": "5.125.10",
     "@clerk/clerk-react": "^5.61.2",
     "@fontsource-variable/figtree": "^5.2.10",
     "@hugeicons/core-free-icons": "^4.1.1",

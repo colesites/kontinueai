@@ -2,6 +2,7 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 
+import { getDesktopClerk } from "@/lib/desktop-clerk";
 import { ConvexClientProvider } from "@/lib/convex";
 
 const publishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
@@ -14,14 +15,11 @@ export function AuthProviders({ children }: { children: ReactNode }) {
 
   return (
     <ClerkProvider
+      Clerk={getDesktopClerk(publishableKey)}
       publishableKey={publishableKey}
       afterSignOutUrl="/"
       allowedRedirectProtocols={["tauri:", "kontinueai:"]}
-      // Tauri's webview cannot persist Clerk's cross-site cookies. Cookie
-      // mode signs in in memory, then a client sync ~1s later returns an
-      // empty session and the auth modal comes back.
       standardBrowser={false}
-      touchSession={false}
     >
       <ConvexClientProvider>{children}</ConvexClientProvider>
     </ClerkProvider>
