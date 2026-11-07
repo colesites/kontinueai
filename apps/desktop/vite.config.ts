@@ -16,6 +16,32 @@ export default defineConfig(async () => ({
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
+    // Language packs ship their own nested CodeMirror. A second copy makes
+    // the editor throw "Unrecognized extension value" as soon as a file opens.
+    dedupe: [
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "@codemirror/commands",
+      "@codemirror/search",
+      "@codemirror/autocomplete",
+      "@codemirror/lint",
+      "@codemirror/theme-one-dark",
+      "@codemirror/language-data",
+      "@lezer/common",
+      "@lezer/highlight",
+    ],
+  },
+  optimizeDeps: {
+    include: [
+      "@uiw/react-codemirror",
+      "@codemirror/state",
+      "@codemirror/view",
+      "@codemirror/language",
+      "@codemirror/commands",
+      "@codemirror/language-data",
+      "@codemirror/theme-one-dark",
+    ],
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

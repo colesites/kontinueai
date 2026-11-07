@@ -19,7 +19,7 @@
     "dev:convex": "bun run --cwd packages/backend/convex dev",
     "dev:scraper-api": "bun run --cwd packages/backend/scraper dev",
     "dev:scraper": "bun run --cwd apps/scraper dev",
-    "dev:desktop": "bun run --cwd apps/desktop tauri dev",
+    "dev:desktop": "bun run --cwd apps/desktop tauri dev --config src-tauri/tauri.dev.conf.json",
     "build": "bun run build:web && bun run build:mobile && bun run build:convex && bun run build:scraper-api",
     "build:web": "bun run --cwd apps/web build",
     "build:marketing": "bun run --cwd apps/marketing build",

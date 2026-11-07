@@ -10,5 +10,19 @@
     "resolveJsonModule": true,
     "isolatedModules": true
   },
-  "exclude": ["node_modules"]
+  "files": [],
+  "references": [
+    { "path": "./apps/desktop" },
+    { "path": "./apps/web" },
+    { "path": "./apps/marketing" },
+    { "path": "./apps/mobile-app" },
+    { "path": "./apps/scraper" },
+    { "path": "./packages/ai" },
+    { "path": "./packages/core" },
+    { "path": "./packages/ui" },
+    { "path": "./packages/utils" },
+    { "path": "./packages/backend/convex" },
+    { "path": "./packages/backend/scraper" }
+  ],
+  "exclude": ["node_modules", "apps", "packages"]
 }

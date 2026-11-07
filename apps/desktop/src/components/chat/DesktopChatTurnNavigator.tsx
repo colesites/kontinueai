@@ -34,18 +34,34 @@ export function DesktopChatTurnNavigator({
     if (!root || turns.length < 2) return;
 
     const update = () => {
-      const top = root.getBoundingClientRect().top + 120;
+      const lastId = turns[turns.length - 1]?.id ?? null;
+      // At the end of the thread the latest message is the one in play, even
+      // when its bubble still sits below the top of the pane.
+      const distanceFromBottom =
+        root.scrollHeight - root.scrollTop - root.clientHeight;
+      if (distanceFromBottom <= 48) {
+        setTrackedActive(lastId);
+        return;
+      }
+      // The turn whose message is at the top of the pane — the one the
+      // reader is in. Later messages still lower on the screen stay inactive.
+      const line = root.getBoundingClientRect().top + 96;
       let current: string | null = null;
       for (const turn of turns) {
         const el = document.getElementById(turn.id);
-        if (el && el.getBoundingClientRect().top <= top) current = turn.id;
+        if (el && el.getBoundingClientRect().top <= line) current = turn.id;
       }
       setTrackedActive(current ?? turns[0]?.id ?? null);
     };
 
     update();
     root.addEventListener("scroll", update, { passive: true });
-    return () => root.removeEventListener("scroll", update);
+    const observer = new ResizeObserver(update);
+    observer.observe(root);
+    return () => {
+      root.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
   }, [getScrollElement, turns]);
 
   if (turns.length < 2) return null;

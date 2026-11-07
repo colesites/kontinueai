@@ -835,5 +835,9 @@ export default defineSchema({
 	whitelistedEmails: defineTable({
 		email: v.string(),
 		addedAt: v.number(),
+		// Persisted plan id (`free`, `starter_plan`, `plus_plan`, `pro_plan`, `max_plan`).
+		// When set, this overrides the plan synced from billing for that email.
+		plan: v.optional(v.string()),
+		note: v.optional(v.string()),
 	}).index("by_email", ["email"]),
 });

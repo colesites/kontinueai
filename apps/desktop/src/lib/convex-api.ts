@@ -1,5 +1,22 @@
 import { anyApi, type FunctionReference } from "convex/server";
 
+type PaginationOpts = {
+  numItems: number;
+  cursor: string | null;
+  endCursor?: string | null;
+  id?: number;
+  maximumRowsRead?: number;
+  maximumBytesRead?: number;
+};
+
+type Paginated<T> = {
+  page: T[];
+  isDone: boolean;
+  continueCursor: string;
+  splitCursor?: string | null;
+  pageStatus?: "SplitRecommended" | "SplitRequired" | null;
+};
+
 type CurrentUser = {
   _id: string;
   clerkUserId: string;
@@ -79,7 +96,11 @@ type KodeMessageMetadataArgs = {
 };
 
 // Kode usage in micro-dollars of model cost (see convex/kodeUsage.ts).
-export type KodeUsageWindow = { used: number; limit: number; resetAt: number | null };
+export type KodeUsageWindow = {
+  used: number;
+  limit: number;
+  resetAt: number | null;
+};
 export type KodeUsage = {
   plan: "free" | "starter" | "plus" | "pro" | "max";
   session: KodeUsageWindow;
@@ -103,26 +124,11 @@ export type KodeUsageHistory = {
 
 type KodeConvexApi = {
   users: {
-    getCurrentUser: FunctionReference<
-      "query",
-      "public",
-      Record<string, never>,
-      CurrentUser
-    >;
-    getOrCreateUser: FunctionReference<
-      "mutation",
-      "public",
-      GetOrCreateUserArgs,
-      string
-    >;
+    getCurrentUser: FunctionReference<"query", "public", Record<string, never>, CurrentUser>;
+    getOrCreateUser: FunctionReference<"mutation", "public", GetOrCreateUserArgs, string>;
   };
   chats: {
-    getUserChats: FunctionReference<
-      "query",
-      "public",
-      Record<string, never>,
-      HomeConvexChat[]
-    >;
+    getUserChats: FunctionReference<"query", "public", Record<string, never>, HomeConvexChat[]>;
     createChat: FunctionReference<
       "mutation",
       "public",
@@ -135,57 +141,28 @@ type KodeConvexApi = {
       },
       string
     >;
-    toggleChatPin: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; pinned: boolean },
-      { pinned: boolean }
-    >;
-    setChatArchived: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; archived: boolean },
-      { archived: boolean }
-    >;
-    deleteChat: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string },
-      unknown
-    >;
-    updateChatTitle: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; title: string },
-      unknown
-    >;
+    toggleChatPin: FunctionReference<"mutation", "public", { chatId: string; pinned: boolean }, { pinned: boolean }>;
+    setChatArchived: FunctionReference<"mutation", "public", { chatId: string; archived: boolean }, { archived: boolean }>;
+    deleteChat: FunctionReference<"mutation", "public", { chatId: string }, unknown>;
+    updateChatTitle: FunctionReference<"mutation", "public", { chatId: string; title: string }, unknown>;
   };
   projects: {
-    listProjects: FunctionReference<
-      "query",
-      "public",
-      { includeArchived?: boolean },
-      HomeConvexProject[]
-    >;
-    createProject: FunctionReference<
-      "mutation",
-      "public",
-      { name: string; description?: string; color?: string; icon?: string },
-      string
-    >;
-    updateProject: FunctionReference<
-      "mutation",
-      "public",
-      { projectId: string; name?: string; description?: string },
-      unknown
-    >;
+    listProjects: FunctionReference<"query", "public", { includeArchived?: boolean }, HomeConvexProject[]>;
+    createProject: FunctionReference<"mutation", "public", { name: string; description?: string; color?: string; icon?: string }, string>;
+    updateProject: FunctionReference<"mutation", "public", { projectId: string; name?: string; description?: string }, unknown>;
   };
   connectors: {
     listConnectors: FunctionReference<
       "query",
       "public",
       Record<string, never>,
-      { _id: string; provider: string; connected: boolean; accountLabel?: string; tokenExpiresAt?: number }[]
+      {
+        _id: string;
+        provider: string;
+        connected: boolean;
+        accountLabel?: string;
+        tokenExpiresAt?: number;
+      }[]
     >;
   };
   messages: {
@@ -213,20 +190,11 @@ type KodeConvexApi = {
         createdAt?: number;
       }[]
     >;
+    deleteMessagesAfter: FunctionReference<"mutation", "public", { messageId: string; inclusive?: boolean }, null>;
   };
   kode: {
-    getUserChats: FunctionReference<
-      "query",
-      "public",
-      Record<string, never>,
-      KodeConvexChat[]
-    >;
-    createChat: FunctionReference<
-      "mutation",
-      "public",
-      { title: string },
-      string
-    >;
+    getUserChats: FunctionReference<"query", "public", Record<string, never>, KodeConvexChat[]>;
+    createChat: FunctionReference<"mutation", "public", { title: string }, string>;
     importSession: FunctionReference<
       "mutation",
       "public",
@@ -260,12 +228,7 @@ type KodeConvexApi = {
       },
       number
     >;
-    getMessages: FunctionReference<
-      "query",
-      "public",
-      { chatId: string },
-      KodeConvexMessage[]
-    >;
+    getMessages: FunctionReference<"query", "public", { chatId: string }, KodeConvexMessage[]>;
     addMessage: FunctionReference<
       "mutation",
       "public",
@@ -278,74 +241,24 @@ type KodeConvexApi = {
       } & KodeMessageMetadataArgs,
       string
     >;
-    deleteMessagesAfter: FunctionReference<
-      "mutation",
-      "public",
-      { messageId: string; inclusive?: boolean },
-      null
-    >;
-    toggleChatPin: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; pinned: boolean },
-      { pinned: boolean }
-    >;
-    setChatArchived: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; archived: boolean },
-      { archived: boolean }
-    >;
-    updateChatTitle: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string; title: string },
-      null
-    >;
-    deleteChat: FunctionReference<
-      "mutation",
-      "public",
-      { chatId: string },
-      unknown
-    >;
+    deleteMessagesAfter: FunctionReference<"mutation", "public", { messageId: string; inclusive?: boolean }, null>;
+    toggleChatPin: FunctionReference<"mutation", "public", { chatId: string; pinned: boolean }, { pinned: boolean }>;
+    setChatArchived: FunctionReference<"mutation", "public", { chatId: string; archived: boolean }, { archived: boolean }>;
+    updateChatTitle: FunctionReference<"mutation", "public", { chatId: string; title: string }, null>;
+    deleteChat: FunctionReference<"mutation", "public", { chatId: string }, unknown>;
   };
   kodeUsage: {
-    getUsage: FunctionReference<
-      "query",
-      "public",
-      Record<string, never>,
-      KodeUsage
-    >;
-    getUsageHistory: FunctionReference<
-      "query",
-      "public",
-      Record<string, never>,
-      KodeUsageHistory
-    >;
-    setCreditSettings: FunctionReference<
-      "mutation",
-      "public",
-      { autoUse?: boolean; monthlyLimitMicros?: number },
-      null
-    >;
+    getUsage: FunctionReference<"query", "public", Record<string, never>, KodeUsage>;
+    getUsageHistory: FunctionReference<"query", "public", Record<string, never>, KodeUsageHistory>;
+    setCreditSettings: FunctionReference<"mutation", "public", { autoUse?: boolean; monthlyLimitMicros?: number }, null>;
   };
   canvas: {
     getCredits: FunctionReference<"query", "public", Record<string, never>, CanvasCredits>;
-    listPublished: FunctionReference<
-      "query",
-      "public",
-      { paginationOpts: any; sortBy?: "likes" | "recent" },
-      any
-    >;
-    listMyCreations: FunctionReference<
-      "query",
-      "public",
-      { paginationOpts: any },
-      any
-    >;
+    listPublished: FunctionReference<"query", "public", { paginationOpts: PaginationOpts; sortBy?: "likes" | "recent" }, Paginated<CanvasCreation>>;
+    listMyCreations: FunctionReference<"query", "public", { paginationOpts: PaginationOpts }, Paginated<CanvasCreation>>;
     getMyLikes: FunctionReference<"query", "public", Record<string, never>, string[]>;
-    toggleLike: FunctionReference<"mutation", "public", { creationId: any }, { liked: boolean }>;
-    publishCreation: FunctionReference<"mutation", "public", { creationId: any }, { isPublished: boolean }>;
+    toggleLike: FunctionReference<"mutation", "public", { creationId: string }, { liked: boolean }>;
+    publishCreation: FunctionReference<"mutation", "public", { creationId: string }, { isPublished: boolean }>;
     createCreation: FunctionReference<
       "mutation",
       "public",

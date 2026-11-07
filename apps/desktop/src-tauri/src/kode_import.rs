@@ -329,6 +329,7 @@ fn internal_block_patterns() -> &'static Vec<Regex> {
             r"(?s)<command-name>.*?</command-name>",
             r"(?s)<command-message>.*?</command-message>",
             r"(?s)<command-args>.*?</command-args>",
+            r"(?s)<task-notification>.*?</task-notification>",
         ]
         .into_iter()
         .filter_map(|pattern| Regex::new(pattern).ok())
@@ -402,6 +403,39 @@ fn is_noise_message(text: &str) -> bool {
 fn is_continuation_summary(text: &str) -> bool {
     text.trim_start()
         .starts_with("This session is being continued from a previous conversation")
+}
+
+/// Claude Code posts finished background commands as a user message. Keep the
+/// human summary and drop the task id, tool id, and temp output path.
+fn take_task_notifications(text: &str) -> (Vec<String>, String) {
+    let start = "<task-notification>";
+    let end = "</task-notification>";
+    let mut notices = Vec::new();
+    let mut rest = String::new();
+    let mut cursor = text;
+    while let Some(start_index) = cursor.find(start) {
+        rest.push_str(&cursor[..start_index]);
+        let after = &cursor[start_index + start.len()..];
+        let Some(end_index) = after.find(end) else {
+            rest.push_str(&cursor[start_index..]);
+            cursor = "";
+            break;
+        };
+        let body = &after[..end_index];
+        let summary = extract_tag(body, "summary")
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| {
+                let status = extract_tag(body, "status").unwrap_or_default();
+                format!("Background command {status}").trim().to_string()
+            });
+        if !summary.is_empty() {
+            notices.push(format!("Ran: {summary}"));
+        }
+        cursor = &after[end_index + end.len()..];
+    }
+    rest.push_str(cursor);
+    (notices, rest)
 }
 
 fn extract_tag(text: &str, tag: &str) -> Option<String> {
@@ -1062,7 +1096,11 @@ fn parse_claude_session(text: &str, source: &Path) -> CodingSession {
                         );
                     }
                 } else {
-                    let clean = clean_transcript_text(&raw);
+                    let (notices, without_tasks) = take_task_notifications(&raw);
+                    for notice in notices {
+                        push_notice(&mut messages, notice, timestamp, &mut redactions);
+                    }
+                    let clean = clean_transcript_text(&without_tasks);
                     if !is_internal_message(&clean) {
                         push_message(&mut messages, "user", clean, timestamp, &mut redactions);
                     }
@@ -2030,6 +2068,26 @@ mod tests {
             .to_lowercase()
             .contains("weekly limit"));
         assert!(session.files_changed.contains(&"src/auth.ts".to_string()));
+    }
+
+    #[test]
+    fn imports_background_command_notices_without_tool_ids() {
+        let transcript = [
+            r#"{"type":"custom-title","customTitle":"Blank image","sessionId":"sess-task"}"#,
+            r#"{"type":"user","sessionId":"sess-task","timestamp":"2026-01-01T10:00:00.000Z","message":{"role":"user","content":[{"type":"text","text":"<task-notification>\n<task-id>bm0rcqfb8</task-id>\n<tool-use-id>toolu_014kVACa</tool-use-id>\n<output-file>/private/tmp/claude/tasks/bm0rcqfb8.output</output-file>\n<status>completed</status>\n<summary>Background command \"Check image URLs\" completed (exit code 0)</summary>\n</task-notification>"}]}}"#,
+        ]
+        .join("\n");
+
+        let session = parse_claude_session(&transcript, Path::new("/tmp/task.jsonl"));
+
+        assert!(session.messages.iter().any(|message| {
+            message.role == "system"
+                && message.content.contains("Check image URLs")
+                && message.content.starts_with("Ran:")
+        }));
+        assert!(!session.messages.iter().any(|message| {
+            message.role == "user" && message.content.contains("toolu_")
+        }));
     }
 
     #[test]

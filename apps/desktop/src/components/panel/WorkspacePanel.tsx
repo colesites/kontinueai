@@ -11,7 +11,7 @@ import { EnvironmentTab } from "./EnvironmentTab";
 import { ChangesTab } from "./ChangesTab";
 import { TerminalTab } from "./TerminalTab";
 import { FilesTab } from "./FilesTab";
-import { BrowserTab } from "./BrowserTab";
+import { BrowserSidebar } from "./BrowserSidebar";
 import { useGitStatus } from "./use-git-status";
 
 export type PanelTab = "environment" | "changes" | "terminal" | "files" | "browser";
@@ -19,7 +19,8 @@ export type PanelTab = "environment" | "changes" | "terminal" | "files" | "brows
 /** Rounded square with two bullet rows (like Claude Code's environment icon). */
 function EnvironmentIcon({ size = 14, strokeWidth = 1.6 }: { size?: number; strokeWidth?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <title>Environment</title>
       <rect x="3.5" y="3.5" width="17" height="17" rx="4" />
       <circle cx="8.25" cy="9.5" r="0.6" fill="currentColor" />
       <circle cx="8.25" cy="14.5" r="0.6" fill="currentColor" />
@@ -60,6 +61,8 @@ export type WorkspacePanelProps = {
   projectPath: string | null;
   /** Lets other UI (e.g. Overview) jump to a tab. */
   requestedTab?: PanelTab | null;
+  onOpenFilesTab?: (path?: string | null) => void;
+  onOpenBrowserTab?: (url: string | null) => void;
 };
 
 // The right-hand workspace panel. Same material as the left sidebar, docked to
@@ -70,6 +73,8 @@ export function WorkspacePanel({
   projectName,
   projectPath,
   requestedTab,
+  onOpenFilesTab,
+  onOpenBrowserTab,
 }: WorkspacePanelProps) {
   const [width, setWidth] = useState(() =>
     readStored(WIDTH_KEY, DEFAULT_WIDTH, (raw) => {
@@ -143,6 +148,26 @@ export function WorkspacePanel({
     window.addEventListener("pointerup", onUp);
   };
 
+  const resizeBy = (delta: number) => {
+    const next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, width + delta));
+    setWidth(next);
+    try {
+      localStorage.setItem(WIDTH_KEY, String(next));
+    } catch {
+      // The width still applies for this session.
+    }
+  };
+
+  const onResizeKey = (event: React.KeyboardEvent) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      resizeBy(16);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      resizeBy(-16);
+    }
+  };
+
   const changeCount = git.status?.files.length ?? 0;
 
   return (
@@ -157,19 +182,23 @@ export function WorkspacePanel({
     >
       <div
         ref={innerRef}
-        className="liquid-glass-sidebar !border-r-0 flex h-full flex-col border-l border-white/60 dark:border-white/[0.06]"
+        className="liquid-glass-sidebar !border-r-0 flex h-full border-l border-white/60 dark:border-white/[0.06]"
         style={{ width }}
       >
-        {/* Resize handle */}
-        <div
-          role="separator"
+        {/* In the layout, not over the page. A child webview paints above HTML
+            and would swallow clicks on an overlaid handle. */}
+        <hr
+          tabIndex={0}
+          aria-orientation="vertical"
           aria-label="Resize panel"
+          aria-valuemin={MIN_WIDTH}
+          aria-valuemax={MAX_WIDTH}
+          aria-valuenow={width}
           onPointerDown={startResize}
-          className="group absolute inset-y-0 left-0 z-20 w-1.5 cursor-ew-resize"
-        >
-          <span className="absolute inset-y-0 left-0 w-px bg-transparent transition-colors group-hover:bg-purple-500/50" />
-        </div>
-
+          onKeyDown={onResizeKey}
+          className="relative z-20 m-0 h-full w-2 shrink-0 cursor-ew-resize border-0 border-l border-transparent bg-transparent outline-none hover:border-purple-500/50 focus-visible:border-purple-500/50"
+        />
+        <div className="flex min-w-0 flex-1 flex-col">
         {/* Header: tab icons + close */}
         <div
           data-tauri-drag-region
@@ -236,13 +265,18 @@ export function WorkspacePanel({
                 <TerminalTab projectPath={projectPath} visible={open && tab === "terminal"} />
               </TabPane>
               <TabPane active={tab === "files"}>
-                <FilesTab projectPath={projectPath} active={open && tab === "files"} />
+                <FilesTab
+                  projectPath={projectPath}
+                  active={open && tab === "files"}
+                  onOpenInTab={onOpenFilesTab}
+                />
               </TabPane>
             </>
           ) : null}
           <TabPane active={tab === "browser"}>
-            <BrowserTab />
+            <BrowserSidebar active={open && tab === "browser"} onOpenInTab={onOpenBrowserTab} />
           </TabPane>
+        </div>
         </div>
       </div>
     </aside>

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
 import { DownloadIcon } from "lucide-react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, CSSProperties } from "react";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useState } from "react";
 import { ScrollJumpControls } from "@/components/chat/ScrollJumpControls";
 import { StickToBottom, useStickToBottomContext } from "use-stick-to-bottom";
@@ -70,11 +71,18 @@ export const ConversationEmptyState = ({
   </div>
 );
 
-export type ConversationScrollButtonProps = { className?: string };
+export type ConversationScrollButtonProps = {
+  className?: string;
+  style?: CSSProperties;
+  /** When set, the controls render here so they sit above the composer. */
+  container?: HTMLElement | null;
+};
 
 // Back-to-top + "Jump to latest" controls (shared design with the Home chat).
 export const ConversationScrollButton = ({
   className,
+  style,
+  container,
 }: ConversationScrollButtonProps) => {
   const { isAtBottom, scrollToBottom, scrollRef, stopScroll } =
     useStickToBottomContext();
@@ -94,15 +102,20 @@ export const ConversationScrollButton = ({
     scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [scrollRef, stopScroll]);
 
-  return (
+  const controls = (
     <ScrollJumpControls
-      className={cn("bottom-4", className)}
+      className={cn(
+        container ? "!static !left-auto !translate-x-0" : "bottom-4",
+        className,
+      )}
+      style={style}
       showTop={awayFromTop}
       showLatest={!isAtBottom}
       onTop={handleTop}
       onLatest={() => void scrollToBottom()}
     />
   );
+  return container ? createPortal(controls, container) : controls;
 };
 
 const getMessageText = (message: UIMessage): string =>

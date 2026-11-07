@@ -1,55 +1,26 @@
-import React, { useState, useMemo } from "react";
-import {
-  Search,
-  Star,
-  Check,
-  Lock,
-  X,
-  Zap,
-  ExternalLink,
-  ChevronDown,
-} from "lucide-react";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import { Tooltip as TooltipPrimitive } from "radix-ui";
-import { cn } from "@/lib/utils";
-import type { ModelOption } from "@repo/ai/lib/models";
-import {
-  KODE_MODELS,
-  canUseFastMode,
-  getDefaultKodeModel,
-  getKodeModelAccess,
-  minimumKodePlan,
-  type KodeModelOption,
-  type KodePlan,
-} from "@repo/ai/lib/kode";
+import { canUseFastMode, getDefaultKodeModel, getKodeModelAccess, KODE_MODELS, type KodeModelOption, type KodePlan, minimumKodePlan } from "@repo/ai/lib/kode";
 import { kodeUsageMultiplier } from "@repo/ai/lib/kode-usage";
+import type { ModelOption } from "@repo/ai/lib/models";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Switch } from "@/components/ui/switch";
-import { updateSettings, useAppSettings } from "@/lib/app-settings";
-import { useByokProviders, canUseByokModel } from "@/lib/kode-byok";
-import {
-  cliLoginCommand,
-  cliNeedsLogin,
-  cliPlanLabel,
-  cliVersionIssue,
-  getProvider,
-  parseCliModelId,
-  useCliProviders,
-  type CliModelOption,
-} from "@/lib/kode-cli";
+import { Check, ChevronDown, ExternalLink, Lock, Search, Star, X, Zap } from "lucide-react";
+import { Tooltip as TooltipPrimitive } from "radix-ui";
+import type React from "react";
+import { useMemo, useState } from "react";
+import { updateSettings, useAppSettings } from "../../lib/app-settings";
+import { canUseByokModel, useByokProviders } from "../../lib/kode-byok";
+import { type CliModelOption, cliLoginCommand, cliNeedsLogin, cliPlanLabel, cliVersionIssue, getProvider, parseCliModelId, useCliProviders } from "../../lib/kode-cli";
+import { cn } from "../../lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Switch } from "../ui/switch";
 
 export type AnyModelOption = ModelOption | KodeModelOption | CliModelOption;
-
 
 interface ModelPickerProps {
   selectedModelId: string;
   onSelectModel: (model: AnyModelOption) => void;
   models?: AnyModelOption[];
   trigger?: React.ReactNode;
+  triggerClassName?: string;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onOpenSettings?: () => void;
@@ -62,6 +33,7 @@ export function ModelPickerPopover({
   onSelectModel,
   models,
   trigger,
+  triggerClassName,
   open: controlledOpen,
   onOpenChange: setControlledOpen,
   onOpenSettings,
@@ -103,9 +75,7 @@ export function ModelPickerPopover({
   const toggleFavorite = (e: React.MouseEvent, modelId: string) => {
     e.stopPropagation();
     setFavorites((prev) => {
-      const next = prev.includes(modelId)
-        ? prev.filter((id) => id !== modelId)
-        : [...prev, modelId];
+      const next = prev.includes(modelId) ? prev.filter((id) => id !== modelId) : [...prev, modelId];
       localStorage.setItem("kontinue.favorite-models", JSON.stringify(next));
       return next;
     });
@@ -143,55 +113,56 @@ export function ModelPickerPopover({
       const cli = parseCliModelId(m.id);
       if (cli) {
         const label = ("group" in m && m.group) || getProvider(cli.instanceId)?.label || cli.instanceId;
-        if (!map.has(label)) map.set(label, []);
-        map.get(label)!.push(m);
+        pushGroup(map, label, m);
         continue;
       }
-      if (kodePlan && "tier" in m) {
-        const label = TIER_LABEL[m.tier];
-        if (!map.has(label)) map.set(label, []);
-        map.get(label)!.push(m);
+      if (kodePlan && "tier" in m && typeof m.tier === "string") {
+        const label = TIER_LABEL[m.tier as KodeModelOption["tier"]];
+        pushGroup(map, label, m);
         continue;
       }
       const groupName =
         m.provider === "kontinue"
           ? "Primary Models"
           : m.provider === "anthropic"
-          ? "Anthropic Claude"
-          : m.provider === "openai"
-          ? "OpenAI"
-          : m.provider === "deepseek"
-          ? "DeepSeek"
-          : m.provider === "google"
-          ? "Google Gemini"
-          : m.provider === "xai"
-          ? "xAI Grok"
-          : m.provider === "minimax"
-          ? "MiniMax"
-          : m.provider === "zai"
-          ? "Z.ai"
-          : m.provider === "alibaba"
-          ? "Alibaba Qwen"
-          : m.provider === "mistral"
-          ? "Mistral AI"
-          : m.provider === "perplexity"
-          ? "Perplexity"
-          : "Other Providers";
-      if (!map.has(groupName)) map.set(groupName, []);
-      map.get(groupName)!.push(m);
+            ? "Anthropic Claude"
+            : m.provider === "openai"
+              ? "OpenAI"
+              : m.provider === "deepseek"
+                ? "DeepSeek"
+                : m.provider === "google"
+                  ? "Google Gemini"
+                  : m.provider === "xai"
+                    ? "xAI Grok"
+                    : m.provider === "minimax"
+                      ? "MiniMax"
+                      : m.provider === "zai"
+                        ? "Z.ai"
+                        : m.provider === "alibaba"
+                          ? "Alibaba Qwen"
+                          : m.provider === "mistral"
+                            ? "Mistral AI"
+                            : m.provider === "perplexity"
+                              ? "Perplexity"
+                              : "Other Providers";
+      pushGroup(map, groupName, m);
     }
     return Array.from(map.entries());
   }, [filteredModels, kodePlan]);
 
-
-  const selectedModel = useMemo(
-    () => modelList.find((m) => m.id === selectedModelId) ?? modelList[0],
-    [modelList, selectedModelId]
-  );
+  const selectedModel = useMemo(() => modelList.find((m) => m.id === selectedModelId) ?? modelList[0], [modelList, selectedModelId]);
   const kodeBase = getDefaultKodeModel();
-  const selectedKode =
-    kodePlan && selectedModel && "tier" in selectedModel ? selectedModel : null;
+  const selectedKode = kodePlan && selectedModel && "tier" in selectedModel ? selectedModel : null;
   const fastAvailable = !!selectedKode && !!kodePlan && canUseFastMode(selectedKode, kodePlan);
+
+  const chooseModel = (model: AnyModelOption, locked: boolean) => {
+    if (locked) {
+      void openUrl("https://chat.kontinueai.com/pricing").catch(() => window.open("https://chat.kontinueai.com/pricing", "_blank"));
+      return;
+    }
+    onSelectModel(model);
+    setOpen(false);
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -201,7 +172,7 @@ export function ModelPickerPopover({
         ) : (
           <button
             type="button"
-            className="flex h-7 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none"
+            className={cn("flex h-7 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none", triggerClassName)}
           >
             <ProviderIcon provider={selectedModel?.provider} className="size-3.5" />
             <span className="font-medium text-foreground">{selectedModel?.name ?? "Select model"}</span>
@@ -210,12 +181,7 @@ export function ModelPickerPopover({
         )}
       </PopoverTrigger>
 
-      <PopoverContent
-        align="start"
-        side="top"
-        sideOffset={8}
-        className="w-[380px] p-0 liquid-glass-dropdown text-foreground overflow-hidden select-none"
-      >
+      <PopoverContent align="start" side="top" sideOffset={8} className="w-[380px] p-0 liquid-glass-dropdown text-foreground overflow-hidden select-none">
         <div className="flex h-[420px] w-full flex-col">
           {/* Search */}
           <div className="px-2.5 pt-2.5">
@@ -226,6 +192,7 @@ export function ModelPickerPopover({
                 placeholder="Search models"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                // biome-ignore lint/a11y/noAutofocus: the search field should take focus when the picker opens
                 autoFocus
                 className="w-full bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/70"
               />
@@ -247,25 +214,12 @@ export function ModelPickerPopover({
             <FilterChip active={activeProvider === "all"} onClick={() => setActiveProvider("all")}>
               All
             </FilterChip>
-            <FilterChip
-              active={activeProvider === "favorites"}
-              onClick={() => setActiveProvider("favorites")}
-              title="Favorites"
-            >
-              <Star
-                size={12}
-                className={activeProvider === "favorites" ? "fill-purple-500 text-purple-500" : ""}
-              />
+            <FilterChip active={activeProvider === "favorites"} onClick={() => setActiveProvider("favorites")} title="Favorites">
+              <Star size={12} className={activeProvider === "favorites" ? "fill-purple-500 text-purple-500" : ""} />
             </FilterChip>
             <span className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
             {providers.map((p) => (
-              <FilterChip
-                key={p}
-                active={activeProvider === p}
-                onClick={() => setActiveProvider(p)}
-                title={p}
-                icon
-              >
+              <FilterChip key={p} active={activeProvider === p} onClick={() => setActiveProvider(p)} title={p} icon>
                 <ProviderIcon provider={p} className="size-3.5" />
               </FilterChip>
             ))}
@@ -273,176 +227,129 @@ export function ModelPickerPopover({
 
           {/* Model list */}
           <TooltipPrimitive.Provider delayDuration={450} skipDelayDuration={150}>
-          <div className="flex-1 space-y-2 overflow-y-auto border-t border-border px-1.5 pt-1.5 pb-2">
-            {filteredModels.length === 0 ? (
-              <div className="py-12 text-center text-xs text-muted-foreground">
-                No models found
-              </div>
-            ) : (
-              groups.map(([groupName, groupModels]) => (
-                <div key={groupName}>
-                  <p className="px-3 pt-1.5 pb-1 text-[10.5px] font-medium text-muted-foreground/70">
-                    {groupName}
-                  </p>
-                  {groupModels.map((model) => {
-                    const isSelected = selectedModelId === model.id;
-                    const isFav = favorites.includes(model.id);
-                    const isByok = canUseByokModel(model.id, byokProviders);
-                    const kodeModel = kodePlan && "tier" in model ? model : null;
-                    // Settings → Providers: runs through the user's own Claude
-                    // Code / Codex CLI, so Kode's plan locks and usage don't apply.
-                    const cli = parseCliModelId(model.id);
-                    const cliProvider = cli ? getProvider(cli.instanceId) ?? null : null;
-                    const versionIssue =
-                      cli && cliProvider ? cliVersionIssue(cli.model, cliProvider, cliStatuses) : null;
-                    const accent = "accent" in model ? model.accent : null;
-                    const loginCommand = cliProvider ? cliLoginCommand(cliProvider) : null;
-                    const access =
-                      kodeModel && kodePlan ? getKodeModelAccess(kodeModel, kodePlan) : "included";
-                    // A personal API key unlocks a model regardless of plan.
-                    const locked = access === "locked" && !isByok;
-                    const multiplier =
-                      kodeModel && kodeModel.id !== kodeBase.id
-                        ? kodeUsageMultiplier(kodeModel, kodeBase)
-                        : null;
+            <div className="flex-1 space-y-2 overflow-y-auto border-t border-border px-1.5 pt-1.5 pb-2">
+              {filteredModels.length === 0 ? (
+                <div className="py-12 text-center text-xs text-muted-foreground">No models found</div>
+              ) : (
+                groups.map(([groupName, groupModels]) => (
+                  <div key={groupName}>
+                    <p className="px-3 pt-1.5 pb-1 text-[10.5px] font-medium text-muted-foreground/70">{groupName}</p>
+                    {groupModels.map((model) => {
+                      const isSelected = selectedModelId === model.id;
+                      const isFav = favorites.includes(model.id);
+                      const isByok = canUseByokModel(model.id, byokProviders);
+                      const kodeModel = kodePlan && "tier" in model ? model : null;
+                      // Settings → Providers: runs through the user's own Claude
+                      // Code / Codex CLI, so Kode's plan locks and usage don't apply.
+                      const cli = parseCliModelId(model.id);
+                      const cliProvider = cli ? (getProvider(cli.instanceId) ?? null) : null;
+                      const versionIssue = cli && cliProvider ? cliVersionIssue(cli.model, cliProvider, cliStatuses) : null;
+                      const accent = "accent" in model ? model.accent : null;
+                      const loginCommand = cliProvider ? cliLoginCommand(cliProvider) : null;
+                      const access = kodeModel && kodePlan ? getKodeModelAccess(kodeModel, kodePlan) : "included";
+                      // A personal API key unlocks a model regardless of plan.
+                      const locked = access === "locked" && !isByok;
+                      const multiplier = kodeModel && kodeModel.id !== kodeBase.id ? kodeUsageMultiplier(kodeModel, kodeBase) : null;
 
-                    return (
-                      <TooltipPrimitive.Root key={model.id}>
-                      <TooltipPrimitive.Trigger asChild>
-                      <div
-                        role="option"
-                        aria-selected={isSelected}
-                        onClick={() => {
-                          if (locked) {
-                            void openUrl("https://chat.kontinueai.com/pricing").catch(() =>
-                              window.open("https://chat.kontinueai.com/pricing", "_blank"),
-                            );
-                            return;
-                          }
-                          onSelectModel(model);
-                          setOpen(false);
-                        }}
-                        className={cn(
-                          "group flex cursor-pointer items-center gap-2.5 rounded-full px-3 py-1.5 transition-colors",
-                          isSelected
-                            ? "kontinue-menu-active"
-                            : "hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
-                          locked && "opacity-55"
-                        )}
-                      >
-                        <span className="relative shrink-0">
-                          <ProviderIcon provider={model.provider} className="size-4" />
-                          {accent ? (
-                            <span
-                              className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-1 ring-background"
-                              style={{ backgroundColor: accent }}
-                            />
-                          ) : null}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-1.5">
-                            <span className="truncate text-xs font-medium text-foreground">
-                              {model.name}
-                            </span>
-                            {cliProvider && versionIssue ? (
-                              <span
-                                title={versionIssue}
-                                className="rounded-full bg-amber-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-amber-600 dark:text-amber-400"
+                      return (
+                        <TooltipPrimitive.Root key={model.id}>
+                          <TooltipPrimitive.Trigger asChild>
+                            <div
+                              role="option"
+                              aria-selected={isSelected}
+                              tabIndex={0}
+                              onClick={() => chooseModel(model, locked)}
+                              onKeyDown={(event) => {
+                                if (event.key !== "Enter" && event.key !== " ") return;
+                                event.preventDefault();
+                                chooseModel(model, locked);
+                              }}
+                              className={cn(
+                                "group flex cursor-pointer items-center gap-2.5 rounded-full px-3 py-1.5 transition-colors",
+                                isSelected ? "kontinue-menu-active" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+                                locked && "opacity-55",
+                              )}
+                            >
+                              <span className="relative shrink-0">
+                                <ProviderIcon provider={model.provider} className="size-4" />
+                                {accent ? <span className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-1 ring-background" style={{ backgroundColor: accent }} /> : null}
+                              </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="truncate text-xs font-medium text-foreground">{model.name}</span>
+                                  {cliProvider && versionIssue ? (
+                                    <span title={versionIssue} className="rounded-full bg-amber-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-amber-600 dark:text-amber-400">
+                                      Update CLI
+                                    </span>
+                                  ) : cliProvider && cliNeedsLogin(cliStatuses, cliProvider.id) ? (
+                                    <span
+                                      title={loginCommand ? `Sign in from Settings → Providers, or run "${loginCommand}" in a terminal.` : "Sign in from Settings → Providers."}
+                                      className="rounded-full bg-amber-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-amber-600 dark:text-amber-400"
+                                    >
+                                      Sign in
+                                    </span>
+                                  ) : (
+                                    cliProvider && (
+                                      <span
+                                        title={`Runs through ${cliProvider.label} on this computer. ${cliPlanLabel(cliProvider)}, not counted in Kode usage.`}
+                                        className="rounded-full bg-emerald-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-emerald-600 dark:text-emerald-400"
+                                      >
+                                        Your plan
+                                      </span>
+                                    )
+                                  )}
+                                  {isByok && <span className="rounded-full bg-emerald-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">BYOK</span>}
+                                  {locked && kodeModel ? (
+                                    <span className="flex items-center gap-0.5 rounded-full border border-purple-500/30 px-1.5 text-[9px] font-semibold text-purple-500 dark:text-purple-300">
+                                      <Lock size={8} />
+                                      {PLAN_LABEL[minimumKodePlan(kodeModel)]}
+                                    </span>
+                                  ) : null}
+                                  {access === "credits" && !isByok ? <span className="rounded-full border border-amber-500/30 px-1.5 text-[9px] font-semibold text-amber-500">Extra usage</span> : null}
+                                </div>
+                                <p className="truncate text-[10.5px] leading-tight text-muted-foreground">{model.description || `${model.provider} model`}</p>
+                              </div>
+                              <button
+                                type="button"
+                                aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
+                                onClick={(e) => toggleFavorite(e, model.id)}
+                                className={cn(
+                                  "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full transition-opacity",
+                                  isFav ? "text-purple-500" : "text-muted-foreground/50 opacity-0 hover:text-foreground group-hover:opacity-100",
+                                )}
                               >
-                                Update CLI
-                              </span>
-                            ) : cliProvider && cliNeedsLogin(cliStatuses, cliProvider.id) ? (
-                              <span
-                                title={
-                                  loginCommand
-                                    ? `Sign in from Settings → Providers, or run "${loginCommand}" in a terminal.`
-                                    : "Sign in from Settings → Providers."
-                                }
-                                className="rounded-full bg-amber-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-amber-600 dark:text-amber-400"
-                              >
-                                Sign in
-                              </span>
-                            ) : cliProvider && (
-                              <span
-                                title={`Runs through ${cliProvider.label} on this computer. ${cliPlanLabel(cliProvider)}, not counted in Kode usage.`}
-                                className="rounded-full bg-emerald-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-emerald-600 dark:text-emerald-400"
-                              >
-                                Your plan
-                              </span>
-                            )}
-                            {isByok && (
-                              <span className="rounded-full bg-emerald-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">
-                                BYOK
-                              </span>
-                            )}
-                            {locked && kodeModel ? (
-                              <span className="flex items-center gap-0.5 rounded-full border border-purple-500/30 px-1.5 text-[9px] font-semibold text-purple-500 dark:text-purple-300">
-                                <Lock size={8} />
-                                {PLAN_LABEL[minimumKodePlan(kodeModel)]}
-                              </span>
-                            ) : null}
-                            {access === "credits" && !isByok ? (
-                              <span className="rounded-full border border-amber-500/30 px-1.5 text-[9px] font-semibold text-amber-500">
-                                Extra usage
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="truncate text-[10.5px] leading-tight text-muted-foreground">
-                            {model.description || `${model.provider} model`}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          aria-label={isFav ? "Remove from favorites" : "Add to favorites"}
-                          onClick={(e) => toggleFavorite(e, model.id)}
-                          className={cn(
-                            "flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full transition-opacity",
-                            isFav
-                              ? "text-purple-500"
-                              : "text-muted-foreground/50 opacity-0 hover:text-foreground group-hover:opacity-100"
-                          )}
-                        >
-                          <Star size={11} className={isFav ? "fill-purple-500" : ""} />
-                        </button>
-                        {multiplier !== null ? (
-                          <span
-                            title="Usage per request compared with Kode 1.0"
-                            className="shrink-0 font-mono text-[10px] text-muted-foreground/70"
-                          >
-                            {formatMultiplier(multiplier)}
-                          </span>
-                        ) : null}
-                        {isSelected ? (
-                          <Check size={13} className="shrink-0 text-purple-500" />
-                        ) : (
-                          <span className="size-[13px] shrink-0" />
-                        )}
-                      </div>
-                      </TooltipPrimitive.Trigger>
-                      <TooltipPrimitive.Portal>
-                        <TooltipPrimitive.Content
-                          side="right"
-                          align="center"
-                          sideOffset={16}
-                          collisionPadding={12}
-                          className="liquid-glass-dropdown z-50 w-64 px-3.5 py-3 text-foreground animate-in fade-in-0 zoom-in-95"
-                        >
-                          <div className="flex items-center gap-2">
-                            <ProviderIcon provider={model.provider} className="size-3.5 shrink-0" />
-                            <p className="truncate text-xs font-semibold">{model.name}</p>
-                          </div>
-                          <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">
-                            {model.description || `${model.provider} model`}
-                          </p>
-                        </TooltipPrimitive.Content>
-                      </TooltipPrimitive.Portal>
-                      </TooltipPrimitive.Root>
-                    );
-                  })}
-                </div>
-              ))
-            )}
-          </div>
+                                <Star size={11} className={isFav ? "fill-purple-500" : ""} />
+                              </button>
+                              {multiplier !== null ? (
+                                <span title="Usage per request compared with Kode 1.0" className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+                                  {formatMultiplier(multiplier)}
+                                </span>
+                              ) : null}
+                              {isSelected ? <Check size={13} className="shrink-0 text-purple-500" /> : <span className="size-[13px] shrink-0" />}
+                            </div>
+                          </TooltipPrimitive.Trigger>
+                          <TooltipPrimitive.Portal>
+                            <TooltipPrimitive.Content
+                              side="right"
+                              align="center"
+                              sideOffset={16}
+                              collisionPadding={12}
+                              className="liquid-glass-dropdown z-50 w-64 px-3.5 py-3 text-foreground animate-in fade-in-0 zoom-in-95"
+                            >
+                              <div className="flex items-center gap-2">
+                                <ProviderIcon provider={model.provider} className="size-3.5 shrink-0" />
+                                <p className="truncate text-xs font-semibold">{model.name}</p>
+                              </div>
+                              <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">{model.description || `${model.provider} model`}</p>
+                            </TooltipPrimitive.Content>
+                          </TooltipPrimitive.Portal>
+                        </TooltipPrimitive.Root>
+                      );
+                    })}
+                  </div>
+                ))
+              )}
+            </div>
           </TooltipPrimitive.Provider>
 
           {kodePlan ? (
@@ -458,11 +365,7 @@ export function ModelPickerPopover({
                       : `Not available for ${selectedModel?.name ?? "this model"}.`}
                 </p>
               </div>
-              <Switch
-                checked={fastAvailable && kodeFastMode}
-                disabled={!fastAvailable}
-                onCheckedChange={(checked) => updateSettings({ kodeFastMode: checked })}
-              />
+              <Switch checked={fastAvailable && kodeFastMode} disabled={!fastAvailable} onCheckedChange={(checked) => updateSettings({ kodeFastMode: checked })} />
             </div>
           ) : null}
 
@@ -485,44 +388,17 @@ export function ModelPickerPopover({
   );
 }
 
-export function ModelSelectorLogo({
-  provider,
-  className,
-}: {
-  provider?: string;
-  className?: string;
-}) {
+export function ModelSelectorLogo({ provider, className }: { provider?: string; className?: string }) {
   const p = (provider || "kontinue").toLowerCase();
   const [imgFailed, setImgFailed] = useState(false);
-  const src =
-    p === "kontinue"
-      ? "/kontinueai-icon.png"
-      : `https://models.dev/logos/${p}.svg`;
+  const src = p === "kontinue" ? "/kontinueai-icon.png" : `https://models.dev/logos/${p}.svg`;
 
   if (!imgFailed) {
-    return (
-      <img
-        src={src}
-        alt={`${p} logo`}
-        onError={() => setImgFailed(true)}
-        className={cn(
-          "size-3.5 object-contain",
-          p === "kontinue" ? "brightness-0 dark:invert" : "dark:invert",
-          className
-        )}
-      />
-    );
+    return <img src={src} alt={`${p} logo`} onError={() => setImgFailed(true)} className={cn("size-3.5 object-contain", p === "kontinue" ? "brightness-0 dark:invert" : "dark:invert", className)} />;
   }
 
   return (
-    <span
-      className={cn(
-        "grid size-3.5 place-items-center rounded bg-purple-500/20 font-semibold text-[8px] text-purple-300 ring-1 ring-purple-500/30",
-        className
-      )}
-    >
-      {p.slice(0, 2).toUpperCase()}
-    </span>
+    <span className={cn("grid size-3.5 place-items-center rounded bg-purple-500/20 font-semibold text-[8px] text-purple-300 ring-1 ring-purple-500/30", className)}>{p.slice(0, 2).toUpperCase()}</span>
   );
 }
 
@@ -543,24 +419,21 @@ const PLAN_LABEL: Record<KodePlan, string> = {
   max: "Max",
 };
 
+function pushGroup(map: Map<string, AnyModelOption[]>, label: string, model: AnyModelOption) {
+  const bucket = map.get(label);
+  if (bucket) {
+    bucket.push(model);
+    return;
+  }
+  map.set(label, [model]);
+}
+
 function formatMultiplier(value: number): string {
   if (value < 0.95) return `${value.toFixed(1)}×`;
   return value < 10 ? `${value.toFixed(1).replace(/\.0$/, "")}×` : `${Math.round(value)}×`;
 }
 
-function FilterChip({
-  active,
-  onClick,
-  title,
-  icon,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  title?: string;
-  icon?: boolean;
-  children: React.ReactNode;
-}) {
+function FilterChip({ active, onClick, title, icon, children }: { active: boolean; onClick: () => void; title?: string; icon?: boolean; children: React.ReactNode }) {
   return (
     <button
       type="button"
@@ -570,10 +443,8 @@ function FilterChip({
       className={cn(
         "flex h-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs transition-colors",
         icon ? "w-7" : "px-3",
-        active
-          ? "kontinue-menu-active font-medium"
-          : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
-        icon && !active && "opacity-60 hover:opacity-100"
+        active ? "kontinue-menu-active font-medium" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+        icon && !active && "opacity-60 hover:opacity-100",
       )}
     >
       {children}

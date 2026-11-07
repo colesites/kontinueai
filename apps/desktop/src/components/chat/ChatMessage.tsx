@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
-import { Copy, Check, Pencil, RefreshCw, Brain, ChevronRight } from "lucide-react";
+import { Brain, Check, ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiSpeakerWave } from "react-icons/hi2";
 import { MessageResponse } from "@/components/ai-elements/message";
+import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
+import { ForkIcon } from "@/components/chat/ForkIcon";
 import { cn } from "@/lib/utils";
 
 function useTextToSpeech(content: string) {
@@ -45,10 +46,36 @@ function useTextToSpeech(content: string) {
   return { isSpeaking, speechText, handleSpeak };
 }
 
-function formatMessageTime(timestamp?: number): string {
+function IconButton({ title, onClick, disabled, children }: { title: string; onClick: () => void; disabled?: boolean; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      onClick={onClick}
+      className="flex size-5 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-white/[0.06]"
+    >
+      {children}
+    </button>
+  );
+}
+
+function formatMessageStamp(timestamp?: number): string {
   if (!timestamp) return "";
-  const d = new Date(timestamp);
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const startOfDay = (value: Date) => new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86_400_000);
+  if (dayDiff <= 0) return time;
+  if (dayDiff === 1) return `Yesterday, ${time}`;
+  if (dayDiff < 7) {
+    return `${date.toLocaleDateString([], { weekday: "short" })}, ${time}`;
+  }
+  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 
 export interface ChatMessageProps {
@@ -58,20 +85,13 @@ export interface ChatMessageProps {
   isStreaming?: boolean;
   onRetry?: () => void;
   onEdit?: (newContent: string) => void;
+  onFork?: () => void;
+  onRewind?: () => void;
   createdAt?: number;
   images?: string[];
 }
 
-export function ChatMessage({
-  role,
-  content,
-  reasoning,
-  isStreaming,
-  onRetry,
-  onEdit,
-  createdAt,
-  images,
-}: ChatMessageProps) {
+export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onFork, onRewind, createdAt, images }: ChatMessageProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [copied, setCopied] = useState(false);
@@ -82,7 +102,7 @@ export function ChatMessage({
   const { isSpeaking, speechText, handleSpeak } = useTextToSpeech(content);
 
   const isUser = role === "user";
-  const timeStr = formatMessageTime(createdAt);
+  const timeStr = formatMessageStamp(createdAt);
 
   useEffect(() => {
     if (isStreaming && reasoning && !content) {
@@ -151,16 +171,9 @@ export function ChatMessage({
             {/* Image attachments preview if any */}
             {images && images.length > 0 && (
               <div className="flex flex-wrap justify-end gap-2 mb-1">
-                {images.map((src, idx) => (
-                  <div
-                    key={idx}
-                    className="overflow-hidden rounded-xl border border-purple-500/20 bg-black/40 shadow-sm"
-                  >
-                    <img
-                      src={src}
-                      alt="Attachment"
-                      className="max-h-40 max-w-64 object-cover"
-                    />
+                {images.map((src) => (
+                  <div key={src} className="overflow-hidden rounded-xl border border-purple-500/20 bg-black/40 shadow-sm">
+                    <img src={src} alt="Attachment" className="max-h-40 max-w-64 object-cover" />
                   </div>
                 ))}
               </div>
@@ -191,22 +204,11 @@ export function ChatMessage({
                   placeholder="Edit your message..."
                 />
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-purple-500/20">
-                  <span className="mr-auto text-[10px] text-muted-foreground font-mono">
-                    ⌘↵ to save · esc to cancel
-                  </span>
-                  <button
-                    type="button"
-                    onClick={cancelEdit}
-                    className="kontinue-3d rounded-full px-3 py-1 text-xs text-foreground/80 cursor-pointer"
-                  >
+                  <span className="mr-auto text-[10px] text-muted-foreground font-mono">⌘↵ to save · esc to cancel</span>
+                  <button type="button" onClick={cancelEdit} className="kontinue-3d rounded-full px-3 py-1 text-xs text-foreground/80 cursor-pointer">
                     Cancel
                   </button>
-                  <button
-                    type="button"
-                    onClick={saveEdit}
-                    disabled={!draft.trim() || draft.trim() === content.trim()}
-                    className="kontinue-3d-primary inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40 cursor-pointer"
-                  >
+                  <button type="button" onClick={saveEdit} disabled={!draft.trim() || draft.trim() === content.trim()} className="kontinue-3d-primary inline-flex items-center justify-center rounded-full px-3 py-1 text-xs font-semibold disabled:opacity-40 cursor-pointer">
                     Save
                   </button>
                 </div>
@@ -221,26 +223,26 @@ export function ChatMessage({
 
             {/* Subtle Time & Actions beneath user bubble */}
             {!isEditing && (
-              <div className="flex items-center gap-0.5 pr-1 text-[11px] text-muted-foreground/60 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                {timeStr && <span className="mr-1">{timeStr}</span>}
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  title="Copy"
-                  className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06] cursor-pointer"
-                >
-                  {copied ? <Check size={12} className="text-purple-600 dark:text-purple-400" /> : <Copy size={12} />}
-                </button>
-                {onEdit && (
-                  <button
-                    type="button"
-                    onClick={startEdit}
-                    title="Edit"
-                    className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06] cursor-pointer"
-                  >
-                    <Pencil size={12} />
-                  </button>
-                )}
+              <div className="msg-actions flex items-center gap-1.5 pr-1 text-[11px] text-muted-foreground/70 transition-opacity">
+                {timeStr ? <span>{timeStr}</span> : null}
+                <IconButton title="Copy" onClick={handleCopy}>
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                </IconButton>
+                {onRewind ? (
+                  <IconButton title="Rewind to here" onClick={onRewind}>
+                    <RotateCcw size={13} />
+                  </IconButton>
+                ) : null}
+                {onFork ? (
+                  <IconButton title="Fork from here" onClick={onFork}>
+                    <ForkIcon />
+                  </IconButton>
+                ) : null}
+                {onEdit ? (
+                  <IconButton title="Edit" onClick={startEdit}>
+                    <Pencil size={13} />
+                  </IconButton>
+                ) : null}
               </div>
             )}
           </div>
@@ -249,35 +251,13 @@ export function ChatMessage({
           <div className="w-full py-1 text-foreground">
             {reasoning && (
               <div className="mb-3">
-                <button
-                  type="button"
-                  onClick={() => setIsReasoningOpen(!isReasoningOpen)}
-                  className="liquid-glass-pill rounded-full inline-flex items-center gap-1.5 px-3 py-1 text-xs text-purple-700 dark:text-purple-300 transition-colors cursor-pointer group"
-                >
-                  <Brain
-                    size={13}
-                    className={cn(
-                      "text-purple-600 dark:text-purple-400 transition-all",
-                      isStreaming && !content && "animate-pulse text-purple-600 dark:text-purple-300"
-                    )}
-                  />
-                  <span>
-                    {isStreaming && !content
-                      ? `Thinking (${thinkingSeconds}s)...`
-                      : `Thought for ${thinkingSeconds > 0 ? `${thinkingSeconds}s` : "a few seconds"}`}
-                  </span>
-                  <ChevronRight
-                    size={12}
-                    className={cn(
-                      "transition-transform duration-200 text-purple-600/50 dark:text-purple-300/40 group-hover:text-purple-800 dark:group-hover:text-purple-300",
-                      isReasoningOpen && "rotate-90"
-                    )}
-                  />
+                <button type="button" onClick={() => setIsReasoningOpen(!isReasoningOpen)} className="liquid-glass-pill rounded-full inline-flex items-center gap-1.5 px-3 py-1 text-xs text-purple-700 dark:text-purple-300 transition-colors cursor-pointer">
+                  <Brain size={13} className={cn("text-purple-600 dark:text-purple-400 transition-all", isStreaming && !content && "animate-pulse text-purple-600 dark:text-purple-300")} />
+                  <span>{isStreaming && !content ? `Thinking (${thinkingSeconds}s)...` : `Thought for ${thinkingSeconds > 0 ? `${thinkingSeconds}s` : "a few seconds"}`}</span>
+                  <ChevronRight size={12} className={cn("transition-transform duration-200 text-purple-600/50 dark:text-purple-300/40 group-hover:text-purple-800 dark:group-hover:text-purple-300", isReasoningOpen && "rotate-90")} />
                 </button>
                 {isReasoningOpen && (
-                  <div className="mt-2 mb-2 p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/50 dark:border-purple-800/30 text-xs text-purple-950 dark:text-purple-200/85 whitespace-pre-wrap leading-relaxed backdrop-blur-md shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]">
-                    {reasoning}
-                  </div>
+                  <div className="mt-2 mb-2 p-3.5 rounded-2xl bg-purple-50/60 dark:bg-purple-950/20 border border-purple-200/50 dark:border-purple-800/30 text-xs text-purple-950 dark:text-purple-200/85 whitespace-pre-wrap leading-relaxed backdrop-blur-md shadow-[inset_0_1px_1px_rgba(255,255,255,0.7)]">{reasoning}</div>
                 )}
               </div>
             )}
@@ -288,40 +268,19 @@ export function ChatMessage({
 
             {/* Bottom Actions below Assistant Message */}
             {!isStreaming && (
-              <div className="mt-3 flex items-center gap-1 text-muted-foreground">
-                <button
-                  type="button"
-                  onClick={handleCopy}
-                  className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-                >
-                  {copied ? <Check size={12} className="text-purple-600 dark:text-purple-400" /> : <Copy size={12} />}
-                  <span>{copied ? "Copied" : "Copy"}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSpeak}
-                  disabled={!speechText}
-                  className={cn(
-                    "inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors cursor-pointer",
-                    isSpeaking ? "bg-purple-500/20 text-purple-700 dark:text-purple-300" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                    !speechText && "opacity-30 cursor-not-allowed hover:bg-transparent"
-                  )}
-                  title={isSpeaking ? "Stop reading" : "Read aloud"}
-                >
-                  <HiSpeakerWave size={13} />
-                  <span>{isSpeaking ? "Stop" : "Speak"}</span>
-                </button>
-                {onRetry && (
-                  <button
-                    type="button"
-                    onClick={onRetry}
-                    className="inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-                    title="Retry response"
-                  >
-                    <RefreshCw size={11} />
-                    <span>Retry</span>
-                  </button>
-                )}
+              <div className="msg-actions mt-0.5 flex items-center gap-1.5 text-muted-foreground/70 transition-opacity">
+                <IconButton title="Copy" onClick={handleCopy}>
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                </IconButton>
+                {onFork ? (
+                  <IconButton title="Fork from here" onClick={onFork}>
+                    <ForkIcon />
+                  </IconButton>
+                ) : null}
+                <IconButton title={isSpeaking ? "Stop reading" : "Read aloud"} onClick={handleSpeak} disabled={!speechText}>
+                  <HiSpeakerWave size={14} />
+                </IconButton>
+                {timeStr ? <span className="px-1 text-[11px]">{timeStr}</span> : null}
               </div>
             )}
           </div>

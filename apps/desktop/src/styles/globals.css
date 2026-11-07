@@ -6,86 +6,85 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-heading: var(--font-sans);
 
-    --font-heading: var(--font-sans);
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
 
-    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+  --color-sidebar-ring: var(--sidebar-ring);
 
-    --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
 
-    --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
 
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
 
-    --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
 
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
 
-    --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
 
-    --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
 
-    --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
 
-    --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
 
-    --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
 
-    --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
 
-    --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
 
-    --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
 
-    --color-ring: var(--ring);
+  --color-input: var(--input);
 
-    --color-input: var(--input);
+  --color-border: var(--border);
 
-    --color-border: var(--border);
+  --color-destructive: var(--destructive);
 
-    --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
 
-    --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
 
-    --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
 
-    --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
 
-    --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
 
-    --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
 
-    --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
 
-    --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
 
-    --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
 
-    --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
 
-    --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
 
-    --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
 
-    --color-card: var(--card);
+  --color-foreground: var(--foreground);
 
-    --color-foreground: var(--foreground);
+  --color-background: var(--background);
 
-    --color-background: var(--background);
+  --radius-sm: calc(var(--radius) * 0.6);
 
-    --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
 
-    --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
 
-    --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
 
-    --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
 
-    --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
 
-    --radius-3xl: calc(var(--radius) * 2.2);
-
-    --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
 :root {
@@ -146,7 +145,7 @@
   --accent-foreground: #f4f4f7;
   --destructive: oklch(0.704 0.191 22.216);
   --border: rgba(255, 255, 255, 0.08);
-  --input: rgba(255, 255, 255, 0.10);
+  --input: rgba(255, 255, 255, 0.1);
   --ring: #a855f7;
   /* Sidebar is darker than the main canvas (which is #0a0a0a). */
   --sidebar: #050506;
@@ -223,17 +222,25 @@
       0 0 0 1px oklch(0.63 0.239 349 / 0.48),
       0 0 26px -8px oklch(0.63 0.239 349 / 0.48);
   }
-  .text-brand { color: var(--brand); }
-  .bg-brand { background-color: var(--brand); }
-
+  .text-brand {
+    color: var(--brand);
+  }
+  .bg-brand {
+    background-color: var(--brand);
+  }
 }
 
 /* Scrollbars: slim pills that only appear while an element is scrolling.
    src/lib/scrollbar-activity.ts sets [data-scrolling] on the scrolled element
    and clears it shortly after scrolling stops. The 2px transparent border
    insets the 4px thumb from the edge. Hovering the thumb area also shows it. */
-:root { color-scheme: light; }
-:root.dark, .dark { color-scheme: dark; }
+:root {
+  color-scheme: light;
+}
+:root.dark,
+.dark {
+  color-scheme: dark;
+}
 
 *::-webkit-scrollbar {
   width: 8px;
@@ -271,7 +278,9 @@ pre {
   border: 1px solid rgba(168, 85, 247, 0.22) !important;
   border-radius: 0.75rem !important;
   padding: 1rem !important;
-  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(168, 85, 247, 0.15);
+  box-shadow:
+    0 8px 24px -6px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(168, 85, 247, 0.15);
   position: relative;
   overflow-x: auto;
   color: #f3f1f8 !important;
@@ -310,7 +319,9 @@ code:not(pre code) {
   backdrop-filter: blur(28px) saturate(180%);
   -webkit-backdrop-filter: blur(28px) saturate(180%);
   border-right: 1px solid rgba(255, 255, 255, 0.75);
-  box-shadow: 4px 0 28px 0 rgba(140, 120, 180, 0.04), inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
+  box-shadow:
+    4px 0 28px 0 rgba(140, 120, 180, 0.04),
+    inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
 }
 .dark .liquid-glass-sidebar {
   background: #050506;
@@ -408,8 +419,8 @@ code:not(pre code) {
 }
 .dark .liquid-glass-pill {
   background-color: transparent;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
     0 1px 0 rgba(0, 0, 0, 0.45),
     0 4px 12px rgba(0, 0, 0, 0.18),
@@ -439,13 +450,10 @@ code:not(pre code) {
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
 }
 
-
 /* ── Liquid backdrop: soft pearl + lavender light field (light mode only) ── */
 .liquid-backdrop {
   background-color: #f6f3fd;
-  background-image:
-    radial-gradient(60vw 50vw at 10% 6%, rgba(167, 139, 250, 0.42) 0%, transparent 62%),
-    radial-gradient(55vw 45vw at 95% 100%, rgba(192, 160, 255, 0.28) 0%, transparent 62%);
+  background-image: radial-gradient(60vw 50vw at 10% 6%, rgba(167, 139, 250, 0.42) 0%, transparent 62%), radial-gradient(55vw 45vw at 95% 100%, rgba(192, 160, 255, 0.28) 0%, transparent 62%);
 }
 .dark .liquid-backdrop {
   background-color: var(--background);
@@ -480,18 +488,38 @@ code:not(pre code) {
   backdrop-filter: blur(40px) saturate(210%);
   -webkit-backdrop-filter: blur(40px) saturate(210%);
 }
-.dark .liquid-glass-sidebar { background: #050506; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.dark .liquid-glass-composer { background: transparent; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.dark .liquid-glass-card { background-color: #0a0a0a; backdrop-filter: none; -webkit-backdrop-filter: none; }
-.dark .liquid-glass-pill { background-color: transparent; }
-.dark .liquid-glass-dropdown { background: #0a0a0a; }
+.dark .liquid-glass-sidebar {
+  background: #050506;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.dark .liquid-glass-composer {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.dark .liquid-glass-card {
+  background-color: #0a0a0a;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.dark .liquid-glass-pill {
+  background-color: transparent;
+}
+.dark .liquid-glass-dropdown {
+  background: #0a0a0a;
+}
 
 /* Light mode: let the backdrop through the shell surfaces */
 :root:not(.dark) [data-slot="sidebar-inner"],
-:root:not(.dark) [data-slot="sidebar-wrapper"] { background-color: transparent; }
+:root:not(.dark) [data-slot="sidebar-wrapper"] {
+  background-color: transparent;
+}
 
 /* Pills are always fully round */
-.liquid-glass-pill { border-radius: 9999px; }
+.liquid-glass-pill {
+  border-radius: 9999px;
+}
 
 /* Hover keeps the glass translucent (no flat white flash) */
 .liquid-glass-pill:hover {
@@ -503,8 +531,15 @@ code:not(pre code) {
   border-color: rgba(168, 85, 247, 0.4);
   transform: none;
 }
-.dark .liquid-glass-pill:hover { background-color: transparent; background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%); border-color: rgba(255, 255, 255, 0.16); }
-.dark .liquid-glass-card:hover { background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%); border-color: rgba(255, 255, 255, 0.14); }
+.dark .liquid-glass-pill:hover {
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.dark .liquid-glass-card:hover {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border-color: rgba(255, 255, 255, 0.14);
+}
 
 /* Purple capsule: identical material to the sidebar "New" / "Home" buttons */
 .kontinue-capsule {
@@ -512,28 +547,37 @@ code:not(pre code) {
   background-color: transparent;
   background-image: linear-gradient(to right, rgba(168, 85, 247, 0.12), rgba(147, 51, 234, 0.08));
   border: 1px solid rgba(216, 180, 254, 0.6);
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 8px rgba(168, 85, 247, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9);
 }
 .dark .kontinue-capsule {
   background-color: rgba(147, 51, 234, 0.2);
   background-image: linear-gradient(to right, rgba(168, 85, 247, 0.12), rgba(147, 51, 234, 0.08));
   border: 1px solid rgba(168, 85, 247, 0.25);
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 8px rgba(168, 85, 247, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9);
 }
-.kontinue-capsule:hover { background-image: linear-gradient(to right, rgba(168, 85, 247, 0.2), rgba(147, 51, 234, 0.15)); }
+.kontinue-capsule:hover {
+  background-image: linear-gradient(to right, rgba(168, 85, 247, 0.2), rgba(147, 51, 234, 0.15));
+}
 
 /* Neutral 3D control — same depth/inset language as the purple capsules,
    without turning secondary buttons purple. */
 .kontinue-3d {
   background-color: transparent;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.03) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
     0 1px 0 rgba(0, 0, 0, 0.45),
     0 4px 12px rgba(0, 0, 0, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.14);
-  transition: background-image 0.15s ease, border-color 0.15s ease,
-    box-shadow 0.15s ease, transform 0.1s ease;
+  transition:
+    background-image 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.1s ease;
 }
 .kontinue-3d:hover {
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
@@ -545,9 +589,32 @@ code:not(pre code) {
     inset 0 2px 4px rgba(0, 0, 0, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
+
+/* Message actions stay hidden until the pointer is on that message.
+   A utility pair (opacity-0 + group-hover:opacity-100) ties on specificity
+   in Tailwind 4, so the hidden state was winning. */
+.msg-actions {
+  opacity: 0;
+}
+.group:hover .msg-actions,
+.msg-actions:focus-within {
+  opacity: 1;
+}
+
+/* Jump-to-latest: frost so scrolling text under the pill stays blurred. */
+.kontinue-3d.kontinue-jump {
+  background-color: rgba(12, 12, 13, 0.42);
+  background-image: none;
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+}
+:root:not(.dark) .kontinue-3d.kontinue-jump {
+  background-color: rgba(255, 255, 255, 0.55);
+  background-image: none;
+}
 :root:not(.dark) .kontinue-3d {
   background-image: linear-gradient(180deg, #ffffff 0%, #f1f1f3 100%);
-  border-color: rgba(0, 0, 0, 0.10);
+  border-color: rgba(0, 0, 0, 0.1);
   box-shadow:
     0 1px 0 rgba(0, 0, 0, 0.06),
     0 4px 12px rgba(0, 0, 0, 0.05),
@@ -578,7 +645,9 @@ code:not(pre code) {
 }
 
 /* Theme swap: no staggered transitions */
-.theme-switching *, .theme-switching *::before, .theme-switching *::after {
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
   transition: none !important;
   animation-duration: 0s !important;
 }
@@ -602,7 +671,7 @@ code:not(pre code) {
 .dark .liquid-glass-dropdown {
   background-color: #0c0c0d;
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.025) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow:
     0 1px 0 rgba(0, 0, 0, 0.5),
     0 22px 48px -16px rgba(0, 0, 0, 0.85),
@@ -610,7 +679,9 @@ code:not(pre code) {
 }
 /* Fully rounded language: every menu row and active state is a pill. The
    20px surface radius keeps pills concentric with the 6px menu padding. */
-.liquid-glass-dropdown { border-radius: 20px; }
+.liquid-glass-dropdown {
+  border-radius: 20px;
+}
 .liquid-glass-dropdown [role="menuitem"],
 .liquid-glass-dropdown [role="menuitemcheckbox"],
 .liquid-glass-dropdown [role="menuitemradio"],
@@ -627,7 +698,7 @@ code:not(pre code) {
 .liquid-glass-dropdown [data-highlighted] {
   color: var(--foreground) !important;
   background-color: transparent !important;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.10) 0%, rgba(255, 255, 255, 0.035) 100%) !important;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.035) 100%) !important;
   border-color: transparent !important;
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.09),
@@ -646,8 +717,12 @@ code:not(pre code) {
 }
 
 /* Horizontal scrollers (filter chips) without a visible scrollbar. */
-.no-scrollbar { scrollbar-width: none; }
-.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
 
 /* User message bubble (Home + Kode): the same purple capsule material as
    the Share button and the active sidebar chat (.kontinue-capsule). */
@@ -658,7 +733,9 @@ code:not(pre code) {
   background-color: rgba(147, 51, 234, 0.2);
   background-image: linear-gradient(to right, rgba(168, 85, 247, 0.12), rgba(147, 51, 234, 0.08));
   border: 1px solid rgba(168, 85, 247, 0.25);
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 2px 8px rgba(168, 85, 247, 0.08),
+    inset 0 1px 1px rgba(255, 255, 255, 0.9);
 }
 :root:not(.dark) .kontinue-user-bubble,
 :root:not(.dark) .is-user > .message-content {

@@ -1,56 +1,35 @@
 import { htmlToText } from "@repo/ai/lib/docs/indexer";
-import { getSessionToken } from "./kode-chat";
 import { invoke } from "@tauri-apps/api/core";
 import type { LanguageModelUsage } from "ai";
-
-import {
-  buildKodeSkillsContext,
-  findSkill,
-  loadAllSkills,
-  renderSkill,
-  type KodeSkill,
-  type RepoProfile,
-} from "./kode-skills";
-import { retrieveDocsContext, type DocSourceRef } from "./kode-docs";
+import { getSessionToken, type KodeChatMessage, type KodeContentPart, type KodeToolCall, type KodeToolDefinition, sendKodeChat } from "./kode-chat";
+import { type DocSourceRef, retrieveDocsContext } from "./kode-docs";
 import { createContentFilter, stripKodeArtifacts } from "./kode-sanitize";
-import {
-  sendKodeChat,
-  type KodeChatMessage,
-  type KodeContentPart,
-  type KodeToolCall,
-  type KodeToolDefinition,
-} from "./kode-chat";
+import { buildKodeSkillsContext, findSkill, type KodeSkill, loadAllSkills, type RepoProfile, renderSkill } from "./kode-skills";
 import {
   buildAskOptionsToolDefinition,
   buildFileToolDefinitions,
+  buildKnowledgeToolDefinitions,
   buildShellToolDefinition,
   buildTodosToolDefinition,
+  buildWebToolDefinitions,
   describeToolCall,
   executeFileTool,
   impliesFileWork,
   isToolAllowedInMode,
-  buildWebToolDefinitions,
-  buildKnowledgeToolDefinitions,
-  KODE_LOAD_SKILL_TOOL,
-  KODE_SEARCH_DOCS_TOOL,
-  KODE_WEB_TOOLS,
-  KODE_WEB_SEARCH_TOOL,
-  KODE_PLAN_MODE_PROMPT,
-  needsApproval,
   KODE_ASK_TOOL,
+  KODE_LOAD_SKILL_TOOL,
+  KODE_PLAN_MODE_PROMPT,
+  KODE_SEARCH_DOCS_TOOL,
   KODE_TODOS_TOOL,
+  KODE_WEB_SEARCH_TOOL,
+  KODE_WEB_TOOLS,
   type KodeAgentMode,
   type KodeTodo,
+  needsApproval,
   type ToolArgs,
 } from "./kode-tools";
 
-export type KodeToolStepState =
-  | "pending-approval"
-  | "pending-options"
-  | "running"
-  | "done"
-  | "error"
-  | "rejected";
+export type KodeToolStepState = "pending-approval" | "pending-options" | "running" | "done" | "error" | "rejected";
 
 // A single tool invocation surfaced to the UI (rendered as a Tool/Confirmation card).
 export type KodeToolStep = {
@@ -132,7 +111,7 @@ function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
 }
 
 function parseArgs(raw: string): ToolArgs {
-  if (!raw || !raw.trim()) return {};
+  if (!raw?.trim()) return {};
   try {
     const parsed = JSON.parse(raw);
     return typeof parsed === "object" && parsed ? (parsed as ToolArgs) : {};
@@ -148,24 +127,9 @@ function toolsForMode(mode: KodeAgentMode): KodeToolDefinition[] {
   const todos = buildTodosToolDefinition();
   if (mode === "plan") {
     // Read-only: inspection tools + ask the user + maintain a plan.
-    return [
-      ...buildFileToolDefinitions().filter((tool) =>
-        ["read_file", "list_dir"].includes(tool.function.name),
-      ),
-      ask,
-      todos,
-      ...buildWebToolDefinitions(),
-      ...buildKnowledgeToolDefinitions(),
-    ];
+    return [...buildFileToolDefinitions().filter((tool) => ["read_file", "list_dir"].includes(tool.function.name)), ask, todos, ...buildWebToolDefinitions(), ...buildKnowledgeToolDefinitions()];
   }
-  return [
-    ...buildFileToolDefinitions(),
-    buildShellToolDefinition(),
-    ask,
-    todos,
-    ...buildWebToolDefinitions(),
-    ...buildKnowledgeToolDefinitions(),
-  ];
+  return [...buildFileToolDefinitions(), buildShellToolDefinition(), ask, todos, ...buildWebToolDefinitions(), ...buildKnowledgeToolDefinitions()];
 }
 
 const MAX_WEB_RESULT_CHARS = 8000;
@@ -177,10 +141,14 @@ async function executeWebTool(name: string, args: Record<string, unknown>): Prom
     if (!query) throw new Error("Missing search query.");
     const token = await getSessionToken();
     if (!token) throw new Error("Sign in to search the web.");
-    const result = await invoke<{ results: string; sources: { title: string; url: string }[] }>(
-      "kontinue_api_post",
-      { path: "/api/kode/search", sessionToken: token, body: { query } },
-    );
+    const result = await invoke<{
+      results: string;
+      sources: { title: string; url: string }[];
+    }>("kontinue_api_post", {
+      path: "/api/kode/search",
+      sessionToken: token,
+      body: { query },
+    });
     if (!result.results) return "No results found.";
     const sources = result.sources.map((s, i) => `[${i + 1}] ${s.title} — ${s.url}`).join("\n");
     return `${result.results}\n\nSources:\n${sources}`.slice(0, MAX_WEB_RESULT_CHARS);
@@ -189,9 +157,7 @@ async function executeWebTool(name: string, args: Record<string, unknown>): Prom
   if (!/^https?:\/\//i.test(url)) throw new Error("fetch_url needs a full http(s) URL.");
   const raw = await invoke<string>("kode_fetch_text", { url });
   const text = /<\/?[a-z][\s\S]*>/i.test(raw) ? htmlToText(raw) : raw;
-  return text.length > MAX_WEB_RESULT_CHARS
-    ? `${text.slice(0, MAX_WEB_RESULT_CHARS)}\n…(truncated)`
-    : text || "(empty page)";
+  return text.length > MAX_WEB_RESULT_CHARS ? `${text.slice(0, MAX_WEB_RESULT_CHARS)}\n…(truncated)` : text || "(empty page)";
 }
 
 /**
@@ -199,9 +165,7 @@ async function executeWebTool(name: string, args: Record<string, unknown>): Prom
  * mode-based approval), feed results back, and repeat until the model returns a
  * final answer with no further tool calls.
  */
-export async function runKodeAgent(
-  params: RunKodeAgentParams,
-): Promise<RunKodeAgentResult> {
+export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeAgentResult> {
   const {
     modelId,
     history,
@@ -240,8 +204,7 @@ export async function runKodeAgent(
   // Force the model to call a tool on the first turn when the request clearly
   // implies file work — weak models otherwise paste code into chat instead of
   // acting. Don't force in Plan (read-only) — let it reason and choose.
-  const forceFirstTool =
-    toolsEnabled && mode !== "plan" && impliesFileWork(userText);
+  const forceFirstTool = toolsEnabled && mode !== "plan" && impliesFileWork(userText);
 
   // Inspect the repo (framework / package manager / deps) so skill selection and
   // the prompt are repo-aware. Best-effort — falls back to query-only selection.
@@ -272,11 +235,10 @@ export async function runKodeAgent(
     // Proceed without skills.
   }
   const sources: DocSourceRef[] = [];
-  const systemContext = `${buildKodeSkillsContext(repoProfile, skills)}${
-    extraSystemContext ? `\n\n${extraSystemContext}` : ""
-  }${mode === "plan" ? `\n\n${KODE_PLAN_MODE_PROMPT}` : ""}`;
+  const systemContext = `${buildKodeSkillsContext(repoProfile, skills)}${extraSystemContext ? `\n\n${extraSystemContext}` : ""}${mode === "plan" ? `\n\n${KODE_PLAN_MODE_PROMPT}` : ""}`;
 
   let finalContent = "";
+  const narrations: string[] = [];
   // `usage` = the latest call (context-size signal for the meter).
   // `tokensConsumed` = running sum across all calls (turn cost for billing).
   let usage: LanguageModelUsage | undefined;
@@ -327,7 +289,10 @@ export async function runKodeAgent(
       if (signal?.aborted || (error as Error)?.name === "AbortError") {
         contentFilter.flush();
         const partial = streamedThisCall.trim();
-        if (partial) finalContent = partial;
+        if (partial) {
+          finalContent = partial;
+          narrations.push(partial);
+        }
         stopped = true;
         break;
       }
@@ -337,9 +302,15 @@ export async function runKodeAgent(
     usage = response.usage ?? usage;
     tokensConsumed += response.usage?.totalTokens ?? 0;
     finalContent = stripKodeArtifacts(response.content);
+    if (finalContent.trim()) narrations.push(finalContent.trim());
 
     if (response.toolCalls.length === 0) {
-      return { content: finalContent, usage, tokensConsumed, sources };
+      return {
+        content: closingText(narrations, finalContent),
+        usage,
+        tokensConsumed,
+        sources,
+      };
     }
 
     // Record the assistant turn that requested the tools (required so the model
@@ -383,7 +354,7 @@ export async function runKodeAgent(
     // Ended by the user — keep whatever was generated; only fall back to a marker
     // if nothing had streamed yet.
     return {
-      content: finalContent || "_Stopped._",
+      content: closingText(narrations, finalContent) || "_Stopped._",
       usage,
       tokensConsumed,
       sources,
@@ -392,11 +363,21 @@ export async function runKodeAgent(
   }
 
   return {
-    content: finalContent || "Reached the maximum number of steps for this response.",
+    content: closingText(narrations, finalContent) || "Reached the maximum number of steps for this response.",
     usage,
     tokensConsumed,
     sources,
   };
+}
+
+/** The model's own words. Tool names are not a closing report. */
+function closingText(narrations: string[], fallback: string) {
+  const unique: string[] = [];
+  for (const note of narrations) {
+    if (unique[unique.length - 1] !== note) unique.push(note);
+  }
+  const prose = unique.join("\n\n").trim();
+  return prose || fallback.trim();
 }
 
 async function handleToolCall(
@@ -439,10 +420,7 @@ async function handleToolCall(
     ctx.onToolStep(step);
     const selected = await ctx.requestOptions(step);
     step.state = "done";
-    step.result =
-      selected.length > 0
-        ? `User selected: ${selected.join(", ")}`
-        : "User did not select anything.";
+    step.result = selected.length > 0 ? `User selected: ${selected.join(", ")}` : "User did not select anything.";
     ctx.onToolStep(step);
     return step.result;
   }
@@ -452,9 +430,7 @@ async function handleToolCall(
     let output: string;
     if (name === KODE_LOAD_SKILL_TOOL) {
       const skill = findSkill(ctx.skills, typeof args.name === "string" ? args.name : "");
-      output = skill
-        ? renderSkill(skill)
-        : `No skill named "${String(args.name)}". Available: ${ctx.skills.map((s) => s.name).join(", ")}`;
+      output = skill ? renderSkill(skill) : `No skill named "${String(args.name)}". Available: ${ctx.skills.map((s) => s.name).join(", ")}`;
     } else {
       const query = typeof args.query === "string" ? args.query : "";
       const docs = await retrieveDocsContext(query, ctx.framework).catch(() => ({ context: "", sources: [] }));

@@ -1,3 +1,4 @@
+import { useUser } from "@clerk/clerk-react";
 import {
   canUseKodeModel,
   KODE_DEFAULT_MODEL_ID,
@@ -5,34 +6,33 @@ import {
   type KodePlan,
 } from "@repo/ai/lib/kode";
 import { useQuery } from "convex/react";
-import { useUser } from "@clerk/clerk-react";
 import {
   AlertTriangle,
   ArrowUpRight,
-  ClipboardList,
   Check,
+  ClipboardList,
   Copy,
   Info,
   Loader2,
+  Pencil,
   RefreshCw,
   RotateCcw,
-  Terminal,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useStickToBottomContext } from "use-stick-to-bottom";
 import {
-  DesktopChatTurnNavigator,
-  type ChatTurn,
-} from "@/components/chat/DesktopChatTurnNavigator";
-
-import { api } from "@/lib/convex-api";
-
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { HiSpeakerWave } from "react-icons/hi2";
+import { useStickToBottomContext } from "use-stick-to-bottom";
 import {
   ChainOfThought,
   ChainOfThoughtContent,
   ChainOfThoughtHeader,
 } from "@/components/ai-elements/chain-of-thought";
-import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   Context,
   ContextContent,
@@ -51,38 +51,63 @@ import {
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
-import { ChatInput, type StagedAttachment } from "@/components/chat/ChatInput";
-import type { KodeContentPart } from "@/lib/kode-chat";
-import { ToolStepView } from "@/components/chat/ToolStep";
-import { TodoList } from "@/components/chat/TodoList";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import {
   Source,
   Sources,
   SourcesContent,
   SourcesTrigger,
 } from "@/components/ai-elements/sources";
-import type { DocSourceRef } from "@/lib/kode-docs";
+import { ChatInput, type StagedAttachment } from "@/components/chat/ChatInput";
+import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
+import {
+  type ChatTurn,
+  DesktopChatTurnNavigator,
+} from "@/components/chat/DesktopChatTurnNavigator";
+import { ForkIcon } from "@/components/chat/ForkIcon";
+import { TodoList } from "@/components/chat/TodoList";
+import { CommandBlock, ToolStepView } from "@/components/chat/ToolStep";
+import { KodeComposerBar } from "@/components/kode/KodeComposerBar";
+import KodeSessionImport from "@/components/kode/KodeSessionImport";
+import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
 import { usePlanTier } from "@/hooks/use-plan-tier";
-import { runKodeAgent, type KodeToolStep } from "@/lib/kode-agent";
+import { getSettings, useAppSettings } from "@/lib/app-settings";
+import { api } from "@/lib/convex-api";
+import { type KodeToolStep, runKodeAgent } from "@/lib/kode-agent";
 import { useKodeAgentRuntime } from "@/lib/kode-agent-runtime";
-import type { KodeAgentMode, KodeTodo } from "@/lib/kode-tools";
+import type { KodeContentPart } from "@/lib/kode-chat";
+import { publishChatContext } from "@/lib/kode-chat-context";
 import {
-  loadContextWindows,
-  getContextWindow,
-  type ContextWindows,
-} from "@/lib/kode-context";
+  cliLoginCommand,
+  cliModelDisplayName,
+  cliNeedsLogin,
+  cliPickerModels,
+  cliPlanLabel,
+  cliTodos,
+  cliToolStep,
+  cliVersionIssue,
+  getCliSession,
+  getProvider,
+  parseCliModelId,
+  runCliTurn,
+  saveCliSession,
+  useCliStore,
+} from "@/lib/kode-cli";
 import {
+  type CompactionState,
   compactHistory,
   estimateTokens,
   needsCompaction,
-  type CompactionState,
 } from "@/lib/kode-compact";
 import {
-  useKodeWorkspace,
-  type KodeWorkspaceMessage,
-} from "@/lib/kode-workspace";
+  type ContextWindows,
+  getContextWindow,
+  loadContextWindows,
+} from "@/lib/kode-context";
+import type { DocSourceRef } from "@/lib/kode-docs";
 import {
   buildContinuationBundle,
+  type CodingProvider,
   diffSessionMessages,
   formatActivity,
   getImportContext,
@@ -90,55 +115,41 @@ import {
   providerLabel,
   readCodingSession,
   readProjectState,
+  type StoredImportContext,
   saveImportContext,
   sessionUpdatedAt,
-  type CodingProvider,
-  type StoredImportContext,
 } from "@/lib/kode-import";
-import KodeSessionImport from "@/components/kode/KodeSessionImport";
-import { publishChatContext } from "@/lib/kode-chat-context";
-import { KodeComposerBar } from "@/components/kode/KodeComposerBar";
-import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
-import { getSettings, useAppSettings } from "@/lib/app-settings";
-import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
-import { useReasoningPreference } from "@/lib/use-reasoning-preference";
+import type { KodeAgentMode, KodeTodo } from "@/lib/kode-tools";
 import {
-  cliLoginCommand,
-  cliModelDisplayName,
-  cliNeedsLogin,
-  getProvider,
-  cliPickerModels,
-  cliPlanLabel,
-  cliTodos,
-  cliToolStep,
-  cliVersionIssue,
-  getCliSession,
-  runCliTurn,
-  parseCliModelId,
-  saveCliSession,
-  useCliStore,
-} from "@/lib/kode-cli";
+  type KodeWorkspaceMessage,
+  useKodeWorkspace,
+} from "@/lib/kode-workspace";
+import { useReasoningPreference } from "@/lib/use-reasoning-preference";
 
 const KODE_STARTER_PROMPTS = [
   {
     icon: "🚀",
     title: "Build a component",
-    prompt: "Create a modern, responsive React component with Tailwind CSS and smooth micro-interactions.",
+    prompt:
+      "Create a modern, responsive React component with Tailwind CSS and smooth micro-interactions.",
   },
   {
     icon: "🔍",
     title: "Explain architecture",
-    prompt: "Analyze the architecture of this project and explain data flow, state management, and conventions.",
+    prompt:
+      "Analyze the architecture of this project and explain data flow, state management, and conventions.",
   },
   {
     icon: "⚡",
     title: "Optimize performance",
-    prompt: "Review performance bottlenecks in this codebase and suggest concrete optimizations.",
+    prompt:
+      "Review performance bottlenecks in this codebase and suggest concrete optimizations.",
   },
   {
     icon: "🐛",
     title: "Debug & solve error",
-    prompt: "I'm encountering an issue with type safety and state synchronization. Help me debug it.",
+    prompt:
+      "I'm encountering an issue with type safety and state synchronization. Help me debug it.",
   },
 ];
 
@@ -154,6 +165,7 @@ type ChatMessage = KodeWorkspaceMessage & {
 
 // Key for an in-flight send started on the home page before a chat exists.
 const DRAFT_KEY = "draft";
+const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
 
 // Real context size per chat, as reported by the provider on the last turn
 // (prompt incl. system instructions + tools, plus the reply). Saved so the
@@ -163,7 +175,9 @@ const CONTEXT_STORE_KEY = "kontinue.kode.context-tokens";
 
 function readContextTokens(chatId: string): number | null {
   try {
-    const store = JSON.parse(localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}") as Record<string, number>;
+    const store = JSON.parse(
+      localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}",
+    ) as Record<string, number>;
     return typeof store[chatId] === "number" ? store[chatId] : null;
   } catch {
     return null;
@@ -172,7 +186,9 @@ function readContextTokens(chatId: string): number | null {
 
 function saveContextTokens(chatId: string, tokens: number) {
   try {
-    const store = JSON.parse(localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}") as Record<string, number>;
+    const store = JSON.parse(
+      localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}",
+    ) as Record<string, number>;
     store[chatId] = tokens;
     localStorage.setItem(CONTEXT_STORE_KEY, JSON.stringify(store));
   } catch {
@@ -203,17 +219,57 @@ const formatRelativeTime = (timestamp?: number) => {
   return `${Math.floor(diff / day)} d ago`;
 };
 
+function formatMessageStamp(timestamp?: number): string {
+  if (!timestamp) return "";
+  const date = new Date(timestamp);
+  const time = date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+  const startOfDay = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const dayDiff = Math.round(
+    (startOfDay(new Date()) - startOfDay(date)) / 86_400_000,
+  );
+  if (dayDiff <= 0) return time;
+  if (dayDiff === 1) return `Yesterday, ${time}`;
+  if (dayDiff < 7)
+    return `${date.toLocaleDateString([], { weekday: "short" })}, ${time}`;
+  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
+}
+
+function speakAloud(text: string) {
+  if (typeof window === "undefined" || !window.speechSynthesis) return;
+  const synth = window.speechSynthesis;
+  if (synth.speaking || synth.pending) {
+    synth.cancel();
+    return;
+  }
+  const spoken = text
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+    .replace(/#+\s/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (!spoken) return;
+  synth.speak(new SpeechSynthesisUtterance(spoken));
+}
+
 function MessageMeta({
   message,
   onRewind,
+  onFork,
+  onEdit,
 }: {
   message: ChatMessage;
   onRewind?: () => void;
+  onFork?: () => void;
+  onEdit?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  // Optimistic (not-yet-persisted) messages use temp ids; rewind needs a real id.
-  const isPersisted =
-    !message.id.startsWith("user-") && !message.id.startsWith("assistant-");
+  const isUser = message.role === "user";
+  const stamp = formatMessageStamp(message.createdAt);
 
   if (message.status === "thinking") return null;
 
@@ -227,29 +283,84 @@ function MessageMeta({
     }
   };
 
+  const copyButton = (
+    <MessageAction
+      tooltip="Copy"
+      onClick={copy}
+      className="size-5 text-foreground/40 hover:text-foreground"
+    >
+      {copied ? <Check size={13} /> : <Copy size={13} />}
+    </MessageAction>
+  );
+  const forkButton = onFork ? (
+    <MessageAction
+      tooltip="Fork from here"
+      onClick={onFork}
+      className="size-5 text-foreground/40 hover:text-foreground"
+    >
+      <ForkIcon />
+    </MessageAction>
+  ) : null;
+  const time = stamp ? (
+    <span className="px-1 text-[11px] text-foreground/35">{stamp}</span>
+  ) : null;
+
   return (
-    <MessageActions className="-mt-0.5 w-fit px-1 text-foreground/40 transition-opacity group-[.is-user]:ml-auto group-[.is-user]:opacity-0 group-hover:opacity-100 focus-within:opacity-100">
-      <MessageAction
-        tooltip="Copy"
-        onClick={copy}
-        className="size-7 text-foreground/40 hover:text-foreground"
-      >
-        {copied ? <Check size={13} /> : <Copy size={13} />}
-      </MessageAction>
-      {onRewind && isPersisted ? (
-        <MessageAction
-          tooltip="Rewind"
-          onClick={onRewind}
-          className="size-7 text-foreground/40 hover:text-foreground"
-        >
-          <RotateCcw size={13} />
-        </MessageAction>
-      ) : null}
-      <span className="px-1 text-[11px] text-foreground/35">
-        {formatRelativeTime(message.createdAt)}
-      </span>
+    <MessageActions className="msg-actions -mt-0.5 w-fit gap-1.5 px-0.5 text-foreground/55 transition-opacity group-[.is-user]:ml-auto">
+      {isUser ? (
+        <>
+          {time}
+          {copyButton}
+          {onRewind ? (
+            <MessageAction
+              tooltip="Rewind to here"
+              onClick={onRewind}
+              className="size-5 text-foreground/40 hover:text-foreground"
+            >
+              <RotateCcw size={13} />
+            </MessageAction>
+          ) : null}
+          {forkButton}
+          {onEdit ? (
+            <MessageAction
+              tooltip="Edit"
+              onClick={onEdit}
+              className="size-5 text-foreground/40 hover:text-foreground"
+            >
+              <Pencil size={13} />
+            </MessageAction>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {copyButton}
+          {forkButton}
+          <MessageAction
+            tooltip="Read aloud"
+            onClick={() => speakAloud(message.content)}
+            className="size-5 text-foreground/40 hover:text-foreground"
+          >
+            <HiSpeakerWave size={14} />
+          </MessageAction>
+          {time}
+        </>
+      )}
     </MessageActions>
   );
+}
+
+function isImportedTerminalDump(content: string) {
+  return (
+    /toolu_[A-Za-z0-9]+/.test(content) &&
+    /background command|exit code|task-notification/i.test(content)
+  );
+}
+
+function importedTerminalNotice(content: string) {
+  const summary = content.match(
+    /Background command[\s\S]*?\(exit code \d+\)/i,
+  )?.[0];
+  return `Ran: ${summary ?? content.replace(/\s+/g, " ").trim()}`;
 }
 
 function SystemNotice({
@@ -263,17 +374,22 @@ function SystemNotice({
   const warning = /limit|reached/i.test(normalized);
   const terminal = normalized.startsWith("Ran:");
 
+  if (terminal) {
+    return (
+      <CommandBlock
+        command={normalized.replace(/^Ran:\s*/, "")}
+        status="done"
+      />
+    );
+  }
+
   return (
     <div
-      className={`flex items-center justify-center gap-2 py-1 text-center text-[11px] ${
-        warning ? "text-amber-500/80" : "text-foreground/40"
-      }`}
+      className={`flex items-center justify-center gap-2 py-1 text-center text-[11px] ${warning ? "text-amber-500/80" : "text-foreground/40"}`}
     >
       <span className="h-px w-8 bg-white/10" />
       {warning ? (
         <AlertTriangle size={11} className="shrink-0" />
-      ) : terminal ? (
-        <Terminal size={11} className="shrink-0" />
       ) : (
         <Info size={11} className="shrink-0" />
       )}
@@ -292,7 +408,8 @@ const PlanView = () => {
   const { user } = useUser();
   const firstName = user?.firstName || user?.fullName || "there";
   const planTier = normalizePlanTier(usePlanTier());
-  const { reasoningEnabled: legacyReasoningEnabled, setReasoningEnabled } = useReasoningPreference();
+  const { reasoningEnabled: legacyReasoningEnabled, setReasoningEnabled } =
+    useReasoningPreference();
   const { kodeContextWindow, kodeReasoning } = useAppSettings();
   // Reasoning comes from the picker (Settings store); "off" only where allowed.
   const reasoningEnabled = kodeReasoning !== "off";
@@ -323,7 +440,9 @@ const PlanView = () => {
     }
   }, [cliStatuses, kodeModels, selectedModelId]);
   const selectedCliId = parseCliModelId(selectedModelId)?.instanceId;
-  const selectedCli = selectedCliId ? getProvider(selectedCliId, appSettings) ?? null : null;
+  const selectedCli = selectedCliId
+    ? (getProvider(selectedCliId, appSettings) ?? null)
+    : null;
   // All in-flight state is keyed by chat id (or DRAFT_KEY for an unsaved home
   // chat) so multiple chats/projects can run concurrently and switching chats
   // shows the correct per-chat loading + overlay.
@@ -338,6 +457,8 @@ const PlanView = () => {
   const [usageByChat, setUsageByChat] = useState<
     Record<string, ChatMessage["usage"]>
   >({});
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [seed, setSeed] = useState<{ text: string; nonce: number }>({
     text: "",
     nonce: 0,
@@ -503,7 +624,7 @@ const PlanView = () => {
   // work in the first render, before the Convex chat → folder mapping arrives.
   const projectRoot =
     activeProject?.path ??
-    (activeChatId ? importContext?.projectPath ?? null : null);
+    (activeChatId ? (importContext?.projectPath ?? null) : null);
 
   const resolveApproval = runtime.resolveApproval;
   const resolveOptions = runtime.resolveOptions;
@@ -515,6 +636,60 @@ const PlanView = () => {
     } catch {
       // Ignore — Convex will surface its own error; the input is already seeded.
     }
+  };
+
+  const priorHistory = (index: number) =>
+    messages.slice(0, index).flatMap((message) => {
+      if (message.notice || !message.content) return [];
+      if (message.role !== "user" && message.role !== "assistant") return [];
+      return [{ role: message.role, content: message.content }];
+    });
+
+  const forkMessage = async (index: number) => {
+    const slice = messages.slice(0, index + 1).filter((message) => {
+      if (message.notice || !message.content) return false;
+      return (
+        !message.id.startsWith("user-") && !message.id.startsWith("assistant-")
+      );
+    });
+    if (slice.length === 0) return;
+    const title =
+      chats.find((chat) => chat.id === activeChatId)?.title ?? "Chat";
+    const chatId = await createChatRecord({
+      title: `${title} fork`,
+      projectId: activeProjectId,
+    });
+    for (const message of slice) {
+      await addMessageRecord({
+        chatId,
+        role: message.role === "assistant" ? "assistant" : "user",
+        content: message.content,
+        model: message.modelId,
+      });
+    }
+    selectChat(chatId);
+  };
+
+  const editMessage = async (
+    index: number,
+    messageId: string,
+    next: string,
+  ) => {
+    const text = next.trim();
+    if (!text) return;
+    const history = priorHistory(index);
+    const persisted =
+      !messageId.startsWith("user-") && !messageId.startsWith("assistant-");
+    if (persisted) await rewindAfter(messageId);
+    setEditingMessageId(null);
+    await submitPrompt(
+      text,
+      selectedModelId,
+      undefined,
+      undefined,
+      undefined,
+      history,
+    );
   };
 
   const isKodeChat = Boolean(
@@ -529,48 +704,56 @@ const PlanView = () => {
   // General token budget for the signed-in user (daily + weekly). Used to block a
   // turn before it runs when the budget is exhausted.
 
-  const persistedMessages: ChatMessage[] = (convexMessages ?? []).map(
-    (message) => {
-      const meta = message.metadata as
-        | { model?: string; todos?: KodeTodo[]; sources?: DocSourceRef[] }
-        | undefined;
-      const isNotice = message.role === "system";
-      return {
-        id: message._id,
-        role: isNotice
-          ? "assistant"
-          : message.role === "assistant"
+  const persistedMessages = useMemo<ChatMessage[]>(
+    () =>
+      (convexMessages ?? []).map((message) => {
+        const meta = message.metadata as
+          | { model?: string; todos?: KodeTodo[]; sources?: DocSourceRef[] }
+          | undefined;
+        const isNotice = message.role === "system";
+        return {
+          id: message._id,
+          role: isNotice
             ? "assistant"
-            : "user",
-        content: message.content,
-        modelId: meta?.model ?? selectedModelId,
-        createdAt: message.createdAt,
-        status: "complete",
-        notice: isNotice,
-        toolTodos: meta?.todos,
-        sources: meta?.sources,
-      } satisfies ChatMessage;
-    },
+            : message.role === "assistant"
+              ? "assistant"
+              : "user",
+          content: message.content,
+          modelId: meta?.model ?? selectedModelId,
+          createdAt: message.createdAt,
+          status: "complete" as const,
+          notice: isNotice,
+          toolTodos: meta?.todos,
+          sources: meta?.sources,
+        };
+      }),
+    [convexMessages, selectedModelId],
   );
 
   const currentKey = activeChatId ?? DRAFT_KEY;
-  const overlay = pendingByChat[currentKey] ?? [];
-  const messages: ChatMessage[] = [...persistedMessages, ...overlay];
+  const overlay = pendingByChat[currentKey] ?? EMPTY_CHAT_MESSAGES;
+  const messages = useMemo(
+    () => [...persistedMessages, ...overlay],
+    [persistedMessages, overlay],
+  );
   const isCurrentSending = !!sendingChats[currentKey];
   const isCompacting = !!compactingChats[currentKey];
   const latestUsage = usageByChat[currentKey];
-  const messagesLoading =
-    activeChatId !== null && convexMessages === undefined;
+  const messagesLoading = activeChatId !== null && convexMessages === undefined;
 
   // Keep an imported chat in sync with its source transcript while it is open.
   // The interval only stats the file; a full parse + Convex append happens when
   // the transcript actually changed. Auto-sync can be turned off per chat.
-  const syncRef = useRef(syncImportedSession);
-  syncRef.current = syncImportedSession;
+  const syncNow = useEffectEvent((options?: { silent?: boolean }) =>
+    syncImportedSession(options),
+  );
   const sendingRef = useRef(isCurrentSending);
-  sendingRef.current = isCurrentSending;
   useEffect(() => {
-    if (!importContext?.sourcePath) return;
+    sendingRef.current = isCurrentSending;
+  }, [isCurrentSending]);
+  useEffect(() => {
+    const sourcePath = importContext?.sourcePath;
+    if (!sourcePath) return;
     if (importContext.autoSync === false) return;
     if (!importContext.lastMessageHash) return;
     let cancelled = false;
@@ -579,10 +762,10 @@ const PlanView = () => {
       try {
         const updated = await sessionUpdatedAt(
           importContext.provider,
-          importContext.sourcePath!,
+          sourcePath,
         );
         if (updated > (importContext.syncedAt ?? importContext.importedAt)) {
-          await syncRef.current({ silent: true });
+          await syncNow({ silent: true });
         }
       } catch {
         // Polling errors are non-fatal; a manual sync surfaces them.
@@ -609,6 +792,7 @@ const PlanView = () => {
     attachments?: StagedAttachment[],
     sendReasoningEnabled?: boolean,
     modeOverride?: KodeAgentMode,
+    historyOverride?: { role: "user" | "assistant"; content: string }[],
   ) => {
     // Approving a plan switches mode and sends in the same tick, so use the
     // override instead of the (not yet updated) state.
@@ -623,7 +807,9 @@ const PlanView = () => {
     );
     const fileAtts = (attachments ?? []).filter((a) => a.text);
     const fileBlocks = fileAtts
-      .map((a) => `\n\n[Attached file: ${a.filename}]\n\`\`\`\n${a.text}\n\`\`\``)
+      .map(
+        (a) => `\n\n[Attached file: ${a.filename}]\n\`\`\`\n${a.text}\n\`\`\``,
+      )
       .join("");
     const modelText = `${text}${fileBlocks}`;
     const displayText = attachments?.length
@@ -651,7 +837,9 @@ const PlanView = () => {
 
     const cliTarget = parseCliModelId(modelId);
     // The provider instance (Settings → Providers) that runs this model.
-    const cliProvider = cliTarget ? getProvider(cliTarget.instanceId) ?? null : null;
+    const cliProvider = cliTarget
+      ? (getProvider(cliTarget.instanceId) ?? null)
+      : null;
     if (cliTarget && !cliProvider) {
       setPendingByChat((current) => ({
         ...current,
@@ -660,7 +848,8 @@ const PlanView = () => {
           {
             id: `assistant-${now}`,
             role: "assistant",
-            content: "This provider was removed. Pick another model, or add it again in Settings → Providers.",
+            content:
+              "This provider was removed. Pick another model, or add it again in Settings → Providers.",
             modelId,
             status: "error",
           },
@@ -708,15 +897,17 @@ const PlanView = () => {
     }));
 
     // History only exists for an already-active chat (draft sends start empty).
-    const history = persistedMessages.reduce<
-      { role: "user" | "assistant"; content: string }[]
-    >((items, message) => {
-      if (message.notice) return items;
-      if (message.content) {
-        items.push({ role: message.role, content: message.content });
-      }
-      return items;
-    }, []);
+    const history =
+      historyOverride ??
+      persistedMessages.reduce<
+        { role: "user" | "assistant"; content: string }[]
+      >((items, message) => {
+        if (message.notice) return items;
+        if (message.content) {
+          items.push({ role: message.role, content: message.content });
+        }
+        return items;
+      }, []);
 
     let runKey = key;
     let chatId = activeChatId;
@@ -804,9 +995,15 @@ const PlanView = () => {
       // touches the Kontinue server and is not counted in Kode usage.
       if (cliTarget && cliProvider) {
         if (!projectRoot) {
-          throw new Error("Open a project folder to use your Claude Code or Codex subscription.");
+          throw new Error(
+            "Open a project folder to use your Claude Code or Codex subscription.",
+          );
         }
-        const versionIssue = cliVersionIssue(cliTarget.model, cliProvider, cliStatuses);
+        const versionIssue = cliVersionIssue(
+          cliTarget.model,
+          cliProvider,
+          cliStatuses,
+        );
         if (versionIssue) {
           throw new Error(
             `${versionIssue} Use Update in Settings → Providers, or pick one of Kode's models.`,
@@ -818,7 +1015,10 @@ const PlanView = () => {
         let prompt = modelText;
         if (!sessionId) {
           const earlier = history
-            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
+            .map(
+              (m) =>
+                `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`,
+            )
             .join("\n\n")
             .slice(-24000);
           const preface = [
@@ -830,7 +1030,10 @@ const PlanView = () => {
           if (preface) prompt = `${preface}\n\n---\n\n${modelText}`;
         }
         if (imageAtts.length > 0) {
-          applyDelta("content", "_Images are not sent to the CLI; only text is._\n\n");
+          applyDelta(
+            "content",
+            "_Images are not sent to the CLI; only text is._\n\n",
+          );
         }
 
         const steps = new Map<string, KodeToolStep>();
@@ -870,10 +1073,14 @@ const PlanView = () => {
             }
           },
         });
-        if (result.sessionId) saveCliSession(cliChatId, cliProvider.id, result.sessionId);
+        if (result.sessionId)
+          saveCliSession(cliChatId, cliProvider.id, result.sessionId);
         if (result.error) {
           // Common causes: a signed-out CLI, or one too old for this model.
-          const signedOut = /log ?in|logged out|not logged|authenticat|\/login/i.test(result.error);
+          const signedOut =
+            /log ?in|logged out|not logged|authenticat|\/login/i.test(
+              result.error,
+            );
           const badModel = /model/i.test(result.error);
           const hint = signedOut
             ? `Sign in from Settings → Providers → ${cliProvider.label}${cliLoginCommand(cliProvider) ? ` (or run \`${cliLoginCommand(cliProvider)}\` in a terminal)` : ""}, then send again.`
@@ -883,10 +1090,18 @@ const PlanView = () => {
           throw new Error(hint ? `${result.error}\n\n${hint}` : result.error);
         }
 
-        const noticeText = notices.length ? `\n\n> ${notices.join("\n> ")}` : "";
+        const noticeText = notices.length
+          ? `\n\n> ${notices.join("\n> ")}`
+          : "";
         const content =
-          (result.text || (result.stopped ? "_Stopped._" : "")) + noticeText;
-        await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
+          (result.text.trim() + noticeText).trim() ||
+          (result.stopped ? "_Stopped._" : "");
+        await addMessageRecord({
+          chatId,
+          role: "user",
+          content: displayText,
+          model: modelId,
+        });
         await addMessageRecord({
           chatId,
           role: "assistant",
@@ -906,7 +1121,11 @@ const PlanView = () => {
       // older turns and send [summary, ...recent] instead. Original messages stay.
       // Surface a "Compacting context…" indicator only when it will actually run
       // (summarizing a large history can take a moment).
-      const window = getContextWindow(modelId, contextWindows, getSettings().kodeContextWindow);
+      const window = getContextWindow(
+        modelId,
+        contextWindows,
+        getSettings().kodeContextWindow,
+      );
       if (needsCompaction(history, window)) {
         setCompactingChats((current) => ({ ...current, [runKey]: true }));
       }
@@ -972,8 +1191,12 @@ const PlanView = () => {
       });
 
       const finishedId = chatId;
-      setUsageByChat((current) => ({ ...current, [finishedId]: response.usage }));
-      if (response.usage?.totalTokens) saveContextTokens(finishedId, response.usage.totalTokens);
+      setUsageByChat((current) => ({
+        ...current,
+        [finishedId]: response.usage,
+      }));
+      if (response.usage?.totalTokens)
+        saveContextTokens(finishedId, response.usage.totalTokens);
       // Clear this chat's overlay — Convex now renders the persisted turns
       // (with sources/todos from metadata).
       setPendingByChat((current) => {
@@ -1023,18 +1246,30 @@ const PlanView = () => {
   // Empty chat → 0. Otherwise the provider's real count from the last turn
   // (this session, or saved), else an estimate from the messages alone.
   const reportedTokens =
-    latestUsage?.totalTokens ?? (activeChatId ? readContextTokens(activeChatId) : null);
+    latestUsage?.totalTokens ??
+    (activeChatId ? readContextTokens(activeChatId) : null);
   const usedTokens =
     messages.length === 0
       ? 0
       : (reportedTokens ??
         estimateTokens(messages) +
-          (importContext ? Math.ceil(importContext.contextPrompt.length / 4) : 0));
-  const contextWindow = getContextWindow(selectedModelId, contextWindows, kodeContextWindow);
+          (importContext
+            ? Math.ceil(importContext.contextPrompt.length / 4)
+            : 0));
+  const contextWindow = getContextWindow(
+    selectedModelId,
+    contextWindows,
+    kodeContextWindow,
+  );
   useEffect(() => {
-    publishChatContext({ used: usedTokens, max: contextWindow, modelName: getModelName(selectedModelId) });
+    publishChatContext({
+      used: usedTokens,
+      max: contextWindow,
+      modelName: getModelName(selectedModelId),
+    });
   }, [usedTokens, contextWindow, selectedModelId]);
   const inChat = activeChatId !== null || messages.length > 0;
+  const [jumpSlot, setJumpSlot] = useState<HTMLDivElement | null>(null);
   const userTurns = useMemo<ChatTurn[]>(
     () =>
       messages
@@ -1054,19 +1289,20 @@ const PlanView = () => {
   );
   return (
     <div
-      className={`flex h-full w-full flex-col overflow-hidden pb-5 ${inChat ? "" : "px-6"}`}
+      className={`relative flex h-full w-full flex-col overflow-hidden ${inChat ? "" : "px-6 pb-5"}`}
     >
       <div
         className={
           inChat
             ? // Full width so the conversation's scrollbar sits at the pane
-              // edge; each child centers itself at the 48rem column.
-              "flex min-h-0 w-full flex-1 flex-col pt-6"
+              // edge. No mask here: a mask breaks backdrop blur on the
+              // composer and the jump button.
+              "flex min-h-0 w-full flex-1 flex-col"
             : "mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col items-center [justify-content:safe_center] overflow-y-auto py-6"
         }
       >
         {inChat && importContext ? (
-          <div className="mx-auto mb-2 flex w-[min(48rem,calc(100%-3rem))] items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/[0.06] px-3 py-1.5 text-[11px] text-foreground/60">
+          <div className="mx-auto mt-[4.5rem] mb-2 flex w-[min(48rem,calc(100%-3rem))] items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/[0.06] px-3 py-1.5 text-[11px] text-foreground/60">
             <img
               src={providerIcon(importContext.provider)}
               alt=""
@@ -1081,12 +1317,7 @@ const PlanView = () => {
                 ? ` · last active ${formatActivity(importContext.lastActivity)}`
                 : ""}
               {importContext.projectPath
-                ? ` · ${
-                    importContext.projectPath
-                      .split(/[\\/]/)
-                      .filter(Boolean)
-                      .pop() ?? "project"
-                  }`
+                ? ` · ${importContext.projectPath.split(/[\\/]/).filter(Boolean).pop() ?? "project"}`
                 : " · no project attached"}
             </span>
             <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -1110,11 +1341,7 @@ const PlanView = () => {
                     className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10.5px] text-foreground/40 transition-colors hover:bg-white/[0.05] hover:text-foreground/70"
                   >
                     <span
-                      className={`size-1.5 rounded-full ${
-                        importContext.autoSync === false
-                          ? "bg-foreground/25"
-                          : "bg-emerald-500"
-                      }`}
+                      className={`size-1.5 rounded-full ${importContext.autoSync === false ? "bg-foreground/25" : "bg-emerald-500"}`}
                     />
                     Auto {importContext.autoSync === false ? "off" : "on"}
                   </button>
@@ -1149,18 +1376,26 @@ const PlanView = () => {
           </div>
         ) : null}
         {syncError ? (
-          <p className="mx-auto mb-2 w-[min(48rem,calc(100%-3rem))] text-[10.5px] text-amber-500">
+          <p
+            className={`mx-auto mb-2 w-[min(48rem,calc(100%-3rem))] text-[10.5px] text-amber-500 ${importContext ? "" : "mt-[4.5rem]"}`}
+          >
             {syncError}
           </p>
         ) : null}
         {!inChat ? (
           <div className="w-full text-center space-y-6 mb-6">
             <div className="flex items-center justify-center">
-              <img src="/kontinueai.svg" alt="Kontinue AI" className="h-10 dark:invert-0 invert" />
+              <img
+                src="/kontinueai.svg"
+                alt="Kontinue AI"
+                className="h-10 dark:invert-0 invert"
+              />
             </div>
             <h1 className="text-3xl sm:text-4xl font-normal tracking-tight text-zinc-900 dark:text-zinc-100">
               How can I help you,{" "}
-              <span className="font-bold text-purple-600 dark:text-purple-400">{firstName}</span>
+              <span className="font-bold text-purple-600 dark:text-purple-400">
+                {firstName}
+              </span>
               ?
             </h1>
             <div className="flex items-center justify-center">
@@ -1176,109 +1411,175 @@ const PlanView = () => {
           </div>
         ) : (
           <Conversation className="min-h-0 flex-1 overflow-hidden">
-            <ConversationContent className="mx-auto w-full max-w-[51rem] gap-6 px-6 pt-0 pb-5">
-              {messages.map((message) =>
-                message.notice ? (
+            <ConversationContent
+              className={`mx-auto w-full max-w-[51rem] gap-6 px-6 pb-28 ${importContext || syncError ? "pt-4" : "pt-[4.5rem]"}`}
+            >
+              {messages.map((message, index) =>
+                message.notice || isImportedTerminalDump(message.content) ? (
                   <SystemNotice
                     key={message.id}
-                    content={message.content}
+                    content={
+                      message.notice
+                        ? message.content
+                        : importedTerminalNotice(message.content)
+                    }
                     createdAt={message.createdAt}
                   />
                 ) : (
                   <Message
                     from={message.role}
                     key={message.id}
-                    id={message.role === "user" ? `kode-turn-${message.id}` : undefined}
-                  >
-                  <MessageContent>
-                    {message.role === "assistant" ? (
-                      <>
-                        {(() => {
-                          // Not every model emits reasoning tokens, and they
-                          // arrive after a beat when they do. Only render the
-                          // reasoning BOX when there's real content; while waiting,
-                          // show a single clean shimmer header (no empty box).
-                          const reasoningText = message.reasoning?.trim();
-                          const isThinking = message.status === "thinking";
-                          if (!reasoningText && !isThinking) return null;
-                          return (
-                            <ChainOfThought defaultOpen={Boolean(reasoningText)}>
-                              <ChainOfThoughtHeader>
-                                {reasoningText ? (
-                                  "Kode reasoning"
-                                ) : (
-                                  <Shimmer>Kode is reasoning</Shimmer>
-                                )}
-                              </ChainOfThoughtHeader>
-                              {reasoningText ? (
-                                <ChainOfThoughtContent>
-                                  <div className="rounded-xl border border-brand/15 bg-brand/5 p-3 text-sm leading-relaxed text-foreground/72">
-                                    {reasoningText}
-                                  </div>
-                                </ChainOfThoughtContent>
-                              ) : null}
-                            </ChainOfThought>
-                          );
-                        })()}
-
-                        {message.toolSteps?.map((step) => (
-                          <ToolStepView
-                            key={step.id}
-                            step={step}
-                            onApprove={(id) => resolveApproval(id, true)}
-                            onReject={(id) => resolveApproval(id, false)}
-                            onOptions={resolveOptions}
-                          />
-                        ))}
-
-                        {message.toolTodos && message.toolTodos.length > 0 ? (
-                          <TodoList todos={message.toolTodos} />
-                        ) : null}
-
-                        {message.content ? (
-                          <MessageResponse>{message.content}</MessageResponse>
-                        ) : message.toolSteps?.length ? null : (
-                          <div className="text-sm text-foreground/45">
-                            Waiting for model response...
-                          </div>
-                        )}
-
-                        {message.sources && message.sources.length > 0 ? (
-                          <Sources>
-                            <SourcesTrigger count={message.sources.length} />
-                            <SourcesContent>
-                              {message.sources.map((source) => (
-                                <Source
-                                  key={source.url}
-                                  href={source.url}
-                                  title={source.title}
-                                />
-                              ))}
-                            </SourcesContent>
-                          </Sources>
-                        ) : null}
-                      </>
-                    ) : (
-                      <CollapsibleUserText>
-                        <MessageResponse>{message.content}</MessageResponse>
-                      </CollapsibleUserText>
-                    )}
-                  </MessageContent>
-                  <MessageMeta
-                    message={message}
-                    onRewind={
+                    id={
                       message.role === "user"
-                        ? () => rewindMessage(message.id, message.content)
+                        ? `kode-turn-${message.id}`
                         : undefined
                     }
-                  />
+                  >
+                    <MessageContent>
+                      {message.role === "assistant" ? (
+                        <>
+                          {(() => {
+                            // Not every model emits reasoning tokens, and they
+                            // arrive after a beat when they do. Only render the
+                            // reasoning BOX when there's real content; while waiting,
+                            // show a single clean shimmer header (no empty box).
+                            const reasoningText = message.reasoning?.trim();
+                            const isThinking = message.status === "thinking";
+                            if (!reasoningText && !isThinking) return null;
+                            return (
+                              <ChainOfThought
+                                defaultOpen={Boolean(reasoningText)}
+                              >
+                                <ChainOfThoughtHeader>
+                                  {reasoningText ? (
+                                    "Kode reasoning"
+                                  ) : (
+                                    <Shimmer>Kode is reasoning</Shimmer>
+                                  )}
+                                </ChainOfThoughtHeader>
+                                {reasoningText ? (
+                                  <ChainOfThoughtContent>
+                                    <div className="rounded-xl border border-brand/15 bg-brand/5 p-3 text-sm leading-relaxed text-foreground/72">
+                                      {reasoningText}
+                                    </div>
+                                  </ChainOfThoughtContent>
+                                ) : null}
+                              </ChainOfThought>
+                            );
+                          })()}
+
+                          {message.toolSteps?.map((step) => (
+                            <ToolStepView
+                              key={step.id}
+                              step={step}
+                              onApprove={(id) => resolveApproval(id, true)}
+                              onReject={(id) => resolveApproval(id, false)}
+                              onOptions={resolveOptions}
+                            />
+                          ))}
+
+                          {message.toolTodos && message.toolTodos.length > 0 ? (
+                            <TodoList todos={message.toolTodos} />
+                          ) : null}
+
+                          {message.content ? (
+                            <MessageResponse>{message.content}</MessageResponse>
+                          ) : message.toolSteps?.length ? null : (
+                            <div className="text-sm text-foreground/45">
+                              Waiting for model response...
+                            </div>
+                          )}
+
+                          {message.sources && message.sources.length > 0 ? (
+                            <Sources>
+                              <SourcesTrigger count={message.sources.length} />
+                              <SourcesContent>
+                                {message.sources.map((source) => (
+                                  <Source
+                                    key={source.url}
+                                    href={source.url}
+                                    title={source.title}
+                                  />
+                                ))}
+                              </SourcesContent>
+                            </Sources>
+                          ) : null}
+                        </>
+                      ) : editingMessageId === message.id ? (
+                        <div className="flex w-full min-w-[280px] flex-col gap-2">
+                          <textarea
+                            value={editDraft}
+                            onChange={(event) =>
+                              setEditDraft(event.target.value)
+                            }
+                            rows={3}
+                            aria-label="Edit message"
+                            className="w-full resize-none bg-transparent text-sm leading-relaxed text-foreground outline-none"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditingMessageId(null)}
+                              className="kontinue-3d rounded-full px-3 py-1 text-xs"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void editMessage(index, message.id, editDraft)
+                              }
+                              className="kontinue-3d-primary rounded-full px-3 py-1 text-xs font-semibold"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <CollapsibleUserText>
+                          <MessageResponse>{message.content}</MessageResponse>
+                        </CollapsibleUserText>
+                      )}
+                    </MessageContent>
+                    <MessageMeta
+                      message={message}
+                      onRewind={
+                        message.role === "user" &&
+                        !message.id.startsWith("user-") &&
+                        !message.id.startsWith("assistant-")
+                          ? () => rewindMessage(message.id, message.content)
+                          : undefined
+                      }
+                      onFork={
+                        !message.id.startsWith("user-") &&
+                        !message.id.startsWith("assistant-")
+                          ? () => void forkMessage(index)
+                          : undefined
+                      }
+                      onEdit={
+                        message.role === "user" &&
+                        !message.id.startsWith("user-") &&
+                        !message.id.startsWith("assistant-")
+                          ? () => {
+                              setEditingMessageId(message.id);
+                              setEditDraft(message.content);
+                            }
+                          : undefined
+                      }
+                    />
                   </Message>
                 ),
               )}
               {(() => {
                 // Plan mode: offer to approve the latest plan and start building.
                 const last = messages[messages.length - 1];
-                if (mode !== "plan" || isCurrentSending || !last || last.role !== "assistant" || !last.content?.trim()) {
+                if (
+                  mode !== "plan" ||
+                  isCurrentSending ||
+                  !last ||
+                  last.role !== "assistant" ||
+                  !last.content?.trim()
+                ) {
                   return null;
                 }
                 const approve = (next: KodeAgentMode) => {
@@ -1293,7 +1594,10 @@ const PlanView = () => {
                 };
                 return (
                   <div className="kontinue-3d flex flex-wrap items-center gap-2 rounded-[20px] px-4 py-3">
-                    <ClipboardList size={14} className="shrink-0 text-purple-500" />
+                    <ClipboardList
+                      size={14}
+                      className="shrink-0 text-purple-500"
+                    />
                     <p className="min-w-0 flex-1 text-[12.5px] text-foreground/85">
                       Ready to build this plan?
                     </p>
@@ -1316,25 +1620,107 @@ const PlanView = () => {
               })()}
             </ConversationContent>
             <KodeTurnNavigator turns={userTurns} />
-            <ConversationScrollButton />
+            <ConversationScrollButton container={jumpSlot} />
           </Conversation>
         )}
 
         <div
           className={
             inChat
-              ? "mx-auto w-[min(48rem,calc(100%-3rem))]"
+              ? "pointer-events-none absolute inset-x-0 bottom-0 z-30 px-6 pb-4"
               : "mx-auto w-full max-w-3xl"
           }
         >
+          <div
+            className={
+              inChat
+                ? "pointer-events-auto relative mx-auto w-full max-w-3xl"
+                : undefined
+            }
+          >
+          {inChat ? (
+            <div
+              ref={setJumpSlot}
+              className="pointer-events-none absolute inset-x-0 bottom-full z-40 mb-3 flex justify-center"
+            />
+          ) : null}
           <ChatInput
-            topBar={!inChat ? <KodeComposerBar project={activeProject} /> : undefined}
+            compact={inChat}
+            trailing={
+              inChat ? (
+                <Context
+                  maxTokens={contextWindow}
+                  modelId={selectedModelId}
+                  usage={latestUsage}
+                  usedTokens={usedTokens}
+                  openDelay={120}
+                  closeDelay={250}
+                >
+                  <ContextTrigger className="h-6 gap-1 rounded-md px-1 text-[11px] text-foreground/55 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06] [&_svg]:size-3" />
+                  <ContextContent
+                    align="end"
+                    side="top"
+                    sideOffset={8}
+                    className="liquid-glass-dropdown w-80 divide-y divide-black/[0.05] p-0 text-foreground dark:divide-white/[0.06]"
+                  >
+                    <ContextContentHeader className="space-y-2 px-4 py-3.5">
+                      <ChatContextSummary
+                        used={usedTokens}
+                        max={contextWindow}
+                      />
+                    </ContextContentHeader>
+                    <PlanUsageLimits
+                      className="px-4 py-3.5"
+                      onSeeAll={() => openSettings("usage")}
+                    />
+                  </ContextContent>
+                </Context>
+              ) : undefined
+            }
+            bottomBar={
+              !inChat && activeProject ? (
+                <KodeComposerBar
+                  project={activeProject}
+                  end={
+                    <Context
+                      maxTokens={contextWindow}
+                      modelId={selectedModelId}
+                      usage={latestUsage}
+                      usedTokens={usedTokens}
+                      openDelay={120}
+                      closeDelay={250}
+                    >
+                      <ContextTrigger className="h-6 gap-1 rounded-md px-1 text-[11px] text-foreground/55 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06] [&_svg]:size-3" />
+                      <ContextContent
+                        align="end"
+                        side="top"
+                        sideOffset={8}
+                        className="liquid-glass-dropdown w-80 divide-y divide-black/[0.05] p-0 text-foreground dark:divide-white/[0.06]"
+                      >
+                        <ContextContentHeader className="space-y-2 px-4 py-3.5">
+                          <ChatContextSummary
+                            used={usedTokens}
+                            max={contextWindow}
+                          />
+                        </ContextContentHeader>
+                        <PlanUsageLimits
+                          className="px-4 py-3.5"
+                          onSeeAll={() => openSettings("usage")}
+                        />
+                      </ContextContent>
+                    </Context>
+                  }
+                />
+              ) : undefined
+            }
             loading={isCurrentSending}
             onStop={stopCurrentRun}
             models={kodeModels}
             modelId={selectedModelId}
             onModelChange={setSelectedModelId}
-            onSend={(text, mId, atts, _w, r) => submitPrompt(text, mId, atts, r)}
+            onSend={(text, mId, atts, _w, r) =>
+              submitPrompt(text, mId, atts, r)
+            }
             mode={mode}
             onModeChange={setMode}
             seedText={seed.text}
@@ -1342,7 +1728,9 @@ const PlanView = () => {
             placeholder={
               isCurrentSending
                 ? "Kode is responding..."
-                : "Ask the agent to work on your app..."
+                : inChat
+                  ? "Ask a follow-up…"
+                  : "Ask the agent to work on your app..."
             }
             planTier={planTier}
             reasoningEnabled={reasoningEnabled}
@@ -1369,64 +1757,44 @@ const PlanView = () => {
             </div>
           ) : null}
 
-          <div className="mt-2 flex items-center justify-end gap-2">
-            {selectedCli ? (
-              <span
-                className="mr-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
-                title="Runs the CLI installed on this computer with your own sign-in. Not counted in Kode usage."
-              >
-                {cliNeedsLogin(cliStatuses, selectedCli.id)
-                  ? `${selectedCli.label} is not signed in. Sign in from Settings → Providers`
-                  : `${selectedCli.label} · ${cliPlanLabel(selectedCli).replace("Uses", "uses")} · not counted in Kode usage`}
-              </span>
-            ) : null}
-            {isCompacting ? (
-              <span className="mr-auto flex items-center gap-1.5 text-[11px] text-foreground/45">
-                <Loader2 className="size-3 animate-spin" />
-                <Shimmer>Compacting context…</Shimmer>
-              </span>
-            ) : null}
-            {compactedChats[currentKey] ? (
-              <button
-                type="button"
-                onClick={() => setShowSummary((v) => !v)}
-                className="text-[11px] text-foreground/40 underline-offset-2 hover:text-foreground/70 hover:underline"
-                title="Older messages were summarized to fit the model's context window. Click to view."
-              >
-                context compacted · view summary
-              </button>
-            ) : null}
-            <Context
-              maxTokens={contextWindow}
-              modelId={selectedModelId}
-              usage={latestUsage}
-              usedTokens={usedTokens}
-              openDelay={120}
-              closeDelay={250}
-            >
-              <ContextTrigger className="h-7 gap-1.5 rounded-full px-2 text-[12px] text-foreground/45 hover:bg-white/[0.05] hover:text-foreground/70" />
-              <ContextContent
-                align="end"
-                side="top"
-                sideOffset={8}
-                className="liquid-glass-dropdown w-80 divide-y divide-black/[0.05] p-0 text-foreground dark:divide-white/[0.06]"
-              >
-                {/* This chat's context window */}
-                <ContextContentHeader className="space-y-2 px-4 py-3.5">
-                  <ChatContextSummary used={usedTokens} max={contextWindow} />
-                </ContextContentHeader>
-                {/* Plan limits; "See all" opens Settings → Usage */}
-                <PlanUsageLimits className="px-4 py-3.5" onSeeAll={() => openSettings("usage")} />
-              </ContextContent>
-            </Context>
+          {selectedCli || isCompacting || compactedChats[currentKey] ? (
+            <div className="mt-2 flex items-center justify-end gap-2">
+              {selectedCli ? (
+                <span
+                  className="mr-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
+                  title="Runs the CLI installed on this computer with your own sign-in. Not counted in Kode usage."
+                >
+                  {cliNeedsLogin(cliStatuses, selectedCli.id)
+                    ? `${selectedCli.label} is not signed in. Sign in from Settings → Providers`
+                    : `${selectedCli.label} · ${cliPlanLabel(selectedCli).replace("Uses", "uses")} · not counted in Kode usage`}
+                </span>
+              ) : null}
+              {isCompacting ? (
+                <span className="mr-auto flex items-center gap-1.5 text-[11px] text-foreground/45">
+                  <Loader2 className="size-3 animate-spin" />
+                  <Shimmer>Compacting context…</Shimmer>
+                </span>
+              ) : null}
+              {compactedChats[currentKey] ? (
+                <button
+                  type="button"
+                  onClick={() => setShowSummary((v) => !v)}
+                  className="text-[11px] text-foreground/40 underline-offset-2 hover:text-foreground/70 hover:underline"
+                  title="Older messages were summarized to fit the model's context window. Click to view."
+                >
+                  context compacted · view summary
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           </div>
         </div>
 
         {!inChat ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-2xl mx-auto w-full pt-4 text-left">
-            {KODE_STARTER_PROMPTS.map((starter, i) => (
+            {KODE_STARTER_PROMPTS.map((starter) => (
               <button
-                key={i}
+                key={starter.title}
                 type="button"
                 onClick={() => submitPrompt(starter.prompt)}
                 className="liquid-glass-card group flex items-start gap-3 rounded-[22px] p-3.5 text-left cursor-pointer transition-all active:scale-[0.99]"
@@ -1469,10 +1837,35 @@ function KodeTurnNavigator({ turns }: { turns: ChatTurn[] }) {
       turns={turns}
       getScrollElement={getScrollElement}
       onJumpToTurn={(turnId) => {
+        const root = scrollRef.current;
+        const message = document.getElementById(turnId);
+        if (!root || !message) return;
         stopScroll();
-        document
-          .getElementById(turnId)
-          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        // scrollIntoView also scrolls overflow:hidden ancestors, which slides
+        // the whole pane. Only the conversation itself should move.
+        let node = message.parentElement;
+        while (node && node !== document.body) {
+          if (node !== root) {
+            const overflow = getComputedStyle(node).overflowY;
+            if (
+              (overflow === "hidden" || overflow === "clip") &&
+              node.scrollTop !== 0
+            ) {
+              node.scrollTop = 0;
+            }
+          }
+          node = node.parentElement;
+        }
+        const top =
+          root.scrollTop +
+          (message.getBoundingClientRect().top -
+            root.getBoundingClientRect().top) -
+          72;
+        const max = Math.max(0, root.scrollHeight - root.clientHeight);
+        root.scrollTo({
+          top: Math.min(Math.max(0, top), max),
+          behavior: "smooth",
+        });
       }}
     />
   );
@@ -1494,7 +1887,8 @@ function ChatContextSummary({ used, max }: { used: number; max: number }) {
       </div>
       <UsageBar pct={pct} />
       <p className="text-[10.5px] leading-relaxed text-muted-foreground">
-        Older messages are summarized automatically when the chat gets close to the limit.
+        Older messages are summarized automatically when the chat gets close to
+        the limit.
       </p>
     </>
   );

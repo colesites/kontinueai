@@ -6,6 +6,7 @@ import { FREE_DEFAULT_MODEL_ID } from "@repo/ai/models";
 import { getMemoryLimitBytesForPlan } from "@repo/core/memory";
 import { isPaidPersistedPlan } from "@repo/core/plan-tier";
 import { grantBonusCredits, REFERRAL_REWARD_CREDITS } from "./lib/videoCredits";
+import { whitelistPlanForEmail } from "./whitelist";
 
 // ── Referral helpers ──────────────────────────────────────
 
@@ -84,7 +85,10 @@ export const getOrCreateUser = mutation({
 		if (!identity) throw new Error("Not authenticated");
 		const clerkUserId = identity.subject;
 		const now = Date.now();
-		const memoryLimitBytes = getMemoryLimitBytesForPlan(args.plan);
+		// A whitelist row with a plan beats the plan the client synced from billing.
+		const plan =
+			(await whitelistPlanForEmail(ctx, args.email)) ?? args.plan;
+		const memoryLimitBytes = getMemoryLimitBytesForPlan(plan);
 		const existing = await ctx.db
 			.query("users")
 			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", clerkUserId))
@@ -107,7 +111,7 @@ export const getOrCreateUser = mutation({
 			if (existing.imageUrl !== args.imageUrl) patches.imageUrl = args.imageUrl;
 			if (existing.subscriptionStatus !== args.subscriptionStatus)
 				patches.subscriptionStatus = args.subscriptionStatus;
-			if (existing.plan !== args.plan) patches.plan = args.plan;
+			if (existing.plan !== plan) patches.plan = plan;
 			if (existing.memoryLimitBytes !== memoryLimitBytes) {
 				patches.memoryLimitBytes = memoryLimitBytes;
 			}
@@ -117,7 +121,7 @@ export const getOrCreateUser = mutation({
 				await ctx.db.patch(existing._id, patches);
 			}
 			// Reward a pending referral if this sync reflects the user becoming paid.
-			await maybeRewardReferral(ctx, existing._id, args.plan);
+			await maybeRewardReferral(ctx, existing._id, plan);
 			return existing._id;
 		}
 
@@ -127,7 +131,7 @@ export const getOrCreateUser = mutation({
 			name: args.name,
 			imageUrl: args.imageUrl,
 			subscriptionStatus: args.subscriptionStatus,
-			plan: args.plan,
+			plan,
 			memoryUsedBytes: 0,
 			memoryLimitBytes,
 			fileStorageUsedBytes: 0,
@@ -138,7 +142,7 @@ export const getOrCreateUser = mutation({
 		// Attribute the invite (if any) at creation time, then reward immediately in
 		// the rare case the account is already on a paid plan.
 		await attributeReferralOnSignup(ctx, newUserId, args.referralCode);
-		await maybeRewardReferral(ctx, newUserId, args.plan);
+		await maybeRewardReferral(ctx, newUserId, plan);
 
 		return newUserId;
 	},

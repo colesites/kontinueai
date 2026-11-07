@@ -41,5 +41,38 @@
 				"organizeImports": "on"
 			}
 		}
-	}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
+		}
+	},
+	"overrides": [
+		{
+			"includes": ["apps/desktop/src/components/chat/ModelPickerPopover.tsx"],
+			"formatter": {
+				"indentStyle": "space",
+				"indentWidth": 2,
+				"lineWidth": 200
+			}
+		},
+		{
+			"includes": ["apps/desktop/src/components/kode/KodeComposerBar.tsx"],
+			"formatter": {
+				"indentStyle": "space",
+				"indentWidth": 2,
+				"lineWidth": 100
+			}
+		},
+		{
+			"includes": ["apps/desktop/src/styles/globals.css"],
+			"linter": {
+				"rules": {
+					"complexity": {
+						"noImportantStyles": "off"
+					}
+				}
+			}
+		}
+	]
 }

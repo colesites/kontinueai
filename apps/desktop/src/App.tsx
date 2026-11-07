@@ -128,7 +128,7 @@ function WorkspaceContent() {
   );
 }
 
-function App() {
+function MainApp() {
   // Warm the local docs index at startup so the first chat message is grounded.
   // Persists on disk across sessions; only re-fetches stale sources.
   useEffect(() => {
@@ -146,6 +146,10 @@ function App() {
       </AuthProviders>
     </ThemeProvider>
   );
+}
+
+function App() {
+  return <MainApp />;
 }
 
 export default App;

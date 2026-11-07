@@ -1,7 +1,8 @@
 import { auth, currentUser } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import { AuthScaffold } from "../../../components/AuthScaffold";
 import { DesktopAuthHandoff } from "./DesktopAuthHandoff";
+import { DesktopAuthRedirect } from "./DesktopAuthRedirect";
 // The desktop app sends 32 random bytes as hex.
 const STATE_PATTERN = /^[a-f0-9]{64}$/;
 
@@ -14,6 +15,9 @@ export default async function DesktopAuthPage({
 		callback_port?: string | string[];
 	}>;
 }) {
+	// This route reads the signed-in user and then redirects. Without a
+	// request-time boundary, the cached shell is the 404 page.
+	await connection();
 	const { state: rawState, mode: rawMode, callback_port: rawPort } = await searchParams;
 	const state = typeof rawState === "string" ? rawState : undefined;
 	const mode = rawMode === "sign-up" ? "sign-up" : "sign-in";
@@ -34,7 +38,12 @@ export default async function DesktopAuthPage({
 	const { userId } = await auth();
 	if (!userId) {
 		const authPath = mode === "sign-up" ? "/sign-up" : "/sign-in";
-		redirect(`${authPath}?redirect_url=${encodeURIComponent(returnTo)}`);
+		const href = `${authPath}?redirect_url=${encodeURIComponent(returnTo)}`;
+		return (
+			<AuthScaffold subtitle="Kontinue AI desktop sign-in">
+				<DesktopAuthRedirect href={href} />
+			</AuthScaffold>
+		);
 	}
 
 	const user = await currentUser();

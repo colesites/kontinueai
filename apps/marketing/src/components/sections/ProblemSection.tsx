@@ -41,13 +41,13 @@ export function ProblemSection() {
 						<div>
 							<div className="font-display text-4xl tracking-tight">5 hrs</div>
 							<div className="mt-1 text-sm text-muted-foreground">
-								Can pass before a limit resets
+								How long a limit can hold you up
 							</div>
 						</div>
 						<div className="border-l border-border pl-10">
-							<div className="font-display text-4xl tracking-tight">0</div>
+							<div className="font-display text-4xl tracking-tight">0%</div>
 							<div className="mt-1 text-sm text-muted-foreground">
-								Context that follows you to a new app
+								Of your context comes along to the next app
 							</div>
 						</div>
 					</div>

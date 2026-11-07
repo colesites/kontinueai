@@ -7,6 +7,7 @@ use tauri::Manager;
 
 mod kode_import;
 
+mod browser_view;
 mod panel;
 mod cli_agents;
 
@@ -1566,6 +1567,11 @@ pub fn run() {
             ,cli_agents::kode_cli_secret_set
             ,cli_agents::kode_cli_secret_remove
             ,cli_agents::kode_cli_secret_status
+            ,browser_view::browser_place
+            ,browser_view::browser_hide
+            ,browser_view::browser_close
+            ,browser_view::browser_reload
+            ,browser_view::browser_go
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,37 +1,3 @@
-export interface HowItWorksStep {
-	index: string;
-	title: string;
-	description: string;
-	image: string;
-}
-
-export const howItWorksSteps: HowItWorksStep[] = [
-	{
-		index: "01",
-		title: "Pick up the thread",
-		description:
-			"Your imported messages stay in order, so the next model sees everything the last one saw.",
-		image:
-			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229188/import_d8xvho.jpg",
-	},
-	{
-		index: "02",
-		title: "Switch models when one runs out",
-		description:
-			"Out of one model? Pick another for the next reply. The conversation stays in the same thread.",
-		image:
-			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229140/anymodel_vdvx4h.jpg",
-	},
-	{
-		index: "03",
-		title: "One plan instead of three",
-		description:
-			"Get leading models and Kontinue tools in a single subscription. Model access and limits depend on your plan.",
-		image:
-			"https://res.cloudinary.com/dqovfvo29/image/upload/q_auto/f_auto/v1781229062/lessmoney_umvfhq.jpg",
-	},
-];
-
 export interface FeatureBlock {
 	eyebrow: string;
 	title: string;

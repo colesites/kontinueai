@@ -9,13 +9,13 @@ const steps = [
 		icon: Share2,
 		title: "Share the chat",
 		description:
-			"On ChatGPT, Claude or Gemini, open the conversation, tap Share and copy the link.",
+			"In the web app, open the conversation on ChatGPT, Claude or Gemini, tap Share and copy the link.",
 	},
 	{
 		icon: FileUp,
-		title: "Paste it into Kontinue",
+		title: "Paste it in",
 		description:
-			"Kontinue brings the messages over in order, so the chat reads exactly as you left it.",
+			"Paste the link into Kontinue on the web. The messages come over in order, so the chat reads exactly as you left it.",
 	},
 	{
 		icon: RefreshCw,
@@ -34,14 +34,14 @@ export function ImportSection() {
 			<div className="mx-auto max-w-6xl px-5 lg:px-8">
 				<div className="grid gap-12 lg:grid-cols-[1.05fr_0.95fr] lg:gap-20">
 					<Reveal className="max-w-2xl">
-						<p className="eyebrow">How it works</p>
+						<p className="eyebrow">How it works, on the web</p>
 						<h2 className="font-display tracking-tightest mt-5 text-4xl leading-[1.06] sm:text-5xl">
 							Three steps. Same chat. No restart.
 						</h2>
 						<p className="mt-6 text-lg leading-relaxed text-muted-foreground">
 							Hit a limit on ChatGPT, Claude or Gemini? Share the chat, paste the
-							link into Kontinue and pick up with everything the conversation
-							already knows.
+							link into Kontinue on the web and pick up with everything the
+							conversation already knows.
 						</p>
 						<div className="mt-9 flex flex-col gap-3 sm:flex-row">
 							<TrackedLink

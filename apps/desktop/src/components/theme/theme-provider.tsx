@@ -38,15 +38,21 @@ export function ThemeProvider({
     root.classList.add("theme-switching");
     root.classList.remove("light", "dark");
 
-    if (theme === "system") {
-      const systemTheme = window.matchMedia("(prefers-color-scheme: dark)")
-        .matches
-        ? "dark"
-        : "light";
+    const resolved =
+      theme === "system"
+        ? window.matchMedia("(prefers-color-scheme: dark)").matches
+          ? "dark"
+          : "light"
+        : theme;
+    root.classList.add(resolved);
 
-      root.classList.add(systemTheme);
-    } else {
-      root.classList.add(theme);
+    // The embedded browser follows the webview appearance, not our CSS class.
+    if ("__TAURI_INTERNALS__" in window) {
+      void import("@tauri-apps/api/window").then(({ getCurrentWindow }) => {
+        void getCurrentWindow()
+          .setTheme(theme === "system" ? null : resolved)
+          .catch(() => {});
+      });
     }
 
     void root.offsetHeight; // force style recalculation while frozen

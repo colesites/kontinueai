@@ -57,6 +57,14 @@ export function readFile(root: string, path: string): Promise<string> {
   return invoke<string>("kode_read_file", { root, path });
 }
 
+export function writeFile(
+  root: string,
+  path: string,
+  content: string,
+): Promise<void> {
+  return invoke<void>("kode_write_file", { root, path, content });
+}
+
 type PtyEvent = { kind: "data"; data: string } | { kind: "exit" };
 
 export async function spawnTerminal(options: {

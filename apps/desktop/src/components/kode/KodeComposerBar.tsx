@@ -1,7 +1,7 @@
-import { useState, type ComponentProps, type ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   Check,
+  ChevronDown,
   Cloud,
   Folder,
   FolderPlus,
@@ -12,19 +12,23 @@ import {
   Search,
   X,
 } from "lucide-react";
+import { type ComponentProps, type ReactNode, useState } from "react";
+import { type KodeProject, useKodeWorkspace } from "../../lib/kode-workspace";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { useKodeWorkspace, type KodeProject } from "@/lib/kode-workspace";
+} from "../ui/dropdown-menu";
 import { BranchPicker, useBranches } from "./BranchPicker";
 
-
 const errorText = (error: unknown) =>
-  typeof error === "string" ? error : error instanceof Error ? error.message : "Something went wrong.";
+  typeof error === "string"
+    ? error
+    : error instanceof Error
+      ? error.message
+      : "Something went wrong.";
 
 /** Pill trigger used by all three pickers. */
 function BarButton({
@@ -36,20 +40,30 @@ function BarButton({
     <button
       type="button"
       {...props}
-      className="flex h-7 max-w-[220px] cursor-pointer items-center gap-1.5 rounded-full px-2.5 text-[12px] text-foreground/80 transition-colors hover:bg-black/[0.04] hover:text-foreground disabled:cursor-default disabled:opacity-45 data-[state=open]:bg-black/[0.05] dark:hover:bg-white/[0.06] dark:data-[state=open]:bg-white/[0.07]"
+      className="flex h-6 max-w-[160px] cursor-pointer items-center gap-1 rounded-md px-1 text-[11px] text-foreground/70 transition-colors hover:bg-black/[0.04] hover:text-foreground disabled:cursor-default disabled:opacity-45 data-[state=open]:bg-black/[0.05] dark:hover:bg-white/[0.06] dark:data-[state=open]:bg-white/[0.07]"
     >
-      <span className="shrink-0 text-muted-foreground">{icon}</span>
+      <span className="shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
+      <ChevronDown size={9} className="shrink-0 text-muted-foreground" />
     </button>
   );
 }
 
 /** Search field inside a menu; stops the menu from stealing keystrokes. */
-function MenuSearch({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
+function MenuSearch({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+}) {
   return (
     <div className="flex items-center gap-2 px-3 pt-1.5 pb-2">
-      <Search size={13} className="shrink-0 text-muted-foreground" />
+      <Search size={12} className="shrink-0 text-muted-foreground" />
       <input
+        // biome-ignore lint/a11y/noAutofocus: the search field should take focus when the menu opens
         autoFocus
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -83,6 +97,7 @@ function NameField({
       }}
     >
       <input
+        // biome-ignore lint/a11y/noAutofocus: the name field should take focus when it opens
         autoFocus
         value={name}
         disabled={busy}
@@ -106,13 +121,17 @@ function NameField({
 }
 
 /**
- * Bar on top of the new-session composer: which project, where to work
- * (local folder or a new git worktree) and which branch.
+ * Footer under the new-session composer: which project, where to work
+ * (local folder or a new git worktree) and which branch. Renders nothing
+ * when there is no project — the caller should omit the footer entirely.
  */
 export function KodeComposerBar({
   project,
+  end,
 }: {
   project: KodeProject | null;
+  /** Sits in the banner, to the left of the branch. */
+  end?: ReactNode;
 }) {
   const { projects, newChat, importFolder, ensureFolder } = useKodeWorkspace();
   const projectPath = project?.path ?? null;
@@ -120,7 +139,7 @@ export function KodeComposerBar({
 
   // Project picker
   const [projectQuery, setProjectQuery] = useState("");
-  const visibleProjects = projects.filter((p) =>
+  const visibleProjects = projects.filter((p: KodeProject) =>
     `${p.name} ${p.path}`.toLowerCase().includes(projectQuery.trim().toLowerCase()),
   );
 
@@ -136,7 +155,10 @@ export function KodeComposerBar({
     setWorktreeBusy(true);
     setWorktreeError(null);
     try {
-      const path = await invoke<string>("panel_git_worktree_add", { root: projectPath, branch });
+      const path = await invoke<string>("panel_git_worktree_add", {
+        root: projectPath,
+        branch,
+      });
       newChat(ensureFolder(path));
       setWorktreeOpen(false);
     } catch (error) {
@@ -146,100 +168,138 @@ export function KodeComposerBar({
     }
   };
 
+  if (!project || !projectPath) return null;
+
   return (
     <>
-      {/* Project */}
-      <DropdownMenu onOpenChange={(open) => !open && setProjectQuery("")}>
-        <DropdownMenuTrigger asChild>
-            <BarButton icon={<Folder size={13} />} label={project?.name ?? "No project"} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-72 p-1.5">
-          <MenuSearch value={projectQuery} onChange={setProjectQuery} placeholder="Search projects" />
-          <DropdownMenuSeparator />
-          <div className="max-h-64 overflow-y-auto">
-            {visibleProjects.map((p) => (
-              <DropdownMenuItem key={p.id} onSelect={() => newChat(p.id)} className="flex items-center gap-2.5 px-3 py-1.5">
-                <Folder size={13} className="shrink-0 text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate text-[12.5px]">{p.name}</span>
-                {p.id === project?.id ? <Check size={13} className="shrink-0 text-purple-500" /> : null}
-              </DropdownMenuItem>
-            ))}
-            {visibleProjects.length === 0 ? (
-              <p className="px-3 py-2 text-[12px] text-muted-foreground">No matching projects.</p>
-            ) : null}
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => void importFolder()} className="flex items-center gap-2.5 px-3 py-1.5">
-            <FolderPlus size={13} className="shrink-0" />
-            <span className="text-[12.5px]">Add project folder…</span>
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => newChat(null)} className="flex items-center gap-2.5 px-3 py-1.5">
-            <X size={13} className="shrink-0" />
-            <span className="text-[12.5px]">Don't work in a project</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      {/* Work in + Branch only make sense inside a project. */}
-      {projectPath ? (
-      <>
-      {/* Work in */}
-      <DropdownMenu onOpenChange={(open) => !open && (setWorktreeOpen(false), setWorktreeError(null))}>
-        <DropdownMenuTrigger asChild>
-            <BarButton
-              icon={inWorktree ? <GitFork size={13} /> : <Laptop size={13} />}
-              label={inWorktree ? "Worktree" : "Local"}
-              disabled={!projectPath}
+      <div className="flex min-w-0 flex-1 items-center gap-0.5">
+        {/* Project */}
+        <DropdownMenu
+          onOpenChange={(open: boolean) => {
+            if (!open) setProjectQuery("");
+          }}
+        >
+          <DropdownMenuTrigger asChild>
+            <BarButton icon={<Folder size={12} />} label={project.name} />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-72 p-1.5">
+            <MenuSearch
+              value={projectQuery}
+              onChange={setProjectQuery}
+              placeholder="Search projects"
             />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-72 p-1.5">
-          <p className="px-3 pt-1 pb-1 text-[10.5px] font-medium text-muted-foreground/70">Work in</p>
-          <DropdownMenuItem className="flex items-center gap-2.5 px-3 py-1.5">
-            <Laptop size={13} className="shrink-0" />
-            <span className="flex-1 text-[12.5px]">{inWorktree ? "This worktree" : "Local"}</span>
-            <Check size={13} className="shrink-0 text-purple-500" />
-          </DropdownMenuItem>
-          {worktreeOpen ? (
-            <>
-              <NameField
-                placeholder="Branch for the new worktree"
-                busy={worktreeBusy}
-                onSubmit={(name) => void createWorktree(name)}
-                onCancel={() => setWorktreeOpen(false)}
-              />
-              {worktreeError ? <p className="px-3 pb-1.5 text-[11px] text-rose-400">{worktreeError}</p> : null}
-            </>
-          ) : (
+            <DropdownMenuSeparator />
+            <div className="max-h-64 overflow-y-auto">
+              {visibleProjects.map((p: KodeProject) => (
+                <DropdownMenuItem
+                  key={p.id}
+                  onSelect={() => newChat(p.id)}
+                  className="flex items-center gap-2.5 px-3 py-1.5"
+                >
+                  <Folder size={12} className="shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 flex-1 truncate text-[12.5px]">{p.name}</span>
+                  {p.id === project?.id ? (
+                    <Check size={12} className="shrink-0 text-purple-500" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+              {visibleProjects.length === 0 ? (
+                <p className="px-3 py-2 text-[12px] text-muted-foreground">No matching projects.</p>
+              ) : null}
+            </div>
+            <DropdownMenuSeparator />
             <DropdownMenuItem
-              onSelect={(e) => {
-                e.preventDefault();
-                setWorktreeOpen(true);
-              }}
+              onSelect={() => void importFolder()}
               className="flex items-center gap-2.5 px-3 py-1.5"
             >
-              <GitFork size={13} className="shrink-0" />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[12.5px]">New worktree</span>
-                <span className="block text-[10.5px] text-muted-foreground">Separate folder on its own branch</span>
+              <FolderPlus size={12} className="shrink-0" />
+              <span className="text-[12.5px]">Add project folder…</span>
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => newChat(null)}
+              className="flex items-center gap-2.5 px-3 py-1.5"
+            >
+              <X size={12} className="shrink-0" />
+              <span className="text-[12.5px]">Don't work in a project</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Work in */}
+        <DropdownMenu
+          onOpenChange={(open: boolean) => {
+            if (!open) {
+              setWorktreeOpen(false);
+              setWorktreeError(null);
+            }
+          }}
+        >
+          <DropdownMenuTrigger asChild>
+            <BarButton
+              icon={inWorktree ? <GitFork size={12} /> : <Laptop size={12} />}
+              label={inWorktree ? "Worktree" : "Local"}
+            />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-72 p-1.5">
+            <p className="px-3 pt-1 pb-1 text-[10.5px] font-medium text-muted-foreground/70">
+              Work in
+            </p>
+            <DropdownMenuItem className="flex items-center gap-2.5 px-3 py-1.5">
+              <Laptop size={12} className="shrink-0" />
+              <span className="flex-1 text-[12.5px]">{inWorktree ? "This worktree" : "Local"}</span>
+              <Check size={12} className="shrink-0 text-purple-500" />
+            </DropdownMenuItem>
+            {worktreeOpen ? (
+              <>
+                <NameField
+                  placeholder="Branch for the new worktree"
+                  busy={worktreeBusy}
+                  onSubmit={(name) => void createWorktree(name)}
+                  onCancel={() => setWorktreeOpen(false)}
+                />
+                {worktreeError ? (
+                  <p className="px-3 pb-1.5 text-[11px] text-rose-400">{worktreeError}</p>
+                ) : null}
+              </>
+            ) : (
+              <DropdownMenuItem
+                onSelect={(event: Event) => {
+                  event.preventDefault();
+                  setWorktreeOpen(true);
+                }}
+                className="flex items-center gap-2.5 px-3 py-1.5"
+              >
+                <GitFork size={12} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[12.5px]">New worktree</span>
+                  <span className="block text-[10.5px] text-muted-foreground">
+                    Separate folder on its own branch
+                  </span>
+                </span>
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem disabled className="flex items-center gap-2.5 px-3 py-1.5">
+              <Cloud size={12} className="shrink-0" />
+              <span className="flex-1 text-[12.5px]">Cloud</span>
+              <span className="rounded-full border border-black/10 px-1.5 text-[9.5px] text-muted-foreground dark:border-white/10">
+                Soon
               </span>
             </DropdownMenuItem>
-          )}
-          <DropdownMenuItem disabled className="flex items-center gap-2.5 px-3 py-1.5">
-            <Cloud size={13} className="shrink-0" />
-            <span className="flex-1 text-[12.5px]">Cloud</span>
-            <span className="rounded-full border border-black/10 px-1.5 text-[9.5px] text-muted-foreground dark:border-white/10">
-              Soon
-            </span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
-      {/* Branch */}
-      <BranchPicker root={projectPath} repoName={project?.name} onChanged={() => void reloadBranches()}>
-        <BarButton icon={<GitBranch size={13} />} label={branches?.current ?? "Branch"} />
-      </BranchPicker>
-      </>
-      ) : null}
+      <div className="ml-auto flex shrink-0 items-center gap-1">
+        {end}
+        <BranchPicker
+          root={projectPath}
+          repoName={project.name}
+          align="end"
+          onChanged={() => void reloadBranches()}
+        >
+          <BarButton icon={<GitBranch size={12} />} label={branches?.current ?? "Branch"} />
+        </BranchPicker>
+      </div>
     </>
   );
 }

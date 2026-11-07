@@ -389,7 +389,7 @@ export const consumeChatRequest = mutation({
 export const deleteMessagesAfter = mutation({
 	args: {
 		messageId: v.id("messages"),
-		/** If true, the message at messageId is preserved (only later ones are deleted). */
+		/** If true, this message is deleted along with everything after it. */
 		inclusive: v.optional(v.boolean()),
 	},
 	handler: async (ctx, args) => {
