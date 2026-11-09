@@ -87,7 +87,7 @@ export async function proxyGatewayChat({
 	logTag,
 }: {
 	body: Record<string, unknown>;
-	onUsage: (usage: OpenAIUsage) => Promise<void>;
+	onUsage?: (usage: OpenAIUsage) => Promise<void>;
 	logTag: string;
 }): Promise<Response> {
 	const key = gatewayKey();
@@ -114,7 +114,7 @@ export async function proxyGatewayChat({
 	}
 
 	const record = async (usage: OpenAIUsage | null) => {
-		if (!usage) return;
+		if (!usage || !onUsage) return;
 		try {
 			await onUsage(usage);
 		} catch (error) {

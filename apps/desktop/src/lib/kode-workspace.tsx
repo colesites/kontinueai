@@ -1,3 +1,5 @@
+import { mergeWorkspaces, readSharedWorkspace, writeSharedWorkspace } from "./kode-shared-workspace";
+import { resolveFolderForPath } from "./kode-import-remote";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { LanguageModelUsage } from "ai";
 import { useMutation, useQuery } from "convex/react";
@@ -9,6 +11,7 @@ import {
   useMemo,
   useState,
   type ReactNode,
+  useRef,
 } from "react";
 
 import {
@@ -23,6 +26,7 @@ import { removeImportContext } from "@/lib/kode-import";
 // chat → folder grouping is kept locally too. Chats themselves live in Convex.
 const FOLDERS_KEY = "kontinue:kode-folders:v1";
 const CHAT_FOLDER_KEY = "kontinue:kode-chat-folder:v1";
+const SHARED_MIGRATED_KEY = "kontinue:kode-shared-workspace:v1";
 
 type KodeFolder = { id: string; name: string; path: string };
 
@@ -63,6 +67,8 @@ export type KodeChat = {
   updatedAt: number;
   pinnedAt: number | null;
   archived: boolean;
+  /** Where an imported chat came from (synced across devices by Convex). */
+  importSource?: KodeConvexChat["importSource"];
 };
 
 export type KodeTab = "home" | "canvas" | "kode";
@@ -89,8 +95,13 @@ export type SettingsNavTab =
   | "models"
   | "providers"
   | "connectors"
+  | "customize"
+  | "plugins"
   | "agents"
+  | "skills"
+  | "mcp"
   | "shortcuts"
+  | "webhooks"
   | "account"
   | "data";
 
@@ -134,6 +145,16 @@ type KodeWorkspaceContextValue = {
     title: string;
     projectId?: string | null;
   }) => Promise<string>;
+  createKodeChatRecord: (input: {
+    title: string;
+    projectId?: string | null;
+  }) => Promise<string>;
+  /** Put these chats under a local folder (project moved from another machine). */
+  assignChatsToFolder: (chatIds: string[], folderId: string) => void;
+  /** Local project folders (independent of the active tab). */
+  folders: { id: string; name: string; path: string }[];
+  /** Kode chats (independent of the active tab). */
+  kodeChats: KodeChat[];
   addMessageRecord: (input: {
     chatId: string;
     role: "user" | "assistant";
@@ -182,13 +203,17 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   const [activeKodeChatId, setActiveKodeChatId] = useState<string | null>(null);
   const activeChatId = activeTab === "home" ? activeHomeChatId : activeKodeChatId;
   const [draftProjectId, setDraftProjectId] = useState<string | null>(null);
+  const foldersRef = useRef<KodeFolder[]>([]);
   const [folders, setFolders] = useState<KodeFolder[]>(() =>
     loadJSON<KodeFolder[]>(FOLDERS_KEY, []),
   );
+  foldersRef.current = folders;
+  const chatFolderRef = useRef<Record<string, string>>({});
   // chatId → local folder id
   const [chatFolder, setChatFolder] = useState<Record<string, string>>(() =>
     loadJSON<Record<string, string>>(CHAT_FOLDER_KEY, {}),
   );
+  chatFolderRef.current = chatFolder;
 
   // Queries: Home tab uses `chats` table + `projects` table; Kode tab uses `kodeChats` table + local folders
   const convexHomeChats = useQuery(api.chats.getUserChats, {});
@@ -218,6 +243,30 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   const deleteKodeChatMutation = useMutation(api.kode.deleteChat);
   const deleteKodeMessagesAfter = useMutation(api.kode.deleteMessagesAfter);
 
+  // Shared project list (every copy of the app): merge this copy's list in
+  // once, then the shared file is the source of truth for both.
+  const sharedLoaded = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    void readSharedWorkspace().then((shared) => {
+      if (cancelled) return;
+      const local = { folders: foldersRef.current, chatFolder: chatFolderRef.current };
+      const migrated = window.localStorage.getItem(SHARED_MIGRATED_KEY) === "1";
+      const next = shared ? (migrated ? mergeWorkspaces(shared, { folders: [], chatFolder: {} }) : mergeWorkspaces(shared, local)) : local;
+      window.localStorage.setItem(SHARED_MIGRATED_KEY, "1");
+      sharedLoaded.current = true;
+      setFolders(next.folders);
+      setChatFolder(next.chatFolder);
+      void writeSharedWorkspace(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (sharedLoaded.current) void writeSharedWorkspace({ folders, chatFolder });
+  }, [folders, chatFolder]);
+
   useEffect(() => {
     window.localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
   }, [folders]);
@@ -243,6 +292,28 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     }));
   }, [activeTab, convexHomeProjects, folders]);
 
+  const kodeChats = useMemo<KodeChat[]>(() => {
+    return (convexKodeChats ?? [])
+      .filter((chat: KodeConvexChat) => !chat.archived)
+      .map((chat: KodeConvexChat) => ({
+        id: chat._id,
+        title: chat.title,
+        // On another device an imported chat has no local folder yet: match
+        // the folder by path, then by name (cross-device project context).
+        projectId:
+          chatFolder[chat._id] ??
+          resolveFolderForPath(chat.importSource?.projectPath, folders)?.id ??
+          null,
+        importSource: chat.importSource,
+        updatedAt: chat.lastMessageAt ?? chat.updatedAt,
+        pinnedAt:
+          typeof chat.pinnedAt === "number" && chat.pinnedAt > 0
+            ? chat.pinnedAt
+            : null,
+        archived: Boolean(chat.archived),
+      }));
+  }, [convexKodeChats, chatFolder, folders]);
+
   // Chats list: Home tab (and Canvas) shows `chats` table, Kode tab shows `kodeChats` table
   const chats = useMemo<KodeChat[]>(() => {
     if (activeTab !== "kode") {
@@ -260,20 +331,8 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
           archived: Boolean(chat.archived),
         }));
     }
-    return (convexKodeChats ?? [])
-      .filter((chat: KodeConvexChat) => !chat.archived)
-      .map((chat: KodeConvexChat) => ({
-        id: chat._id,
-        title: chat.title,
-        projectId: chatFolder[chat._id] ?? null,
-        updatedAt: chat.lastMessageAt ?? chat.updatedAt,
-        pinnedAt:
-          typeof chat.pinnedAt === "number" && chat.pinnedAt > 0
-            ? chat.pinnedAt
-            : null,
-        archived: Boolean(chat.archived),
-      }));
-  }, [activeTab, convexHomeChats, convexKodeChats, chatFolder]);
+    return kodeChats;
+  }, [activeTab, convexHomeChats, kodeChats]);
 
   const importFolder = useCallback(async () => {
     const selected = await open({
@@ -287,17 +346,15 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
     const path = selected;
     const name = path.split(/[\\/]/).filter(Boolean).pop() ?? path;
 
-    setFolders((current) => {
-      const existing = current.find((folder) => folder.path === path);
-      if (existing) {
-        setDraftProjectId(existing.id);
-        return current;
-      }
-      const folder: KodeFolder = { id: `folder-${Date.now()}`, name, path };
-      setDraftProjectId(folder.id);
-      return [...current, folder];
-    });
+    // Pick the folder for the next chat outside the state updater, so it
+    // can't be lost (updaters may run twice and must not set other state).
+    const existing = foldersRef.current.find((folder) => folder.path === path);
+    const folder: KodeFolder = existing ?? { id: `folder-${Date.now()}`, name, path };
+    if (!existing) {
+      setFolders((current) => (current.some((entry) => entry.path === path) ? current : [...current, folder]));
+    }
     setActiveKodeChatId(null);
+    setDraftProjectId(folder.id);
   }, []);
 
   const removeFolder = useCallback((folderId: string) => {
@@ -437,6 +494,24 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       }
     },
     [activeTab, updateHomeProject],
+  );
+
+  const assignChatsToFolder = useCallback((chatIds: string[], folderId: string) => {
+    setChatFolder((current) => {
+      const next = { ...current };
+      for (const chatId of chatIds) next[chatId] = folderId;
+      return next;
+    });
+  }, []);
+
+  // Always a Kode chat, whatever tab is open (used by the orchestration MCP).
+  const createKodeChatRecord = useCallback(
+    async ({ title, projectId }: { title: string; projectId?: string | null }) => {
+      const chatId = await createKodeChat({ title: toChatTitle(title) });
+      if (projectId) setChatFolder((current) => ({ ...current, [chatId]: projectId }));
+      return chatId as string;
+    },
+    [createKodeChat],
   );
 
   const createChatRecord = useCallback(
@@ -593,6 +668,10 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       createProjectRecord,
       renameProjectRecord,
       createChatRecord,
+      createKodeChatRecord,
+      assignChatsToFolder,
+      folders,
+      kodeChats,
       addMessageRecord,
       togglePinChat,
       archiveChat,
@@ -613,6 +692,10 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       convexHomeChats,
       convexKodeChats,
       createChatRecord,
+      createKodeChatRecord,
+      assignChatsToFolder,
+      folders,
+      kodeChats,
       createProjectRecord,
       renameProjectRecord,
       deleteChat,

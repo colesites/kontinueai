@@ -1,9 +1,17 @@
-import { ArrowDownToLine, ArrowLeft, Check, ChevronDown, ChevronRight, Folder, Loader2, RefreshCw, Search, X } from "lucide-react";
+import { ArrowDownToLine, ArrowLeft, Camera, Eye, Check, ChevronDown, ChevronRight, FileUp, Folder, Gauge, Loader2, RefreshCw, Search, ShieldCheck, X } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { buildContinuationBundle, type CodingSession, type CodingSessionSummary, type ContinuationBundle, formatActivity, hashMessageContent, providerIcon, providerLabel, readCodingSession, readProjectState, saveImportContext, scanCodingSessions } from "@/lib/kode-import";
+import { buildContinuationBundle, type CodingSession, type CodingSessionSummary, type ContinuationBundle, detectSessionSources, findImportBySession, formatActivity, limitLabel, nativeCliKind, type NativeContinue, providerIcon, providerLabel, readCodingSession, readProjectState, scanCodingSessions, sortCodingSessions, type SessionSource, type StoredImportContext } from "@/lib/kode-import";
+import { importSessionAsChat, syncImportContext } from "@/lib/kode-import-sync";
+import { applyReview, findRedactions } from "@/lib/kode-import-review";
+import { parseTranscriptFile } from "@/lib/kode-import-files";
+import { generateImportSummary } from "@/lib/kode-import-summary";
+import { useImportSyncDeps } from "@/components/kode/ImportedChatBar";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
+import { SnapshotDialog } from "@/components/kode/SnapshotDialog";
 import { cn } from "@/lib/utils";
 
 type KodeSessionImportProps = {
@@ -74,21 +82,47 @@ function projectRoleLabel(option: ProjectOption): string {
  */
 export default function KodeSessionImport({ projectPath, projectName }: KodeSessionImportProps) {
   const [open, setOpen] = useState(false);
+  const [snapshot, setSnapshot] = useState(false);
+  const { projects } = useKodeWorkspace();
 
   return (
-    <>
+    <div className="flex items-center gap-2">
+      <button type="button" onClick={() => setSnapshot(true)} title="Capture the screen and its accessibility tree into a new thread" className="liquid-glass-pill inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs text-zinc-700 hover:text-purple-700 dark:text-zinc-200 dark:hover:text-white">
+        <Camera size={13} className="shrink-0 text-purple-500" />
+        <span>Snapshot</span>
+      </button>
+      {snapshot ? <SnapshotDialog projectId={projects.find((p) => p.path === projectPath)?.id ?? null} projectPath={projectPath} onClose={() => setSnapshot(false)} /> : null}
       <button type="button" onClick={() => setOpen(true)} className="liquid-glass-pill inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs text-zinc-700 hover:text-purple-700 dark:text-zinc-200 dark:hover:text-white">
         <ArrowDownToLine size={13} className="shrink-0 text-purple-500" />
         <span>Import session</span>
       </button>
 
       {open ? <ImportSessionModal projectPath={projectPath} projectName={projectName} onClose={() => setOpen(false)} /> : null}
-    </>
+    </div>
   );
 }
 
-function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionImportProps & { onClose: () => void }) {
-  const { ensureFolder, importKodeSession } = useKodeWorkspace();
+export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionImportProps & { onClose: () => void }) {
+  const { ensureFolder, importKodeSession, folders, kodeChats, selectChat } = useKodeWorkspace();
+  const syncDeps = useImportSyncDeps();
+  const [sources, setSources] = useState<SessionSource[]>([]);
+  const [hooks, setHooks] = useState<{ claude: boolean; codex: boolean; codexNotifyTaken: boolean } | null>(null);
+  const [review, setReview] = useState<{ terms: string; excluded: Set<number> }>({ terms: "", excluded: new Set() });
+  const [withSummary, setWithSummary] = useState(false);
+  const [duplicate, setDuplicate] = useState<StoredImportContext | { chatId: string; title: string } | null>(null);
+
+  useEffect(() => {
+    void detectSessionSources().then(setSources).catch(() => setSources([]));
+    void invoke<{ claude: boolean; codex: boolean; codexNotifyTaken: boolean }>("kode_sync_hooks_status").then(setHooks).catch(() => setHooks(null));
+  }, []);
+
+  const toggleHooks = async () => {
+    try {
+      setHooks(await invoke("kode_sync_hooks_set", { enabled: !(hooks?.claude || hooks?.codex) }));
+    } catch (error) {
+      setActionError(errorText(error, "Could not change the sync hooks."));
+    }
+  };
 
   const [sessions, setSessions] = useState<CodingSessionSummary[]>([]);
   const [scanning, setScanning] = useState(true);
@@ -104,6 +138,7 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
   const [switchingProject, setSwitchingProject] = useState(false);
   const [readingPath, setReadingPath] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [native, setNative] = useState<NativeContinue>("resume");
   const [actionError, setActionError] = useState<string | null>(null);
   const scanSequence = useRef(0);
 
@@ -112,8 +147,28 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
     setScanning(true);
     setScanError(null);
     try {
-      const found = await scanCodingSessions(scanAll ? null : projectPath);
+      const found = await scanCodingSessions(scanAll ? null : projectPath, folders.map((folder) => folder.path));
       if (sequence === scanSequence.current) setSessions(found);
+      // Codex's app-server knows thread names (and threads outside the default
+      // folder); merge them in when it answers.
+      void invoke<{ id: string; title: string; cwd: string | null; model: string | null; updatedAt: number | null; path: string | null }[]>("kode_codex_threads", { cwd: scanAll ? null : projectPath, limit: 60 })
+        .then((threads) => {
+          if (sequence !== scanSequence.current) return;
+          setSessions((current) => {
+            const next = [...current];
+            for (const thread of threads) {
+              if (!thread.path) continue;
+              const existing = next.find((item) => item.provider === "codex" && (item.sessionId === thread.id || item.sourcePath === thread.path));
+              if (existing) {
+                if (thread.title) existing.title = thread.title;
+                continue;
+              }
+              next.push({ provider: "codex", sessionId: thread.id, title: thread.title, projectPath: thread.cwd, projectRoot: thread.cwd, projectExists: true, gitBranch: null, model: thread.model, lastActivity: thread.updatedAt, sourcePath: thread.path, sizeBytes: 0 });
+            }
+            return sortCodingSessions(next);
+          });
+        })
+        .catch(() => {});
     } catch (error) {
       if (sequence === scanSequence.current) {
         setSessions([]);
@@ -122,7 +177,7 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
     } finally {
       if (sequence === scanSequence.current) setScanning(false);
     }
-  }, [projectPath, scanAll]);
+  }, [projectPath, scanAll, folders]);
 
   useEffect(() => {
     void refresh();
@@ -145,6 +200,8 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
     setProjectOptions([]);
     setSelectedTarget(null);
     setActionError(null);
+    setReview({ terms: "", excluded: new Set() });
+    setDuplicate(null);
   };
 
   useEffect(() => {
@@ -163,6 +220,33 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
     setActionError(null);
     try {
       const session = await readCodingSession(summary.provider, summary.sourcePath);
+      await showSession(session);
+    } catch (error) {
+      setActionError(errorText(error, "Could not read this coding session."));
+    } finally {
+      setReadingPath(null);
+    }
+  };
+
+  const importFile = async () => {
+    setActionError(null);
+    const picked = await openDialog({ multiple: false, filters: [{ name: "Transcript", extensions: ["json", "md", "markdown", "txt"] }] });
+    if (typeof picked !== "string") return;
+    try {
+      const root = picked.replace(/[\\/][^\\/]*$/, "");
+      const text = await invoke<string>("kode_read_file", { root, path: picked.slice(root.length + 1) });
+      await showSession(parseTranscriptFile(text, picked.slice(root.length + 1)));
+    } catch (error) {
+      setActionError(errorText(error, "Could not read this file."));
+    }
+  };
+
+  const showSession = async (session: CodingSession) => {
+    {
+      // Same session imported before? Offer to open or sync it instead.
+      const stored = findImportBySession(session.provider, session.sessionId, session.sourcePath);
+      const remote = kodeChats.find((chat) => chat.importSource?.provider === session.provider && chat.importSource.sessionId === session.sessionId);
+      setDuplicate(stored && kodeChats.some((chat) => chat.id === stored.chatId) ? stored : remote ? { chatId: remote.id, title: remote.title } : null);
       // The selected Kode project is the default target, because that is what
       // the user is looking at. The session's own folders stay selectable.
       const options = buildProjectOptions(projectPath, projectName, session.projectPath, session.projectRoot);
@@ -180,11 +264,23 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
       setProjectOptions(options);
       setSelectedTarget(project ? initial : null);
       setPreview(buildContinuationBundle(session, project));
-    } catch (error) {
-      setActionError(errorText(error, "Could not read this coding session."));
-    } finally {
-      setReadingPath(null);
     }
+  };
+
+  const openDuplicate = async (sync: boolean) => {
+    if (!duplicate) return;
+    if (sync && "sourcePath" in duplicate) {
+      setImporting(true);
+      try {
+        await syncImportContext(duplicate, syncDeps);
+      } catch (error) {
+        setActionError(errorText(error, "Could not sync the existing chat."));
+        setImporting(false);
+        return;
+      }
+    }
+    selectChat(duplicate.chatId);
+    onClose();
   };
 
   const changeTarget = async (path: string | null) => {
@@ -209,7 +305,15 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
 
   const confirmImport = async () => {
     if (!preview || importing) return;
-    const session = preview.session;
+    // What gets uploaded: the user's extra terms scrubbed, excluded turns out.
+    const session = applyReview(preview.session, {
+      terms: review.terms.split(","),
+      excluded: review.excluded,
+    });
+    if (session.messages.length === 0) {
+      setActionError("Every turn is left out, so there is nothing to import.");
+      return;
+    }
     // Only use a project root we could inspect on disk, so file tools never
     // point at a moved/deleted folder.
     const projectRoot = preview.project?.root ?? null;
@@ -218,36 +322,14 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
     setImporting(true);
     setActionError(null);
     try {
-      const chatId = await importKodeSession({
-        title: session.title || `Continue ${providerLabel(session.provider)} session`,
-        provider: session.provider,
-        sessionId: session.sessionId,
-        projectPath: projectRoot,
-        lastActivity: session.lastActivity,
-        model: session.model,
-        messages: session.messages,
+      const summary = withSummary ? (await generateImportSummary(session)).summary : undefined;
+      await importSessionAsChat(session, {
+        project: preview.project,
         folderId,
+        summary,
+        native: nativeCliKind(session.provider) ? native : undefined,
+        importChat: importKodeSession,
       });
-
-      saveImportContext({
-        chatId,
-        provider: session.provider,
-        sessionId: session.sessionId,
-        sourcePath: session.sourcePath,
-        projectPath: projectRoot,
-        importedAt: Date.now(),
-        syncedAt: Date.now(),
-        syncedMessageCount: session.messages.length,
-        lastMessageHash: hashMessageContent(session.messages[session.messages.length - 1]?.content ?? ""),
-        autoSync: true,
-        model: session.model ?? undefined,
-        lastActivity: session.lastActivity,
-        filesChanged: session.filesChanged,
-        messageCount: session.messages.length,
-        redactions: session.redactions,
-        contextPrompt: preview.contextPrompt,
-      });
-
       onClose();
     } catch (error) {
       setActionError(errorText(error, "Could not import this session."));
@@ -256,7 +338,8 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-md animate-in fade-in duration-200 dark:bg-black/70">
+    // text-left: rendered inside the home hero, which centers its text.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-left backdrop-blur-md animate-in fade-in duration-200 dark:bg-black/70">
       <button
         type="button"
         aria-label="Close"
@@ -265,15 +348,15 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
           if (!importing) onClose();
         }}
       />
-      <div className="liquid-glass-dropdown relative z-10 flex max-h-[min(560px,86vh)] w-full max-w-[520px] flex-col overflow-hidden text-foreground">
+      <div className={cn("liquid-glass-dropdown relative z-10 flex w-full flex-col overflow-hidden text-foreground transition-[max-width] duration-200", preview ? "max-h-[min(820px,90vh)] max-w-[680px]" : "max-h-[min(560px,86vh)] max-w-[520px]")}>
         {preview ? (
-          <ConfirmStep preview={preview} projectOptions={projectOptions} selectedTarget={selectedTarget} switchingProject={switchingProject} importing={importing} error={actionError} onTargetChange={(path) => void changeTarget(path)} onBack={backToList} onConfirm={() => void confirmImport()} />
+          <ConfirmStep native={native} onNativeChange={setNative} duplicate={duplicate} onOpenDuplicate={(sync) => void openDuplicate(sync)} review={review} onReviewChange={setReview} withSummary={withSummary} onSummaryChange={setWithSummary} preview={preview} projectOptions={projectOptions} selectedTarget={selectedTarget} switchingProject={switchingProject} importing={importing} error={actionError} onTargetChange={(path) => void changeTarget(path)} onBack={backToList} onConfirm={() => void confirmImport()} />
         ) : (
           <>
             <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3">
               <div>
                 <h2 className="text-[14px] font-semibold text-foreground">Import a session</h2>
-                <p className="mt-0.5 text-[11.5px] text-muted-foreground">Continue work from Claude Code or Codex.</p>
+                <p className="mt-0.5 text-[11.5px] text-muted-foreground">Continue work from Claude Code, Codex, Cursor, Gemini CLI, OpenCode or Aider.</p>
               </div>
               <IconButton label="Close" onClick={onClose}>
                 <X size={14} />
@@ -296,6 +379,9 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
                   <span className="truncate">{scanAll ? "All projects" : (projectName ?? "This project")}</span>
                 </button>
               ) : null}
+              <IconButton label="Import a JSON or Markdown export" onClick={() => void importFile()} bordered>
+                <FileUp size={13} />
+              </IconButton>
               <IconButton label="Rescan" onClick={() => void refresh()} disabled={scanning} bordered>
                 <RefreshCw size={13} className={cn(scanning && "animate-spin")} />
               </IconButton>
@@ -322,6 +408,7 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
                 filtered.map((session) => {
                   const isReading = readingPath === session.sourcePath;
                   const project = baseName(session.projectRoot ?? session.projectPath ?? "") || "Unknown project";
+                  const limit = limitLabel(session);
                   return (
                     <button
                       key={`${session.provider}:${session.sourcePath}`}
@@ -337,6 +424,12 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
                           {project} · {formatActivity(session.lastActivity)}
                           {!session.projectExists ? <span className="text-amber-500/80"> · folder missing</span> : null}
                         </p>
+                        {limit ? (
+                          <p className="mt-0.5 flex min-w-0 items-center gap-1 text-[10.5px] leading-4 text-amber-600 dark:text-amber-400">
+                            <Gauge className="size-3 shrink-0" />
+                            <span className="truncate">{limit}</span>
+                          </p>
+                        ) : null}
                       </div>
                       {isReading ? <Loader2 className="size-3.5 shrink-0 animate-spin text-muted-foreground" /> : <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/40 transition-colors group-hover:text-foreground/70" />}
                     </button>
@@ -346,6 +439,24 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
             </div>
 
             {actionError ? <p className="border-t border-black/[0.06] px-4 py-2 text-[11px] text-red-400 dark:border-white/[0.06]">{actionError}</p> : null}
+
+            <div className="flex items-center gap-2 border-t border-black/[0.06] px-4 py-2.5 dark:border-white/[0.06]">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
+                {sources
+                  .filter((source) => source.detected && source.provider !== "aider")
+                  .map((source) => (
+                    <span key={source.provider} title={source.note ?? (source.readable ? "Found on this device" : "Not readable")} className={cn("rounded-full px-2 py-0.5 text-[10px]", source.readable ? "bg-black/[0.04] text-foreground/60 dark:bg-white/[0.06]" : "bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
+                      {source.label}
+                    </span>
+                  ))}
+              </div>
+              {hooks ? (
+                <button type="button" onClick={() => void toggleHooks()} title="Adds Claude Code hooks and a Codex notify command that tell Kontinue when a session changes, so imported chats sync within seconds." className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] text-foreground/55 hover:text-foreground">
+                  <span className={cn("size-1.5 rounded-full", hooks.claude || hooks.codex ? "bg-emerald-500" : "bg-foreground/25")} />
+                  Live sync hooks {hooks.claude || hooks.codex ? "on" : "off"}
+                </button>
+              ) : null}
+            </div>
           </>
         )}
       </div>
@@ -354,6 +465,12 @@ function ImportSessionModal({ projectPath, projectName, onClose }: KodeSessionIm
 }
 
 function ConfirmStep({
+  duplicate,
+  onOpenDuplicate,
+  review,
+  onReviewChange,
+  withSummary,
+  onSummaryChange,
   preview,
   projectOptions,
   selectedTarget,
@@ -363,7 +480,17 @@ function ConfirmStep({
   onTargetChange,
   onBack,
   onConfirm,
+  native,
+  onNativeChange,
 }: {
+  native: NativeContinue;
+  onNativeChange: (value: NativeContinue) => void;
+  duplicate: StoredImportContext | { chatId: string; title: string } | null;
+  onOpenDuplicate: (sync: boolean) => void;
+  review: { terms: string; excluded: Set<number> };
+  onReviewChange: (review: { terms: string; excluded: Set<number> }) => void;
+  withSummary: boolean;
+  onSummaryChange: (value: boolean) => void;
   preview: ContinuationBundle;
   projectOptions: ProjectOption[];
   selectedTarget: string | null;
@@ -375,6 +502,8 @@ function ConfirmStep({
   onConfirm: () => void;
 }) {
   const session = preview.session;
+  // What the preview shows: the session after the user's review.
+  const reviewed = useMemo(() => applyReview(session, { terms: review.terms.split(","), excluded: review.excluded }), [session, review]);
   const selected = projectOptions.find((option) => selectedTarget && samePath(option.path, selectedTarget));
 
   const meta = [providerLabel(session.provider), `${session.messages.length} messages`, preview.project?.branch, formatActivity(session.lastActivity)].filter(Boolean);
@@ -388,7 +517,7 @@ function ConfirmStep({
         <h2 className="text-[14px] font-semibold text-foreground">Import session</h2>
       </div>
 
-      <div className="space-y-4 px-4 pb-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
         <div className="flex items-start gap-3">
           <div className="kontinue-3d flex size-9 shrink-0 items-center justify-center rounded-full">
             <img src={providerIcon(session.provider)} alt="" className="size-4 object-contain invert dark:invert-0" />
@@ -431,13 +560,40 @@ function ConfirmStep({
           {selectedTarget && !preview.project && !switchingProject ? <p className="mt-1.5 text-[11px] text-amber-500/80">Folder not found. Only the conversation will be imported.</p> : null}
         </div>
 
+        {duplicate ? (
+          <div className="kontinue-3d space-y-2 rounded-2xl px-3 py-2.5">
+            <p className="text-[11.5px] text-foreground/80">
+              <span className="font-medium text-foreground">Already imported.</span> Open the existing chat to keep one copy; it syncs new turns.
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => onOpenDuplicate("sourcePath" in duplicate)} disabled={importing} className="kontinue-3d-primary h-7 cursor-pointer rounded-full px-3 text-[11px] font-medium disabled:opacity-60">
+                {"sourcePath" in duplicate ? "Sync and open" : "Open existing"}
+              </button>
+              <span className="self-center text-[10.5px] text-muted-foreground">or import again below as a separate chat.</span>
+            </div>
+          </div>
+        ) : null}
+
+        <UploadPreview session={reviewed} contextPrompt={preview.contextPrompt} />
+
+        <RedactionReview session={session} review={review} onChange={onReviewChange} disabled={importing} />
+
+        {nativeCliKind(session.provider) ? (
+          <NativeChoice provider={session.provider} value={native} onChange={onNativeChange} disabled={importing} />
+        ) : null}
+
+        <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-foreground/75">
+          <input type="checkbox" checked={withSummary} onChange={(event) => onSummaryChange(event.target.checked)} disabled={importing} className="cursor-pointer accent-purple-500" />
+          Add an AI architecture and decisions summary to the context
+        </label>
+
         {session.messagesDropped > 0 ? <p className="text-[11px] text-muted-foreground">{session.messagesDropped} older messages are left out to fit. Recent work is kept.</p> : null}
 
         {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
       </div>
 
       <div className="flex items-center gap-3 border-t border-black/[0.06] px-4 py-3 dark:border-white/[0.06]">
-        <p className="min-w-0 flex-1 text-[10.5px] leading-snug text-muted-foreground/70">Secrets are redacted on this device before upload.</p>
+        <p className="min-w-0 flex-1 text-[10.5px] leading-snug text-muted-foreground/70">Secrets are removed on this device before upload.</p>
         <button type="button" onClick={onBack} disabled={importing} className="kontinue-3d h-8 shrink-0 cursor-pointer rounded-full px-3.5 text-[12px] text-foreground/80 disabled:opacity-50">
           Back
         </button>
@@ -452,6 +608,164 @@ function ConfirmStep({
         </button>
       </div>
     </>
+  );
+}
+
+const NATIVE_OPTIONS: { value: NativeContinue; label: string; hint: (agent: string) => string }[] = [
+  { value: "resume", label: "Same session", hint: (agent) => `Kode keeps going in your ${agent} session itself, with its full memory. New turns show up there too.` },
+  { value: "fork", label: "Fork", hint: (agent) => `A new ${agent} session branched from this one, with its full memory. The original stays untouched.` },
+  { value: "off", label: "Hand off", hint: () => "Kode starts fresh from the imported context, on any model." },
+];
+
+function NativeChoice({ provider, value, onChange, disabled }: { provider: string; value: NativeContinue; onChange: (value: NativeContinue) => void; disabled: boolean }) {
+  const agent = providerLabel(provider as CodingSessionSummary["provider"]);
+  const selected = NATIVE_OPTIONS.find((option) => option.value === value) ?? NATIVE_OPTIONS[0];
+  return (
+    <div className="space-y-1.5">
+      <p className="text-[11.5px] font-medium text-foreground/80">When you continue with {agent}</p>
+      <div className="flex flex-wrap gap-1">
+        {NATIVE_OPTIONS.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "h-7 cursor-pointer rounded-full px-3 text-[11.5px] transition-colors disabled:cursor-default",
+              option.value === value ? "kontinue-menu-active font-medium" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-[11px] leading-snug text-muted-foreground">{selected.hint(agent)}</p>
+    </div>
+  );
+}
+
+function RedactionReview({ session, review, onChange, disabled }: { session: CodingSession; review: { terms: string; excluded: Set<number> }; onChange: (review: { terms: string; excluded: Set<number> }) => void; disabled: boolean }) {
+  const [open, setOpen] = useState(false);
+  const hits = useMemo(() => findRedactions(session, review.terms.split(",")), [session, review.terms]);
+  const turns = useMemo(() => [...new Set(hits.filter((hit) => hit.messageIndex >= 0).map((hit) => hit.messageIndex))], [hits]);
+  const elsewhere = useMemo(() => hits.filter((hit) => hit.messageIndex < 0), [hits]);
+  const shownSecrets = hits.filter((hit) => hit.kind === "secret").length;
+  // Some redactions sit in older turns or tool output that aren't imported.
+  const notShown = Math.max(0, session.redactions - shownSecrets);
+  const toggle = (index: number) => {
+    const excluded = new Set(review.excluded);
+    if (excluded.has(index)) excluded.delete(index);
+    else excluded.add(index);
+    onChange({ ...review, excluded });
+  };
+  return (
+    <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.07]">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-[11.5px] text-foreground/75">
+        <ShieldCheck size={13} className="shrink-0 text-emerald-500" />
+        <span className="flex-1">
+          Review redactions
+          <span className="ml-1.5 text-muted-foreground/70">
+            {session.redactions} secret{session.redactions === 1 ? "" : "s"} removed{review.excluded.size ? ` · ${review.excluded.size} turn${review.excluded.size === 1 ? "" : "s"} left out` : ""}
+          </span>
+        </span>
+        <ChevronDown size={13} className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open ? (
+        <div className="space-y-2 border-t border-black/[0.06] px-3 py-2.5 dark:border-white/[0.07]">
+          <input
+            value={review.terms}
+            onChange={(event) => onChange({ ...review, terms: event.target.value })}
+            disabled={disabled}
+            placeholder="Also hide these words (comma separated): client name, internal URL…"
+            className="kontinue-3d h-8 w-full rounded-full bg-transparent px-3 text-[11.5px] text-foreground outline-none placeholder:text-muted-foreground/60"
+          />
+          <div className="max-h-48 space-y-1 overflow-y-auto">
+            {turns.length === 0 && elsewhere.length === 0 ? <p className="text-[11px] text-muted-foreground">No redactions in what gets imported.</p> : null}
+            {turns.map((index) => {
+              const turnHits = hits.filter((hit) => hit.messageIndex === index);
+              const out = review.excluded.has(index);
+              return (
+                <div key={index} className={cn("flex items-start gap-2 rounded-xl px-2 py-1.5 text-[11px]", out ? "opacity-50" : "bg-black/[0.03] dark:bg-white/[0.04]")}>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{turnHits[0].role} turn {index + 1}</p>
+                    {turnHits.slice(0, 2).map((hit, i) => (
+                      <p key={i} className="truncate font-mono text-[10.5px] text-foreground/70">{hit.snippet}</p>
+                    ))}
+                  </div>
+                  <button type="button" onClick={() => toggle(index)} disabled={disabled} className="shrink-0 cursor-pointer rounded-full px-2 py-0.5 text-[10.5px] text-purple-600 hover:underline dark:text-purple-400">
+                    {out ? "Include" : "Leave out"}
+                  </button>
+                </div>
+              );
+            })}
+            {elsewhere.slice(0, 30).map((hit, i) => (
+              <div key={`x-${i}`} className="rounded-xl bg-black/[0.03] px-2 py-1.5 text-[11px] dark:bg-white/[0.04]">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{hit.role}</p>
+                <p className="truncate font-mono text-[10.5px] text-foreground/70">{hit.snippet}</p>
+              </div>
+            ))}
+          </div>
+          {notShown > 0 ? (
+            <p className="text-[10.5px] text-muted-foreground">
+              {notShown} more {notShown === 1 ? "was" : "were"} in older turns or tool output that {notShown === 1 ? "isn't" : "aren't"} part of this import.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Exactly what gets uploaded: the turns (after review) and the context text. */
+function UploadPreview({ session, contextPrompt }: { session: CodingSession; contextPrompt: string }) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"turns" | "context">("turns");
+  const mark = (text: string) =>
+    text.split(/(\[REDACTED(?:_SECRET)?\])/).map((part, i) =>
+      /^\[REDACTED/.test(part) ? (
+        <mark key={i} className="rounded bg-amber-500/20 px-0.5 text-amber-700 dark:text-amber-300">{part}</mark>
+      ) : (
+        <span key={i}>{part}</span>
+      ),
+    );
+  return (
+    <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.07]">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-[11.5px] text-foreground/75">
+        <Eye size={13} className="shrink-0 text-purple-500" />
+        <span className="flex-1">
+          Preview what gets uploaded
+          <span className="ml-1.5 text-muted-foreground/70">
+            {session.messages.length} turns · {session.toolEvents.filter((e) => e.detail).length} tool calls
+          </span>
+        </span>
+        <ChevronDown size={13} className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+      </button>
+      {open ? (
+        <div className="border-t border-black/[0.06] dark:border-white/[0.07]">
+          <div className="flex gap-1 px-3 pt-2">
+            {(["turns", "context"] as const).map((value) => (
+              <button key={value} type="button" onClick={() => setTab(value)} className={cn("h-6 cursor-pointer rounded-full px-2.5 text-[10.5px]", tab === value ? "kontinue-menu-active" : "text-muted-foreground hover:text-foreground")}>
+                {value === "turns" ? "Conversation" : "Context for the next agent"}
+              </button>
+            ))}
+          </div>
+          <div className="max-h-[42vh] overflow-y-auto px-3 py-2">
+            {tab === "turns" ? (
+              <div className="space-y-1.5">
+                {session.messages.map((message, index) => (
+                  <div key={index} className="rounded-xl bg-black/[0.03] px-2 py-1.5 dark:bg-white/[0.04]">
+                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{message.role}{message.images?.length ? ` · ${message.images.length} image${message.images.length === 1 ? "" : "s"}` : ""}</p>
+                    <p className="line-clamp-4 font-mono text-[10.5px] whitespace-pre-wrap text-foreground/75">{mark(message.content.slice(0, 1200))}</p>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <pre className="font-mono text-[10.5px] whitespace-pre-wrap text-foreground/75">{mark(contextPrompt)}</pre>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
   );
 }
 

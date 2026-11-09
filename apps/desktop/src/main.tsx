@@ -3,9 +3,11 @@ import ReactDOM from "react-dom/client";
 import "./styles/globals.css";
 import { installScrollbarActivity } from "./lib/scrollbar-activity";
 import { installAppSettings } from "./lib/app-settings";
+import { installTextSelectionHighlight } from "./lib/text-selection";
 
 installScrollbarActivity();
 installAppSettings();
+installTextSelectionHighlight();
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 

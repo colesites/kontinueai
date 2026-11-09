@@ -17,7 +17,7 @@ import {
 	type ToolSet,
 	tool,
 } from "ai";
-import { fetchMutation } from "convex/nextjs";
+import { fetchMutation, fetchQuery } from "convex/nextjs";
 import { z } from "zod";
 import {
 	isCodeSandboxConfigured,
@@ -164,6 +164,21 @@ function makeKaiImageTool(options: {
 			prompt: z.string().min(3).max(4_000),
 		}),
 		execute: async ({ prompt }) => {
+			// Check the monthly image allowance and credits before paying for a
+			// generation. The message goes back to the model, which relays it.
+			const allowance = await fetchQuery(
+				convexApi.canvas.checkGenerationAllowance,
+				{ mediaType: "image", seconds: 0, modelId: K_IMAGE_MODEL_ID },
+				{ token: options.convexToken },
+			);
+			if (!allowance.ok) {
+				throw new Error(
+					`${allowance.error.title}: ${allowance.error.message}${
+						allowance.error.upgradeTo ? " Plans: /pricing" : ""
+					}`,
+				);
+			}
+
 			const aspectRatio = /^\d+:\d+$/.test(options.aspectRatio ?? "")
 				? options.aspectRatio
 				: "1:1";
@@ -2806,6 +2821,9 @@ export function buildToolsAndPrompt(options: {
 	chatId?: Id<"chats"> | null;
 	agentId?: AgentId | null;
 	enableKaiImageGeneration?: boolean;
+	// K-AI user whose plan has no image generations: explain instead of
+	// improvising (no web search, no "try another site").
+	kaiImagePlanRequired?: boolean;
 	openRouterKey?: string | null;
 }): ToolsConfigResult {
 	const {
@@ -2829,6 +2847,7 @@ export function buildToolsAndPrompt(options: {
 		chatId,
 		agentId,
 		enableKaiImageGeneration = false,
+		kaiImagePlanRequired = false,
 		openRouterKey,
 	} = options;
 
@@ -2947,13 +2966,16 @@ export function buildToolsAndPrompt(options: {
 		intentLikely: webSearchIntentLikely,
 	});
 	const responseBudgetContext = buildResponseBudgetContext({ maxOutputTokens });
-	const imageGenContext = buildImageGenerationContext({
-		canUseOpenAIImageTool,
-		hasImageGen,
-		modelId,
-		imageAspectRatio,
-		imageSize,
-	});
+	const imageGenContext =
+		!hasImageGen && kaiImagePlanRequired && isLikelyImageRequest(lastUserContent)
+			? "\n\nIMAGE REQUEST ON A PLAN WITHOUT IMAGES: The user asked for an image, but image generation isn't included in their current Free plan, so you have no image tool this turn. In one or two friendly sentences, tell them image generation in chat starts on the Starter plan and they can upgrade at /pricing. Then offer to write a detailed prompt they can use once they upgrade. Do NOT list or recommend other websites or image tools, do NOT cite web results for this, and never claim you made an image."
+			: buildImageGenerationContext({
+					canUseOpenAIImageTool,
+					hasImageGen,
+					modelId,
+					imageAspectRatio,
+					imageSize,
+				});
 	const codeToolContext = tools.run_code
 		? "\n\nFILES: You can create real files for the user with the run_code tool — spreadsheets (.xlsx, .csv), documents (.docx, .pdf), slide decks (.pptx), charts, and archives. When the user asks for a document, spreadsheet, deck, report, export or 'give me a file', WRITE PYTHON and call run_code rather than pasting the content into the chat. Save every file the user should receive into " +
 			SANDBOX_OUTPUT_DIR +
@@ -2966,7 +2988,7 @@ export function buildToolsAndPrompt(options: {
 		? "\n\nEMAIL: When the user asks to write, draft, compose or send an email, call the compose_email tool with recipients, a subject, and a complete body in the user's voice — this renders an editable email card with a Send button that the user clicks to actually send via their Gmail. Do NOT write the email as plain chat text, and do NOT claim you sent it — the user reviews and sends it themselves. If they ask you to email someone but you don't know the address, draft it with `to` empty so they can fill it in."
 		: "";
 	const connectorToolContext = tools.github
-		? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list ALL repos with accurate count, read repos/files/commits/branches, search code, create/update/close/reopen/comment issues, commit files, create branches and pull requests), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email; to write or send a message use the compose_email tool), google_calendar (list and create events), google_drive (search and read files), google_sheets (find, inspect, read, create and modify spreadsheets, tabs, rows, values and formatting), and todoist (list, create and complete tasks). These tools are NOT read-only where actions exist: when the user asks you to create an event, edit a spreadsheet, create a page, comment, close, redeploy, or add a Todoist task, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with an @mention (e.g. '@github', '@notion', '@gmail', '@google_calendar', '@google_drive', '@google_sheets', '@todoist') or naturally ('my calendar', 'my email', 'my drive', 'my spreadsheet', 'my todoist'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'Updated 12 cells in “Budget”'). Never end your turn with only a tool call and no text."
+		? "\n\nCONNECTORS: You can both READ and ACT on the user's connected accounts via tools — github (list ALL repos with accurate count, read repos/files/commits/branches, search code, create/update/close/reopen/comment issues, commit files, create branches and pull requests), notion (search, create pages, append content), vercel (list deployments, redeploy), gmail (search and read email; to write or send a message use the compose_email tool), google_calendar (list and create events), google_drive (search and read files), google_sheets (find, inspect, read, create and modify spreadsheets, tabs, rows, values and formatting), and todoist (list, create and complete tasks). These tools are NOT read-only where actions exist: when the user asks you to create an event, edit a spreadsheet, create a page, comment, close, redeploy, or add a Todoist task, call the tool to actually do it. For destructive or write actions, briefly confirm the target if it's ambiguous, then perform it. The user may reference a connector with a mention such as '/github' or '@github' (also notion, gmail, google_calendar, google_drive, google_sheets, todoist) or naturally ('my calendar', 'my email', 'my drive', 'my spreadsheet', 'my todoist'); when they do, call that tool. Never claim you cannot access their accounts — you have these tools. If a tool reports the connector is not connected, tell the user to connect it in Settings → Connectors. CRITICAL: After ANY tool call you MUST write a clear natural-language reply summarizing what you did or found (e.g. 'Created “Lunch” for tomorrow 1pm' or 'Updated 12 cells in “Budget”'). Never end your turn with only a tool call and no text."
 		: "";
 
 	// When the user explicitly @-mentions a connected connector, force the model to
@@ -2975,15 +2997,16 @@ export function buildToolsAndPrompt(options: {
 		? Array.from(
 				new Set(
 					(
+						// `/github` (desktop composer) or `@github` (web, mobile).
 						lastUserContent.match(
-							/@(github|notion|vercel|gmail|google_calendar|google_drive|google_sheets|todoist)\b/gi,
+							/(?:^|(?<=\s))[@/](github|notion|vercel|gmail|google_calendar|google_drive|google_sheets|todoist)\b/gi,
 						) ?? []
 					).map((s) => s.slice(1).toLowerCase()),
 				),
 			)
 		: [];
 	const mentionDirective = mentionedProviders.length
-		? `\n\nIMPORTANT — CONNECTOR MENTION: The user attached these connectors to their message: ${mentionedProviders.join(", ")}. You MUST call the matching tool (${mentionedProviders.join(", ")}) to fulfill this request, then reply with a natural-language summary of the result. Treat the @mention as an explicit instruction to use that tool. Never claim the connector is disabled or unavailable unless the tool result itself reports it is not connected.`
+		? `\n\nIMPORTANT — CONNECTOR MENTION: The user attached these connectors to their message: ${mentionedProviders.join(", ")}. You MUST call the matching tool (${mentionedProviders.join(", ")}) to fulfill this request, then reply with a natural-language summary of the result. Treat the mention as an explicit instruction to use that tool. Never claim the connector is disabled or unavailable unless the tool result itself reports it is not connected.`
 		: "";
 
 	// Active agent persona: prepend its directive so the model adopts the agent's

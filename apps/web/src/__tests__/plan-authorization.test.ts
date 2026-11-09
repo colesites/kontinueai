@@ -23,6 +23,12 @@ describe("plan authorization", () => {
 		expect(resolvePlanTierFromBillingSignals({ persistedPlan: "pro" })).toBe(
 			"starter",
 		);
+		expect(
+			resolvePlanTierFromBillingSignals({
+				hasStarterPlan: true,
+				persistedPlan: "pro_plan",
+			}),
+		).toBe("pro");
 	});
 
 	test("PLAN-002 through PLAN-005: capability matrix matches each tier", () => {

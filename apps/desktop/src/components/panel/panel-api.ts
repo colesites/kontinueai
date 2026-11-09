@@ -37,6 +37,10 @@ export function githubWebUrl(remote: string | null): string | null {
 
 export type FileEntry = { name: string; path: string; is_dir: boolean };
 
+export function gitPush(root: string): Promise<void> {
+  return invoke<void>("panel_git_push", { root });
+}
+
 export function gitStatus(root: string): Promise<GitStatus> {
   return invoke<GitStatus>("panel_git_status", { root });
 }

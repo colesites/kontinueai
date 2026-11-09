@@ -1,6 +1,8 @@
+import { WebhooksSection } from "./WebhooksSection";
+import { Webhook } from "lucide-react";
+import { eventToKeys, findConflicts, formatKeys, KEYBINDING_COMMANDS, pauseKeybindings, resetBindings, setBinding, useBindings } from "@/lib/kode-keybindings";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useClerk, useUser } from "@clerk/clerk-react";
-import { useQuery } from "convex/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { getVersion } from "@tauri-apps/api/app";
 import {
@@ -38,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ProvidersSection } from "./ProvidersSection";
+import { CustomizeSection, type CustomizeTab } from "./CustomizeSection";
 import { UsageSection } from "./UsageSection";
 import { useKodeWorkspace, type SettingsNavTab } from "@/lib/kode-workspace";
 import {
@@ -50,7 +53,6 @@ import { KODE_AGENT_MODES } from "@/lib/kode-tools";
 import { KODE_DEFAULT_MODEL_ID, KODE_MODELS } from "@repo/ai/lib/kode";
 import { AGENTS, type AgentDefinition } from "@repo/ai/lib/agents";
 import { usePlanTier } from "@/hooks/use-plan-tier";
-import { api } from "@/lib/convex-api";
 import { cn } from "@/lib/utils";
 
 const WEB_APP = "https://chat.kontinueai.com";
@@ -72,9 +74,10 @@ const NAV: NavItem[] = [
   { id: "appearance", label: "Appearance", description: "Theme, text size and motion.", icon: Palette },
   { id: "usage", label: "Usage", description: "Plan limits, activity and usage credits.", icon: Gauge },
   { id: "providers", label: "Providers", description: "How Kode reaches each model: your Claude or ChatGPT subscription, your own API key, or Kode.", icon: Terminal },
-  { id: "connectors", label: "Connectors", description: "Accounts Kontinue can read and act on for you.", icon: Plug2 },
-  { id: "agents", label: "Agents", description: "Specialized agents for focused work.", icon: Bot },
+  { id: "customize", label: "Customize", description: "Connectors, skills and plugins for Kontinue and Kode.", icon: Plug2 },
+  { id: "agents", label: "Agents", description: "Specialized agents for the Kontinue chat.", icon: Bot },
   { id: "shortcuts", label: "Keyboard shortcuts", description: "Every shortcut in the app.", icon: Keyboard },
+  { id: "webhooks", label: "Webhooks", description: "URLs that start a Kode thread when GitHub, GitLab, CI or any service sends an event.", icon: Webhook },
   { id: "account", label: "Account", description: "Your profile, plan and sign-in.", icon: UserRound },
   { id: "data", label: "Data", description: "Archived chats and data stored on this device.", icon: Archive },
 ];
@@ -83,7 +86,11 @@ const NAV: NavItem[] = [
 const ALIASES: Record<string, SettingsNavTab> = {
   byok: "providers",
   models: "providers",
-  integrations: "connectors",
+  integrations: "customize",
+  connectors: "customize",
+  skills: "customize",
+  mcp: "customize",
+  plugins: "customize",
   keybindings: "shortcuts",
   archive: "data",
 };
@@ -92,6 +99,13 @@ function normalizeTab(tab: string | undefined): SettingsNavTab {
   if (!tab) return "general";
   if (ALIASES[tab]) return ALIASES[tab];
   return NAV.some((item) => item.id === tab) ? (tab as SettingsNavTab) : "general";
+}
+
+/** Which Customize tab an old or direct id opens. */
+function customizeTabFor(tab: string | undefined): CustomizeTab {
+  if (tab === "skills") return "skills";
+  if (tab === "plugins") return "plugins";
+  return "connectors";
 }
 
 export function SettingsView({ onBack, initialTab }: SettingsViewProps) {
@@ -195,7 +209,7 @@ export function SettingsView({ onBack, initialTab }: SettingsViewProps) {
         <div
           className={cn(
             "mx-auto w-full px-8 pb-16",
-            active === "providers" ? "max-w-4xl" : "max-w-2xl",
+            active === "providers" || active === "customize" ? "max-w-4xl" : "max-w-2xl",
           )}
         >
           <header className="mb-6">
@@ -206,9 +220,12 @@ export function SettingsView({ onBack, initialTab }: SettingsViewProps) {
           {active === "appearance" && <AppearanceSection />}
           {active === "usage" && <UsageSection onOpenModels={() => setActive("providers")} />}
           {active === "providers" && <ProvidersSection />}
-          {active === "connectors" && <ConnectorsSection />}
+          {active === "customize" && (
+            <CustomizeSection key={String(initialTab)} initialTab={customizeTabFor(initialTab)} />
+          )}
           {active === "agents" && <AgentsSection onClose={onBack} />}
           {active === "shortcuts" && <ShortcutsSection />}
+          {active === "webhooks" && <WebhooksSection />}
           {active === "account" && <AccountSection />}
           {active === "data" && <DataSection />}
         </div>
@@ -470,82 +487,8 @@ function AppearanceSection() {
   );
 }
 
-const CONNECTORS = [
-  { provider: "github", name: "GitHub", description: "Repositories, issues and pull requests" },
-  { provider: "gmail", name: "Gmail", description: "Read, search and draft email" },
-  { provider: "google_calendar", name: "Google Calendar", description: "Events and availability" },
-  { provider: "google_drive", name: "Google Drive", description: "Docs, Sheets and files" },
-  { provider: "notion", name: "Notion", description: "Pages and databases" },
-  { provider: "vercel", name: "Vercel", description: "Projects and deployments" },
-  { provider: "todoist", name: "Todoist", description: "Tasks and projects" },
-];
-
-const CONNECTOR_LOGO: Record<string, string> = {
-  github: "https://cdn.simpleicons.org/github/white",
-  gmail: "https://www.gstatic.com/images/branding/product/2x/gmail_2020q4_48dp.png",
-  google_calendar: "https://www.gstatic.com/images/branding/product/2x/calendar_2020q4_48dp.png",
-  google_drive: "https://www.gstatic.com/images/branding/product/2x/drive_2020q4_48dp.png",
-  notion: "https://cdn.simpleicons.org/notion/white",
-  vercel: "https://cdn.simpleicons.org/vercel/white",
-  todoist: "https://cdn.simpleicons.org/todoist",
-};
-
 function openExternal(url: string) {
   void openUrl(url).catch(() => window.open(url, "_blank"));
-}
-
-function ConnectorsSection() {
-  const connectors = useQuery(api.connectors.listConnectors, {});
-  const connected = new Set(
-    (connectors ?? []).filter((c) => c.connected).map((c) => c.provider),
-  );
-
-  return (
-    <Card>
-      {CONNECTORS.map((conn) => {
-        const isConnected = connected.has(conn.provider);
-        return (
-          <div key={conn.provider} className="flex items-center gap-3 px-4 py-3">
-            <div className="kontinue-3d flex size-9 shrink-0 items-center justify-center rounded-full">
-              <img
-                src={CONNECTOR_LOGO[conn.provider]}
-                alt=""
-                className="size-4.5 object-contain [:root:not(.dark)_&]:invert-[.85]"
-              />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[12.5px] font-medium text-foreground/90">{conn.name}</p>
-              <p className="truncate text-[11.5px] text-muted-foreground">{conn.description}</p>
-            </div>
-            {connectors === undefined ? null : isConnected ? (
-              <span className="flex items-center gap-1.5 text-[11.5px] text-emerald-500">
-                <span className="size-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]" />
-                Connected
-              </span>
-            ) : (
-              <PillButton onClick={() => openExternal(`${WEB_APP}/api/connectors/${conn.provider}/start`)}>
-                Connect
-                <ExternalLink size={11} className="opacity-60" />
-              </PillButton>
-            )}
-          </div>
-        );
-      })}
-      <div className="flex items-center justify-between px-4 py-3">
-        <p className="text-[11.5px] text-muted-foreground">
-          Disconnect or change permissions on the web.
-        </p>
-        <button
-          type="button"
-          onClick={() => openExternal(`${WEB_APP}/settings/connectors`)}
-          className="flex cursor-pointer items-center gap-1 text-[11.5px] font-medium text-purple-500 hover:underline"
-        >
-          Manage connectors
-          <ExternalLink size={11} />
-        </button>
-      </div>
-    </Card>
-  );
 }
 
 const AGENT_ICONS: Record<string, typeof Bot> = { Telescope, Code2, Megaphone, CalendarCheck, Bot };
@@ -602,13 +545,12 @@ function AgentsSection({ onClose }: { onClose: () => void }) {
   );
 }
 
-const SHORTCUTS: { group: string; items: { keys: string[]; label: string }[] }[] = [
+// Keys handled inside inputs and components; not rebindable.
+const FIXED_SHORTCUTS: { group: string; items: { keys: string[]; label: string }[] }[] = [
   {
     group: "App",
     items: [
-      { keys: ["⌘", ","], label: "Open or close settings" },
       { keys: ["⌘", "B"], label: "Toggle the sidebar" },
-      { keys: ["⌘", "J"], label: "Toggle the workspace panel (Kode)" },
       { keys: ["Esc"], label: "Close settings, menus and dialogs" },
       { keys: ["/"], label: "Search settings" },
     ],
@@ -619,33 +561,99 @@ const SHORTCUTS: { group: string; items: { keys: string[]; label: string }[] }[]
       { keys: ["Enter"], label: "Send (or new line, if ⌘ Enter sends)" },
       { keys: ["⌘", "Enter"], label: "Send, or save an edited message" },
       { keys: ["Shift", "Enter"], label: "New line" },
-      { keys: ["@"], label: "Mention a connector" },
+      { keys: ["@"], label: "Tag a file or folder" },
+      { keys: ["/"], label: "Commands, skills and connectors" },
+      { keys: ["⌘", "S"], label: "Stash the draft" },
     ],
   },
 ];
 
+function Keys({ keys }: { keys: string[] }) {
+  return (
+    <span className="flex items-center gap-1">
+      {keys.map((key, index) => (
+        <kbd key={`${key}-${index}`} className="kontinue-3d flex h-6 min-w-6 items-center justify-center rounded-full px-2 font-sans text-[11px] text-foreground/80">
+          {key}
+        </kbd>
+      ))}
+    </span>
+  );
+}
+
 function ShortcutsSection() {
+  const bindings = useBindings();
+  const [recording, setRecording] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!recording) return;
+    pauseKeybindings(true);
+    const onKey = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setRecording(null);
+        return;
+      }
+      const keys = eventToKeys(event);
+      if (!keys) return;
+      if (!keys.includes("+")) {
+        setWarning("Use at least one modifier (⌘, Ctrl, ⌥ or ⇧) so typing isn't affected.");
+        return;
+      }
+      const conflicts = findConflicts(recording, keys, bindings);
+      for (const id of conflicts) setBinding(id, "");
+      setWarning(conflicts.length ? `Moved from "${KEYBINDING_COMMANDS.find((c) => c.id === conflicts[0])?.label}", which is now unbound.` : null);
+      setBinding(recording, keys);
+      setRecording(null);
+    };
+    window.addEventListener("keydown", onKey, { capture: true });
+    return () => {
+      window.removeEventListener("keydown", onKey, { capture: true });
+      pauseKeybindings(false);
+    };
+  }, [recording, bindings]);
+
+  const groups = ["App", "Kode"] as const;
   return (
     <>
-      {SHORTCUTS.map((group) => (
+      {groups.map((group) => (
+        <Card key={group} title={group === "App" ? "App (rebindable)" : "Kode (rebindable)"}>
+          {KEYBINDING_COMMANDS.filter((command) => command.group === group).map((command) => {
+            const keys = bindings[command.id];
+            return (
+              <div key={command.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
+                <span className="text-[12.5px] text-foreground/85">{command.label}</span>
+                <span className="flex items-center gap-2">
+                  {recording === command.id ? (
+                    <span className="text-[11.5px] text-purple-600 dark:text-purple-300">Press keys… (Esc to cancel)</span>
+                  ) : keys ? (
+                    <Keys keys={formatKeys(keys)} />
+                  ) : (
+                    <span className="text-[11.5px] text-muted-foreground">Unbound</span>
+                  )}
+                  <PillButton onClick={() => setRecording(recording === command.id ? null : command.id)}>{recording === command.id ? "Cancel" : "Change"}</PillButton>
+                  {keys !== command.defaultKeys ? <PillButton onClick={() => setBinding(command.id, null)}>Reset</PillButton> : null}
+                </span>
+              </div>
+            );
+          })}
+        </Card>
+      ))}
+      {warning ? <p className="px-1 text-[11.5px] text-amber-600 dark:text-amber-400">{warning}</p> : null}
+      {FIXED_SHORTCUTS.map((group) => (
         <Card key={group.group} title={group.group}>
           {group.items.map((item) => (
             <div key={item.label} className="flex items-center justify-between px-4 py-2.5">
               <span className="text-[12.5px] text-foreground/85">{item.label}</span>
-              <span className="flex items-center gap-1">
-                {item.keys.map((key) => (
-                  <kbd
-                    key={key}
-                    className="kontinue-3d flex h-6 min-w-6 items-center justify-center rounded-full px-2 font-sans text-[11px] text-foreground/80"
-                  >
-                    {key}
-                  </kbd>
-                ))}
-              </span>
+              <Keys keys={item.keys} />
             </div>
           ))}
         </Card>
       ))}
+      <div className="flex justify-end">
+        <PillButton onClick={() => resetBindings()}>Reset all shortcuts</PillButton>
+      </div>
     </>
   );
 }

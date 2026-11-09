@@ -1,0 +1,30 @@
+{
+	"name": "launch-video",
+	"private": true,
+	"version": "0.0.0",
+	"type": "module",
+	"scripts": {
+		"sync": "bun scripts/sync-assets.ts",
+		"studio": "bun scripts/sync-assets.ts && remotion studio",
+		"render": "bun scripts/sync-assets.ts && remotion render NeverStop out/never-stop-16x9.mp4",
+		"render:vertical": "bun scripts/sync-assets.ts && remotion render NeverStopVertical out/never-stop-9x16.mp4",
+		"typecheck": "bun scripts/sync-assets.ts && tsc --noEmit",
+		"storyboard": "bun scripts/write-shotlist.ts"
+	},
+	"dependencies": {
+		"@react-three/fiber": "9.8.2",
+		"@remotion/cli": "4.0.541",
+		"@remotion/google-fonts": "4.0.541",
+		"@remotion/three": "4.0.541",
+		"react": "19.2.3",
+		"react-dom": "19.2.3",
+		"remotion": "4.0.541",
+		"three": "0.187.0",
+		"zod": "4.6.7"
+	},
+	"devDependencies": {
+		"@types/react": "19.2.14",
+		"@types/three": "0.187.0",
+		"typescript": "5.9.2"
+	}
+}

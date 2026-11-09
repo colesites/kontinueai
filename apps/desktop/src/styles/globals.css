@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../../node_modules/streamdown/dist/*.js";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/figtree";
@@ -272,44 +273,106 @@
   background-color: rgba(192, 132, 252, 0.55);
 }
 
-/* ── Code Block Enhancements (Kontinue Purple Theme) ─────────────────────── */
+/* ── Code (Claude-style: one quiet box, slim header, theme-aware) ───────── */
+:root {
+  --code-bg: #f6f6f7;
+  --code-header: #efeff1;
+  --code-border: rgba(0, 0, 0, 0.08);
+  --code-fg: #1f1f23;
+  --inline-code-bg: rgba(0, 0, 0, 0.055);
+  --inline-code-fg: #3b2a5a;
+}
+.dark {
+  --code-bg: #18181b;
+  --code-header: #1f1f23;
+  --code-border: rgba(255, 255, 255, 0.08);
+  --code-fg: #e8e8ec;
+  --inline-code-bg: rgba(255, 255, 255, 0.08);
+  --inline-code-fg: #ddd0f7;
+}
+
+/* Plain <pre> anywhere: monospace, no box (components style their own). */
 pre {
-  background-color: #171120 !important;
-  border: 1px solid rgba(168, 85, 247, 0.22) !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+/* Markdown code blocks (Streamdown). */
+[data-streamdown="code-block"] {
+  margin: 0.75rem 0 !important;
+  border: 1px solid var(--code-border) !important;
   border-radius: 0.75rem !important;
-  padding: 1rem !important;
-  box-shadow:
-    0 8px 24px -6px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(168, 85, 247, 0.15);
-  position: relative;
-  overflow-x: auto;
-  color: #f3f1f8 !important;
-}
-
-pre code {
-  background-color: transparent !important;
-  border: none !important;
+  background: var(--code-bg) !important;
+  overflow: hidden;
   padding: 0 !important;
-  color: #f3f1f8 !important;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
-  font-size: 0.84rem !important;
-  line-height: 1.6 !important;
+  gap: 0 !important;
+  position: relative;
 }
-
-code:not(pre code) {
-  background-color: rgba(147, 51, 234, 0.08) !important;
-  color: #6b21a8 !important;
-  padding: 0.15rem 0.375rem !important;
+[data-streamdown="code-block-header"] {
+  height: 2rem !important;
+  padding: 0 0.75rem !important;
+  background: var(--code-header) !important;
+  border-bottom: 1px solid var(--code-border);
+  font-size: 0.72rem !important;
+  color: var(--muted-foreground) !important;
+  text-transform: lowercase;
+}
+[data-streamdown="code-block-actions"] {
+  position: absolute !important;
+  top: 0 !important;
+  right: 0.35rem !important;
+  height: 2rem !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.15rem !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  z-index: 1;
+}
+[data-streamdown="code-block-actions"] button {
+  height: 1.5rem !important;
+  width: 1.5rem !important;
   border-radius: 0.375rem !important;
-  border: 1px solid rgba(147, 51, 234, 0.22) !important;
+  color: var(--muted-foreground) !important;
+  cursor: pointer;
+}
+[data-streamdown="code-block-actions"] button:hover {
+  color: var(--foreground) !important;
+  background: var(--inline-code-bg) !important;
+}
+[data-streamdown="code-block-body"],
+[data-streamdown="code-block"] pre {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  padding: 0.7rem 0.9rem !important;
+  overflow-x: auto;
+  color: var(--code-fg);
+}
+[data-streamdown="code-block"] pre {
+  padding: 0 !important;
+}
+[data-streamdown="code-block"] code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
-  font-size: 0.85em !important;
+  font-size: 0.8rem !important;
+  line-height: 1.6 !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
 }
 
-.dark code:not(pre code) {
-  background-color: rgba(147, 51, 234, 0.15) !important;
-  color: #e9d5ff !important;
-  border-color: rgba(168, 85, 247, 0.25) !important;
+/* Inline code: a light chip, no border. */
+code:not(pre code) {
+  background-color: var(--inline-code-bg) !important;
+  color: var(--inline-code-fg) !important;
+  padding: 0.08rem 0.35rem !important;
+  border-radius: 0.3rem !important;
+  border: 0 !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 0.86em !important;
 }
 
 /* Unlayered on purpose so glass wins over utility backgrounds (bg-sidebar etc.) */
@@ -763,4 +826,112 @@ code:not(pre code) {
   animation-iteration-count: 1 !important;
   transition-duration: 0.001ms !important;
   scroll-behavior: auto !important;
+}
+
+/* Text selection paints only the selected text (see src/lib/text-selection.ts).
+   The native highlight is hidden so WebKit doesn't fill the empty space around
+   blocks; a CSS highlight draws the selection instead. Fields keep theirs. */
+:root {
+  --text-selection: rgba(147, 51, 234, 0.28);
+}
+.dark {
+  --text-selection: rgba(168, 85, 247, 0.38);
+}
+html.custom-selection ::selection {
+  background-color: transparent;
+}
+html.custom-selection :is(input, textarea, [contenteditable="true"])::selection {
+  background-color: var(--text-selection);
+}
+::highlight(kontinue-selection) {
+  background-color: var(--text-selection);
+}
+
+/* Tailwind v4 gives buttons the arrow cursor; clickable things get a pointer.
+   :where() keeps this weaker than any cursor-* class. */
+@layer base {
+  :where(button:not(:disabled), [role="button"]:not([aria-disabled="true"]), summary) {
+    cursor: pointer;
+  }
+}
+
+/* Code blocks without a language (command output): label them "output". */
+[data-streamdown="code-block-header"][data-language=""]::before,
+[data-streamdown="code-block-header"]:not([data-language])::before {
+  content: "output";
+}
+
+/* Shiki output inside Kode code blocks: no box of its own, theme-aware colours. */
+.kode-shiki pre {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+}
+.kode-shiki code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+.kode-shiki span {
+  color: var(--shiki-light);
+}
+.dark .kode-shiki span {
+  color: var(--shiki-dark);
+}
+
+/* Light mode is flat: no gradients on surfaces, buttons, pills or menus.
+   Dark mode keeps its top-lit sheen. */
+:root:not(.dark) .liquid-backdrop {
+  background-image: none;
+}
+:root:not(.dark) .liquid-glass-sidebar {
+  background: rgba(255, 255, 255, 0.36);
+}
+:root:not(.dark) .liquid-glass-composer {
+  background: rgba(255, 255, 255, 0.5);
+}
+:root:not(.dark) .liquid-glass-card {
+  background: rgba(255, 255, 255, 0.42);
+}
+:root:not(.dark) .liquid-glass-card:hover {
+  background: rgba(255, 255, 255, 0.62);
+}
+:root:not(.dark) .liquid-glass-dropdown {
+  background-color: #ffffff;
+  background-image: none;
+}
+:root:not(.dark) .kontinue-3d {
+  background-color: #ffffff;
+  background-image: none;
+}
+:root:not(.dark) .kontinue-3d:hover {
+  background-color: #f1f1f3;
+  background-image: none;
+}
+:root:not(.dark) .kontinue-3d.kontinue-jump {
+  background-color: rgba(255, 255, 255, 0.55);
+}
+:root:not(.dark) .kontinue-3d-primary {
+  background-color: #9333ea;
+  background-image: none;
+}
+:root:not(.dark) .kontinue-3d-primary:hover {
+  background-color: #a855f7;
+  background-image: none;
+}
+:root:not(.dark) .kontinue-capsule {
+  background-color: rgba(168, 85, 247, 0.1);
+  background-image: none;
+}
+:root:not(.dark) .kontinue-capsule:hover {
+  background-color: rgba(168, 85, 247, 0.17);
+  background-image: none;
+}
+:root:not(.dark) .kontinue-menu-active,
+:root:not(.dark) .liquid-glass-dropdown [data-highlighted] {
+  background-color: #f1f1f3 !important;
+  background-image: none !important;
+}
+:root:not(.dark) .kontinue-user-bubble,
+:root:not(.dark) .is-user > .message-content {
+  background-color: rgba(168, 85, 247, 0.09);
+  background-image: none;
 }

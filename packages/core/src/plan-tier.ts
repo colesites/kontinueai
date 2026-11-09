@@ -95,31 +95,35 @@ export function resolvePlanTierFromBillingSignals({
 	billingUser,
 	persistedPlan,
 }: PlanResolutionInput): PlanTier {
-	if (hasMaxPlan) return "max";
-	if (hasProPlan) return "pro";
-	if (hasPlusPlan) return "plus";
-	if (hasStarterPlan) return "starter";
-
 	const planFromMetadata =
 		billingUser?.publicMetadata?.plan ?? billingUser?.unsafeMetadata?.plan;
-	const metadataTier = parseBillingPlanTier(planFromMetadata);
-	if (metadataTier) return metadataTier;
 
 	const entitlementTier = parsePlanTierFromEntitlements(
 		billingUser?.entitlements,
 	);
-	if (entitlementTier) return entitlementTier;
 
 	const persistedTier = planTierFromPersisted(persistedPlan);
 	const subscriptionStatusFromMetadata = normalizePlanLike(
 		billingUser?.publicMetadata?.subscriptionStatus ??
 			billingUser?.unsafeMetadata?.subscriptionStatus,
 	);
-	if (subscriptionStatusFromMetadata === "active") {
-		return persistedTier === "free" ? "starter" : persistedTier;
+
+	// Clerk flags and metadata describe the billed subscription. The persisted
+	// plan includes a whitelist grant, which can be higher than that subscription.
+	let billed: PlanTier | null =
+		(hasMaxPlan ? "max" : null) ??
+		(hasProPlan ? "pro" : null) ??
+		(hasPlusPlan ? "plus" : null) ??
+		(hasStarterPlan ? "starter" : null) ??
+		parseBillingPlanTier(planFromMetadata) ??
+		entitlementTier;
+
+	if (!billed && subscriptionStatusFromMetadata === "active") {
+		billed = persistedTier === "free" ? "starter" : persistedTier;
 	}
 
-	return persistedTier;
+	if (!billed) return persistedTier;
+	return PLAN_RANK[persistedTier] > PLAN_RANK[billed] ? persistedTier : billed;
 }
 
 export function isPaidTier(tier: PlanTier): boolean {

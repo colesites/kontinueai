@@ -23,7 +23,8 @@
           "x": 20,
           "y": 19
         },
-        "backgroundColor": "#0a0a0a"
+        "backgroundColor": "#0a0a0a",
+        "dragDropEnabled": false
       }
     ],
     "security": {

@@ -3,12 +3,23 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::{Component, PathBuf};
 use tauri::ipc::Channel;
-use tauri::Manager;
 
 mod kode_import;
+mod kode_hooks;
+mod kode_mcp_server;
+mod snapshot;
+mod git_hosts;
+mod triage;
+mod project_move;
+mod text_tool_markup;
+mod bg_tasks;
+mod mcp;
+mod mcp_auth;
+mod mcp_import;
 
 mod browser_view;
 mod panel;
+mod plugins;
 mod cli_agents;
 
 #[cfg(target_os = "macos")]
@@ -44,7 +55,7 @@ const BYOK_KEYRING_SERVICE: &str = "com.kontinue.kode-ide.byok";
 // real names in the picker and should identify as themselves, not as Kode 1.0.
 const KODE_IDENTITY_PROMPT: &str = "You are Kontinue AI, the intelligent AI assistant and desktop workspace created by Kontinue AI. You help users with general reasoning, writing, design, and software engineering.";
 
-const KODE_AGENT_PROMPT: &str = "You are a professional, careful, repo-aware AI assistant inside Kontinue AI desktop application. Prefer concrete, modern, correct code. Explain decisions briefly. Never expose secrets or run destructive actions without confirmation.\n\nYou have tools available to navigate, inspect, and modify the project environment. Always verify tool call results before declaring success.";
+const KODE_AGENT_PROMPT: &str = "You are a professional, careful, repo-aware AI assistant inside Kontinue AI desktop application. Prefer concrete, modern, correct code. Explain decisions briefly. Never expose secrets or run destructive actions without confirmation.\n\nYou have tools available to navigate, inspect, and modify the project environment. Always verify tool call results before declaring success. Finish the task: do not stop after a search, and do not repeat the same command. On a multi-step task, start with update_todos and update that checklist as you go, including at the end. Close with a short report of what you did and what you did not do. Ask the user with ask_options when a decision is theirs, instead of writing a questionnaire into the message.";
 
 #[derive(Debug, Deserialize)]
 struct KodeChatRequest {
@@ -206,6 +217,7 @@ async fn kode_chat(
                 }
                 if !status.is_success() {
                     let body = response.text().await.unwrap_or_default();
+                    let reset_at = extract_reset_at(&body);
                     let message = extract_error_message(&body).unwrap_or(body);
                     let hint = if status.is_server_error() {
                         " (the free provider is temporarily overloaded — try again or switch models)"
@@ -223,6 +235,11 @@ async fn kode_chat(
                                 "Couldn't reach Kontinue's model server ({status} from {}). If you're developing, run the web app and set KONTINUE_API_URL in apps/desktop/.env; otherwise deploy the latest web app.",
                                 route.url
                             ));
+                        }
+                        // Usage limits carry `resetAt` (epoch ms); keep it for the
+                        // "send when it resets" card (src/lib/kode-limits.ts).
+                        if let Some(reset_at) = reset_at {
+                            return Err(format!("{message}\n[[limit-reset:{reset_at}]]"));
                         }
                         return Err(message);
                     }
@@ -249,6 +266,8 @@ async fn kode_chat(
     let mut usage: Option<KodeChatUsage> = None;
     let mut tool_calls: Vec<ToolCallAccum> = Vec::new();
     let mut finish_reason: Option<String> = None;
+    // How much of `content` has been streamed to the UI.
+    let mut streamed = 0usize;
 
     while let Some(chunk) = stream.next().await {
         let bytes =
@@ -326,9 +345,16 @@ async fn kode_chat(
                     if let Some(text) = delta.get("content").and_then(Value::as_str) {
                         if !text.is_empty() {
                             content.push_str(text);
-                            let _ = on_event.send(KodeStreamEvent::Content {
-                                delta: text.to_string(),
-                            });
+                            // Some models (DeepSeek) write tool calls as markup in
+                            // the text. Only stream what is safely before it, so
+                            // it never flashes on screen; it's parsed at the end.
+                            let safe = text_tool_markup::safe_prefix_len(&content);
+                            if safe > streamed {
+                                let _ = on_event.send(KodeStreamEvent::Content {
+                                    delta: content[streamed..safe].to_string(),
+                                });
+                                streamed = safe;
+                            }
                         }
                     }
                     if let Some(text) = delta
@@ -348,7 +374,23 @@ async fn kode_chat(
         }
     }
 
-    let serialized_tool_calls: Option<Value> = if tool_calls.is_empty() {
+    // Tool calls written as text markup become real tool calls.
+    let mut content = content;
+    let mut text_calls: Vec<Value> = Vec::new();
+    if tool_calls.is_empty() {
+        if let Some((clean, calls)) = text_tool_markup::extract(&content) {
+            content = clean;
+            text_calls = calls;
+            finish_reason = Some("tool_calls".to_string());
+        }
+    }
+    // Text after the markup that wasn't streamed (rare): send it now.
+    if streamed < content.len() && content.is_char_boundary(streamed) && text_calls.is_empty() {
+        let _ = on_event.send(KodeStreamEvent::Content { delta: content[streamed..].to_string() });
+    }
+    let serialized_tool_calls: Option<Value> = if !text_calls.is_empty() {
+        Some(Value::Array(text_calls))
+    } else if tool_calls.is_empty() {
         None
     } else {
         Some(Value::Array(
@@ -997,6 +1039,16 @@ fn extract_usage(usage: Option<&Value>) -> Option<KodeChatUsage> {
     })
 }
 
+/// `{"error":{"resetAt":<epoch ms>}}` from the Kontinue server on a usage limit.
+fn extract_reset_at(body: &str) -> Option<i64> {
+    serde_json::from_str::<Value>(body)
+        .ok()?
+        .pointer("/error/resetAt")
+        .and_then(Value::as_f64)
+        .filter(|ms| *ms > 0.0)
+        .map(|ms| ms as i64)
+}
+
 fn extract_error_message(body: &str) -> Option<String> {
     serde_json::from_str::<Value>(body)
         .ok()
@@ -1076,6 +1128,64 @@ fn kode_list_dir(root: String, path: String) -> Result<Vec<KodeFileEntry>, Strin
     Ok(entries)
 }
 
+fn is_binary_name(name: &str) -> bool {
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+    matches!(
+        ext.as_str(),
+        "png" | "jpg" | "jpeg" | "gif" | "ico" | "webp" | "bmp" | "heic"
+            | "woff" | "woff2" | "ttf" | "otf" | "eot"
+            | "mp3" | "mp4" | "mov" | "avi" | "webm" | "m4a" | "wav"
+            | "zip" | "gz" | "tar" | "7z" | "rar" | "pdf" | "lockb" | "wasm"
+            | "db" | "sqlite" | "bin" | "exe" | "dll" | "dylib" | "so" | "o" | "a"
+    )
+}
+
+// Recursively list text files in the project (for the `@` file mention picker).
+// Skips hidden dirs, build artifacts and binary files. Capped for huge trees.
+#[tauri::command]
+fn kode_list_project_files(root: String) -> Result<Vec<String>, String> {
+    let root_canon = std::fs::canonicalize(&root).map_err(|e| format!("Invalid project root '{root}': {e}"))?;
+    let mut out: Vec<String> = Vec::new();
+
+    fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>, depth: usize) {
+        if depth > 14 || out.len() > 8000 {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') {
+                continue;
+            }
+            if path.is_dir() {
+                if matches!(name.as_str(), "node_modules" | "dist" | "build" | "target" | ".git" | "coverage") {
+                    continue;
+                }
+                walk(&path, root, out, depth + 1);
+                continue;
+            }
+            if is_binary_name(&name) {
+                continue;
+            }
+            if let Ok(rel) = path.strip_prefix(root) {
+                out.push(rel.to_string_lossy().replace('\\', "/"));
+            }
+        }
+    }
+
+    walk(&root_canon, &root_canon, &mut out, 0);
+    out.sort();
+    Ok(out)
+}
+
 #[tauri::command]
 fn kode_write_file(root: String, path: String, content: String) -> Result<(), String> {
     let target = safe_join(&root, &path)?;
@@ -1084,6 +1194,89 @@ fn kode_write_file(root: String, path: String, content: String) -> Result<(), St
             .map_err(|error| format!("Could not create directories for {path}: {error}"))?;
     }
     std::fs::write(&target, content).map_err(|error| format!("Could not write {path}: {error}"))
+}
+
+/// Folder (inside the project) where chat attachments are saved for agents.
+const ATTACHMENT_DIR: &str = ".kode/attachments";
+
+/// Save a chat attachment into the project so agents can read and use it
+/// (Claude Code and Codex can open images by path; Kode's own tools can too).
+/// `data` is base64 (an image data URL's payload, or a text file's bytes).
+/// Returns the path relative to the project root.
+#[tauri::command]
+fn kode_save_attachment(root: String, filename: String, data: String) -> Result<String, String> {
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.trim())
+        .map_err(|error| format!("Could not read the attachment: {error}"))?;
+    if bytes.len() > 25 * 1024 * 1024 {
+        return Err("Attachments over 25 MB aren't saved to the project.".into());
+    }
+    let safe: String = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("attachment")
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') { c } else { '-' })
+        .collect();
+    let safe = safe.trim_matches('.').to_string();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let rel = format!(
+        "{ATTACHMENT_DIR}/{stamp}-{}",
+        if safe.is_empty() { "attachment".to_string() } else { safe }
+    );
+    let target = safe_join(&root, &rel)?;
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create {ATTACHMENT_DIR}: {error}"))?;
+    }
+    std::fs::write(&target, bytes).map_err(|error| format!("Could not save {rel}: {error}"))?;
+    exclude_from_git(&root, ".kode/");
+    Ok(rel)
+}
+
+/// Read a saved attachment back (for imported screenshot cards). Only files
+/// under the project's attachments folder can be read this way.
+#[tauri::command]
+fn kode_read_attachment(root: String, path: String) -> Result<String, String> {
+    use base64::Engine;
+    if !path.starts_with(ATTACHMENT_DIR) || path.contains("..") {
+        return Err("Only saved attachments can be read.".into());
+    }
+    let target = safe_join(&root, &path)?;
+    let bytes = std::fs::read(&target).map_err(|error| format!("Could not read {path}: {error}"))?;
+    if bytes.len() > 25 * 1024 * 1024 {
+        return Err("Attachment too large.".into());
+    }
+    Ok(base64::engine::general_purpose::STANDARD.encode(bytes))
+}
+
+/// Keep Kode's own folder out of `git status` without touching .gitignore:
+/// add it to the repo's local `.git/info/exclude` once.
+fn exclude_from_git(root: &str, pattern: &str) {
+    // Worktrees have a `.git` file; git reads the shared `info/exclude`.
+    let Some(common) = kode_import::git_common_dir(std::path::Path::new(root)) else {
+        return;
+    };
+    let info = common.join("info");
+    if std::fs::create_dir_all(&info).is_err() {
+        return;
+    }
+    let exclude = info.join("exclude");
+    let current = std::fs::read_to_string(&exclude).unwrap_or_default();
+    if current.lines().any(|line| line.trim() == pattern) {
+        return;
+    }
+    let mut next = current;
+    if !next.is_empty() && !next.ends_with('\n') {
+        next.push('\n');
+    }
+    next.push_str(pattern);
+    next.push('\n');
+    let _ = std::fs::write(exclude, next);
 }
 
 #[tauri::command]
@@ -1112,6 +1305,326 @@ fn kode_edit_file(
         original.replacen(&old_string, &new_string, 1)
     };
     std::fs::write(&target, updated).map_err(|error| format!("Could not write {path}: {error}"))
+}
+
+#[derive(Debug, Serialize)]
+struct UserSkillEntry {
+    name: String,
+    dir: String,
+    source: String,
+    skill_md: String,
+}
+
+// Skill discovery roots under the user's home directory (open Agent Skills
+// locations). The renderer cannot escape these with `..` — we only read fixed
+// relative paths under a well-known home root.
+const USER_SKILL_ROOTS: [&str; 3] = [".agents/skills", ".claude/skills", ".kontinue/skills"];
+
+#[tauri::command]
+fn kode_discover_user_skills(app: tauri::AppHandle) -> Result<Vec<UserSkillEntry>, String> {
+    use tauri::Manager;
+
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("No home dir: {error}"))?;
+
+    let mut out: Vec<UserSkillEntry> = Vec::new();
+    for root in USER_SKILL_ROOTS {
+        let base = home.join(root);
+        let entries = match std::fs::read_dir(&base) {
+            Ok(entries) => entries,
+            Err(_) => continue, // root doesn't exist
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let skill_md_path = path.join("SKILL.md");
+            if !skill_md_path.is_file() {
+                continue;
+            }
+            let skill_md = match std::fs::read_to_string(&skill_md_path) {
+                Ok(text) => text,
+                Err(_) => continue,
+            };
+            out.push(UserSkillEntry {
+                name: path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                dir: path.to_string_lossy().to_string(),
+                source: format!("~/{}", root),
+                skill_md,
+            });
+        }
+    }
+    // Skills from enabled plugins (~/.kontinue/plugins/<name>/skills/*).
+    for (plugin, dir) in plugins::enabled_plugin_dirs() {
+        let Ok(entries) = std::fs::read_dir(dir.join("skills")) else { continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(skill_md) = std::fs::read_to_string(path.join("SKILL.md")) else { continue };
+            out.push(UserSkillEntry {
+                name: path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_default(),
+                dir: path.to_string_lossy().to_string(),
+                source: format!("plugin:{plugin}"),
+                skill_md,
+            });
+        }
+    }
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+#[derive(Debug, Serialize)]
+struct UserSkillFile {
+    path: String,
+    is_dir: bool,
+}
+
+// Resolve a user skill directory and verify it lives under one of the known
+// skill roots, so the renderer cannot read arbitrary files outside them.
+fn user_skill_dir(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    use tauri::Manager;
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("No home dir: {error}"))?;
+    let canon = dir
+        .canonicalize()
+        .map_err(|error| format!("Invalid skill dir: {error}"))?;
+    for root in USER_SKILL_ROOTS {
+        let base = home.join(root);
+        if canon.starts_with(&base) {
+            return Ok(canon);
+        }
+    }
+    if let Ok(base) = plugins::plugins_dir() {
+        if canon.starts_with(&base) && !canon.starts_with(base.join(".staging")) {
+            return Ok(canon);
+        }
+    }
+    Err("Skill directory is outside the user skill roots".to_string())
+}
+
+#[tauri::command]
+fn kode_list_user_skill_files(app: tauri::AppHandle, dir: String) -> Result<Vec<UserSkillFile>, String> {
+    let base = user_skill_dir(&app, std::path::Path::new(&dir))?;
+    let mut out: Vec<UserSkillFile> = Vec::new();
+
+    fn walk(base: &std::path::Path, rel: &std::path::Path, out: &mut Vec<UserSkillFile>, depth: usize) {
+        if depth > 4 || out.len() > 512 {
+            return;
+        }
+        let entries = match std::fs::read_dir(base) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            if name.starts_with('.') || name == "node_modules" {
+                continue;
+            }
+            let relp = rel.join(&name);
+            let is_dir = path.is_dir();
+            out.push(UserSkillFile {
+                path: relp.to_string_lossy().replace('\\', "/"),
+                is_dir,
+            });
+            if is_dir {
+                walk(&path, &relp, out, depth + 1);
+            }
+        }
+    }
+
+    walk(&base, std::path::Path::new(""), &mut out, 0);
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(out)
+}
+
+#[tauri::command]
+fn kode_read_user_skill_file(app: tauri::AppHandle, dir: String, rel: String) -> Result<String, String> {
+    let base = user_skill_dir(&app, std::path::Path::new(&dir))?;
+    let rel_path = std::path::Path::new(&rel);
+    for component in rel_path.components() {
+        match component {
+            std::path::Component::Normal(_) => {}
+            std::path::Component::CurDir => {}
+            _ => return Err("Invalid relative path".to_string()),
+        }
+    }
+    let target = base.join(rel_path);
+    std::fs::read_to_string(&target).map_err(|error| format!("Could not read {rel}: {error}"))
+}
+
+#[tauri::command]
+fn kode_write_user_skill(app: tauri::AppHandle, name: String, skill_md: String) -> Result<String, String> {
+    use tauri::Manager;
+
+    let valid_name = !name.is_empty()
+        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !valid_name {
+        return Err("Skill name must be lowercase letters, digits, and dashes".to_string());
+    }
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("No home dir: {error}"))?;
+    let dir = home.join(".agents/skills").join(&name);
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    std::fs::write(dir.join("SKILL.md"), skill_md).map_err(|error| error.to_string())?;
+    Ok(dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn kode_delete_user_skill(app: tauri::AppHandle, dir: String) -> Result<(), String> {
+    let base = user_skill_dir(&app, std::path::Path::new(&dir))?;
+    std::fs::remove_dir_all(&base).map_err(|error| error.to_string())
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+struct SkillWriteFile {
+    path: String,
+    content: String,
+}
+
+// Install a skill's full file tree (SKILL.md + references/scripts/assets) into
+// ~/.agents/skills/<name>/. Every path must stay inside the skill directory.
+#[tauri::command]
+fn kode_install_user_skill(app: tauri::AppHandle, name: String, files: Vec<SkillWriteFile>) -> Result<String, String> {
+    use tauri::Manager;
+
+    let valid_name = !name.is_empty()
+        && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !valid_name {
+        return Err("Skill name must be lowercase letters, digits, and dashes".to_string());
+    }
+    if !files.iter().any(|file| file.path == "SKILL.md") {
+        return Err("Skill must include a SKILL.md".to_string());
+    }
+
+    let home = app
+        .path()
+        .home_dir()
+        .map_err(|error| format!("No home dir: {error}"))?;
+    let dir = home.join(".agents/skills").join(&name);
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+
+    for file in &files {
+        let rel = std::path::Path::new(&file.path);
+        let mut valid = true;
+        for component in rel.components() {
+            match component {
+                std::path::Component::Normal(_) => {}
+                std::path::Component::CurDir => {}
+                _ => valid = false,
+            }
+        }
+        if !valid {
+            return Err(format!("Invalid file path: {}", file.path));
+        }
+        let target = dir.join(rel);
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+        }
+        std::fs::write(&target, &file.content).map_err(|error| error.to_string())?;
+    }
+
+    Ok(dir.to_string_lossy().to_string())
+}
+
+// Read a local skill folder (picked by the user) into its full file tree, so it
+// can be installed into the user skills root.
+#[tauri::command]
+fn kode_read_local_skill_dir(dir: String) -> Result<Vec<SkillWriteFile>, String> {
+    let base = std::path::Path::new(&dir);
+    if !base.is_dir() {
+        return Err("Not a directory".to_string());
+    }
+
+    fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<SkillWriteFile>, depth: usize) {
+        if depth > 10 || out.len() > 512 {
+            return;
+        }
+        let entries = match std::fs::read_dir(dir) {
+            Ok(entries) => entries,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_string();
+            if name.starts_with('.') || name == "node_modules" {
+                continue;
+            }
+            if path.is_dir() {
+                walk(&path, root, out, depth + 1);
+                continue;
+            }
+            if is_binary_name(&name) {
+                continue;
+            }
+            if let Ok(content) = std::fs::read_to_string(&path) {
+                let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
+                out.push(SkillWriteFile { path: rel, content });
+            }
+        }
+    }
+
+    let mut files: Vec<SkillWriteFile> = Vec::new();
+    walk(base, base, &mut files, 0);
+    if !files.iter().any(|f| f.path == "SKILL.md") {
+        return Err("No SKILL.md found in the selected folder".to_string());
+    }
+    Ok(files)
+}
+
+// Extract a .zip archive and return the skill's file tree (the files under the
+// directory that contains SKILL.md).
+#[tauri::command]
+fn kode_extract_skill_zip(zip_path: String) -> Result<Vec<SkillWriteFile>, String> {
+    let file = std::fs::File::open(&zip_path).map_err(|error| format!("Could not open zip: {error}"))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|error| format!("Invalid zip: {error}"))?;
+
+    let mut entries: Vec<SkillWriteFile> = Vec::new();
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|error| error.to_string())?;
+        let name = entry.name().to_string();
+        if entry.is_dir() || name.starts_with('.') || name.starts_with("__MACOSX") {
+            continue;
+        }
+        if is_binary_name(&name) {
+            continue;
+        }
+        use std::io::Read;
+        let mut content = String::new();
+        entry.read_to_string(&mut content).map_err(|error| error.to_string())?;
+        entries.push(SkillWriteFile { path: name, content });
+    }
+
+    let skill_md = entries
+        .iter()
+        .find(|f| f.path == "SKILL.md" || f.path.ends_with("/SKILL.md"))
+        .map(|f| f.path.clone());
+    let Some(skill_md) = skill_md else {
+        return Err("No SKILL.md found in the zip".to_string());
+    };
+    let root = skill_md.strip_suffix("SKILL.md").unwrap_or("");
+
+    let files: Vec<SkillWriteFile> = entries
+        .into_iter()
+        .filter(|f| f.path.starts_with(root))
+        .map(|f| SkillWriteFile { path: f.path[root.len()..].to_string(), content: f.content })
+        .collect();
+    Ok(files)
 }
 
 #[derive(Debug, Serialize)]
@@ -1263,6 +1776,73 @@ async fn kode_run_command(
     })
 }
 
+/// Rename or move a file or folder inside the project. Never overwrites.
+#[tauri::command]
+fn kode_rename_path(root: String, from: String, to: String) -> Result<(), String> {
+    let source = safe_join(&root, &from)?;
+    let target = safe_join(&root, &to)?;
+    if !source.exists() {
+        return Err(format!("{from} no longer exists."));
+    }
+    if target.exists() {
+        return Err(format!("{to} already exists."));
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| format!("Could not create {to}: {error}"))?;
+    }
+    std::fs::rename(&source, &target).map_err(|error| format!("Could not rename {from}: {error}"))
+}
+
+/// Create an empty file or a folder inside the project. Never overwrites.
+#[tauri::command]
+fn kode_create_entry(root: String, path: String, is_dir: bool) -> Result<(), String> {
+    let target = safe_join(&root, &path)?;
+    if target.exists() {
+        return Err(format!("{path} already exists."));
+    }
+    if is_dir {
+        return std::fs::create_dir_all(&target).map_err(|error| format!("Could not create {path}: {error}"));
+    }
+    if let Some(parent) = target.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| format!("Could not create {path}: {error}"))?;
+    }
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&target)
+        .map(|_| ())
+        .map_err(|error| format!("Could not create {path}: {error}"))
+}
+
+/// Move a file or folder from the project to the Trash (recoverable).
+#[tauri::command]
+fn kode_trash_path(root: String, path: String) -> Result<(), String> {
+    let target = safe_join(&root, &path)?;
+    if target == std::fs::canonicalize(&root).unwrap_or_default() {
+        return Err("The project folder itself can't be deleted here.".into());
+    }
+    if !target.exists() {
+        return Err(format!("{path} no longer exists."));
+    }
+    let home = std::env::var("HOME").map_err(|_| "No home folder.".to_string())?;
+    let trash = std::path::Path::new(&home).join(".Trash");
+    if !trash.is_dir() {
+        return Err("No Trash folder on this system.".into());
+    }
+    let name = target.file_name().and_then(|n| n.to_str()).unwrap_or("item").to_string();
+    let mut dest = trash.join(&name);
+    let mut n = 2;
+    while dest.exists() {
+        let (stem, ext) = match name.rsplit_once('.') {
+            Some((stem, ext)) if !stem.is_empty() => (stem.to_string(), format!(".{ext}")),
+            _ => (name.clone(), String::new()),
+        };
+        dest = trash.join(format!("{stem} {n}{ext}"));
+        n += 1;
+    }
+    std::fs::rename(&target, &dest).map_err(|error| format!("Could not move {path} to the Trash: {error}"))
+}
+
 #[tauri::command]
 fn kode_delete_file(root: String, path: String) -> Result<(), String> {
     let target = safe_join(&root, &path)?;
@@ -1361,30 +1941,6 @@ async fn kode_model_context_windows() -> Result<std::collections::HashMap<String
     Ok(map)
 }
 
-fn docs_index_file(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("No app data dir: {error}"))?;
-    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
-    Ok(dir.join("kode-docs-index.json"))
-}
-
-#[tauri::command]
-fn kode_docs_load(app: tauri::AppHandle) -> Result<String, String> {
-    let file = docs_index_file(&app)?;
-    if !file.exists() {
-        return Ok(String::new());
-    }
-    std::fs::read_to_string(file).map_err(|error| error.to_string())
-}
-
-#[tauri::command]
-fn kode_docs_save(app: tauri::AppHandle, contents: String) -> Result<(), String> {
-    let file = docs_index_file(&app)?;
-    std::fs::write(file, contents).map_err(|error| error.to_string())
-}
-
 #[tauri::command]
 async fn start_desktop_auth_server(app: tauri::AppHandle) -> Result<u16, String> {
     use tauri::Emitter;
@@ -1460,6 +2016,11 @@ fn load_env_files() {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+/// `--kode-mcp`: run Kode's MCP server on stdio instead of the app.
+pub fn run_mcp_server() {
+    kode_mcp_server::run_stdio();
+}
+
 pub fn run() {
     load_env_files();
 
@@ -1483,6 +2044,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(panel::PtyState::default())
         .manage(cli_agents::CliRunState::default())
+        .manage(mcp::McpManager::default())
         .setup(|_app| {
             // Linux and Windows dev builds need the scheme registered at runtime;
             // macOS registers it from the bundle's Info.plist.
@@ -1529,14 +2091,30 @@ pub fn run() {
             kode_chat,
             kode_read_file,
             kode_list_dir,
+            kode_list_project_files,
             kode_write_file,
+            kode_save_attachment,
             kode_edit_file,
             kode_delete_file,
+            kode_rename_path,
+            kode_create_entry,
+            kode_trash_path,
+            mcp_import::kode_mcp_discover,
             kode_run_command,
             kode_repo_profile,
             kode_fetch_text,
-            kode_docs_load,
-            kode_docs_save,
+            kode_discover_user_skills,
+            kode_list_user_skill_files,
+            kode_read_user_skill_file,
+            kode_write_user_skill,
+            kode_delete_user_skill,
+            kode_install_user_skill,
+            kode_read_local_skill_dir,
+            kode_extract_skill_zip,
+            mcp::mcp_start,
+            mcp::mcp_list_tools,
+            mcp::mcp_call_tool,
+            mcp::mcp_stop,
             kode_model_context_windows
             ,kode_byok_status
             ,kode_byok_set_key
@@ -1546,12 +2124,41 @@ pub fn run() {
             ,kode_import::kode_read_coding_session
             ,kode_import::kode_project_state
             ,kode_import::kode_session_updated_at
+            ,kode_import::kode_detect_session_sources
+            ,kode_hooks::kode_import_events
+            ,kode_hooks::kode_sync_hooks_status
+            ,kode_hooks::kode_sync_hooks_set
+            ,kode_hooks::kode_codex_threads
+            ,kode_hooks::kode_shared_workspace_read
+            ,kode_hooks::kode_shared_workspace_write
+            ,bg_tasks::kode_bg_start
+            ,bg_tasks::kode_bg_list
+            ,bg_tasks::kode_bg_output
+            ,bg_tasks::kode_bg_stop
+            ,bg_tasks::kode_bg_clear_finished
+            ,kode_mcp_server::kode_orch_write_state
+            ,kode_mcp_server::kode_orch_take_inbox
+            ,kode_mcp_server::kode_mcp_server_command
+            ,snapshot::kode_capture_snapshot
+            ,kode_read_attachment
+            ,git_hosts::kode_git_remote
+            ,triage::kode_triage_report
+            ,project_move::kode_project_bundle
+            ,project_move::kode_project_restore
+            ,project_move::kode_device_name
+            ,project_move::kode_path_exists
+            ,git_hosts::kode_git_host_token_status
+            ,git_hosts::kode_git_host_token_set
             ,start_desktop_auth_server
             ,kontinue_api_post
             ,panel::panel_git_status
+            ,panel::panel_pr_list
+            ,panel::panel_pr_merge
+            ,panel::panel_pr_review
             ,panel::panel_git_diff
             ,panel::panel_git_branches
             ,panel::panel_git_switch
+            ,panel::panel_git_push
             ,panel::panel_git_worktree_add
             ,panel::pty_spawn
             ,panel::pty_write
@@ -1572,7 +2179,27 @@ pub fn run() {
             ,browser_view::browser_close
             ,browser_view::browser_reload
             ,browser_view::browser_go
+            ,browser_view::browser_annotate
+            ,plugins::plugin_inspect_source
+            ,plugins::plugin_install
+            ,plugins::plugin_discard_staging
+            ,plugins::plugin_list
+            ,plugins::plugin_set_enabled
+            ,plugins::plugin_remove
+            ,plugins::plugin_set_hooks_allowed
+            ,plugins::plugin_run_hook
+            ,plugins::plugin_install_deps
+            ,plugins::kode_list_user_commands
+            ,mcp_auth::mcp_oauth_login
+            ,mcp_auth::mcp_oauth_status
+            ,mcp_auth::mcp_oauth_logout
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_, event| {
+            // Don't leave dev servers the agent started running after quit.
+            if let tauri::RunEvent::Exit = event {
+                bg_tasks::stop_all();
+            }
+        });
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   FileDiff,
+  GitPullRequest,
   FolderTree,
   Globe,
   SquareTerminal,
@@ -9,12 +10,13 @@ import {
 import { cn } from "@/lib/utils";
 import { EnvironmentTab } from "./EnvironmentTab";
 import { ChangesTab } from "./ChangesTab";
+import { PullRequestsTab } from "./PullRequestsTab";
 import { TerminalTab } from "./TerminalTab";
 import { FilesTab } from "./FilesTab";
 import { BrowserSidebar } from "./BrowserSidebar";
 import { useGitStatus } from "./use-git-status";
 
-export type PanelTab = "environment" | "changes" | "terminal" | "files" | "browser";
+export type PanelTab = "environment" | "changes" | "prs" | "terminal" | "files" | "browser";
 
 /** Rounded square with two bullet rows (like Claude Code's environment icon). */
 function EnvironmentIcon({ size = 14, strokeWidth = 1.6 }: { size?: number; strokeWidth?: number }) {
@@ -34,6 +36,7 @@ type TabIcon = (props: { size?: number; strokeWidth?: number }) => React.ReactNo
 const TABS: { id: PanelTab; label: string; icon: TabIcon }[] = [
   { id: "environment", label: "Environment", icon: EnvironmentIcon },
   { id: "changes", label: "Changes", icon: FileDiff },
+  { id: "prs", label: "Pull requests", icon: GitPullRequest },
   { id: "terminal", label: "Terminal", icon: SquareTerminal },
   { id: "files", label: "Files", icon: FolderTree },
   { id: "browser", label: "Browser", icon: Globe },
@@ -88,6 +91,8 @@ export function WorkspacePanel({
     ),
   );
   const [resizing, setResizing] = useState(false);
+  const [terminalRoots, setTerminalRoots] = useState<string[]>([]);
+  if (projectPath && !terminalRoots.includes(projectPath)) setTerminalRoots([...terminalRoots, projectPath]);
   const frame = useRef<number | null>(null);
 
   useEffect(() => {
@@ -260,9 +265,8 @@ export function WorkspacePanel({
               <TabPane active={tab === "changes"}>
                 <ChangesTab projectPath={projectPath} git={git} />
               </TabPane>
-              {/* Terminals stay mounted so shells keep running across tabs. */}
-              <TabPane active={tab === "terminal"}>
-                <TerminalTab projectPath={projectPath} visible={open && tab === "terminal"} />
+              <TabPane active={tab === "prs"}>
+                <PullRequestsTab projectPath={projectPath} active={open && tab === "prs"} />
               </TabPane>
               <TabPane active={tab === "files"}>
                 <FilesTab
@@ -273,6 +277,13 @@ export function WorkspacePanel({
               </TabPane>
             </>
           ) : null}
+          {/* Each project's terminals stay mounted, so shells and long-running
+              processes keep going across tabs, chats and projects. */}
+          {terminalRoots.map((root) => (
+            <TabPane key={root} active={tab === "terminal" && root === projectPath}>
+              <TerminalTab projectPath={root} visible={open && tab === "terminal" && root === projectPath} />
+            </TabPane>
+          ))}
           <TabPane active={tab === "browser"}>
             <BrowserSidebar active={open && tab === "browser"} onOpenInTab={onOpenBrowserTab} />
           </TabPane>

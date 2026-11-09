@@ -369,7 +369,7 @@ function CanvasSkeletonGrid() {
           )}
         >
           {/* Subtle Shimmer Gradient Overlay */}
-          <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/5 via-transparent to-white/10 dark:to-white/5" />
+          <div className="absolute inset-0 dark:bg-gradient-to-tr from-purple-500/5 via-transparent to-white/5" />
 
           {/* Bottom Skeleton Placeholders */}
           <div className="absolute inset-x-0 bottom-0 p-3 flex items-end justify-between">

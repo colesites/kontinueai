@@ -1,11 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { CheckIcon } from "lucide-react";
 import {
   createContext,
   useContext,
+  useCallback,
   useMemo,
   useState,
   type ComponentProps,
@@ -66,19 +65,22 @@ export const Options = ({
   const [selected, setSelected] = useState<string[]>(defaultValue);
   const [custom, setCustom] = useState("");
 
-  const toggle = (value: string) => {
-    if (submitted) return;
-    if (multiple) {
-      setSelected((current) =>
-        current.includes(value)
-          ? current.filter((v) => v !== value)
-          : [...current, value],
-      );
-    } else {
-      setSelected([value]);
-      onSubmit?.([value]); // single select submits immediately
-    }
-  };
+  const toggle = useCallback(
+    (value: string) => {
+      if (submitted) return;
+      if (multiple) {
+        setSelected((current) =>
+          current.includes(value)
+            ? current.filter((v) => v !== value)
+            : [...current, value],
+        );
+      } else {
+        setSelected([value]);
+        onSubmit?.([value]);
+      }
+    },
+    [multiple, onSubmit, submitted],
+  );
 
   const submitMulti = () => {
     const extra = custom.trim();
@@ -88,17 +90,13 @@ export const Options = ({
 
   const ctx = useMemo(
     () => ({ multiple, selected, toggle, submitted }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [multiple, selected, submitted],
+    [multiple, selected, submitted, toggle],
   );
 
   return (
     <OptionsContext.Provider value={ctx}>
       <div
-        className={cn(
-          "not-prose flex w-full flex-col gap-2 rounded-md border p-3",
-          className,
-        )}
+        className={cn("not-prose flex w-full flex-col gap-1.5", className)}
         {...props}
       >
         {children}
@@ -116,19 +114,19 @@ export const Options = ({
               }
             }}
             placeholder="Other — type your own…"
-            className="mt-0.5 h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+            className="h-6 w-full bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground/60"
           />
         ) : null}
 
         {multiple && !submitted ? (
-          <Button
-            className="mt-1 h-8 self-end px-3 text-sm"
+          <button
             type="button"
             disabled={selected.length === 0 && custom.trim().length === 0}
             onClick={submitMulti}
+            className="flex h-6 cursor-pointer items-center self-start rounded-md px-1.5 text-[11px] font-medium text-foreground hover:bg-black/[0.05] disabled:opacity-40 dark:hover:bg-white/[0.08]"
           >
-            Submit
-          </Button>
+            Continue
+          </button>
         ) : null}
       </div>
     </OptionsContext.Provider>
@@ -139,7 +137,7 @@ export const OptionsPrompt = ({
   className,
   ...props
 }: ComponentProps<"p">) => (
-  <p className={cn("text-sm font-medium text-foreground", className)} {...props} />
+  <p className={cn("text-[11px] text-foreground/80", className)} {...props} />
 );
 
 export const OptionsList = ({ className, ...props }: ComponentProps<"div">) => (
@@ -165,7 +163,7 @@ export const Option = ({
   children,
   className,
 }: OptionProps) => {
-  const { selected, toggle, multiple, submitted } = useOptions();
+  const { selected, toggle, submitted } = useOptions();
   const isSelected = selected.includes(value);
 
   return (
@@ -174,33 +172,15 @@ export const Option = ({
       disabled={submitted && !isSelected}
       onClick={() => toggle(value)}
       aria-pressed={isSelected}
+      title={description}
       className={cn(
-        "flex items-start gap-2.5 rounded-md border px-3 py-2 text-left text-sm transition-colors",
-        "hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        isSelected
-          ? "border-primary bg-primary/10"
-          : "border-border bg-transparent",
-        submitted && !isSelected ? "opacity-50" : "",
+        "flex h-6 w-fit cursor-pointer items-center rounded-md px-1.5 text-[11px] text-foreground/70 transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]",
+        isSelected && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
+        submitted && !isSelected && "opacity-40",
         className,
       )}
     >
-      <span
-        className={cn(
-          "mt-0.5 flex size-4 shrink-0 items-center justify-center border",
-          multiple ? "rounded" : "rounded-full",
-          isSelected
-            ? "border-primary bg-primary text-primary-foreground"
-            : "border-muted-foreground/40",
-        )}
-      >
-        {isSelected ? <CheckIcon className="size-3" /> : null}
-      </span>
-      <span className="flex flex-col gap-0.5">
-        <span className="font-medium">{children}</span>
-        {description ? (
-          <span className="text-xs text-muted-foreground">{description}</span>
-        ) : null}
-      </span>
+      {children}
     </button>
   );
 };

@@ -1,4 +1,5 @@
 import { clerkClient } from "@clerk/nextjs/server";
+import { api as convexApi } from "@repo/convex/convex/_generated/api";
 import type { ModelAccessClass } from "@repo/core/model-pricing";
 import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import {
@@ -10,23 +11,30 @@ import {
 	resolvePlanTierFromBillingSignals,
 	STARTER_PLAN_ID,
 } from "@repo/core/plan-tier";
+import { fetchQuery } from "convex/nextjs";
 
 export async function getUserPlanTier(
 	clerkUserId: string,
 	hasPlan?: (args: { plan: string }) => boolean,
+	convexToken?: string,
 ): Promise<PlanTier> {
 	const hasStarterPlan = hasPlan?.({ plan: STARTER_PLAN_ID }) ?? false;
 	const hasPlusPlan = hasPlan?.({ plan: PLUS_PLAN_ID }) ?? false;
 	const hasProPlan = hasPlan?.({ plan: PRO_PLAN_ID }) ?? false;
 	const hasMaxPlan = hasPlan?.({ plan: MAX_PLAN_ID }) ?? false;
 
-	if (hasMaxPlan) return "max";
-	if (hasProPlan) return "pro";
-	if (hasPlusPlan) return "plus";
-	if (hasStarterPlan) return "starter";
-
 	const client = await clerkClient();
 	const user = await client.users.getUser(clerkUserId);
+
+	let persistedPlan: string | null = null;
+	if (convexToken) {
+		try {
+			const current = await fetchQuery(convexApi.users.getCurrentUser, {}, { token: convexToken });
+			persistedPlan = current?.plan ?? null;
+		} catch {
+			persistedPlan = null;
+		}
+	}
 
 	return resolvePlanTierFromBillingSignals({
 		hasStarterPlan,
@@ -34,6 +42,7 @@ export async function getUserPlanTier(
 		hasProPlan,
 		hasMaxPlan,
 		billingUser: user as unknown as BillingUserLike,
+		persistedPlan,
 	});
 }
 

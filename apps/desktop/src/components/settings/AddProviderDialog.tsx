@@ -31,6 +31,14 @@ const CHOICES: (Choice & { note?: string })[] = [
   { kind: "cursor" },
   { kind: "acp", preset: "gemini" },
   { kind: "acp", preset: "opencode" },
+  { kind: "acp", preset: "copilot" },
+  { kind: "acp", preset: "amp" },
+  { kind: "acp", preset: "qwen" },
+  { kind: "acp", preset: "goose" },
+  { kind: "acp", preset: "auggie" },
+  { kind: "acp", preset: "kimi" },
+  { kind: "acp", preset: "claude-acp" },
+  { kind: "acp", preset: "codex-acp" },
   { kind: "acp", preset: "custom" },
 ];
 

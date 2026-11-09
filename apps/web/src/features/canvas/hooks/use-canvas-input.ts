@@ -7,12 +7,18 @@ import {
 	getCanvasModelById,
 	isDurationSupported,
 	isRatioSupported,
+	maxReferenceImagesFor,
 	VIDEO_DURATIONS,
 } from "@repo/ai/lib/canvas-models";
-import { useCallback, useRef, useState } from "react";
+import { appError } from "@repo/core/app-errors";
+import { nextPlanWithMore, PLAN_DEFINITIONS } from "@repo/core/plan-config";
+import { readApiError, showAppErrorToast } from "@web/lib/app-error-toast";
+import { usePlanTier } from "@web/lib/use-plan-tier";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export interface AttachedImage {
+	id: string;
 	url: string;
 	previewUrl: string;
 	filename: string;
@@ -27,7 +33,7 @@ interface UseCanvasInputProps {
 		resolution?: string;
 		duration?: number;
 		quality?: "standard" | "pro";
-		imageUrl?: string;
+		imageUrls?: string[];
 	}) => void;
 	isGenerating: boolean;
 	credits: { remaining: number; total: number };
@@ -50,10 +56,10 @@ export function useCanvasInput({
 	const [videoModel, setVideoModel] = useState(DEFAULT_VIDEO_MODEL);
 	const [duration, setDuration] = useState(5);
 	const [quality, setQuality] = useState<"standard" | "pro">("standard");
-	const [attachedImage, setAttachedImage] = useState<AttachedImage | null>(
-		null,
-	);
+	const [attachedImages, setAttachedImages] = useState<AttachedImage[]>([]);
 	const [isUploading, setIsUploading] = useState(false);
+	const planTier = usePlanTier();
+	const plan = PLAN_DEFINITIONS[planTier];
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -61,6 +67,26 @@ export function useCanvasInput({
 	const selectedModelData = getCanvasModelById(activeModel);
 	const currentProvider = selectedModelData?.provider || "";
 	const isFreeModel = selectedModelData?.isFree || false;
+
+	// Reference images: the plan's allowance, capped by what the model accepts.
+	const maxImages = maxReferenceImagesFor(
+		selectedModelData,
+		plan.canvasReferenceImages,
+	);
+
+	// Switching to a model that takes fewer images drops the extras.
+	useEffect(() => {
+		if (attachedImages.length <= maxImages) return;
+		for (const img of attachedImages.slice(maxImages)) {
+			URL.revokeObjectURL(img.previewUrl);
+		}
+		setAttachedImages(attachedImages.slice(0, maxImages));
+		toast.info(
+			maxImages === 0
+				? "This model doesn't use reference images, so they were removed."
+				: `This model takes up to ${maxImages} reference image${maxImages === 1 ? "" : "s"}. Extra images were removed.`,
+		);
+	}, [attachedImages, maxImages]);
 
 	const isWan = activeModel.includes("wan");
 	const isKling = activeModel.includes("kling");
@@ -142,67 +168,140 @@ export function useCanvasInput({
 			(mode === "image" ? canGenerateImages : canGenerateVideos)) &&
 		(!maxChars || prompt.trim().length <= maxChars);
 
-	const handleFileAttach = useCallback(
-		async (e: React.ChangeEvent<HTMLInputElement>) => {
-			const file = e.target.files?.[0];
-			if (!file) return;
-
-			// Validate file type
-			if (!file.type.startsWith("image/")) {
-				toast.error("Only image files are supported.");
-				return;
-			}
-
-			// Validate file size (5MB)
-			if (file.size > 5 * 1024 * 1024) {
-				toast.error("Image must be under 5MB.");
-				return;
-			}
-
-			setIsUploading(true);
+	const uploadOne = useCallback(
+		async (file: File): Promise<AttachedImage | null> => {
 			const previewUrl = URL.createObjectURL(file);
-
 			try {
 				const res = await fetch(
 					`/api/files/upload?filename=${encodeURIComponent(file.name)}`,
-					{
-						method: "POST",
-						body: file,
-					},
+					{ method: "POST", body: file },
 				);
-
 				if (!res.ok) {
-					const data = await res.json().catch(() => ({}));
-					throw new Error(data.error || "Upload failed");
+					showAppErrorToast(await readApiError(res));
+					URL.revokeObjectURL(previewUrl);
+					return null;
 				}
-
-				const data = await res.json();
-				setAttachedImage({
+				const data = (await res.json()) as { url: string };
+				return {
+					id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
 					url: data.url,
 					previewUrl,
 					filename: file.name,
-				});
-				toast.success("Image attached!");
+				};
 			} catch (err) {
 				URL.revokeObjectURL(previewUrl);
-				toast.error(
-					err instanceof Error ? err.message : "Failed to upload image.",
-				);
-			} finally {
-				setIsUploading(false);
-				// Reset input so the same file can be re-selected
-				if (fileInputRef.current) fileInputRef.current.value = "";
+				showAppErrorToast(err);
+				return null;
 			}
 		},
 		[],
 	);
 
-	const removeAttachedImage = useCallback(() => {
-		if (attachedImage) {
-			URL.revokeObjectURL(attachedImage.previewUrl);
-		}
-		setAttachedImage(null);
-	}, [attachedImage]);
+	const handleFileAttach = useCallback(
+		async (e: React.ChangeEvent<HTMLInputElement>) => {
+			const files = Array.from(e.target.files ?? []);
+			// Reset input so the same file can be re-selected
+			if (fileInputRef.current) fileInputRef.current.value = "";
+			if (files.length === 0) return;
+
+			if (maxImages === 0) {
+				showAppErrorToast(
+					plan.canvasReferenceImages === 0
+						? appError("PLAN_REQUIRED", {
+								title: "Reference images need Pro",
+								message:
+									"Using your own images in Canvas comes with Pro and Max.",
+								upgradeTo: "pro",
+							})
+						: appError("INVALID_REQUEST", {
+								title: "Not supported by this model",
+								message:
+									"This model doesn't take reference images. Pick another model to use one.",
+							}),
+				);
+				return;
+			}
+
+			const slots = maxImages - attachedImages.length;
+			if (slots <= 0 || files.length > slots) {
+				// Upgrading only helps when the plan, not the model, is the cap.
+				const planIsCap = maxImages >= plan.canvasReferenceImages;
+				const upgradeTo = planIsCap
+					? nextPlanWithMore(planTier, (p) => p.canvasReferenceImages)
+					: undefined;
+				showAppErrorToast(
+					appError("USAGE_LIMIT_REACHED", {
+						title: "Image limit reached",
+						message: `You can use up to ${maxImages} reference image${maxImages === 1 ? "" : "s"} with this model on ${plan.name}.${
+							slots > 0 ? ` Adding the first ${slots}.` : ""
+						}${upgradeTo ? ` ${PLAN_DEFINITIONS[upgradeTo].name} allows ${PLAN_DEFINITIONS[upgradeTo].canvasReferenceImages}.` : ""}`,
+						upgradeTo,
+					}),
+				);
+				if (slots <= 0) return;
+			}
+
+			const accepted: File[] = [];
+			for (const file of files.slice(0, slots)) {
+				if (!file.type.startsWith("image/")) {
+					showAppErrorToast(
+						appError("INVALID_REQUEST", {
+							title: "Images only",
+							message: `${file.name} isn't an image. Attach PNG, JPG, WebP or GIF files.`,
+						}),
+					);
+					continue;
+				}
+				if (file.size > plan.maxChatUploadBytes) {
+					const upgradeTo = nextPlanWithMore(
+						planTier,
+						(p) => p.maxChatUploadBytes,
+					);
+					const mb = (bytes: number) => Math.round(bytes / (1024 * 1024));
+					showAppErrorToast(
+						appError("PLAN_REQUIRED", {
+							title: "Image too large",
+							message: `${file.name} is ${mb(file.size)}MB. ${plan.name} allows up to ${mb(plan.maxChatUploadBytes)}MB per file.`,
+							upgradeTo,
+						}),
+					);
+					continue;
+				}
+				accepted.push(file);
+			}
+			if (accepted.length === 0) return;
+
+			setIsUploading(true);
+			try {
+				const uploaded = (await Promise.all(accepted.map(uploadOne))).filter(
+					(img): img is AttachedImage => img !== null,
+				);
+				if (uploaded.length > 0) {
+					setAttachedImages((current) =>
+						[...current, ...uploaded].slice(0, maxImages),
+					);
+				}
+			} finally {
+				setIsUploading(false);
+			}
+		},
+		[attachedImages.length, maxImages, plan, planTier, uploadOne],
+	);
+
+	const removeAttachedImage = useCallback((id: string) => {
+		setAttachedImages((current) => {
+			const target = current.find((img) => img.id === id);
+			if (target) URL.revokeObjectURL(target.previewUrl);
+			return current.filter((img) => img.id !== id);
+		});
+	}, []);
+
+	const clearAttachedImages = useCallback(() => {
+		setAttachedImages((current) => {
+			for (const img of current) URL.revokeObjectURL(img.previewUrl);
+			return [];
+		});
+	}, []);
 
 	const handleSubmit = useCallback(() => {
 		if (!canSubmit) return;
@@ -214,10 +313,12 @@ export function useCanvasInput({
 			resolution: resolution || undefined,
 			quality,
 			...(mode === "video" && { duration }),
-			...(attachedImage && { imageUrl: attachedImage.url }),
+			...(attachedImages.length > 0 && {
+				imageUrls: attachedImages.map((img) => img.url),
+			}),
 		});
 		setPrompt("");
-		removeAttachedImage();
+		clearAttachedImages();
 		if (textareaRef.current) {
 			textareaRef.current.style.height = "auto";
 		}
@@ -231,8 +332,8 @@ export function useCanvasInput({
 		quality,
 		duration,
 		resolution,
-		attachedImage,
-		removeAttachedImage,
+		attachedImages,
+		clearAttachedImages,
 	]);
 
 	const handlePromptChange = useCallback(
@@ -272,7 +373,8 @@ export function useCanvasInput({
 		costMultiplier,
 		canSubmit,
 		handleSubmit,
-		attachedImage,
+		attachedImages,
+		maxImages,
 		isUploading,
 		handleFileAttach,
 		removeAttachedImage,

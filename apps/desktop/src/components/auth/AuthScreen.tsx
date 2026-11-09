@@ -200,7 +200,7 @@ export function AuthScreen() {
 							type="button"
 							disabled={busy === "browser"}
 							onClick={() => void handleOpenBrowser(lastMode)}
-							className="relative flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] px-5 text-sm font-semibold text-white shadow-[0_10px_25px_-5px_rgba(109,40,217,0.5),inset_0_1px_1px_rgba(255,255,255,0.4)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
+							className="relative flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#7c3aed] dark:bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] px-5 text-sm font-semibold text-white shadow-[0_10px_25px_-5px_rgba(109,40,217,0.5),inset_0_1px_1px_rgba(255,255,255,0.4)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
 						>
 							<ExternalLink size={15} /> Reopen browser
 						</button>
@@ -223,7 +223,7 @@ export function AuthScreen() {
 								<button
 									type="submit"
 									disabled={busy !== null}
-									className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-xs font-semibold text-white shadow-[0_6px_20px_-4px_rgba(109,40,217,0.4),inset_0_1px_1px_rgba(255,255,255,0.35)] transition hover:brightness-110 active:scale-[0.98]"
+									className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#7c3aed] dark:bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-xs font-semibold text-white shadow-[0_6px_20px_-4px_rgba(109,40,217,0.4),inset_0_1px_1px_rgba(255,255,255,0.35)] transition hover:brightness-110 active:scale-[0.98]"
 								>
 									Sign in with code
 								</button>
@@ -263,7 +263,7 @@ export function AuthScreen() {
 				<button
 					type="button"
 					disabled={busy !== null}
-					className="group relative flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-sm font-semibold text-white shadow-[0_10px_25px_-5px_rgba(109,40,217,0.5),inset_0_1px_1px_rgba(255,255,255,0.4)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
+					className="group relative flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#7c3aed] dark:bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-sm font-semibold text-white shadow-[0_10px_25px_-5px_rgba(109,40,217,0.5),inset_0_1px_1px_rgba(255,255,255,0.4)] transition hover:brightness-110 active:scale-[0.98] disabled:opacity-60"
 					onClick={() => void handleOpenBrowser("sign-in")}
 				>
 					{busy === "browser" && lastMode === "sign-in" ? (
@@ -306,7 +306,7 @@ export function AuthScreen() {
 						<button
 							type="submit"
 							disabled={busy === "ticket"}
-							className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-xs font-semibold text-white shadow-[0_6px_20px_-4px_rgba(109,40,217,0.4),inset_0_1px_1px_rgba(255,255,255,0.35)] transition hover:brightness-110 active:scale-[0.98]"
+							className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#7c3aed] dark:bg-gradient-to-b from-[#7c3aed] to-[#6d28d9] text-xs font-semibold text-white shadow-[0_6px_20px_-4px_rgba(109,40,217,0.4),inset_0_1px_1px_rgba(255,255,255,0.35)] transition hover:brightness-110 active:scale-[0.98]"
 						>
 							{busy === "ticket" && <LoaderCircle className="animate-spin" size={14} />}
 							Sign in with code

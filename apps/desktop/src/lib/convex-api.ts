@@ -164,6 +164,8 @@ type KodeConvexApi = {
         tokenExpiresAt?: number;
       }[]
     >;
+    /** Deletes the stored tokens for one provider. */
+    disconnect: FunctionReference<"mutation", "public", { provider: string }, unknown>;
   };
   messages: {
     addMessage: FunctionReference<
@@ -227,6 +229,18 @@ type KodeConvexApi = {
         }[];
       },
       number
+    >;
+    saveImportContext: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string; contextPrompt: string; summary?: string; projectName?: string },
+      null
+    >;
+    getImportContext: FunctionReference<
+      "query",
+      "public",
+      { chatId: string },
+      { contextPrompt: string; summary: string | null; projectName: string | null; updatedAt: number } | null
     >;
     getMessages: FunctionReference<"query", "public", { chatId: string }, KodeConvexMessage[]>;
     addMessage: FunctionReference<
@@ -311,4 +325,60 @@ export type CanvasCredits = {
   available: number;
 } | null;
 
+export type KodeWebhook = {
+  id: string;
+  name: string;
+  token: string;
+  projectPath: string | null;
+  projectName: string | null;
+  instructions: string | null;
+  enabled: boolean;
+  lastEventAt: number | null;
+};
+
+export type KodeWebhookEvent = {
+  id: string;
+  webhookName: string;
+  projectPath: string | null;
+  projectName: string | null;
+  instructions: string | null;
+  source: string;
+  event: string;
+  summary: string;
+  payload: string;
+  createdAt: number;
+};
+
+export type KodeWebhooksApi = {
+  kodeWebhooks: {
+    createWebhook: FunctionReference<"mutation", "public", { name: string; projectPath?: string; projectName?: string; instructions?: string }, { id: string; token: string }>;
+    listWebhooks: FunctionReference<"query", "public", Record<string, never>, KodeWebhook[]>;
+    updateWebhook: FunctionReference<"mutation", "public", { id: string; enabled?: boolean; instructions?: string; rotateToken?: boolean }, null>;
+    deleteWebhook: FunctionReference<"mutation", "public", { id: string }, null>;
+    pendingWebhookEvents: FunctionReference<"query", "public", Record<string, never>, KodeWebhookEvent[]>;
+    claimWebhookEvent: FunctionReference<"mutation", "public", { eventId: string; deviceId: string }, boolean>;
+  };
+};
+
+export type ProjectBundle = {
+  name: string;
+  remoteUrl: string | null;
+  branch: string | null;
+  headSha: string | null;
+  headPushed: boolean;
+  patch: string;
+  changedFiles: string[];
+};
+
+export type KodeProjectMovesApi = {
+  kodeProjectMoves: {
+    sendProjectMove: FunctionReference<"mutation", "public", { name: string; remoteUrl?: string; branch?: string; headSha?: string; headPushed: boolean; patch: string; changedFiles: string[]; chatIds: string[]; fromDevice: string }, string>;
+    listProjectMoves: FunctionReference<"query", "public", Record<string, never>, { id: string; name: string; remoteUrl: string | null; branch: string | null; headPushed: boolean; changedFiles: number; chats: number; fromDevice: string; createdAt: number }[]>;
+    claimProjectMove: FunctionReference<"mutation", "public", { id: string; deviceId: string }, (ProjectBundle & { chatIds: string[] }) | null>;
+    releaseProjectMove: FunctionReference<"mutation", "public", { id: string; cancel?: boolean }, null>;
+  };
+};
+
 export const api = anyApi as unknown as KodeConvexApi;
+export const projectMovesApi = anyApi as unknown as KodeProjectMovesApi;
+export const webhooksApi = anyApi as unknown as KodeWebhooksApi;

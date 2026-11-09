@@ -54,20 +54,20 @@ function PendingAnswer({ step }: { step: KodeToolStep }) {
       <p className="text-[13px] font-medium text-foreground">
         {step.description}
       </p>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => resolveApproval(step.id, true)}
-          className="flex-1 rounded-full bg-white px-3 py-1.5 text-[12.5px] font-semibold text-black transition-opacity hover:opacity-90"
-        >
-          Approve
-        </button>
+      <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => resolveApproval(step.id, false)}
-          className="flex-1 rounded-full border border-white/10 px-3 py-1.5 text-[12.5px] font-medium text-foreground/65 transition-colors hover:bg-white/[0.06] hover:text-foreground"
+          className="kontinue-3d flex h-8 cursor-pointer items-center rounded-full px-4 text-[13px] text-foreground/85 hover:text-foreground"
         >
-          Reject
+          Deny
+        </button>
+        <button
+          type="button"
+          onClick={() => resolveApproval(step.id, true)}
+          className="kontinue-3d-primary flex h-8 cursor-pointer items-center rounded-full px-4 text-[13px] font-medium"
+        >
+          Allow
         </button>
       </div>
     </div>
@@ -98,8 +98,9 @@ export function ChatStatusIndicator({
       <HoverCard openDelay={80} closeDelay={120}>
         <HoverCardTrigger asChild>
           <span
-            className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-bold leading-none text-white ring-1 ring-white/40"
+            role="img"
             aria-label="Needs your reply"
+            className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-bold leading-none text-white ring-1 ring-white/40"
           >
             ?
           </span>

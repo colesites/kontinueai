@@ -96,7 +96,7 @@ export default function LeftSidebarHeader() {
           className={cn(
             "flex w-full items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11.5px] transition-all active:scale-[0.99] h-[28px] cursor-pointer",
             isNewActive
-              ? "bg-gradient-to-r from-purple-500/12 to-purple-600/8 hover:from-purple-500/20 hover:to-purple-600/15 border border-purple-300/60 dark:bg-purple-600/20 dark:border-purple-500/25 text-purple-900 dark:text-purple-100 font-semibold shadow-[0_2px_8px_rgba(168,85,247,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)]"
+              ? "bg-purple-500/10 hover:bg-purple-500/17 dark:bg-gradient-to-r from-purple-500/12 to-purple-600/8 hover:from-purple-500/20 hover:to-purple-600/15 border border-purple-300/60 dark:bg-purple-600/20 dark:hover:bg-purple-600/20 dark:border-purple-500/25 text-purple-900 dark:text-purple-100 font-semibold shadow-[0_2px_8px_rgba(168,85,247,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)]"
               : "text-zinc-600 dark:text-muted-foreground hover:bg-white/50 dark:hover:bg-accent hover:text-zinc-950 dark:hover:text-foreground border border-transparent font-normal"
           )}
         >
@@ -114,7 +114,7 @@ export default function LeftSidebarHeader() {
               className={cn(
                 "flex w-full items-center gap-2 rounded-full px-2.5 py-0.5 text-[11.5px] transition-all active:scale-[0.99] h-[28px] cursor-pointer",
                 activeTab === "canvas"
-                  ? "bg-gradient-to-r from-purple-500/12 to-purple-600/8 hover:from-purple-500/20 hover:to-purple-600/15 border border-purple-300/60 dark:bg-purple-600/20 dark:border-purple-500/25 text-purple-900 dark:text-purple-100 font-semibold shadow-[0_2px_8px_rgba(168,85,247,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)]"
+                  ? "bg-purple-500/10 hover:bg-purple-500/17 dark:bg-gradient-to-r from-purple-500/12 to-purple-600/8 hover:from-purple-500/20 hover:to-purple-600/15 border border-purple-300/60 dark:bg-purple-600/20 dark:hover:bg-purple-600/20 dark:border-purple-500/25 text-purple-900 dark:text-purple-100 font-semibold shadow-[0_2px_8px_rgba(168,85,247,0.08),inset_0_1px_1px_rgba(255,255,255,0.9)]"
                   : "text-zinc-600 dark:text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05] hover:text-zinc-950 dark:hover:text-foreground border border-transparent font-normal"
               )}
             >
@@ -133,8 +133,8 @@ export default function LeftSidebarHeader() {
           </>
         )}
 
-        {/* Agents & Connectors (Available in both Home and Kode) */}
-        {/* Agents */}
+        {/* Agents are for the Kontinue chat only; Connectors show everywhere. */}
+        {activeTab !== "kode" ? (
         <button
           type="button"
           onClick={() => openSettings("agents")}
@@ -143,6 +143,7 @@ export default function LeftSidebarHeader() {
           <Bot size={12.5} strokeWidth={1.5} className="text-zinc-500 dark:text-muted-foreground" />
           <span>Agents</span>
         </button>
+        ) : null}
 
         {/* Connectors */}
         <button

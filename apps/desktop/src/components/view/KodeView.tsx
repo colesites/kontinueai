@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderTree, Globe, X } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import PlanView from "@/components/view/PlanView";
+import { TextAnnotator } from "@/components/kode/TextAnnotator";
 import { WorkspacePanel } from "@/components/panel/WorkspacePanel";
 import { FilesTab } from "@/components/panel/FilesTab";
 import { BrowserTab } from "@/components/panel/BrowserTab";
@@ -10,6 +11,9 @@ import FloatingSidebarButtonGroup from "@/components/layout/sidebar/FloatingSide
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { useIsFullscreen } from "@/hooks/use-is-fullscreen";
 import { cn } from "@/lib/utils";
+import { useKeybinding } from "@/lib/kode-keybindings";
+import { ImportSessionModal } from "@/components/kode/KodeSessionImport";
+import { SnapshotDialog } from "@/components/kode/SnapshotDialog";
 
 type DeskTab =
   | { id: "chat"; kind: "chat" }
@@ -21,11 +25,12 @@ type KodeViewProps = {
   onPanelChange: (open: boolean) => void;
 };
 
-export default function KodeView({ panelOpen, onPanelChange }: KodeViewProps) {
+export default function KodeView(_props: KodeViewProps) {
   const { state } = useSidebar();
   const isCollapsed = state === "collapsed";
   const isFullscreen = useIsFullscreen();
-  const { projects, chats, activeChatId, draftProjectId } = useKodeWorkspace();
+  const { projects, chats, activeChatId, draftProjectId, newChat } = useKodeWorkspace();
+  const [dialog, setDialog] = useState<"import" | "snapshot" | null>(null);
 
   const activeProjectId =
     (activeChatId
@@ -37,8 +42,18 @@ export default function KodeView({ panelOpen, onPanelChange }: KodeViewProps) {
     (activeChatId ? chats.find((chat) => chat.id === activeChatId) : null) ??
     null;
   const [filesPath, setFilesPath] = useState<string | null>(null);
+  useKeybinding("kode.newChat", () => newChat(activeProjectId));
+  useKeybinding("kode.importSession", () => setDialog("import"));
+  useKeybinding("kode.snapshot", () => setDialog("snapshot"));
   const [tabs, setTabs] = useState<DeskTab[]>([{ id: "chat", kind: "chat" }]);
   const [activeId, setActiveId] = useState("chat");
+  // The right panel belongs to a chat (and a tab): closed by default, and
+  // remembered per chat instead of following you everywhere.
+  const [panelByKey, setPanelByKey] = useState<Record<string, boolean>>({});
+  const panelKey = `${activeChatId ?? `draft:${draftProjectId ?? "none"}`}|${activeId}`;
+  const panelOpen = panelByKey[panelKey] ?? false;
+  const onPanelChange = (open: boolean) => setPanelByKey((current) => ({ ...current, [panelKey]: open }));
+  useKeybinding("app.panel", () => setPanelByKey((current) => ({ ...current, [panelKey]: !(current[panelKey] ?? false) })));
   const extraTabs = tabs.filter((tab) => tab.kind !== "chat");
 
   const openFilesTab = (path?: string | null) => {
@@ -67,6 +82,12 @@ export default function KodeView({ panelOpen, onPanelChange }: KodeViewProps) {
 
   return (
     <div className="flex h-full w-full overflow-hidden">
+    <TextAnnotator />
+    {dialog === "import" ? (
+      <ImportSessionModal projectPath={activeProject?.path ?? null} projectName={activeProject?.name ?? null} onClose={() => setDialog(null)} />
+    ) : dialog === "snapshot" ? (
+      <SnapshotDialog projectId={activeProjectId} projectPath={activeProject?.path ?? null} onClose={() => setDialog(null)} />
+    ) : null}
     <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
       {isCollapsed && <FloatingSidebarButtonGroup />}
 

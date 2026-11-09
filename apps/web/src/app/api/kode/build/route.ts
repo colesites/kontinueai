@@ -47,7 +47,8 @@ export async function POST(request: Request) {
 		const { userId, hasPlan, getToken } = await getAuthContext();
 		if (!userId)
 			return Response.json({ error: "Unauthorized" }, { status: 401 });
-		if (!canAccessPlanFeature(await getUserPlanTier(userId, hasPlan), "kode")) {
+		const convexTokenForPlan = (await getToken?.({ template: "convex" })) ?? undefined;
+		if (!canAccessPlanFeature(await getUserPlanTier(userId, hasPlan, convexTokenForPlan), "kode")) {
 			return planDeniedResponse(
 				PLAN_ERROR_CODES.KODE_PRO_REQUIRED,
 				"Kode is available exclusively on the Pro plan.",

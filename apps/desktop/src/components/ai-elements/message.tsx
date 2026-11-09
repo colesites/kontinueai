@@ -1,5 +1,6 @@
 "use client";
 
+import { ExpandableImage } from "@/components/ui/image-viewer";
 import { Button } from "@/components/ui/button";
 import {
   ButtonGroup,
@@ -26,6 +27,8 @@ import {
   useState,
 } from "react";
 import { Streamdown } from "streamdown";
+import { ArtifactBlock, CodeBlockView, ImageBlock, SavedStepsBlock, ToolCardBlock } from "./rich-blocks";
+import { hasRichBlocks, splitRichBlocks } from "@/lib/kode-rich-blocks";
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -318,7 +321,49 @@ export const MessageBranchPage = ({
 
 export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
+/** Images in Markdown (a model showing a generated or found image) open full size. */
+function MarkdownImage(props: { src?: unknown; alt?: unknown }) {
+  const { src, alt } = props;
+  if (typeof src !== "string" || !src) return null;
+  return <ExpandableImage src={src} alt={typeof alt === "string" ? alt : undefined} wrapperClassName="my-2 block" className="max-h-96 rounded-2xl border border-black/[0.07] object-contain dark:border-white/[0.08]" />;
+}
+
 export const MessageResponse = memo(
+  (props: MessageResponseProps) => {
+    const { children } = props;
+    // Imported tool cards, screenshots and live HTML/JS views render as their
+    // own blocks; the Markdown between them goes through Streamdown.
+    const segments = useMemo(
+      () => (typeof children === "string" && hasRichBlocks(children) ? splitRichBlocks(children) : null),
+      [children],
+    );
+    if (!segments) return <MarkdownResponse {...props} />;
+    return (
+      <div className={cn("size-full", props.className)}>
+        {segments.map((segment, index) =>
+          segment.type === "markdown" ? (
+            <MarkdownResponse key={index} {...props} className={undefined}>{segment.text}</MarkdownResponse>
+          ) : segment.type === "tool" ? (
+            <ToolCardBlock key={index} card={segment.card} />
+          ) : segment.type === "image" ? (
+            <ImageBlock key={index} image={segment.image} />
+          ) : segment.type === "steps" ? (
+            <SavedStepsBlock key={index} json={segment.json} />
+          ) : segment.type === "code" ? (
+            <CodeBlockView key={index} lang={segment.lang} code={segment.code} complete={segment.complete} />
+          ) : (
+            <ArtifactBlock key={index} html={segment.html} title={segment.title} />
+          ),
+        )}
+      </div>
+    );
+  },
+  (prevProps, nextProps) =>
+    prevProps.children === nextProps.children &&
+    nextProps.isAnimating === prevProps.isAnimating
+);
+
+const MarkdownResponse = memo(
   ({ className, children, ...props }: MessageResponseProps) => {
     const [mermaid, setMermaid] = useState<typeof import("@streamdown/mermaid")["mermaid"]>();
     const needsMermaid = typeof children === "string" && /```\s*mermaid\b/i.test(children);
@@ -343,10 +388,14 @@ export const MessageResponse = memo(
       <Streamdown
         className={cn(
           "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+          // Room for inline code chips without lines touching.
+          "leading-[1.75] [&_p]:leading-[1.75] [&_li]:leading-[1.75]",
           className
         )}
         plugins={plugins}
+        lineNumbers={false}
         {...props}
+        components={{ img: MarkdownImage as never, ...props.components }}
       >
         {children}
       </Streamdown>
@@ -358,6 +407,7 @@ export const MessageResponse = memo(
 );
 
 MessageResponse.displayName = "MessageResponse";
+MarkdownResponse.displayName = "MarkdownResponse";
 
 export type MessageToolbarProps = ComponentProps<"div">;
 

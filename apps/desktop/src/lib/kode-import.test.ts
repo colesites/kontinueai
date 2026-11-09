@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import {
   buildContinuationBundle,
+  limitLabel,
+  sortCodingSessions,
   diffSessionMessages,
   hashMessageContent,
   type CodingProjectState,
@@ -157,10 +159,49 @@ describe("session sync diff", () => {
 
   test("rejects a shrunk transcript and legacy imports without a hash", () => {
     expect(() => diffSessionMessages(session, 99, undefined)).toThrow(
-      /fewer messages/i,
+      /Re-import/i,
     );
     expect(() => diffSessionMessages(session, 2, undefined)).toThrow(
       /Re-import the session/i,
     );
+  });
+});
+
+describe("sync anchor", () => {
+  test("follows the last imported turn when old turns drop out of the window", () => {
+    // 3 turns imported; the source now trims its first turn and adds one.
+    const shifted = { ...session, messages: session.messages.slice(1) };
+    const hash = hashMessageContent(session.messages[2]!.content);
+    const diff = diffSessionMessages(shifted, 3, hash);
+    expect(diff.newMessages.map((m) => m.content)).toEqual(["Also add a regression test"]);
+    expect(diff.messageCount).toBe(4);
+  });
+
+  test("returns no new turns when nothing changed", () => {
+    const hash = hashMessageContent(session.messages[3]!.content);
+    const diff = diffSessionMessages(session, 4, hash);
+    expect(diff.newMessages).toHaveLength(0);
+    expect(diff.messageCount).toBe(4);
+  });
+});
+
+describe("sortCodingSessions", () => {
+  test("puts recent limit hits on top, newest hit first", () => {
+    const day = 86_400_000;
+    const now = 100 * day;
+    const list = [
+      { id: "newest-chat", lastActivity: now, limitHitAt: undefined },
+      { id: "old-limit", lastActivity: now - day, limitHitAt: now - 30 * day },
+      { id: "limit-2d", lastActivity: now - day, limitHitAt: now - 2 * day },
+      { id: "limit-1h", lastActivity: now - 2 * day, limitHitAt: now - day / 24 },
+    ];
+    expect(sortCodingSessions(list, now).map((s) => s.id)).toEqual(["limit-1h", "limit-2d", "newest-chat", "old-limit"]);
+  });
+
+  test("labels a limit hit with its reset", () => {
+    const now = Date.now();
+    expect(limitLabel({ limitHitAt: now - 1000, limitNote: "resets 1:40am (Africa/Lagos)" }, now)).toBe("Hit limit just now · resets 1:40am (Africa/Lagos)");
+    expect(limitLabel({ limitHitAt: now - 1000, limitResetsAt: now - 1 }, now)).toBe("Hit limit just now · reset now");
+    expect(limitLabel({}, now)).toBeNull();
   });
 });

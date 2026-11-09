@@ -30,12 +30,26 @@ export type AppSettings = {
   kodeProviders: ProviderInstance[];
   /** Re-check CLI install / version / sign-in every N seconds (0 = off). */
   kodeCliHealthInterval: number;
+  /** Active account per provider ("claude", "codex", "acp:<preset>") when
+   *  there are several accounts of it (kode-accounts.ts). */
+  kodeActiveAccounts: Record<string, string>;
 };
 
 /** "acp" = any agent started with an Agent Client Protocol command. */
 export type ProviderKind = "claude" | "codex" | "cursor" | "acp";
 /** Known ACP agents (sets the default command, logo and update method). */
-export type AcpPreset = "gemini" | "opencode" | "custom";
+export type AcpPreset =
+  | "gemini"
+  | "opencode"
+  | "copilot"
+  | "amp"
+  | "qwen"
+  | "goose"
+  | "auggie"
+  | "kimi"
+  | "claude-acp"
+  | "codex-acp"
+  | "custom";
 
 export type CliConfigSetting = {
   /** Command name or full path to the binary. */
@@ -117,6 +131,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   kodeContextWindow: null,
   kodeProviders: DEFAULT_PROVIDERS,
   kodeCliHealthInterval: 300,
+  kodeActiveAccounts: {},
 };
 
 /** Fill in missing fields and make sure the built-in providers exist. Also

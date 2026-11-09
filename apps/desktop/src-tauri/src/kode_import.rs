@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tauri::Manager;
 
+mod more;
+
 const CLAUDE_PROVIDER: &str = "claude_code";
 const CODEX_PROVIDER: &str = "codex";
 
@@ -42,6 +44,15 @@ pub struct CodingSessionSummary {
     last_activity: Option<i64>,
     source_path: String,
     size_bytes: u64,
+    /// When this session last hit a usage / rate limit (ms), if it did.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit_hit_at: Option<i64>,
+    /// When that limit resets (ms), when the agent said so as a time.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit_resets_at: Option<i64>,
+    /// The agent's own words, e.g. "resets 1:40am (Africa/Lagos)".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    limit_note: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -50,6 +61,16 @@ pub struct CodingSessionMessage {
     role: String,
     content: String,
     timestamp: Option<i64>,
+    /// Images pasted into this turn (Claude Code screenshots), base64.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    images: Vec<CodingImage>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct CodingImage {
+    media_type: String,
+    data: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -58,6 +79,21 @@ pub struct CodingToolEvent {
     name: String,
     summary: String,
     timestamp: Option<i64>,
+    /// Provider call id, used to pair a call with its result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    id: Option<String>,
+    /// What the call did in detail: the command, or a diff for edits.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<String>,
+    /// The (truncated, redacted) result the tool returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    is_error: bool,
+    /// A result came back for this call. False on a call (with an id) means
+    /// the session ended before it reported: the outcome is unknown.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    has_result: bool,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -127,7 +163,68 @@ pub(crate) fn canonical_or_original(path: &Path) -> PathBuf {
 fn paths_match(session: &Path, filter: &Path) -> bool {
     let session = canonical_or_original(session);
     let filter = canonical_or_original(filter);
-    session == filter || session.starts_with(&filter)
+    if session == filter || session.starts_with(&filter) {
+        return true;
+    }
+    // A worktree of the filtered repo (`../repo-feature`, `~/.codex/worktrees/…`)
+    // belongs to the same project.
+    if let (Some(a), Some(b)) = (main_repo_root(&session), main_repo_root(&filter)) {
+        if a == b {
+            return true;
+        }
+    }
+    // Nested workspace: a session run at the repo root still covers the
+    // package folder the user opened (`apps/web` inside a monorepo).
+    if filter.starts_with(&session) {
+        if let (Some(a), Some(b)) = (resolve_project_root(&session), resolve_project_root(&filter)) {
+            return a == b && a == session;
+        }
+    }
+    false
+}
+
+/// The git dir shared by all worktrees of the repo containing `path`
+/// (`<main>/.git`), following a worktree's `.git` file when needed.
+pub(crate) fn git_common_dir(path: &Path) -> Option<PathBuf> {
+    let start = canonical_or_original(path);
+    for ancestor in start.ancestors() {
+        let dot_git = ancestor.join(".git");
+        if dot_git.is_dir() {
+            return Some(dot_git);
+        }
+        if dot_git.is_file() {
+            let text = std::fs::read_to_string(&dot_git).ok()?;
+            let gitdir = text.lines().find_map(|line| line.strip_prefix("gitdir:"))?.trim();
+            let gitdir = if Path::new(gitdir).is_absolute() {
+                PathBuf::from(gitdir)
+            } else {
+                ancestor.join(gitdir)
+            };
+            let gitdir = canonical_or_original(&gitdir);
+            // `<gitdir>/commondir` points at the shared dir (usually `../..`).
+            if let Ok(common) = std::fs::read_to_string(gitdir.join("commondir")) {
+                let common = common.trim();
+                let common = if Path::new(common).is_absolute() {
+                    PathBuf::from(common)
+                } else {
+                    gitdir.join(common)
+                };
+                return Some(canonical_or_original(&common));
+            }
+            return Some(gitdir);
+        }
+    }
+    None
+}
+
+/// The main checkout of the repo containing `path` (the same folder for
+/// every worktree of that repo).
+fn main_repo_root(path: &Path) -> Option<PathBuf> {
+    let common = git_common_dir(path)?;
+    if common.file_name().and_then(|name| name.to_str()) == Some(".git") {
+        return common.parent().map(Path::to_path_buf);
+    }
+    Some(common)
 }
 
 /// Resolve the actual project root from a coding session's working directory.
@@ -304,7 +401,7 @@ fn secret_patterns() -> &'static Vec<Regex> {
             r"xox[abposr]-[A-Za-z0-9\-]{10,}",
             r"AKIA[0-9A-Z]{16}",
             r"AIza[0-9A-Za-z_\-]{35}",
-            r#"(?i)(?:api[_-]?key|secret|token|password|passwd|authorization)\s*[:=]\s*['"]?[A-Za-z0-9_\-./+]{8,}['"]?"#,
+
             r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
         ]
         .into_iter()
@@ -337,6 +434,30 @@ fn internal_block_patterns() -> &'static Vec<Regex> {
     })
 }
 
+/// `token = …`, `password: …` and the like. Only redacted when the value
+/// looks like a secret (see `looks_like_secret`), not code such as
+/// `token: ask.host` or `secret = MAX_WEBHOOKS`.
+fn key_value_pattern() -> &'static Regex {
+    static PATTERN: OnceLock<Regex> = OnceLock::new();
+    PATTERN.get_or_init(|| {
+        Regex::new(r#"(?i)((?:api[_-]?key|secret|token|password|passwd|authorization)\s*[:=]\s*['"]?)([A-Za-z0-9_\-./+=]{8,})"#)
+            .expect("valid regex")
+    })
+}
+
+pub(crate) fn looks_like_secret(value: &str) -> bool {
+    // Plain identifiers / member paths (`ask.host`, `MAX_WEBHOOKS`, `process.env`).
+    let identifier = value
+        .split('.')
+        .all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_alphabetic() || c == '_'));
+    if identifier {
+        return false;
+    }
+    let has_digit = value.chars().any(|c| c.is_ascii_digit());
+    let has_letter = value.chars().any(|c| c.is_ascii_alphabetic());
+    (has_digit && has_letter && value.len() >= 10) || value.len() >= 24
+}
+
 fn redact_text(input: &str) -> (String, u32) {
     let mut output = input.to_string();
     let mut count = 0u32;
@@ -349,7 +470,18 @@ fn redact_text(input: &str) -> (String, u32) {
                 .to_string();
         }
     }
-    (output, count)
+    let mut extra = 0u32;
+    output = key_value_pattern()
+        .replace_all(&output, |caps: &regex::Captures| {
+            if looks_like_secret(&caps[2]) {
+                extra += 1;
+                format!("{}[REDACTED_SECRET]", &caps[1])
+            } else {
+                caps[0].to_string()
+            }
+        })
+        .to_string();
+    (output, count + extra)
 }
 
 fn clean_transcript_text(raw: &str) -> String {
@@ -548,6 +680,7 @@ fn push_notice(
         role: "system".to_string(),
         content: clean,
         timestamp,
+        images: Vec::new(),
     });
 }
 
@@ -577,6 +710,7 @@ fn push_message(
         role: role.to_string(),
         content: clean,
         timestamp,
+        images: Vec::new(),
     });
 }
 
@@ -609,7 +743,210 @@ fn push_tool_event(
         name: name.to_string(),
         summary: truncate_chars(trimmed, 400),
         timestamp,
+        id: None,
+        detail: None,
+        output: None,
+        is_error: false,
+        has_result: false,
     });
+}
+
+const MAX_TOOL_DETAIL_CHARS: usize = 4_000;
+const MAX_TOOL_OUTPUT_CHARS: usize = 2_000;
+const MAX_TOOL_DETAILS: usize = 200;
+const MAX_IMAGES: usize = 12;
+const MAX_IMAGE_BASE64: usize = 4 * 1024 * 1024;
+
+/// A tool call with an id and a detail (command / diff) for rich cards.
+fn push_tool_call(
+    events: &mut Vec<CodingToolEvent>,
+    id: Option<String>,
+    name: &str,
+    summary: String,
+    detail: Option<String>,
+    timestamp: Option<i64>,
+    redactions: &mut u32,
+) {
+    let (summary, count) = redact_text(summary.trim());
+    *redactions += count;
+    if summary.is_empty() {
+        return;
+    }
+    // Only the most recent calls keep their full detail, to bound the payload.
+    let detail = detail.and_then(|detail| {
+        let (detail, count) = redact_text(&detail);
+        *redactions += count;
+        let detail = truncate_middle(detail.trim_end(), MAX_TOOL_DETAIL_CHARS);
+        (!detail.trim().is_empty()).then_some(detail)
+    });
+    events.push(CodingToolEvent {
+        name: name.to_string(),
+        summary: truncate_chars(&summary, 400),
+        timestamp,
+        id,
+        detail,
+        output: None,
+        is_error: false,
+        has_result: false,
+    });
+}
+
+/// Keep the newest tool events, and full detail only on the newest calls.
+fn cap_tool_events(events: &mut Vec<CodingToolEvent>) {
+    const MAX_EVENTS: usize = 2_000;
+    if events.len() > MAX_EVENTS {
+        events.drain(..events.len() - MAX_EVENTS);
+    }
+    let mut kept = 0usize;
+    for event in events.iter_mut().rev() {
+        if event.detail.is_none() {
+            continue;
+        }
+        kept += 1;
+        if kept > MAX_TOOL_DETAILS {
+            event.detail = None;
+            event.output = None;
+        }
+    }
+}
+
+/// Pair a tool result with the call it answers (searching from the newest).
+fn attach_tool_result(
+    events: &mut [CodingToolEvent],
+    id: &str,
+    output: &str,
+    is_error: bool,
+    redactions: &mut u32,
+) -> bool {
+    let Some(event) = events
+        .iter_mut()
+        .rev()
+        .find(|event| event.id.as_deref() == Some(id))
+    else {
+        return false;
+    };
+    let (output, count) = redact_text(output.trim());
+    *redactions += count;
+    if !output.is_empty() && event.detail.is_some() {
+        event.output = Some(truncate_middle(&output, MAX_TOOL_OUTPUT_CHARS));
+    }
+    event.is_error = is_error;
+    event.has_result = true;
+    true
+}
+
+/// A readable diff for an edit (`- old` / `+ new` lines).
+fn edit_diff(path: &str, old: &str, new: &str) -> String {
+    let mut out = format!("--- {path}\n+++ {path}\n");
+    for line in old.lines() {
+        out.push_str("- ");
+        out.push_str(line);
+        out.push('\n');
+    }
+    for line in new.lines() {
+        out.push_str("+ ");
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// The detail shown in a rich tool card: the command, a diff, or the path.
+fn tool_detail(name: &str, input: &Value) -> Option<String> {
+    let lower = name.to_ascii_lowercase();
+    let path = tool_input_path(input).unwrap_or_default();
+    match lower.as_str() {
+        "edit" | "str_replace" | "str_replace_editor" => {
+            let old = input.get("old_string").or_else(|| input.get("old_str")).and_then(Value::as_str)?;
+            let new = input.get("new_string").or_else(|| input.get("new_str")).and_then(Value::as_str).unwrap_or("");
+            Some(edit_diff(&path, old, new))
+        }
+        "multiedit" => {
+            let edits = input.get("edits").and_then(Value::as_array)?;
+            let mut out = String::new();
+            for edit in edits {
+                let old = edit.get("old_string").and_then(Value::as_str).unwrap_or("");
+                let new = edit.get("new_string").and_then(Value::as_str).unwrap_or("");
+                out.push_str(&edit_diff(&path, old, new));
+            }
+            Some(out)
+        }
+        "write" | "create" => {
+            let content = input.get("content").and_then(Value::as_str)?;
+            let mut out = format!("+++ {path}\n");
+            for line in content.lines().take(80) {
+                out.push_str("+ ");
+                out.push_str(line);
+                out.push('\n');
+            }
+            Some(out)
+        }
+        "bash" | "shell" | "exec_command" | "local_shell" | "container.exec" => {
+            let command = input.get("command").or_else(|| input.get("cmd"))?;
+            Some(match command {
+                Value::Array(parts) => {
+                    let parts: Vec<&str> = parts.iter().filter_map(Value::as_str).collect();
+                    // ["bash", "-lc", "<script>"] reads better as just the script.
+                    if parts.len() == 3 && parts[1] == "-lc" {
+                        parts[2].to_string()
+                    } else {
+                        parts.join(" ")
+                    }
+                }
+                Value::String(text) => text.clone(),
+                other => other.to_string(),
+            })
+        }
+        "apply_patch" => match input {
+            Value::String(text) => Some(text.clone()),
+            Value::Object(map) => map
+                .get("input")
+                .or_else(|| map.get("patch"))
+                .and_then(Value::as_str)
+                .map(str::to_string),
+            _ => None,
+        },
+        "read" | "view" => {
+            if path.is_empty() {
+                return None;
+            }
+            let mut out = path.clone();
+            if let Some(offset) = input.get("offset").and_then(Value::as_i64) {
+                out.push_str(&format!(" (from line {offset})"));
+            }
+            Some(out)
+        }
+        _ => None,
+    }
+}
+
+/// Base64 images from a Claude message's content blocks.
+fn collect_images(content: &Value, images_seen: &mut usize) -> Vec<CodingImage> {
+    let mut images = Vec::new();
+    let Value::Array(blocks) = content else {
+        return images;
+    };
+    for block in blocks {
+        if block.get("type").and_then(Value::as_str) != Some("image") {
+            continue;
+        }
+        let Some(source) = block.get("source") else { continue };
+        if source.get("type").and_then(Value::as_str) != Some("base64") {
+            continue;
+        }
+        let Some(data) = source.get("data").and_then(Value::as_str) else { continue };
+        if data.len() > MAX_IMAGE_BASE64 || *images_seen >= MAX_IMAGES {
+            continue;
+        }
+        let media_type = source
+            .get("media_type")
+            .and_then(Value::as_str)
+            .unwrap_or("image/png")
+            .to_string();
+        *images_seen += 1;
+        images.push(CodingImage { media_type, data: data.to_string() });
+    }
+    images
 }
 
 fn tool_input_path(input: &Value) -> Option<String> {
@@ -775,6 +1112,8 @@ fn finalize_session(
     session.provider = provider.to_string();
     session.source_path = source_path.to_string_lossy().to_string();
     session.messages = kept;
+    let mut tool_events = tool_events;
+    cap_tool_events(&mut tool_events);
     session.tool_events = tool_events;
     session.files_changed = files.into_iter().collect();
     session.messages_dropped = dropped;
@@ -902,6 +1241,9 @@ fn claude_head_summary(head: &str, source: &Path) -> CodingSessionSummary {
         size_bytes: std::fs::metadata(source)
             .map(|meta| meta.len())
             .unwrap_or(0),
+        limit_hit_at: None,
+        limit_resets_at: None,
+        limit_note: None,
     }
 }
 
@@ -993,6 +1335,7 @@ fn parse_claude_session(text: &str, source: &Path) -> CodingSession {
     let mut tool_events: Vec<CodingToolEvent> = Vec::new();
     let mut files: BTreeSet<String> = BTreeSet::new();
     let mut redactions = 0u32;
+    let mut images_seen = 0usize;
 
     for line in text.lines() {
         let trimmed = line.trim();
@@ -1106,20 +1449,34 @@ fn parse_claude_session(text: &str, source: &Path) -> CodingSession {
                     }
                 }
 
-                // Failed tool results are useful context ("this fix didn't work").
+                // Screenshots pasted into the turn ride on the newest user
+                // message, so the message count (and sync) is unchanged.
+                let images = collect_images(&content, &mut images_seen);
+                if !images.is_empty() {
+                    if let Some(message) = messages.iter_mut().rev().find(|m| m.role == "user") {
+                        message.images.extend(images);
+                    }
+                }
+
                 if let Value::Array(blocks) = &content {
                     for block in blocks {
-                        if block.get("type").and_then(Value::as_str) == Some("tool_result")
-                            && block
-                                .get("is_error")
-                                .and_then(Value::as_bool)
-                                .unwrap_or(false)
-                        {
-                            let error = block
-                                .get("content")
-                                .map(collect_result_text)
-                                .unwrap_or_default();
-                            let (error, count) = redact_text(&error);
+                        if block.get("type").and_then(Value::as_str) != Some("tool_result") {
+                            continue;
+                        }
+                        let is_error = block
+                            .get("is_error")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false);
+                        let output = block
+                            .get("content")
+                            .map(collect_result_text)
+                            .unwrap_or_default();
+                        if let Some(id) = block.get("tool_use_id").and_then(Value::as_str) {
+                            attach_tool_result(&mut tool_events, id, &output, is_error, &mut redactions);
+                        }
+                        // Failed tool results are useful context ("this fix didn't work").
+                        if is_error {
+                            let (error, count) = redact_text(&output);
                             redactions += count;
                             push_tool_event(&mut tool_events, "tool error", error, timestamp);
                         }
@@ -1155,11 +1512,15 @@ fn parse_claude_session(text: &str, source: &Path) -> CodingSession {
                                     if let Some(path) = tool_input_path(&input) {
                                         files.insert(path);
                                     }
-                                    push_tool_event(
+                                    let id = block.get("id").and_then(Value::as_str).map(str::to_string);
+                                    push_tool_call(
                                         &mut tool_events,
+                                        id,
                                         name,
                                         summarize_tool_input(name, &input),
+                                        tool_detail(name, &input),
                                         timestamp,
+                                        &mut redactions,
                                     );
                                 }
                                 _ => {}
@@ -1390,6 +1751,9 @@ fn codex_head_summary(head: &str, source: &Path) -> CodingSessionSummary {
         size_bytes: std::fs::metadata(source)
             .map(|meta| meta.len())
             .unwrap_or(0),
+        limit_hit_at: None,
+        limit_resets_at: None,
+        limit_note: None,
     }
 }
 
@@ -1507,17 +1871,42 @@ fn parse_codex_session(text: &str, source: &Path) -> CodingSession {
                             files.insert(path);
                         }
                         let summary = summarize_tool_input(name, &parsed_input);
-                        let (summary, count) = redact_text(&summary);
-                        redactions += count;
-                        push_tool_event(&mut tool_events, name, summary, timestamp);
+                        let detail = if name == "apply_patch" {
+                            tool_detail(name, &raw_input)
+                        } else {
+                            tool_detail(name, &parsed_input)
+                        };
+                        let id = payload.get("call_id").and_then(Value::as_str).map(str::to_string);
+                        push_tool_call(
+                            &mut tool_events,
+                            id,
+                            name,
+                            summary,
+                            detail,
+                            timestamp,
+                            &mut redactions,
+                        );
                     }
                     "function_call_output" | "custom_tool_call_output" => {
-                        let output = payload.get("output").and_then(Value::as_str).unwrap_or("");
+                        let output_value = payload.get("output").cloned().unwrap_or(Value::Null);
+                        // Newer Codex wraps output as {"output": "...", "metadata": {...}}.
+                        let output_owned = match &output_value {
+                            Value::String(text) => serde_json::from_str::<Value>(text)
+                                .ok()
+                                .and_then(|v| v.get("output").and_then(Value::as_str).map(str::to_string))
+                                .unwrap_or_else(|| text.clone()),
+                            Value::Object(map) => map.get("output").and_then(Value::as_str).unwrap_or("").to_string(),
+                            _ => String::new(),
+                        };
+                        let output = output_owned.as_str();
                         let lower = output.to_lowercase();
                         let failed = lower.contains("process exited with code")
                             && !lower.contains("process exited with code 0")
                             || lower.contains("error:")
                             || lower.contains("failed to");
+                        if let Some(id) = payload.get("call_id").and_then(Value::as_str) {
+                            attach_tool_result(&mut tool_events, id, output, failed, &mut redactions);
+                        }
                         if failed && !output.trim().is_empty() {
                             let (output, count) = redact_text(output);
                             redactions += count;
@@ -1626,6 +2015,168 @@ fn parse_codex_session(text: &str, source: &Path) -> CodingSession {
 }
 
 // ---------------------------------------------------------------------------
+// Usage-limit hits
+// ---------------------------------------------------------------------------
+
+/// Sessions that hit a limit in this window go to the top of the list.
+const LIMIT_RECENT_MS: i64 = 7 * 24 * 60 * 60 * 1000;
+/// How much of the end of a transcript to search for a limit hit.
+const LIMIT_TAIL_BYTES: usize = 512 * 1024;
+
+#[derive(Debug, Default, PartialEq)]
+struct LimitHit {
+    at: i64,
+    resets_at: Option<i64>,
+    note: Option<String>,
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Recent limit hits first (newest hit on top), then everything else by
+/// latest activity.
+fn sort_sessions(sessions: &mut [CodingSessionSummary], now: i64) {
+    let key = |s: &CodingSessionSummary| -> (bool, i64) {
+        match s.limit_hit_at {
+            Some(at) if now - at <= LIMIT_RECENT_MS => (true, at),
+            _ => (false, s.last_activity.unwrap_or(0)),
+        }
+    };
+    sessions.sort_by(|a, b| key(b).cmp(&key(a)));
+}
+
+/// Lines that may record a limit hit. Recently changed transcripts are
+/// searched in full (a hit can sit far above the end of a long session);
+/// older ones only at the end.
+fn limit_candidate_lines(path: &Path) -> String {
+    let recent = file_modified_ms(path)
+        .map(|modified| now_ms() - modified <= LIMIT_RECENT_MS)
+        .unwrap_or(false);
+    if !recent {
+        return read_tail(path, LIMIT_TAIL_BYTES);
+    }
+    static MARKER: OnceLock<regex::bytes::Regex> = OnceLock::new();
+    let marker = MARKER.get_or_init(|| {
+        regex::bytes::Regex::new(r#""isApiErrorMessage":true|"used_percent":100|"rate_limit_reached_type":"|"type":"error""#)
+            .expect("valid regex")
+    });
+    let Ok(bytes) = std::fs::read(path) else { return String::new() };
+    let mut lines: Vec<(usize, usize)> = Vec::new();
+    for found in marker.find_iter(&bytes) {
+        let start = bytes[..found.start()].iter().rposition(|b| *b == b'\n').map(|i| i + 1).unwrap_or(0);
+        if lines.last().map(|(s, _)| *s == start).unwrap_or(false) {
+            continue;
+        }
+        let end = bytes[found.end()..].iter().position(|b| *b == b'\n').map(|i| found.end() + i).unwrap_or(bytes.len());
+        lines.push((start, end));
+    }
+    let keep = lines.len().saturating_sub(50);
+    lines[keep..]
+        .iter()
+        .map(|(start, end)| String::from_utf8_lossy(&bytes[*start..*end]).into_owned())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn apply_limit_hit(summary: &mut CodingSessionSummary, path: &Path) {
+    let tail = limit_candidate_lines(path);
+    let hit = match summary.provider.as_str() {
+        CLAUDE_PROVIDER => claude_limit_hit(&tail),
+        CODEX_PROVIDER => codex_limit_hit(&tail),
+        _ => None,
+    };
+    if let Some(hit) = hit {
+        summary.limit_hit_at = Some(hit.at);
+        summary.limit_resets_at = hit.resets_at;
+        summary.limit_note = hit.note;
+    }
+}
+
+/// Claude Code writes a synthetic assistant message such as
+/// "You've hit your session limit · resets 1:40am (Africa/Lagos)" with
+/// `"error":"rate_limit"` and `"isApiErrorMessage":true`.
+fn claude_limit_hit(tail: &str) -> Option<LimitHit> {
+    let mut last = None;
+    for line in tail.lines() {
+        if !line.contains("isApiErrorMessage") {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(line) else { continue };
+        if value.get("isApiErrorMessage").and_then(Value::as_bool) != Some(true) {
+            continue;
+        }
+        let text = value
+            .pointer("/message/content/0/text")
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let error = value.get("error").and_then(Value::as_str).unwrap_or("");
+        let lower = text.to_lowercase();
+        let is_limit = error == "rate_limit"
+            || lower.contains("usage limit")
+            || lower.contains("hit your")
+            || lower.contains("limit reached");
+        if !is_limit {
+            continue;
+        }
+        let Some(at) = json_timestamp(&value) else { continue };
+        // Old format: "Claude AI usage limit reached|1760000000".
+        let resets_at = text
+            .rsplit_once('|')
+            .and_then(|(_, epoch)| epoch.trim().parse::<i64>().ok())
+            .map(|secs| secs * 1000);
+        let note = text
+            .find("resets")
+            .map(|i| truncate_chars(text[i..].trim(), 60));
+        last = Some(LimitHit { at, resets_at, note });
+    }
+    last
+}
+
+/// Codex reports plan usage on every turn; 100% used (or a usage-limit
+/// error) means the session ran into the limit.
+fn codex_limit_hit(tail: &str) -> Option<LimitHit> {
+    let mut last = None;
+    for line in tail.lines() {
+        let maybe = line.contains("\"used_percent\":100")
+            || line.contains("rate_limit_reached_type\":\"")
+            || (line.contains("\"type\":\"error\"") && line.to_lowercase().contains("usage limit"));
+        if !maybe {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<Value>(line) else { continue };
+        let Some(at) = json_timestamp(&value) else { continue };
+        let payload = value.get("payload").unwrap_or(&Value::Null);
+        let limits = payload.get("rate_limits");
+        let full_window = ["primary", "secondary"].iter().find_map(|key| {
+            let window = limits?.get(*key)?;
+            (window.get("used_percent")?.as_f64()? >= 100.0).then_some(window)
+        });
+        let reached = limits
+            .and_then(|l| l.get("rate_limit_reached_type"))
+            .map(|v| !v.is_null())
+            .unwrap_or(false);
+        let error_text = (payload.get("type").and_then(Value::as_str) == Some("error"))
+            .then(|| payload.get("message").and_then(Value::as_str))
+            .flatten()
+            .filter(|m| m.to_lowercase().contains("usage limit"));
+        if full_window.is_none() && !reached && error_text.is_none() {
+            continue;
+        }
+        let resets_at = full_window
+            .and_then(|w| w.get("resets_at"))
+            .and_then(Value::as_i64)
+            .map(|secs| secs * 1000);
+        let note = error_text.map(|m| truncate_chars(m.trim(), 60));
+        last = Some(LimitHit { at, resets_at, note });
+    }
+    last
+}
+
+// ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 
@@ -1633,9 +2184,27 @@ fn parse_codex_session(text: &str, source: &Path) -> CodingSession {
 pub fn kode_scan_coding_sessions(
     app: tauri::AppHandle,
     project_path: Option<String>,
+    known_roots: Option<Vec<String>>,
 ) -> Result<Vec<CodingSessionSummary>, String> {
     let home = home_dir(&app)?;
-    scan_sessions(&home, project_path.as_deref())
+    let mut sessions = scan_sessions(&home, project_path.as_deref())?;
+    let filter = project_path.as_deref().map(|p| canonical_or_original(Path::new(p)));
+    let roots: Vec<PathBuf> = known_roots
+        .unwrap_or_default()
+        .into_iter()
+        .map(PathBuf::from)
+        .filter(|p| p.is_dir())
+        .collect();
+    more::scan_more(&home, filter.as_deref(), &roots, &mut sessions);
+    sort_sessions(&mut sessions, now_ms());
+    sessions.truncate(120);
+    Ok(sessions)
+}
+
+/// Which coding agents have history on this machine, and whether Kode can read it.
+#[tauri::command]
+pub fn kode_detect_session_sources(app: tauri::AppHandle) -> Result<Vec<more::SessionSource>, String> {
+    Ok(more::detect_sources(&home_dir(&app)?))
 }
 
 fn scan_sessions(
@@ -1674,12 +2243,20 @@ fn scan_sessions(
                         }
                     }
                 }
-                if files.len() >= 600 {
+                if files.len() >= 5_000 {
                     break;
                 }
             }
+            // Newest first, so the cap below never hides recent sessions in
+            // folders that `read_dir` happens to list late.
+            let mut files: Vec<(i64, PathBuf)> = files
+                .into_iter()
+                .map(|path| (file_modified_ms(&path).unwrap_or(0), path))
+                .collect();
+            files.sort_by(|a, b| b.0.cmp(&a.0));
+            files.truncate(600);
 
-            for path in files {
+            for (_, path) in files {
                 let path = canonical_or_original(&path);
                 if !path.starts_with(&claude_root) {
                     continue;
@@ -1705,6 +2282,7 @@ fn scan_sessions(
                 if let Some(activity) = tail_info.last_activity {
                     summary.last_activity = Some(activity);
                 }
+                apply_limit_hit(&mut summary, &path);
                 if let Some(cwd) = &summary.project_path {
                     summary.project_exists = Path::new(cwd).is_dir();
                     summary.project_root = resolve_project_root(Path::new(cwd))
@@ -1728,8 +2306,14 @@ fn scan_sessions(
     if let Ok(codex_root) = provider_history_root(home, CODEX_PROVIDER) {
         let codex_root = canonical_or_original(&codex_root);
         let mut files = Vec::new();
-        walk_files(&codex_root, &mut files, 0, 600);
-        for path in files {
+        walk_files(&codex_root, &mut files, 0, 5_000);
+        let mut files: Vec<(i64, PathBuf)> = files
+            .into_iter()
+            .map(|path| (file_modified_ms(&path).unwrap_or(0), path))
+            .collect();
+        files.sort_by(|a, b| b.0.cmp(&a.0));
+        files.truncate(600);
+        for (_, path) in files {
             let path = canonical_or_original(&path);
             if !path.starts_with(&codex_root) {
                 continue;
@@ -1755,6 +2339,7 @@ fn scan_sessions(
             if summary.last_activity.is_none() {
                 summary.last_activity = file_modified_ms(&path);
             }
+            apply_limit_hit(&mut summary, &path);
             if let Some(cwd) = &summary.project_path {
                 if let Some(filter) = &filter {
                     if !paths_match(Path::new(cwd), filter) {
@@ -1768,11 +2353,7 @@ fn scan_sessions(
         }
     }
 
-    sessions.sort_by(|a, b| {
-        b.last_activity
-            .unwrap_or(0)
-            .cmp(&a.last_activity.unwrap_or(0))
-    });
+    sort_sessions(&mut sessions, now_ms());
     sessions.truncate(60);
     Ok(sessions)
 }
@@ -1792,6 +2373,9 @@ fn read_session(
     provider: &str,
     session_path: &str,
 ) -> Result<CodingSession, String> {
+    if let Some(result) = more::read_more(home, provider, session_path) {
+        return result;
+    }
     let root = provider_history_root(home, provider)?;
     let root = canonical_or_original(&root);
     let path = std::fs::canonicalize(session_path)
@@ -1829,6 +2413,9 @@ fn session_updated_at(
     provider: &str,
     session_path: &str,
 ) -> Result<i64, String> {
+    if let Some(result) = more::updated_at_more(home, provider, session_path) {
+        return result;
+    }
     let root = canonical_or_original(&provider_history_root(home, provider)?);
     let path = std::fs::canonicalize(session_path)
         .map_err(|error| format!("Could not open the session transcript: {error}"))?;
@@ -1992,6 +2579,59 @@ pub async fn kode_project_state(root: String) -> Result<CodingProjectState, Stri
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn finds_claude_and_codex_limit_hits() {
+        let claude = concat!(
+            r#"{"type":"assistant","timestamp":"2026-11-06T01:00:00.000Z","message":{"content":[{"type":"text","text":"ok"}]}}"#, "\n",
+            r#"{"type":"assistant","timestamp":"2026-11-06T02:00:00.000Z","error":"rate_limit","isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"You've hit your session limit · resets 1:40am (Africa/Lagos)"}]}}"#, "\n",
+            r#"{"type":"assistant","timestamp":"2026-11-06T03:00:00.000Z","error":"server_error","isApiErrorMessage":true,"message":{"content":[{"type":"text","text":"Overloaded"}]}}"#,
+        );
+        let hit = claude_limit_hit(claude).unwrap();
+        assert_eq!(hit.at, parse_iso_ms("2026-11-06T02:00:00.000Z").unwrap());
+        assert_eq!(hit.note.as_deref(), Some("resets 1:40am (Africa/Lagos)"));
+        assert!(claude_limit_hit(r#"{"isApiErrorMessage":true,"error":"server_error","timestamp":"2026-11-06T03:00:00.000Z","message":{"content":[{"type":"text","text":"Overloaded"}]}}"#).is_none());
+
+        let codex = concat!(
+            r#"{"timestamp":"2026-09-19T06:50:00.000Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":98.0,"resets_at":1792360907}}}}"#, "\n",
+            r#"{"timestamp":"2026-09-19T06:56:35.540Z","type":"event_msg","payload":{"type":"token_count","rate_limits":{"primary":{"used_percent":100.0,"resets_at":1792360907},"rate_limit_reached_type":null}}}"#,
+        );
+        let hit = codex_limit_hit(codex).unwrap();
+        assert_eq!(hit.at, parse_iso_ms("2026-09-19T06:56:35.540Z").unwrap());
+        assert_eq!(hit.resets_at, Some(1_792_360_907_000));
+        assert!(codex_limit_hit(codex.lines().next().unwrap()).is_none());
+    }
+
+    #[test]
+    fn recent_limit_hits_sort_first() {
+        let make = |id: &str, activity: i64, hit: Option<i64>| CodingSessionSummary {
+            provider: "claude".into(),
+            session_id: id.into(),
+            title: id.into(),
+            project_path: None,
+            project_root: None,
+            project_exists: false,
+            git_branch: None,
+            model: None,
+            last_activity: Some(activity),
+            source_path: String::new(),
+            size_bytes: 0,
+            limit_hit_at: hit,
+            limit_resets_at: None,
+            limit_note: None,
+        };
+        let day = 24 * 60 * 60 * 1000;
+        let now = 100 * day;
+        let mut list = vec![
+            make("newest-chat", now, None),
+            make("old-limit", now - day, Some(now - 30 * day)),
+            make("limit-2d", now - day, Some(now - 2 * day)),
+            make("limit-1h", now - 2 * day, Some(now - day / 24)),
+        ];
+        sort_sessions(&mut list, now);
+        let ids: Vec<&str> = list.iter().map(|s| s.session_id.as_str()).collect();
+        assert_eq!(ids, ["limit-1h", "limit-2d", "newest-chat", "old-limit"]);
+    }
     use super::*;
 
     #[test]
@@ -2393,5 +3033,83 @@ mod tests {
             vec!["dev: vite", "test: bun test"]
         );
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    #[test]
+    fn pairs_claude_tool_calls_with_results_and_images() {
+        let lines = [
+            r#"{"type":"user","sessionId":"s1","cwd":"/tmp","timestamp":"2026-01-01T00:00:00Z","message":{"role":"user","content":[{"type":"text","text":"Fix the header"},{"type":"image","source":{"type":"base64","media_type":"image/png","data":"iVBORw0KGgo="}}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-01-01T00:00:01Z","message":{"role":"assistant","model":"claude","content":[{"type":"text","text":"Editing."},{"type":"tool_use","id":"t1","name":"Edit","input":{"file_path":"src/a.ts","old_string":"let a = 1","new_string":"let a = 2"}},{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"bun test"}}]}}"#,
+            r#"{"type":"user","timestamp":"2026-01-01T00:00:02Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"ok"},{"type":"tool_result","tool_use_id":"t2","is_error":true,"content":"1 failing"}]}}"#,
+        ];
+        let session = parse_claude_session(&lines.join("\n"), Path::new("/tmp/s1.jsonl"));
+        assert_eq!(session.messages.len(), 2);
+        assert_eq!(session.messages[0].images.len(), 1);
+        let edit = session.tool_events.iter().find(|e| e.name == "Edit").unwrap();
+        assert!(edit.detail.as_deref().unwrap().contains("- let a = 1"));
+        assert!(edit.detail.as_deref().unwrap().contains("+ let a = 2"));
+        assert_eq!(edit.output.as_deref(), Some("ok"));
+        assert!(edit.has_result);
+        let bash = session.tool_events.iter().find(|e| e.name == "Bash").unwrap();
+        assert_eq!(bash.detail.as_deref(), Some("bun test"));
+        assert!(bash.is_error);
+    }
+
+    #[test]
+    fn resolves_worktree_to_main_repo() {
+        let base = std::env::temp_dir().join(format!("kode-wt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let main = base.join("repo");
+        let wt = base.join("repo-feature");
+        std::fs::create_dir_all(main.join(".git/worktrees/feature")).unwrap();
+        std::fs::create_dir_all(&wt).unwrap();
+        std::fs::write(main.join(".git/worktrees/feature/commondir"), "../..\n").unwrap();
+        std::fs::write(
+            wt.join(".git"),
+            format!("gitdir: {}\n", main.join(".git/worktrees/feature").display()),
+        )
+        .unwrap();
+        assert_eq!(git_common_dir(&wt), Some(canonical_or_original(&main.join(".git"))));
+        assert!(paths_match(&wt, &main));
+        // The worktree is still its own project root.
+        assert_eq!(resolve_project_root(&wt), Some(canonical_or_original(&wt)));
+        // Nested package inside a repo: a root-level session covers it.
+        std::fs::create_dir_all(main.join("apps/web")).unwrap();
+        assert!(paths_match(&main, &main.join("apps/web")));
+        assert!(!paths_match(&main.join("apps"), &main.join("apps/web").join("x")));
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn parses_large_transcripts_quickly() {
+        let mut lines = Vec::new();
+        for i in 0..20_000 {
+            lines.push(format!(
+                r#"{{"type":"user","timestamp":"2026-01-01T00:00:00Z","message":{{"role":"user","content":"prompt {i} {}"}}}}"#,
+                "x".repeat(200)
+            ));
+            lines.push(format!(
+                r#"{{"type":"assistant","timestamp":"2026-01-01T00:00:01Z","message":{{"role":"assistant","content":[{{"type":"text","text":"answer {i}"}},{{"type":"tool_use","id":"t{i}","name":"Bash","input":{{"command":"echo {i}"}}}}]}}}}"#
+            ));
+        }
+        let text = lines.join("\n");
+        let started = std::time::Instant::now();
+        let session = parse_claude_session(&text, Path::new("/tmp/big.jsonl"));
+        let elapsed = started.elapsed();
+        assert!(session.messages.len() <= MAX_MESSAGES);
+        assert!(session.messages_dropped > 0);
+        assert_eq!(session.messages.last().unwrap().content, "answer 19999");
+        assert!(session.tool_events.iter().filter(|e| e.detail.is_some()).count() <= MAX_TOOL_DETAILS);
+        // ~10 MB of JSONL; generous bound so debug builds on CI pass.
+        assert!(elapsed.as_secs() < 15, "parse took {elapsed:?}");
+    }
+
+    #[test]
+    fn key_value_secrets_skip_code() {
+        let (out, n) = redact_text("const host = { token: ask.host, secret = MAX_WEBHOOKS }");
+        assert_eq!(n, 0, "{out}");
+        let (out, n) = redact_text("export API_KEY=abc123def456ghi789 and password: hunter2hunter2");
+        assert_eq!(n, 2, "{out}");
+        assert!(!out.contains("abc123def456"));
     }
 }

@@ -12,6 +12,10 @@ export interface CanvasModel {
 	description: string;
 	isFree?: boolean;
 	resolutions?: { value: string; label: string }[];
+	// How many reference images the model takes in one request. Unset means 1
+	// (image-to-image / start frame). Only raise this for models confirmed to
+	// accept several, since extra images make the provider call fail.
+	maxReferenceImages?: number;
 }
 
 // ── K-Image / K-Video 1.0 — Kontinue's proprietary canvas models ──────────────
@@ -142,6 +146,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	// Google
 	{
 		id: "google/gemini-3.1-flash-image-preview",
+		maxReferenceImages: 8,
 		name: "Nano Banana 2",
 		provider: "Google",
 		capability: "image",
@@ -149,6 +154,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "google/gemini-2.5-flash-image",
+		maxReferenceImages: 3,
 		name: "Nano Banana",
 		provider: "Google",
 		capability: "image",
@@ -156,6 +162,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "google/gemini-3-pro-image",
+		maxReferenceImages: 8,
 		name: "Nano Banana Pro",
 		provider: "Google",
 		capability: "image",
@@ -165,6 +172,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	// OpenAI
 	{
 		id: "openai/gpt-5-pro",
+		maxReferenceImages: 4,
 		name: "GPT 5 Pro",
 		provider: "OpenAI",
 		capability: "image",
@@ -172,6 +180,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "openai/gpt-5",
+		maxReferenceImages: 4,
 		name: "GPT 5",
 		provider: "OpenAI",
 		capability: "image",
@@ -179,6 +188,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "openai/gpt-5-nano",
+		maxReferenceImages: 4,
 		name: "GPT 5 Nano",
 		provider: "OpenAI",
 		capability: "image",
@@ -186,6 +196,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "openai/gpt-5.1-thinking",
+		maxReferenceImages: 4,
 		name: "GPT 5.1 Thinking",
 		provider: "OpenAI",
 		capability: "image",
@@ -193,6 +204,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "openai/gpt-image-1.5",
+		maxReferenceImages: 8,
 		name: "GPT Image 1.5",
 		provider: "OpenAI",
 		capability: "image",
@@ -200,6 +212,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "openai/gpt-image-1",
+		maxReferenceImages: 8,
 		name: "GPT Image 1",
 		provider: "OpenAI",
 		capability: "image",
@@ -207,6 +220,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "openai/gpt-image-1-mini",
+		maxReferenceImages: 8,
 		name: "GPT Image 1 Mini",
 		provider: "OpenAI",
 		capability: "image",
@@ -230,6 +244,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "bfl/flux-2-pro",
+		maxReferenceImages: 8,
 		name: "FLUX.2 Pro",
 		provider: "Black Forest Labs",
 		capability: "image",
@@ -237,6 +252,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "bfl/flux-2-max",
+		maxReferenceImages: 8,
 		name: "FLUX.2 Max",
 		provider: "Black Forest Labs",
 		capability: "image",
@@ -244,6 +260,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "bfl/flux-2-flex",
+		maxReferenceImages: 8,
 		name: "FLUX.2 Flex",
 		provider: "Black Forest Labs",
 		capability: "image",
@@ -251,6 +268,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "bfl/flux-2-klein-9b",
+		maxReferenceImages: 4,
 		name: "FLUX.2 Klein 9B",
 		provider: "Black Forest Labs",
 		capability: "image",
@@ -258,6 +276,7 @@ export const IMAGE_MODELS: CanvasModel[] = [
 	},
 	{
 		id: "bfl/flux-2-klein-4b",
+		maxReferenceImages: 4,
 		name: "FLUX.2 Klein 4B",
 		provider: "Black Forest Labs",
 		capability: "image",
@@ -642,4 +661,16 @@ export function isDurationSupported(
 
 	// Default for other models
 	return [5, 10, 15].includes(duration);
+}
+
+// Reference images allowed for one generation: the plan's allowance capped by
+// what the model accepts. Video always takes a single start frame.
+export function maxReferenceImagesFor(
+	model: CanvasModel | undefined,
+	planAllowance: number,
+): number {
+	if (!model || planAllowance <= 0) return 0;
+	const modelCap =
+		model.capability === "video" ? 1 : (model.maxReferenceImages ?? 1);
+	return Math.min(planAllowance, modelCap);
 }

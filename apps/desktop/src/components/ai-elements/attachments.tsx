@@ -1,5 +1,6 @@
 "use client";
 
+import { ExpandableImage } from "@/components/ui/image-viewer";
 import { Button } from "@/components/ui/button";
 import {
   HoverCard,
@@ -91,16 +92,18 @@ const renderAttachmentImage = (
   isGrid: boolean
 ) =>
   isGrid ? (
-    <img
+    <ExpandableImage
       alt={filename || "Image"}
+      wrapperClassName="block size-full"
       className="size-full object-cover"
       height={96}
       src={url}
       width={96}
     />
   ) : (
-    <img
+    <ExpandableImage
       alt={filename || "Image"}
+      wrapperClassName="block size-full"
       className="size-full rounded object-cover"
       height={20}
       src={url}
@@ -339,6 +342,7 @@ export const AttachmentRemove = ({
     <Button
       aria-label={label}
       className={cn(
+        "cursor-pointer",
         variant === "grid" && [
           "absolute top-2 right-2 size-6 rounded-full p-0",
           "bg-background/80 backdrop-blur-sm",

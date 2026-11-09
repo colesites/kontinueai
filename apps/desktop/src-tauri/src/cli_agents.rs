@@ -7,7 +7,7 @@
 // binaries and let them handle their own sign-in.
 
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -27,7 +27,7 @@ mod acp;
 
 /// Apps launched from Finder/Dock get a minimal PATH, so ask the user's login
 /// shell for the PATH they see in a terminal. Cached for the app's lifetime.
-fn login_path() -> &'static str {
+pub(crate) fn login_path() -> &'static str {
     static PATH: OnceLock<String> = OnceLock::new();
     PATH.get_or_init(|| {
         let current = std::env::var("PATH").unwrap_or_default();
@@ -70,7 +70,7 @@ fn login_path() -> &'static str {
     })
 }
 
-fn find_binary(name: &str) -> Option<PathBuf> {
+pub(crate) fn find_binary(name: &str) -> Option<PathBuf> {
     let sep = if cfg!(windows) { ';' } else { ':' };
     let names: Vec<String> = if cfg!(windows) {
         vec![format!("{name}.exe"), format!("{name}.cmd"), name.to_string()]
@@ -732,6 +732,145 @@ pub struct CliRunRequest {
     /// Settings → Providers overrides for this CLI.
     #[serde(default)]
     config: CliConfig,
+    /// Enabled plugin folders (Claude Code loads them with --plugin-dir).
+    #[serde(default)]
+    plugin_dirs: Vec<String>,
+    /// MCP servers to give the agent (yours, plus plugin ones for CLIs that
+    /// can't load plugins).
+    #[serde(default)]
+    mcp_servers: Vec<McpSpec>,
+    /// With `session_id`: start a new session branched from that one instead
+    /// of continuing it (Claude Code `--fork-session`, `codex exec fork`).
+    #[serde(default)]
+    fork: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct McpSpec {
+    pub name: String,
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    pub url: Option<String>,
+}
+
+/// An MCP server with the sign-in token for remote ones (if signed in).
+struct ResolvedMcp {
+    spec: McpSpec,
+    token: Option<String>,
+}
+
+async fn resolve_mcp(servers: &[McpSpec]) -> Vec<ResolvedMcp> {
+    let mut out = Vec::new();
+    for spec in servers {
+        let token = match spec.url.as_deref() {
+            Some(url) => crate::mcp_auth::access_token(url).await,
+            None => None,
+        };
+        out.push(ResolvedMcp { spec: spec.clone(), token });
+    }
+    out
+}
+
+/// Only folders inside ~/.kontinue/plugins are passed on.
+fn valid_plugin_dirs(dirs: &[String]) -> Vec<String> {
+    let Ok(base) = crate::plugins::plugins_dir() else { return Vec::new() };
+    dirs.iter()
+        .filter(|d| {
+            let path = Path::new(d);
+            path.is_dir() && path.starts_with(&base) && !path.starts_with(base.join(".staging"))
+        })
+        .cloned()
+        .collect()
+}
+
+fn mcp_key(name: &str) -> String {
+    let key: String = name
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' { c } else { '_' })
+        .collect();
+    if key.is_empty() { "server".into() } else { key }
+}
+
+/// Claude Code `--mcp-config` JSON.
+fn claude_mcp_config(servers: &[ResolvedMcp]) -> Value {
+    let mut map = serde_json::Map::new();
+    for server in servers {
+        let spec = &server.spec;
+        let entry = if let Some(url) = spec.url.as_deref() {
+            let mut entry = json!({ "type": "http", "url": url });
+            if let Some(token) = &server.token {
+                entry["headers"] = json!({ "Authorization": format!("Bearer {token}") });
+            }
+            entry
+        } else if let Some(command) = spec.command.as_deref() {
+            json!({ "command": command, "args": spec.args, "env": spec.env })
+        } else {
+            continue;
+        };
+        map.insert(mcp_key(&spec.name), entry);
+    }
+    json!({ "mcpServers": map })
+}
+
+/// Codex `-c mcp_servers.<name>.…` overrides, plus env vars holding tokens.
+fn codex_mcp_overrides(servers: &[ResolvedMcp]) -> (Vec<String>, Vec<(String, String)>) {
+    let quote = |text: &str| serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
+    let mut args = Vec::new();
+    let mut env = Vec::new();
+    for (index, server) in servers.iter().enumerate() {
+        let spec = &server.spec;
+        let key = format!("mcp_servers.{}", mcp_key(&spec.name));
+        if let Some(url) = spec.url.as_deref() {
+            args.push("-c".into());
+            args.push(format!("{key}.url={}", quote(url)));
+            if let Some(token) = &server.token {
+                let var = format!("KONTINUE_MCP_TOKEN_{index}");
+                args.push("-c".into());
+                args.push(format!("{key}.bearer_token_env_var={}", quote(&var)));
+                env.push((var, token.clone()));
+            }
+        } else if let Some(command) = spec.command.as_deref() {
+            args.push("-c".into());
+            args.push(format!("{key}.command={}", quote(command)));
+            if !spec.args.is_empty() {
+                let list: Vec<String> = spec.args.iter().map(|a| quote(a)).collect();
+                args.push("-c".into());
+                args.push(format!("{key}.args=[{}]", list.join(",")));
+            }
+            if !spec.env.is_empty() {
+                let pairs: Vec<String> = spec
+                    .env
+                    .iter()
+                    .map(|(k, v)| format!("{}={}", quote(k), quote(v)))
+                    .collect();
+                args.push("-c".into());
+                args.push(format!("{key}.env={{{}}}", pairs.join(",")));
+            }
+        }
+    }
+    (args, env)
+}
+
+/// ACP `session/new` mcpServers (stdio servers; every ACP agent supports those).
+pub fn acp_mcp_servers(request: &CliRunRequest) -> Value {
+    Value::Array(
+        request
+            .mcp_servers
+            .iter()
+            .filter_map(|spec| {
+                let command = spec.command.as_deref()?;
+                Some(json!({
+                    "name": spec.name,
+                    "command": command,
+                    "args": spec.args,
+                    "env": spec.env.iter().map(|(k, v)| json!({ "name": k, "value": v })).collect::<Vec<_>>(),
+                }))
+            })
+            .collect(),
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -741,6 +880,9 @@ pub struct CliRunResult {
     text: String,
     stopped: bool,
     error: Option<String>,
+    /// Epoch ms when a usage limit that stopped this turn resets (Claude Code
+    /// reports it in `rate_limit_event`). The frontend also reads error text.
+    limit_resets_at: Option<i64>,
 }
 
 #[derive(Default)]
@@ -750,7 +892,7 @@ pub struct CliRunState {
     stopped: Mutex<std::collections::HashSet<u32>>,
 }
 
-fn claude_args(req: &CliRunRequest) -> Vec<String> {
+fn claude_args(req: &CliRunRequest, mcp: &[ResolvedMcp], plugin_dirs: &[String]) -> Vec<String> {
     let permission = match req.mode.as_str() {
         "plan" => "plan",
         "auto_edits" | "design" | "auto" => "acceptEdits",
@@ -775,12 +917,24 @@ fn claude_args(req: &CliRunRequest) -> Vec<String> {
     if let Some(id) = req.session_id.as_deref().filter(|id| !id.is_empty()) {
         args.push("--resume".to_string());
         args.push(id.to_string());
+        if req.fork {
+            args.push("--fork-session".to_string());
+        }
+    }
+    // Enabled Kontinue plugins (commands, skills, agents, hooks, their MCP).
+    for dir in plugin_dirs {
+        args.push("--plugin-dir".to_string());
+        args.push(dir.clone());
+    }
+    // MCP servers you added in Settings → Customize.
+    if !mcp.is_empty() {
+        args.push(format!("--mcp-config={}", claude_mcp_config(mcp)));
     }
     args.extend(req.config.launch_args.iter().cloned());
     args
 }
 
-fn codex_args(req: &CliRunRequest) -> Vec<String> {
+fn codex_args(req: &CliRunRequest, mcp_overrides: &[String]) -> Vec<String> {
     let mut args = vec![
         "exec".to_string(),
         "--json".to_string(),
@@ -804,9 +958,10 @@ fn codex_args(req: &CliRunRequest) -> Vec<String> {
         }
     }
     // Exec options must come before the `resume` subcommand.
+    args.extend(mcp_overrides.iter().cloned());
     args.extend(req.config.launch_args.iter().cloned());
     if let Some(id) = req.session_id.as_deref().filter(|id| !id.is_empty()) {
-        args.push("resume".to_string());
+        args.push(if req.fork { "fork" } else { "resume" }.to_string());
         args.push(id.to_string());
     }
     // Read the prompt from stdin so it is never parsed as a flag.
@@ -904,13 +1059,19 @@ pub async fn kode_cli_run(
         return acp::run(&state, run_id, &binary, &request, on_event).await;
     }
 
+    let mcp = resolve_mcp(&request.mcp_servers).await;
+    let plugin_dirs = valid_plugin_dirs(&request.plugin_dirs);
+    let (codex_overrides, extra_env) = codex_mcp_overrides(&mcp);
     let args = match request.provider {
-        CliProvider::Claude => claude_args(&request),
-        CliProvider::Codex => codex_args(&request),
+        CliProvider::Claude => claude_args(&request, &mcp, &plugin_dirs),
+        CliProvider::Codex => codex_args(&request, &codex_overrides),
         CliProvider::Cursor => cursor_args(&request),
         CliProvider::Acp => unreachable!(),
     };
     let mut cmd = cli_command(request.provider, &binary, &request.config);
+    if request.provider == CliProvider::Codex {
+        cmd.envs(extra_env);
+    }
     cmd.args(&args)
         .current_dir(root)
         .stdin(Stdio::piped())
@@ -996,6 +1157,7 @@ pub async fn kode_cli_run(
         text: parser.text,
         stopped,
         error: if stopped { None } else { error },
+        limit_resets_at: parser.limit_resets_at,
     })
 }
 
@@ -1040,6 +1202,8 @@ struct Parser {
     streamed_thinking: bool,
     /// A tool ran since the last text, so start the next text on a new paragraph.
     tool_since_text: bool,
+    /// Epoch ms when a rejected usage limit resets.
+    limit_resets_at: Option<i64>,
 }
 
 impl Parser {
@@ -1052,6 +1216,7 @@ impl Parser {
             streamed_text: false,
             streamed_thinking: false,
             tool_since_text: false,
+            limit_resets_at: None,
         }
     }
 
@@ -1181,6 +1346,17 @@ impl Parser {
                         output: clip(&output),
                         is_error: block.get("is_error").and_then(Value::as_bool).unwrap_or(false),
                     });
+                }
+            }
+            Some("rate_limit_event") => {
+                // {"rate_limit_info":{"status":"rejected","resetsAt":<epoch s>,…}}
+                let info = event.get("rate_limit_info").unwrap_or(&Value::Null);
+                if info.get("status").and_then(Value::as_str) == Some("rejected") {
+                    self.limit_resets_at = info
+                        .get("resetsAt")
+                        .and_then(Value::as_f64)
+                        .filter(|s| *s > 0.0)
+                        .map(|s| (s * 1000.0) as i64);
                 }
             }
             Some("result") => {
@@ -1432,6 +1608,26 @@ fn claude_todos(input: &Value) -> Option<Vec<CliTodo>> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn resumes_or_forks_a_session() {
+        let request = |provider: &str, fork: bool| -> CliRunRequest {
+            serde_json::from_value(serde_json::json!({
+                "provider": provider, "root": "/tmp", "prompt": "hi",
+                "sessionId": "abc", "model": null, "mode": "ask", "fork": fork
+            }))
+            .unwrap()
+        };
+        let claude = claude_args(&request("claude", true), &[], &[]);
+        let at = claude.iter().position(|a| a == "--resume").unwrap();
+        assert_eq!(claude[at + 1], "abc");
+        assert!(claude.contains(&"--fork-session".to_string()));
+        assert!(!claude_args(&request("claude", false), &[], &[]).contains(&"--fork-session".to_string()));
+        let codex = codex_args(&request("codex", true), &[]);
+        let at = codex.iter().position(|a| a == "fork").unwrap();
+        assert_eq!(codex[at + 1], "abc");
+        assert!(codex_args(&request("codex", false), &[]).contains(&"resume".to_string()));
+    }
     use super::*;
     use serde_json::json;
 
@@ -1511,5 +1707,44 @@ mod tests {
         assert_eq!(p.text, "All good");
         p.handle(&json!({"type":"turn.failed","error":{"message":"boom"}}));
         assert_eq!(p.error.as_deref(), Some("boom"));
+    }
+
+    #[test]
+    fn claude_rejected_rate_limit_keeps_reset_time() {
+        let mut p = Parser::new(CliProvider::Claude, None);
+        p.handle(&json!({"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","resetsAt":1794000000}}));
+        assert_eq!(p.limit_resets_at, None);
+        p.handle(&json!({"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1794000000,"rateLimitType":"five_hour"}}));
+        assert_eq!(p.limit_resets_at, Some(1_794_000_000_000));
+    }
+
+    #[test]
+    fn mcp_configs_for_claude_and_codex() {
+        let servers = vec![
+            ResolvedMcp {
+                spec: McpSpec {
+                    name: "my files".into(),
+                    command: Some("npx".into()),
+                    args: vec!["-y".into(), "server".into()],
+                    env: HashMap::from([("KEY".to_string(), "v\"1".to_string())]),
+                    url: None,
+                },
+                token: None,
+            },
+            ResolvedMcp {
+                spec: McpSpec { name: "vercel".into(), command: None, args: vec![], env: HashMap::new(), url: Some("https://mcp.vercel.com".into()) },
+                token: Some("tok".into()),
+            },
+        ];
+        let claude = claude_mcp_config(&servers);
+        assert_eq!(claude["mcpServers"]["my_files"]["command"], "npx");
+        assert_eq!(claude["mcpServers"]["vercel"]["headers"]["Authorization"], "Bearer tok");
+
+        let (args, env) = codex_mcp_overrides(&servers);
+        assert!(args.contains(&"mcp_servers.my_files.command=\"npx\"".to_string()));
+        assert!(args.contains(&"mcp_servers.my_files.args=[\"-y\",\"server\"]".to_string()));
+        assert!(args.contains(&"mcp_servers.my_files.env={\"KEY\"=\"v\\\"1\"}".to_string()));
+        assert!(args.contains(&"mcp_servers.vercel.url=\"https://mcp.vercel.com\"".to_string()));
+        assert_eq!(env, vec![("KONTINUE_MCP_TOKEN_1".to_string(), "tok".to_string())]);
     }
 }

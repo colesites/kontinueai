@@ -47,7 +47,7 @@ export function ProblemSection() {
 						<div className="border-l border-border pl-10">
 							<div className="font-display text-4xl tracking-tight">0%</div>
 							<div className="mt-1 text-sm text-muted-foreground">
-								Of your context comes along to the next app
+								of your chat follows you to a new app
 							</div>
 						</div>
 					</div>

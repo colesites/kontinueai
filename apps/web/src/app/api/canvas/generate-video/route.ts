@@ -14,10 +14,15 @@ import {
 	putPublicObject,
 } from "@web/lib/object-storage";
 import { experimental_generateVideo as generateVideo } from "ai";
-import { fetchMutation } from "convex/nextjs";
+import { fetchMutation, fetchQuery } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { getUserPlanTier } from "../../chat/lib/plan-limits";
-import { PLAN_ERROR_CODES, planDeniedResponse } from "../../lib/plan-denial";
+import {
+	apiError,
+	apiErrorResponse,
+	toGenerationError,
+} from "../../lib/api-error";
+import { resolveReferenceImages } from "../../lib/reference-images";
 
 // Veo's practical single-clip max; longer K-Video durations are rendered as a
 // multi-scene job on the Render worker (storyboard → clips → ffmpeg merge).
@@ -40,22 +45,20 @@ export async function POST(req: Request) {
 	try {
 		const { userId, has, getToken } = await auth();
 		if (!userId) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+			return apiError("UNAUTHORIZED");
 		}
-		const planTier = await getUserPlanTier(userId, has);
+		const convexToken = (await getToken({ template: "convex" })) ?? undefined;
+		const planTier = await getUserPlanTier(userId, has, convexToken);
 		if (!canAccessPlanFeature(planTier, "canvas")) {
-			return planDeniedResponse(
-				PLAN_ERROR_CODES.CANVAS_PRO_REQUIRED,
-				"K-Video is available in Canvas on Pro and Max.",
-			);
+			return apiError("PLAN_REQUIRED", {
+				title: "Video is a Pro feature",
+				message:
+					"Video generation in Canvas comes with Pro and Max. Upgrade to start creating videos.",
+				upgradeTo: "pro",
+			});
 		}
-		const convexToken = (await getToken({ template: "convex" })) ?? null;
-		if (!convexToken) {
-			return NextResponse.json(
-				{ error: "Your account could not be verified. Please try again." },
-				{ status: 503 },
-			);
-		}
+		if (!convexToken) return apiError("UNAUTHORIZED");
+		const token = convexToken;
 
 		const body = (await req.json()) as {
 			prompt?: string;
@@ -66,30 +69,35 @@ export async function POST(req: Request) {
 			aspectRatio?: string;
 			duration?: number;
 			image?: string;
+			images?: string[];
 		};
 
 		if (!body.prompt || body.prompt.trim().length < 3) {
-			return NextResponse.json(
-				{ error: "Prompt is required (min 3 characters)" },
-				{ status: 400 },
-			);
+			return apiError("INVALID_REQUEST", {
+				title: "Add a prompt",
+				message: "Describe the video you want in at least 3 characters.",
+			});
 		}
 
 		const defaultModel = VIDEO_MODELS[0];
 		if (!defaultModel) {
-			return NextResponse.json(
-				{ error: "No video models configured" },
-				{ status: 500 },
-			);
+			console.error("[canvas/generate-video] No video models configured");
+			return apiError("SERVICE_UNAVAILABLE");
 		}
 		const modelId = body.model ?? defaultModel.id;
 		const validModel = VIDEO_MODELS.find((m) => m.id === modelId);
 		if (!validModel) {
-			return NextResponse.json(
-				{ error: `Invalid video model: ${modelId}` },
-				{ status: 400 },
-			);
+			return apiError("INVALID_REQUEST", {
+				title: "Model not available",
+				message:
+					"That video model isn't available. Pick another one and try again.",
+			});
 		}
+
+		const refs = resolveReferenceImages(body, validModel, planTier);
+		if ("error" in refs) return refs.error;
+		// Video takes a single start frame.
+		const startFrame = refs.images[0];
 
 		const duration = body.duration ?? 5;
 
@@ -99,11 +107,26 @@ export async function POST(req: Request) {
 			process.env.AI_GATEWAY_API_KEY ??
 			process.env.AI_GATEWAY_TOKEN;
 		if (!apiKey) {
-			return NextResponse.json(
-				{ error: "AI Gateway key not configured" },
-				{ status: 500 },
-			);
+			console.error("[canvas/generate-video] AI Gateway key not configured");
+			return apiError("SERVICE_UNAVAILABLE");
 		}
+
+		// Check limits and credits BEFORE paying the provider. Returns an error
+		// response to send back, or null when the generation can go ahead.
+		const checkAllowance = async (seconds: number, res: string) => {
+			const allowance = await fetchQuery(
+				convexApi.canvas.checkGenerationAllowance,
+				{
+					mediaType: "video",
+					seconds,
+					modelId,
+					resolution: res,
+					quality: body.quality,
+				},
+				{ token },
+			);
+			return allowance.ok ? null : apiErrorResponse(allowance.error);
+		};
 		// Set for subsequent library calls
 		process.env.AI_GATEWAY_API_KEY = apiKey;
 
@@ -127,8 +150,8 @@ export async function POST(req: Request) {
 		const resolution = resolutionStr as `${number}x${number}`;
 		const aspectRatio = aspectRatioStr as `${number}:${number}`;
 
-		const promptParam = body.image
-			? { text: body.prompt, image: body.image }
+		const promptParam = startFrame
+			? { text: body.prompt, image: startFrame }
 			: body.prompt;
 
 		// ── Provider-Specific Params ─────────────────────────────
@@ -170,10 +193,13 @@ export async function POST(req: Request) {
 					!agentSecret ||
 					!storage
 				) {
-					return NextResponse.json(
-						{ error: "Long-form video is not fully configured." },
-						{ status: 500 },
+					console.error(
+						"[canvas/generate-video] Long-form video is not fully configured",
 					);
+					return apiError("SERVICE_UNAVAILABLE", {
+						message:
+							"Long videos aren't available right now. Try a shorter clip.",
+					});
 				}
 
 				await fetchMutation(
@@ -185,7 +211,7 @@ export async function POST(req: Request) {
 						resolution: kResolution,
 						quality: body.quality,
 					},
-					{ token: convexToken },
+					{ token },
 				);
 
 				const jobId = await fetchMutation(
@@ -197,7 +223,7 @@ export async function POST(req: Request) {
 						aspectRatio,
 						audio: body.audio ?? false,
 					},
-					{ token: convexToken },
+					{ token },
 				);
 
 				// Fire the worker (don't block on the full render). The scraper auth
@@ -237,6 +263,9 @@ export async function POST(req: Request) {
 				});
 			}
 
+			const kDenied = await checkAllowance(kDuration, kResolution);
+			if (kDenied) return kDenied;
+
 			// K-Video runs on Veo through the AI Gateway (OpenRouter serves no video
 			// models), so it takes the same vertex provider options as the raw Veo
 			// entries below.
@@ -262,10 +291,9 @@ export async function POST(req: Request) {
 			// fall through to the shared result handling below
 			if (!result.video) {
 				console.error("[canvas/generate-video] K-Video returned no video data");
-				return NextResponse.json(
-					{ error: "Model failed to return a video." },
-					{ status: 500 },
-				);
+				return apiError("UNKNOWN", {
+					message: "The model didn't return a video. Please try again.",
+				});
 			}
 			const videoData = result.video;
 			const mediaType = videoData.mediaType || "video/mp4";
@@ -282,7 +310,7 @@ export async function POST(req: Request) {
 					resolution: kResolution,
 					quality: body.quality,
 				},
-				{ token: convexToken },
+				{ token },
 			);
 			return NextResponse.json({
 				mediaUrl: blob.url,
@@ -292,6 +320,9 @@ export async function POST(req: Request) {
 				duration: kDuration,
 			});
 		}
+
+		const denied = await checkAllowance(duration, resolutionStr);
+		if (denied) return denied;
 
 		const model = gateway.video(resolvedModelId);
 
@@ -381,10 +412,9 @@ export async function POST(req: Request) {
 
 		if (!result.video) {
 			console.error("[canvas/generate-video] Model returned no video data");
-			return NextResponse.json(
-				{ error: "Model failed to return a video." },
-				{ status: 500 },
-			);
+			return apiError("UNKNOWN", {
+				message: "The model didn't return a video. Please try again.",
+			});
 		}
 
 		// Save with correct media type and extension
@@ -404,7 +434,7 @@ export async function POST(req: Request) {
 				resolution: resolutionStr,
 				quality: body.quality,
 			},
-			{ token: convexToken },
+			{ token },
 		);
 
 		console.log(
@@ -422,9 +452,7 @@ export async function POST(req: Request) {
 	} catch (error) {
 		console.error("[canvas/generate-video] Fatal Error:", error);
 
-		let errorMessage = "Generation failed";
 		if (error instanceof Error) {
-			errorMessage = error.message;
 			if (isProviderError(error)) {
 				console.error(
 					"[canvas/generate-video] Provider response observed:",
@@ -433,6 +461,6 @@ export async function POST(req: Request) {
 			}
 		}
 
-		return NextResponse.json({ error: errorMessage }, { status: 500 });
+		return apiErrorResponse(toGenerationError(error));
 	}
 }

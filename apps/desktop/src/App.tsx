@@ -4,11 +4,11 @@ import ViewLayout from "@/components/layout/view-layout";
 import LeftSidebar from "@/components/layout/sidebar/LeftSidebar";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { useEffect, useState } from "react";
-import { ensureDocsIndexed } from "@/lib/kode-docs";
 import { AuthProviders } from "@/components/auth/AuthProviders";
 import { AuthScreen } from "@/components/auth/AuthScreen";
 import { UserSync } from "@/components/auth/UserSync";
 import { KodeWorkspaceProvider, useKodeWorkspace } from "@/lib/kode-workspace";
+import { useKeybinding } from "@/lib/kode-keybindings";
 import { KodeAgentRuntimeProvider } from "@/lib/kode-agent-runtime";
 import { SettingsView } from "@/components/settings/SettingsView";
 
@@ -26,27 +26,11 @@ function WorkspaceContent() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
 
-  // Global shortcut to toggle settings (⌘,)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // ⌘J toggles the right workspace panel.
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "j") {
-        e.preventDefault();
-        setPanelOpen((open) => !open);
-        return;
-      }
-      if ((e.metaKey || e.ctrlKey) && e.key === ",") {
-        e.preventDefault();
-        if (isSettingsOpen) {
-          closeSettings();
-        } else {
-          openSettings();
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isSettingsOpen, closeSettings, openSettings]);
+  // Global shortcuts (rebindable in Settings → Keyboard shortcuts).
+  useKeybinding("app.settings", () => {
+    if (isSettingsOpen) closeSettings();
+    else openSettings();
+  });
 
   useEffect(() => {
     // Safety fallback: if Clerk auth initialization takes > 5s (offline, slow connection, etc.),
@@ -129,12 +113,6 @@ function WorkspaceContent() {
 }
 
 function MainApp() {
-  // Warm the local docs index at startup so the first chat message is grounded.
-  // Persists on disk across sessions; only re-fetches stale sources.
-  useEffect(() => {
-    void ensureDocsIndexed();
-  }, []);
-
   return (
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <AuthProviders>

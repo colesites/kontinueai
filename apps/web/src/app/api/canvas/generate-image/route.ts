@@ -12,11 +12,16 @@ import {
 	stepCountIs,
 	type ToolSet,
 } from "ai";
-import { fetchMutation } from "convex/nextjs";
+import { fetchMutation, fetchQuery } from "convex/nextjs";
 import { NextResponse } from "next/server";
 import { getUserPlanTier } from "../../chat/lib/plan-limits";
 import { toOpenAIImageSize } from "../../chat/lib/request-utils";
-import { PLAN_ERROR_CODES, planDeniedResponse } from "../../lib/plan-denial";
+import {
+	apiError,
+	apiErrorResponse,
+	toGenerationError,
+} from "../../lib/api-error";
+import { resolveReferenceImages } from "../../lib/reference-images";
 
 export const maxDuration = 120;
 
@@ -24,45 +29,53 @@ export async function POST(req: Request) {
 	try {
 		const { userId, has, getToken } = await auth();
 		if (!userId) {
-			return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+			return apiError("UNAUTHORIZED");
 		}
-		const planTier = await getUserPlanTier(userId, has);
+		const convexToken = (await getToken({ template: "convex" })) ?? undefined;
+		const planTier = await getUserPlanTier(userId, has, convexToken);
 		if (!canAccessPlanFeature(planTier, "canvas")) {
-			return planDeniedResponse(
-				PLAN_ERROR_CODES.CANVAS_PRO_REQUIRED,
-				"Canvas is available on Pro and Max.",
-			);
+			return apiError("PLAN_REQUIRED", {
+				title: "Canvas is a Pro feature",
+				message:
+					"Image and video generation in Canvas comes with Pro and Max. Upgrade to start creating.",
+				upgradeTo: "pro",
+			});
 		}
+		if (!convexToken) return apiError("UNAUTHORIZED");
 
 		const body = (await req.json()) as {
 			prompt?: string;
 			model?: string;
 			aspectRatio?: string;
 			image?: string;
+			images?: string[];
 		};
 
 		if (!body.prompt || body.prompt.trim().length < 3) {
-			return NextResponse.json(
-				{ error: "Prompt is required (min 3 characters)" },
-				{ status: 400 },
-			);
+			return apiError("INVALID_REQUEST", {
+				title: "Add a prompt",
+				message: "Describe the image you want in at least 3 characters.",
+			});
 		}
 
 		const defaultModel = IMAGE_MODELS[0];
 		if (!defaultModel) {
-			return NextResponse.json(
-				{ error: "No image models configured" },
-				{ status: 500 },
-			);
+			console.error("[canvas/generate-image] No image models configured");
+			return apiError("SERVICE_UNAVAILABLE");
 		}
 		const modelId = body.model ?? defaultModel.id;
 		const validModel = IMAGE_MODELS.find((m) => m.id === modelId);
 		if (!validModel) {
-			return NextResponse.json(
-				{ error: `Invalid image model: ${modelId}` },
-				{ status: 400 },
-			);
+			return apiError("INVALID_REQUEST", {
+				title: "Model not available",
+				message:
+					"That image model isn't available. Pick another one and try again.",
+			});
 		}
+		const refs = resolveReferenceImages(body, validModel, planTier);
+		if ("error" in refs) return refs.error;
+		const referenceImages = refs.images;
+
 		// Resolve branded K-Image id → underlying gateway model. The branded id is
 		// kept for the response/DB so the provider is never surfaced to the client.
 		const resolvedModelId = resolveCanvasModelId(modelId);
@@ -73,11 +86,17 @@ export async function POST(req: Request) {
 			process.env.AI_GATEWAY_API_KEY ??
 			process.env.AI_GATEWAY_TOKEN;
 		if (!apiKey) {
-			return NextResponse.json(
-				{ error: "AI Gateway key not configured" },
-				{ status: 500 },
-			);
+			console.error("[canvas/generate-image] AI Gateway key not configured");
+			return apiError("SERVICE_UNAVAILABLE");
 		}
+
+		// Check limits and credits BEFORE paying the provider.
+		const allowance = await fetchQuery(
+			convexApi.canvas.checkGenerationAllowance,
+			{ mediaType: "image", seconds: 0, modelId },
+			{ token: convexToken },
+		);
+		if (!allowance.ok) return apiErrorResponse(allowance.error);
 		if (!process.env.AI_GATEWAY_API_KEY) {
 			process.env.AI_GATEWAY_API_KEY = apiKey;
 		}
@@ -122,16 +141,19 @@ export async function POST(req: Request) {
 				size: size === "auto" ? "auto" : size,
 			});
 
-			const messages = body.image
+			const messages = referenceImages.length
 				? [
 						{
 							role: "user" as const,
 							content: [
 								{
 									type: "text" as const,
-									text: `Generate a high-quality image based on this prompt: ${body.prompt}. Use the image_generation tool.`,
+									text: `Generate a high-quality image based on this prompt: ${body.prompt}. Use the attached reference image${referenceImages.length > 1 ? "s" : ""} and the image_generation tool.`,
 								},
-								{ type: "image" as const, image: new URL(body.image) },
+								...referenceImages.map((url) => ({
+									type: "image" as const,
+									image: new URL(url),
+								})),
 							],
 						},
 					]
@@ -208,8 +230,8 @@ export async function POST(req: Request) {
 			const imageModel = gateway.imageModel(resolvedModelId);
 			const result = await generateImage({
 				model: imageModel,
-				prompt: body.image
-					? { text: body.prompt || "", images: [body.image] }
+				prompt: referenceImages.length
+					? { text: body.prompt || "", images: referenceImages }
 					: body.prompt || "",
 				aspectRatio: (body.aspectRatio || "1:1") as `${number}:${number}`,
 				n: 1,
@@ -224,18 +246,16 @@ export async function POST(req: Request) {
 			});
 
 			if (!result.images || result.images.length === 0) {
-				return NextResponse.json(
-					{ error: "No image generated" },
-					{ status: 500 },
-				);
+				return apiError("UNKNOWN", {
+					message: "The model didn't return an image. Please try again.",
+				});
 			}
 
 			const imageData = result.images[0];
 			if (!imageData) {
-				return NextResponse.json(
-					{ error: "No image generated" },
-					{ status: 500 },
-				);
+				return apiError("UNKNOWN", {
+					message: "The model didn't return an image. Please try again.",
+				});
 			}
 			const buffer = Buffer.from(imageData.uint8Array);
 			const filename = `canvas/img_${Date.now()}_${userId.slice(-6)}.png`;
@@ -246,13 +266,6 @@ export async function POST(req: Request) {
 			pathname = blob.pathname;
 		}
 
-		const convexToken = (await getToken({ template: "convex" })) ?? null;
-		if (!convexToken) {
-			return NextResponse.json(
-				{ error: "Your account could not be verified. Please try again." },
-				{ status: 503 },
-			);
-		}
 		await fetchMutation(
 			convexApi.canvas.deductCredits,
 			{ mediaType: "image", seconds: 0, modelId },
@@ -267,12 +280,6 @@ export async function POST(req: Request) {
 		});
 	} catch (error) {
 		console.error("[canvas/generate-image] Error:", error);
-		return NextResponse.json(
-			{
-				error:
-					error instanceof Error ? error.message : "Failed to generate image",
-			},
-			{ status: 500 },
-		);
+		return apiErrorResponse(toGenerationError(error));
 	}
 }

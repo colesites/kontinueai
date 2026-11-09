@@ -3,7 +3,12 @@
 import { useSyncExternalStore } from "react";
 
 export type EnvVariable = { name: string; value: string };
-export type KodeEnvironment = { name?: string; variables: EnvVariable[] };
+export type KodeEnvironment = {
+  name?: string;
+  variables: EnvVariable[];
+  /** Kode settings that override the global ones for this folder (kode-scoped-settings). */
+  settings?: Record<string, unknown>;
+};
 
 const KEY = "kontinue.kode.environments";
 let store: Record<string, KodeEnvironment> = load();
