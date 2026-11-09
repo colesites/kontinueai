@@ -3,16 +3,21 @@
 import { cn } from "@repo/ui/lib/utils";
 import { Brain, ChevronDown, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { GeneratedFile } from "../lib/message-transformer";
+import type {
+	GeneratedFile,
+	MessageAttachment,
+} from "../lib/message-transformer";
 import type { ChatMessageProps } from "../types";
 import { ChatMessageActions } from "./ChatMessageActions";
-import { ChatMessageImages } from "./ChatMessageImages";
 import { ClockWidget } from "./ClockWidget";
 import { EmailComposer } from "./EmailComposer";
 import { GeneratedFiles } from "./GeneratedFiles";
+import { GeneratedImages } from "./GeneratedImages";
+import { MessageAttachments } from "./MessageAttachments";
 import { MessageContent } from "./MessageContent";
 
 const EMPTY_IMAGE_PARTS: string[] = [];
+const EMPTY_ATTACHMENTS: MessageAttachment[] = [];
 const EMPTY_GENERATED_FILES: GeneratedFile[] = [];
 
 function ThinkingAccordion({
@@ -137,6 +142,7 @@ export function ChatMessage({
 	content,
 	reasoningText,
 	imageParts = EMPTY_IMAGE_PARTS,
+	attachments = EMPTY_ATTACHMENTS,
 	clockData,
 	emailDraft,
 	generatedFiles = EMPTY_GENERATED_FILES,
@@ -155,7 +161,8 @@ export function ChatMessage({
 	const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
 	const isUser = role === "user";
-	const isImageOnly = !content.trim() && imageParts.length > 0;
+	const isImageOnly =
+		!content.trim() && (imageParts.length > 0 || attachments.length > 0);
 
 	const startEdit = () => {
 		setDraft(content);
@@ -293,6 +300,7 @@ export function ChatMessage({
 										turnStartTime={turnStartTime}
 									/>
 								)}
+							{isUser && <MessageAttachments attachments={attachments} />}
 							{content ? (
 								<MessageContent content={content} isStreaming={isStreaming} />
 							) : !isUser && isStreaming && !reasoningEnabled ? (
@@ -311,7 +319,7 @@ export function ChatMessage({
 									No response was returned. Please retry or switch models.
 								</p>
 							) : null}
-							<ChatMessageImages imageParts={imageParts} />
+							{!isUser && <GeneratedImages images={imageParts} />}
 							{!isUser && clockData && (
 								<ClockWidget timezone={clockData.timezone} />
 							)}

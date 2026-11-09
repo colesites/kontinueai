@@ -171,7 +171,9 @@ export async function POST(req: Request) {
 				tools: {
 					image_generation: imageTool as unknown as ToolSet[string],
 				},
-				stopWhen: stepCountIs(5),
+				// One step: the tool is required, so any further step would make
+				// (and bill) another image that is then thrown away.
+				stopWhen: stepCountIs(1),
 				toolChoice: "required",
 			});
 

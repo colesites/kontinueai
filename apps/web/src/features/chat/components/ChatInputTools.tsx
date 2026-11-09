@@ -152,9 +152,7 @@ export function ChatInputTools({
 								>
 									<Brain className="h-4 w-4" />
 									<span>
-										{reasoningEnabled
-											? "Thinking (On)"
-											: "Thinking (Off)"}
+										{reasoningEnabled ? "Thinking (On)" : "Thinking (Off)"}
 									</span>
 								</DropdownMenuItem>
 							)}

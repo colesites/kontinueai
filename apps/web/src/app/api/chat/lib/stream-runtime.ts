@@ -143,6 +143,14 @@ export function buildStreamOptions(options: BuildStreamOptionsInput) {
 	} = options;
 
 	let webSearchCallCount = 0;
+	const activeToolsEnabled = !shouldDisableTools && hasTools;
+	const toolNames = Object.keys(tools);
+	const forcedToolName =
+		forceImageTool && toolNames.includes("image_generation")
+			? "image_generation"
+			: forceWebSearchTool && toolNames.includes("perplexity_search")
+				? "perplexity_search"
+				: null;
 
 	const effectiveSystemPrompt =
 		reasoningEnabled === false
@@ -191,18 +199,38 @@ export function buildStreamOptions(options: BuildStreamOptionsInput) {
 			},
 		},
 		tools: shouldDisableTools ? undefined : hasTools ? tools : undefined,
-		...(forceImageTool
-			? {
-					toolChoice: { type: "tool" as const, toolName: "image_generation" },
+		// A forced tool applies to the FIRST step only. Pinning toolChoice for the
+		// whole turn made the model call it again on every step until the step
+		// limit, e.g. one "generate an image" produced (and billed) 4+ images.
+		...(activeToolsEnabled && {
+			prepareStep: ({
+				stepNumber,
+				steps,
+			}: {
+				stepNumber: number;
+				steps: Array<{ toolCalls: Array<{ toolName: string }> }>;
+			}) => {
+				if (stepNumber === 0 && forcedToolName) {
+					return {
+						toolChoice: { type: "tool" as const, toolName: forcedToolName },
+					};
 				}
-			: forceWebSearchTool
-				? {
-						toolChoice: {
-							type: "tool" as const,
-							toolName: "perplexity_search",
-						},
-					}
-				: {}),
+				// Once an image exists this turn, drop the image tool so the model
+				// replies in text instead of generating another one. Several images
+				// asked for at once still arrive as parallel calls in one step.
+				const madeImage = steps.some((step) =>
+					step.toolCalls.some((call) => call.toolName === "image_generation"),
+				);
+				if (madeImage) {
+					return {
+						activeTools: toolNames.filter(
+							(name) => name !== "image_generation",
+						),
+					};
+				}
+				return {};
+			},
+		}),
 		...(stopWhen.length > 0 && { stopWhen }),
 		onStepFinish: ({
 			finishReason,

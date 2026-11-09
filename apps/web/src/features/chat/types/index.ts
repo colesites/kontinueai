@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import type { GeneratedFile } from "../lib/message-transformer";
+import type {
+	GeneratedFile,
+	MessageAttachment,
+} from "../lib/message-transformer";
 
 interface ChatInputProps {
 	onSend: (message: string, files?: File[]) => void;
@@ -25,8 +28,10 @@ interface ChatMessageProps {
 	role: "user" | "assistant" | "system";
 	content: string;
 	reasoningText?: string;
-	/** Data URLs or http(s) URLs for generated/attached images */
+	/** Images the assistant generated (data URLs or saved http(s) URLs) */
 	imageParts?: string[];
+	/** Files the user attached to their own message */
+	attachments?: MessageAttachment[];
 	/** Time-tool result; when present, the message renders a clock widget */
 	clockData?: { timezone: string | null } | null;
 	/** compose_email result; when present, the message renders an email composer */

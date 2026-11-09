@@ -107,10 +107,61 @@ export function collectImageUrlsFromParts(parts: UIMessage["parts"]): string[] {
 
 		const toolOutputBase64 = extractToolGeneratedImageBase64(part);
 		if (toolOutputBase64) {
-			imageParts.push(`data:image/webp;base64,${toolOutputBase64}`);
+			imageParts.push(
+				`data:${sniffImageMime(toolOutputBase64)};base64,${toolOutputBase64}`,
+			);
 		}
 	}
 	return imageParts;
+}
+
+// Providers return JPEG, PNG or WebP; label the data URL with the real type so
+// downloads get the right extension.
+function sniffImageMime(base64: string): string {
+	if (base64.startsWith("/9j/")) return "image/jpeg";
+	if (base64.startsWith("iVBOR")) return "image/png";
+	if (base64.startsWith("R0lGOD")) return "image/gif";
+	return "image/webp";
+}
+
+export type MessageAttachment = {
+	url: string;
+	filename: string;
+	mediaType: string;
+};
+
+// Files the USER attached to their message (shown as thumbnails, never as
+// generated output).
+export function collectAttachmentsFromParts(
+	parts: UIMessage["parts"],
+): MessageAttachment[] {
+	const attachments: MessageAttachment[] = [];
+	for (const part of parts) {
+		if (part.type !== "file" || !("url" in part) || !part.url) continue;
+		const file = part as { url: string; filename?: string; mediaType?: string };
+		attachments.push({
+			url: file.url,
+			filename: file.filename || "Attachment",
+			mediaType: file.mediaType || "image/png",
+		});
+	}
+	return attachments;
+}
+
+// Generated images arrive inline first (base64 while streaming), then as saved
+// copies once persisted. Show ONE set: the saved copies when they cover every
+// inline image, otherwise the inline ones. Merging both listed each image twice.
+export function pickGeneratedImages(
+	inline: string[],
+	persisted: string[],
+	stored: string[],
+): string[] {
+	for (const saved of [persisted, stored]) {
+		if (saved.length > 0 && saved.length >= inline.length) {
+			return [...new Set(saved)];
+		}
+	}
+	return [...new Set(inline)];
 }
 
 export function mapStoredGeneratedImages(

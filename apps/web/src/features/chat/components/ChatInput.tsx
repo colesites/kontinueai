@@ -166,10 +166,7 @@ export function ChatInput({
 
 	const handleSubmit = () => {
 		if (!inputValue.trim()) return;
-		onSend(
-			inputValue,
-			attachedFiles.length > 0 ? attachedFiles : undefined,
-		);
+		onSend(inputValue, attachedFiles.length > 0 ? attachedFiles : undefined);
 		setInputValue("");
 		inputRef.current?.clear();
 		clearFiles();
