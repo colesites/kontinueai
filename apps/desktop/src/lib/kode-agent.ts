@@ -1,10 +1,9 @@
-import { htmlToText } from "@repo/ai/lib/docs/indexer";
 import { invoke } from "@tauri-apps/api/core";
 import type { LanguageModelUsage } from "ai";
 import { getSessionToken, type KodeChatMessage, type KodeContentPart, type KodeToolCall, type KodeToolDefinition, sendKodeChat } from "./kode-chat";
-import { type DocSourceRef, retrieveDocsContext } from "./kode-docs";
 import { createContentFilter, stripKodeArtifacts } from "./kode-sanitize";
-import { buildKodeSkillsContext, findSkill, type KodeSkill, loadAllSkills, type RepoProfile, renderSkill } from "./kode-skills";
+import { callMcpTool, getMcpPermission, mcpToolName, parseMcpToolName, setMcpPermission } from "./kode-mcp";
+import { buildKodeSkillsContext, enabledSkills, findSkill, type KodeSkill, loadAllSkills, listSkillFiles, readSkillFile, type RepoProfile, renderSkill } from "./kode-skills";
 import {
   buildAskOptionsToolDefinition,
   buildFileToolDefinitions,
@@ -19,15 +18,52 @@ import {
   KODE_ASK_TOOL,
   KODE_LOAD_SKILL_TOOL,
   KODE_PLAN_MODE_PROMPT,
-  KODE_SEARCH_DOCS_TOOL,
+  KODE_READ_SKILL_FILE_TOOL,
   KODE_TODOS_TOOL,
   KODE_WEB_SEARCH_TOOL,
   KODE_WEB_TOOLS,
   type KodeAgentMode,
   type KodeTodo,
   needsApproval,
+  buildBackgroundToolDefinitions,
+  normalizeTodos,
   type ToolArgs,
 } from "./kode-tools";
+
+/** Crude HTML → text for the fetch_url tool (no renderer CORS). */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// "Deny, and tell Kode what to do instead": the note rides along with the denial.
+const denialNotes = new Map<string, string>();
+
+/** Attach what the user wants instead to the next denial of this step. */
+export function setDenialNote(stepId: string, note: string) {
+  if (note.trim()) denialNotes.set(stepId, note.trim());
+}
+
+function declineMessage(stepId: string, base: string): string {
+  const note = denialNotes.get(stepId);
+  denialNotes.delete(stepId);
+  return note ? `${base} They said what to do instead: ${note}` : base;
+}
+
+/** Nudge the model to update its checklist after this many tool calls without one. */
+const CHECKLIST_NUDGE_AFTER = 5;
+
+/** Lets the agent answer with interactive charts / diagrams (rich-blocks.tsx). */
+const KODE_ARTIFACT_HINT =
+  "\n\nWhen the user should run a command themselves, put it in its own ```bash block, one command per block, with no $ prompt: the app shows Run and Copy buttons on it. When a chart, diagram or small interactive view explains something better than text, put a self-contained HTML document (inline CSS/JS; scripts may load from cdn.jsdelivr.net) in a ```kode-artifact fenced block. It renders in a sandboxed frame; use the CSS variables --bg, --fg, --muted, --border and --accent so it fits light and dark themes.";
 
 export type KodeToolStepState = "pending-approval" | "pending-options" | "running" | "done" | "error" | "rejected";
 
@@ -55,8 +91,24 @@ export type RunKodeAgentParams = {
   mode: KodeAgentMode;
   /** Absolute on-disk path of the active project, or null if none is open. */
   projectRoot: string | null;
+  /** The chat this run belongs to (background tasks are listed per chat). */
+  chatId?: string | null;
   /** Extra system guidance (e.g. an imported coding-session continuation brief). */
   extraSystemContext?: string;
+  /** Skill names that were loaded/invoked in prior turns — injected upfront so a
+   *  model switch keeps the task's active skill context. */
+  activeSkills?: string[];
+  /** Tools discovered from connected MCP servers, appended to the toolset. */
+  mcpTools?: KodeToolDefinition[];
+  /** App-provided tools (e.g. run_subagents), run in the app; not in Plan mode. */
+  extraTools?: KodeExtraTool[];
+  /** Plugin hooks around each tool call (PreToolUse / PostToolUse). */
+  toolHooks?: {
+    /** A reason to block the call, or null to allow it. */
+    before?: (name: string, args: Record<string, unknown>) => Promise<string | null>;
+    /** Extra context to add to the tool result. */
+    after?: (name: string, args: Record<string, unknown>, result: string) => Promise<string[]>;
+  };
   onText: (delta: string) => void;
   onReasoning: (delta: string) => void;
   /** Upsert a tool step by id (render or update its card). */
@@ -73,6 +125,16 @@ export type RunKodeAgentParams = {
   signal?: AbortSignal;
 };
 
+/** A tool the app runs itself. `run` returns the text the model sees. */
+export type KodeExtraTool = {
+  definition: KodeToolDefinition;
+  /** Short label for the tool card. */
+  describe: (args: Record<string, unknown>) => string;
+  /** Ask before running in Supervised mode. */
+  needsApproval?: boolean;
+  run: (args: Record<string, unknown>, signal?: AbortSignal) => Promise<string>;
+};
+
 export type RunKodeAgentResult = {
   content: string;
   /** The LAST model call's usage — represents the current context size (for the
@@ -81,8 +143,8 @@ export type RunKodeAgentResult = {
   /** SUM of tokens across every model call this turn (all agent iterations) — the
    *  real cost of the turn, used to meter token-based usage/billing. */
   tokensConsumed: number;
-  /** Official-docs sources that grounded this answer (for the Sources element). */
-  sources: DocSourceRef[];
+  /** Skill names loaded via `load_skill` this turn, for active-skill tracking. */
+  loadedSkills: string[];
   /** True when the user stopped the run via the Stop button. */
   stopped?: boolean;
 };
@@ -122,14 +184,14 @@ function parseArgs(raw: string): ToolArgs {
 
 // Which tool definitions to expose for the current mode. Plan mode is read-only,
 // so the model only ever sees the read tools and literally cannot request a write.
-function toolsForMode(mode: KodeAgentMode): KodeToolDefinition[] {
+function toolsForMode(mode: KodeAgentMode, mcpTools: KodeToolDefinition[]): KodeToolDefinition[] {
   const ask = buildAskOptionsToolDefinition();
   const todos = buildTodosToolDefinition();
   if (mode === "plan") {
     // Read-only: inspection tools + ask the user + maintain a plan.
     return [...buildFileToolDefinitions().filter((tool) => ["read_file", "list_dir"].includes(tool.function.name)), ask, todos, ...buildWebToolDefinitions(), ...buildKnowledgeToolDefinitions()];
   }
-  return [...buildFileToolDefinitions(), buildShellToolDefinition(), ask, todos, ...buildWebToolDefinitions(), ...buildKnowledgeToolDefinitions()];
+  return [...buildFileToolDefinitions(), buildShellToolDefinition(), ...buildBackgroundToolDefinitions(), ask, todos, ...buildWebToolDefinitions(), ...buildKnowledgeToolDefinitions(), ...mcpTools];
 }
 
 const MAX_WEB_RESULT_CHARS = 8000;
@@ -167,6 +229,7 @@ async function executeWebTool(name: string, args: Record<string, unknown>): Prom
  */
 export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeAgentResult> {
   const {
+    chatId = null,
     modelId,
     history,
     userText,
@@ -174,6 +237,10 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     mode,
     projectRoot,
     extraSystemContext,
+    activeSkills = [],
+    mcpTools = [],
+    extraTools = [],
+    toolHooks,
     onText,
     onReasoning,
     onToolStep,
@@ -183,7 +250,7 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     // Each file read/write/edit/run/ask is one step, so a real "build X" task
     // burns several quickly. Token budgets now bound runaway cost, so this can be
     // generous without risking an infinite loop.
-    maxIterations = 25,
+    maxIterations = 48,
     reasoningEnabled,
     fast = false,
     reasoningEffort,
@@ -200,7 +267,12 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
 
   // No open project or the (disabled) design mode → plain chat, no file tools.
   const toolsEnabled = Boolean(projectRoot) && mode !== "design";
-  const tools = toolsEnabled ? toolsForMode(mode) : undefined;
+  const tools = toolsEnabled
+    ? [
+        ...toolsForMode(mode, mcpTools),
+        ...(mode === "plan" ? [] : extraTools.map((tool) => tool.definition)),
+      ]
+    : undefined;
   // Force the model to call a tool on the first turn when the request clearly
   // implies file work — weak models otherwise paste code into chat instead of
   // acting. Don't force in Plan (read-only) — let it reason and choose.
@@ -225,26 +297,41 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
       // Ignore — proceed without repo context.
     }
   }
-  // Skills index (bundled + project skills) and repo summary. Full skills and
-  // docs are loaded on demand with load_skill / search_docs, so they only cost
-  // context when the task needs them.
+  // Skills index (bundled + project skills) and repo summary. Full skills are
+  // loaded on demand with load_skill; the active ones are injected upfront so a
+  // model switch keeps the task's guidance.
   let skills: KodeSkill[] = [];
   try {
-    skills = await loadAllSkills(projectRoot);
+    skills = enabledSkills(await loadAllSkills(projectRoot));
   } catch {
     // Proceed without skills.
   }
-  const sources: DocSourceRef[] = [];
-  const systemContext = `${buildKodeSkillsContext(repoProfile, skills)}${extraSystemContext ? `\n\n${extraSystemContext}` : ""}${mode === "plan" ? `\n\n${KODE_PLAN_MODE_PROMPT}` : ""}`;
+  const activeSkillBodies = activeSkills
+    .map((name) => findSkill(skills, name))
+    .filter((skill): skill is KodeSkill => Boolean(skill));
+  const activeBlock = activeSkillBodies.length
+    ? `\n\nACTIVE SKILLS — you are using these skills for this task. Follow them over generic advice.\n${activeSkillBodies.map((skill) => renderSkill(skill)).join("\n\n---\n\n")}`
+    : "";
+  const systemContext = `${buildKodeSkillsContext(repoProfile, skills)}${activeBlock}${extraSystemContext ? `\n\n${extraSystemContext}` : ""}${mode === "plan" ? `\n\n${KODE_PLAN_MODE_PROMPT}` : ""}\n\nFinish the task you were asked to do. Do not stop after searching, and do not repeat the same search. For any task with more than one step, your first tool call is update_todos: a short checklist, exactly one item in_progress. Update that checklist the moment each item finishes (mark it completed and the next one in_progress), so the user sees live progress. Do not end the turn while any item is still pending or in progress. Cancel an item only when you are deliberately dropping it. End the turn with a short report in the message: what you did, and what you did not do. If nothing is left, say so. Decisions that belong to the user go through ask_options (single, multi, text, confirm, or a short questionnaire), not as a questionnaire written into the message.${KODE_ARTIFACT_HINT}`;
 
   let finalContent = "";
   const narrations: string[] = [];
+  let latestTodos: KodeTodo[] = [];
+  // Tool calls since the checklist was last updated (see the nudge below).
+  let workSinceChecklist = 0;
+  let didWork = false;
+  const loadedSkills: string[] = [];
+  // 0 working, 1 refresh the checklist, 2 write the closing report.
+  let closePhase = 0;
+  const wantsChecklist = toolsEnabled && (forceFirstTool || mode === "plan");
   // `usage` = the latest call (context-size signal for the meter).
   // `tokensConsumed` = running sum across all calls (turn cost for billing).
   let usage: LanguageModelUsage | undefined;
   let tokensConsumed = 0;
 
   let stopped = false;
+  // Whether any visible text has streamed in this turn yet.
+  let streamedEarlier = false;
 
   for (let iteration = 0; iteration < maxIterations; iteration += 1) {
     if (signal?.aborted) {
@@ -259,24 +346,34 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     // was generated (like any chatbot's stop) instead of discarding it.
     let streamedThisCall = "";
     const contentFilter = createContentFilter((delta) => {
+      // Text from an earlier step of this turn is already on screen: start
+      // this step's text on a new paragraph instead of gluing it on.
+      if (!streamedThisCall.trim() && streamedEarlier && delta.trim()) onText("\n\n");
       streamedThisCall += delta;
+      if (delta.trim()) streamedEarlier = true;
       onText(delta);
     });
     let response: Awaited<ReturnType<typeof sendKodeChat>>;
+    const finishing = iteration === maxIterations - 1 || closePhase === 2;
+    const checklistTool = { type: "function" as const, function: { name: KODE_TODOS_TOOL } };
     try {
       response = await abortable(
         sendKodeChat({
           modelId,
           messages,
-          tools,
+          tools: finishing ? undefined : tools,
           systemContext,
           reasoningEnabled,
           kontinueServer: true,
           fast,
           reasoningEffort,
-          // Only force on the very first turn; later turns use "auto" so the model
-          // can stop calling tools and write its final answer.
-          toolChoice: iteration === 0 && forceFirstTool ? "required" : "auto",
+          // The closing report cannot call tools. A real task starts with the
+          // checklist, and an unfinished list is refreshed once before the report.
+          toolChoice: finishing
+            ? "none"
+            : closePhase === 1 || (iteration === 0 && wantsChecklist)
+              ? checklistTool
+              : "auto",
           onEvent: (event) => {
             if (signal?.aborted) return;
             if (event.type === "reasoning") onReasoning(event.delta);
@@ -304,12 +401,43 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     finalContent = stripKodeArtifacts(response.content);
     if (finalContent.trim()) narrations.push(finalContent.trim());
 
-    if (response.toolCalls.length === 0) {
+    const unfinished = latestTodos.some((todo) => todo.status !== "completed" && todo.status !== "cancelled");
+    const hadTask = didWork || latestTodos.length > 0;
+    if (!finishing && response.toolCalls.length === 0 && closePhase === 0 && unfinished) {
+      messages.push({ role: "assistant", content: finalContent ? finalContent : null });
+      messages.push({
+        role: "user",
+        content:
+          "The checklist still has unfinished items. Continue the next pending one now, with the tools. Do not stop to write a report until every item is completed or cancelled.",
+      });
+      continue;
+    }
+    if (!finishing && response.toolCalls.length === 0 && closePhase === 0 && hadTask && !looksLikeReport(finalContent)) {
+      closePhase = 2;
+      messages.push({ role: "assistant", content: finalContent ? finalContent : null });
+      messages.push({
+        role: "user",
+        content:
+          "Write a short closing report only. Say what you did, and what you did not do. If nothing is left, say so. Do not list tool names.",
+      });
+      continue;
+    }
+    if (!finishing && closePhase === 1 && response.toolCalls.length === 0) {
+      closePhase = 2;
+      messages.push({ role: "assistant", content: finalContent ? finalContent : null });
+      messages.push({
+        role: "user",
+        content: "Write a short closing report only. Say what you did, and what you did not do. If nothing is left, say so. Do not list tool names.",
+      });
+      continue;
+    }
+
+    if (finishing || response.toolCalls.length === 0) {
       return {
-        content: closingText(narrations, finalContent),
+        content: closingText(narrations, finalContent) || "I couldn't finish that turn. Ask me to continue and I'll pick up from here.",
         usage,
         tokensConsumed,
-        sources,
+        loadedSkills,
       };
     }
 
@@ -321,26 +449,80 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
       tool_calls: response.toolCalls,
     });
 
+    if (response.toolCalls.some((call) => call.function.name !== KODE_TODOS_TOOL)) didWork = true;
+
     for (const call of response.toolCalls) {
-      const result = await handleToolCall(call, {
+      const hookArgs = parseArgs(call.function.arguments);
+      const blockedBy = toolHooks?.before ? await toolHooks.before(call.function.name, hookArgs) : null;
+      if (blockedBy) {
+        onToolStep({
+          id: call.id,
+          name: call.function.name,
+          args: hookArgs,
+          description: describeToolCall(call.function.name, hookArgs),
+          state: "rejected",
+          result: `Blocked by a plugin hook: ${blockedBy}`,
+        });
+        messages.push({ role: "tool", tool_call_id: call.id, content: `Blocked by a plugin hook: ${blockedBy}` });
+        continue;
+      }
+      let result = await handleToolCall(call, {
         mode,
         projectRoot,
+        chatId,
+        extraTools,
+        signal,
         onToolStep,
         requestApproval,
         requestOptions,
-        onTodos,
-        skills,
-        framework: repoProfile.framework ?? null,
-        addSources: (found) => {
-          for (const source of found) {
-            if (!sources.some((existing) => existing.url === source.url)) sources.push(source);
-          }
+        onTodos: (todos) => {
+          latestTodos = todos;
+          onTodos?.(todos);
         },
+        skills,
       });
+      if (toolHooks?.after) {
+        const extra = await toolHooks.after(call.function.name, hookArgs, result);
+        if (extra.length) result = `${result}\n\n${extra.join("\n\n")}`;
+      }
+      if (call.function.name === KODE_LOAD_SKILL_TOOL) {
+        const skillName = parseArgs(call.function.arguments).name;
+        if (typeof skillName === "string" && findSkill(skills, skillName)) {
+          loadedSkills.push(skillName);
+        }
+      }
       messages.push({
         role: "tool",
         tool_call_id: call.id,
         content: result,
+      });
+    }
+
+    // Keep the plan live: after a stretch of work with no checklist update,
+    // remind the model to tick off what it finished (the dock shows it).
+    if (response.toolCalls.some((call) => call.function.name === KODE_TODOS_TOOL)) {
+      workSinceChecklist = 0;
+    } else {
+      workSinceChecklist += response.toolCalls.length;
+    }
+    if (
+      closePhase === 0 &&
+      workSinceChecklist >= CHECKLIST_NUDGE_AFTER &&
+      latestTodos.some((todo) => todo.status === "in_progress")
+    ) {
+      workSinceChecklist = 0;
+      messages.push({
+        role: "user",
+        content:
+          "(Progress check) If you finished the current checklist item, call update_todos now to mark it completed and set the next one in_progress. Then continue.",
+      });
+    }
+
+    if (closePhase === 1 && response.toolCalls.some((call) => call.function.name === KODE_TODOS_TOOL)) {
+      closePhase = 2;
+      messages.push({
+        role: "user",
+        content: "Write a short closing report only. Say what you did, and what you did not do. If nothing is left, say so. Do not list tool names.",
       });
     }
 
@@ -357,17 +539,24 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
       content: closingText(narrations, finalContent) || "_Stopped._",
       usage,
       tokensConsumed,
-      sources,
+      loadedSkills,
       stopped: true,
     };
   }
 
   return {
-    content: closingText(narrations, finalContent) || "Reached the maximum number of steps for this response.",
+    content: closingText(narrations, finalContent) || "I couldn't finish that turn. Ask me to continue and I'll pick up from here.",
     usage,
     tokensConsumed,
-    sources,
+    loadedSkills,
   };
+}
+
+function looksLikeReport(text: string) {
+  const body = text.toLowerCase();
+  const did = /\b(did|done|finished|completed|changed|updated|fixed|added|removed)\b/.test(body);
+  const left = /\b(not done|didn't|did not|left|remaining|couldn't|could not|nothing left|everything is done|still pending)\b/.test(body);
+  return did && left && text.trim().length > 40;
 }
 
 /** The model's own words. Tool names are not a closing report. */
@@ -385,28 +574,99 @@ async function handleToolCall(
   ctx: {
     mode: KodeAgentMode;
     projectRoot: string | null;
+    chatId?: string | null;
     onToolStep: (step: KodeToolStep) => void;
     requestApproval: (step: KodeToolStep) => Promise<boolean>;
     requestOptions: (step: KodeToolStep) => Promise<string[]>;
     onTodos?: (todos: KodeTodo[]) => void;
     skills: KodeSkill[];
-    framework: string | null;
-    addSources: (sources: DocSourceRef[]) => void;
+    extraTools?: KodeExtraTool[];
+    signal?: AbortSignal;
   },
 ): Promise<string> {
   const name = call.function.name;
   const args = parseArgs(call.function.arguments);
+  const extra = ctx.extraTools?.find((tool) => tool.definition.function.name === name);
   const step: KodeToolStep = {
     id: call.id,
     name,
     args,
-    description: describeToolCall(name, args),
+    description: extra ? extra.describe(args) : describeToolCall(name, args),
     state: "running",
   };
 
+  if (extra) {
+    if (extra.needsApproval && (ctx.mode === "supervised" || ctx.mode === "ask")) {
+      step.state = "pending-approval";
+      ctx.onToolStep(step);
+      if (!(await ctx.requestApproval(step))) {
+        step.state = "rejected";
+        step.result = declineMessage(step.id, "The user declined.");
+        ctx.onToolStep(step);
+        return step.result;
+      }
+      step.state = "running";
+    }
+    ctx.onToolStep(step);
+    try {
+      step.result = await extra.run(args, ctx.signal);
+      step.state = "done";
+    } catch (error) {
+      step.result = `Error: ${error instanceof Error ? error.message : String(error)}`;
+      step.state = "error";
+    }
+    ctx.onToolStep(step);
+    return step.result;
+  }
+
+  // MCP tools (external servers) — require approval unless in full access, and
+  // remember the per-tool allow/deny decision so trusted tools stop nagging.
+  const mcp = parseMcpToolName(name);
+  if (mcp) {
+    const fullName = mcpToolName(mcp.serverId, mcp.toolName);
+    const permission = getMcpPermission(fullName);
+
+    if (permission === "deny") {
+      step.state = "rejected";
+      step.result = "Blocked by a saved permission.";
+      ctx.onToolStep(step);
+      return step.result;
+    }
+
+    if (ctx.mode !== "full_access" && permission !== "allow") {
+      step.state = "pending-approval";
+      ctx.onToolStep(step);
+      const approved = await ctx.requestApproval(step);
+      if (!approved) {
+        setMcpPermission(fullName, "deny");
+        step.state = "rejected";
+        step.result = declineMessage(step.id, "The user rejected this action.");
+        ctx.onToolStep(step);
+        return step.result;
+      }
+      setMcpPermission(fullName, "allow");
+    }
+
+    step.state = "running";
+    ctx.onToolStep(step);
+    try {
+      const result = await callMcpTool(mcp.serverId, mcp.toolName, args);
+      step.state = "done";
+      step.result = result.content;
+      ctx.onToolStep(step);
+      return result.isError ? `Error: ${result.content}` : result.content;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      step.state = "error";
+      step.result = message;
+      ctx.onToolStep(step);
+      return `Error: ${message}`;
+    }
+  }
+
   // update_todos just records the model's plan for the UI — no fs op, no approval.
   if (name === KODE_TODOS_TOOL) {
-    const todos = Array.isArray(args.todos) ? (args.todos as KodeTodo[]) : [];
+    const todos = normalizeTodos(args.todos);
     ctx.onTodos?.(todos);
     step.state = "done";
     step.result = `Updated plan (${todos.length} item${todos.length === 1 ? "" : "s"}).`;
@@ -425,17 +685,39 @@ async function handleToolCall(
     return step.result;
   }
 
-  // Skills and docs: read-only, no project needed.
-  if (name === KODE_LOAD_SKILL_TOOL || name === KODE_SEARCH_DOCS_TOOL) {
+  // Skills: read-only, no project needed.
+  if (name === KODE_LOAD_SKILL_TOOL) {
+    const skill = findSkill(ctx.skills, typeof args.name === "string" ? args.name : "");
     let output: string;
-    if (name === KODE_LOAD_SKILL_TOOL) {
-      const skill = findSkill(ctx.skills, typeof args.name === "string" ? args.name : "");
-      output = skill ? renderSkill(skill) : `No skill named "${String(args.name)}". Available: ${ctx.skills.map((s) => s.name).join(", ")}`;
+    if (!skill) {
+      output = `No skill named "${String(args.name)}". Available: ${ctx.skills.map((s) => s.name).join(", ")}`;
     } else {
-      const query = typeof args.query === "string" ? args.query : "";
-      const docs = await retrieveDocsContext(query, ctx.framework).catch(() => ({ context: "", sources: [] }));
-      ctx.addSources(docs.sources);
-      output = docs.context.trim() || "No matching docs found. Try web_search.";
+      const files = await listSkillFiles(skill, ctx.projectRoot);
+      const fileList = files
+        .filter((file) => !file.is_dir)
+        .map((file) => `- ${file.path}`)
+        .join("\n");
+      output = `${renderSkill(skill)}${fileList ? `\n\nAvailable files:\n${fileList}` : ""}`;
+    }
+    step.state = "done";
+    step.result = output;
+    ctx.onToolStep(step);
+    return output;
+  }
+
+  // Read a supporting file inside a skill (references, scripts, templates).
+  if (name === KODE_READ_SKILL_FILE_TOOL) {
+    const skill = findSkill(ctx.skills, typeof args.name === "string" ? args.name : "");
+    const rel = typeof args.path === "string" ? args.path : "";
+    let output: string;
+    if (!skill) {
+      output = `No skill named "${String(args.name)}".`;
+    } else {
+      try {
+        output = await readSkillFile(skill, ctx.projectRoot, rel);
+      } catch (error) {
+        output = `Could not read ${rel}: ${error instanceof Error ? error.message : String(error)}`;
+      }
     }
     step.state = "done";
     step.result = output;
@@ -482,7 +764,7 @@ async function handleToolCall(
     const approved = await ctx.requestApproval(step);
     if (!approved) {
       step.state = "rejected";
-      step.result = "The user rejected this action.";
+      step.result = declineMessage(step.id, "The user rejected this action.");
       ctx.onToolStep(step);
       return step.result;
     }
@@ -491,7 +773,7 @@ async function handleToolCall(
   step.state = "running";
   ctx.onToolStep(step);
   try {
-    const output = await executeFileTool(name, args, ctx.projectRoot);
+    const output = await executeFileTool(name, args, ctx.projectRoot, { chatId: ctx.chatId ?? null });
     step.state = "done";
     step.result = output;
     ctx.onToolStep(step);

@@ -1,3 +1,4 @@
+import { BackgroundTasksSections } from "./BackgroundTasks";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -26,7 +27,7 @@ import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { useChatContext } from "@/lib/kode-chat-context";
 import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
 import { cn } from "@/lib/utils";
-import { githubWebUrl, type GitStatus } from "./panel-api";
+import { gitPush, githubWebUrl, type GitStatus } from "./panel-api";
 import type { PanelTab } from "./WorkspacePanel";
 
 type GitState = {
@@ -51,13 +52,15 @@ export function EnvironmentTab({
   git: GitState;
   onOpenTab: (tab: PanelTab) => void;
 }) {
-  const { openSettings } = useKodeWorkspace();
+  const { openSettings, activeChatId } = useKodeWorkspace();
   const context = useChatContext();
   const connectors = useQuery(api.connectors.listConnectors, {});
   const [contextOpen, setContextOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const environment = useEnvironment(projectPath);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
+  const [prBusy, setPrBusy] = useState(false);
+  const [prNote, setPrNote] = useState<string | null>(null);
 
   const status = git.status;
   const inWorktree = projectPath.includes("/.kontinue/worktrees/");
@@ -80,9 +83,29 @@ export function EnvironmentTab({
     ? "No GitHub remote"
     : onDefault
       ? "Switch to a branch to open a PR"
-      : !status?.upstream
-        ? "Push this branch first"
-        : "Open a pull request on GitHub";
+      : prBusy
+        ? "Pushing this branch"
+        : "Push this branch and open a pull request";
+
+  const createPr = async () => {
+    if (!repoUrl || !branch || onDefault || prBusy) return;
+    setPrBusy(true);
+    setPrNote(null);
+    const uncommitted = (status?.files.length ?? 0) > 0;
+    try {
+      await gitPush(projectPath);
+      await git.refresh();
+      if (uncommitted) {
+        setPrNote("Uncommitted changes stay on this computer. Commit them if they belong in the pull request.");
+      }
+      open(`${repoUrl}/compare/${encodeURIComponent(branch)}?expand=1`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "Couldn't push this branch.";
+      setPrNote(message);
+    } finally {
+      setPrBusy(false);
+    }
+  };
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -229,6 +252,7 @@ export function EnvironmentTab({
 
       <Section title="Changes">
         {status?.isRepo ? (
+          <>
           <div className="flex items-center gap-2.5 py-1">
             <button
               type="button"
@@ -248,18 +272,23 @@ export function EnvironmentTab({
             </button>
             <button
               type="button"
-              disabled={!canOpenPr || !status.upstream}
+              disabled={!canOpenPr || prBusy}
               title={prHint}
-              onClick={() => repoUrl && branch && open(`${repoUrl}/compare/${encodeURIComponent(branch)}?expand=1`)}
+              onClick={() => void createPr()}
               className="kontinue-3d h-7 shrink-0 cursor-pointer rounded-full px-3 text-[12px] text-foreground/85 disabled:cursor-default disabled:opacity-45"
             >
-              Create PR
+              {prBusy ? "Pushing…" : "Create PR"}
             </button>
           </div>
+          {prNote ? <p className="pt-1 text-[11px] leading-relaxed text-muted-foreground">{prNote}</p> : null}
+          </>
         ) : (
           <p className="py-1 text-[12px] text-muted-foreground">{git.error ?? "Not a git repository."}</p>
         )}
       </Section>
+
+      {/* Servers / background commands the agent started in this chat. */}
+      <BackgroundTasksSections chatId={activeChatId} Section={Section} Divider={Divider} />
     </div>
   );
 }

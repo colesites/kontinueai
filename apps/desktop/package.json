@@ -8,7 +8,6 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "build:docs": "bun run scripts/build-docs-index.ts",
     "test": "bun test src",
     "typecheck": "tsc --noEmit"
   },

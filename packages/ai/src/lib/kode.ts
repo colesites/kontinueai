@@ -283,6 +283,17 @@ export const KODE_MODELS: KodeModelOption[] = [
 	},
 	// ── Ultra ────────────────────────────────────────────────────────────────
 	{
+		id: "anthropic/claude-fable-5.2",
+		name: "Claude Fable 5.2",
+		provider: "anthropic",
+		description: "Anthropic's newest and most capable model for the hardest problems.",
+		tier: "ultra",
+		reasoning: { efforts: ["low", "medium", "high", "xhigh", "max"], canDisable: false },
+		gatewayId: "anthropic/claude-fable-5.2",
+		price: p(10.0, 50.0, 0.25),
+		contextWindow: 1_000_000,
+	},
+	{
 		id: "anthropic/claude-fable-5.1",
 		name: "Claude Fable 5.1",
 		provider: "anthropic",

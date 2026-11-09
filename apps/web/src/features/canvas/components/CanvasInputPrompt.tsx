@@ -21,10 +21,11 @@ interface CanvasInputPromptProps {
 	fileInputRef: React.RefObject<HTMLInputElement | null>;
 	textareaRef: React.RefObject<HTMLTextAreaElement | null>;
 	maxChars?: number;
-	attachedImage: AttachedImage | null;
+	attachedImages: AttachedImage[];
+	maxImages: number;
 	isUploading: boolean;
 	onFileAttach: (e: React.ChangeEvent<HTMLInputElement>) => void;
-	onRemoveImage: () => void;
+	onRemoveImage: (id: string) => void;
 }
 
 export function CanvasInputPrompt({
@@ -37,38 +38,60 @@ export function CanvasInputPrompt({
 	fileInputRef,
 	textareaRef,
 	maxChars,
-	attachedImage,
+	attachedImages,
+	maxImages,
 	isUploading,
 	onFileAttach,
 	onRemoveImage,
 }: CanvasInputPromptProps) {
 	const charsRemaining = maxChars ? maxChars - prompt.length : 0;
+	const isFull = maxImages > 0 && attachedImages.length >= maxImages;
+	const attachLabel = isUploading
+		? "Uploading..."
+		: maxImages === 0
+			? "Reference images unavailable"
+			: isFull
+				? `Limit reached (${maxImages})`
+				: maxImages === 1
+					? "Attach image"
+					: `Attach images (up to ${maxImages})`;
 
 	return (
 		<div className="flex flex-col gap-1 pb-1">
-			{/* Attached image preview */}
-			{attachedImage && (
-				<div className="flex items-center gap-2 px-3 pt-3 sm:px-8 sm:pt-4">
-					<div className="group relative inline-flex items-center gap-2 rounded-xl border border-border/40 bg-secondary/10 p-1.5 pr-3 transition-colors hover:bg-secondary/20">
-						<Image
-							src={attachedImage.previewUrl}
-							alt="Attached"
-							width={48}
-							height={48}
-							unoptimized
-							className="h-10 w-10 rounded-lg object-cover sm:h-12 sm:w-12"
-						/>
-						<span className="max-w-[120px] truncate text-xs font-medium text-foreground/60 sm:max-w-[180px]">
-							{attachedImage.filename}
-						</span>
-						<button
-							type="button"
-							onClick={onRemoveImage}
-							className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground/40 transition-colors hover:bg-destructive/20 hover:text-destructive"
+			{/* Attached image previews */}
+			{attachedImages.length > 0 && (
+				<div className="flex flex-wrap items-center gap-2 px-3 pt-3 sm:px-8 sm:pt-4">
+					{attachedImages.map((img) => (
+						<div
+							key={img.id}
+							className="group relative inline-flex items-center gap-2 rounded-xl border border-border/40 bg-secondary/10 p-1.5 pr-3 transition-colors hover:bg-secondary/20"
 						>
-							<X className="h-3 w-3" />
-						</button>
-					</div>
+							<Image
+								src={img.previewUrl}
+								alt={img.filename}
+								width={48}
+								height={48}
+								unoptimized
+								className="h-10 w-10 rounded-lg object-cover sm:h-12 sm:w-12"
+							/>
+							<span className="max-w-[100px] truncate text-xs font-medium text-foreground/60 sm:max-w-[140px]">
+								{img.filename}
+							</span>
+							<button
+								type="button"
+								onClick={() => onRemoveImage(img.id)}
+								aria-label={`Remove ${img.filename}`}
+								className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground/40 transition-colors hover:bg-destructive/20 hover:text-destructive"
+							>
+								<X className="h-3 w-3" />
+							</button>
+						</div>
+					))}
+					{maxImages > 1 && (
+						<span className="text-[10px] font-bold uppercase tracking-wider text-foreground/30">
+							{attachedImages.length}/{maxImages}
+						</span>
+					)}
 				</div>
 			)}
 
@@ -96,7 +119,7 @@ export function CanvasInputPrompt({
 						className="bg-popover text-popover-foreground border-border"
 					>
 						<p className="text-[10px] font-bold uppercase tracking-wider">
-							{isUploading ? "Uploading..." : "Attach image"}
+							{attachLabel}
 						</p>
 					</TooltipContent>
 				</Tooltip>
@@ -105,6 +128,7 @@ export function CanvasInputPrompt({
 					ref={fileInputRef}
 					type="file"
 					accept="image/*"
+					multiple={maxImages > 1}
 					className="hidden"
 					onChange={onFileAttach}
 				/>

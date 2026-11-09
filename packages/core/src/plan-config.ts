@@ -25,6 +25,9 @@ export type PlanDefinition = {
 	kodeBuilds: number;
 	kodeMode: "none" | "lite" | "full";
 	canvas: boolean;
+	// Reference images per Canvas generation. The model's own cap still applies
+	// (see `maxReferenceImages` in canvas-models).
+	canvasReferenceImages: number;
 };
 
 const MB = 1024 * 1024;
@@ -54,6 +57,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		kodeBuilds: 0,
 		kodeMode: "none",
 		canvas: false,
+		canvasReferenceImages: 0,
 	},
 	starter: {
 		name: "Starter",
@@ -78,6 +82,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		kodeBuilds: 0,
 		kodeMode: "none",
 		canvas: false,
+		canvasReferenceImages: 0,
 	},
 	plus: {
 		name: "Plus",
@@ -102,6 +107,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		kodeBuilds: 0,
 		kodeMode: "none",
 		canvas: false,
+		canvasReferenceImages: 0,
 	},
 	pro: {
 		name: "Pro",
@@ -126,6 +132,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		kodeBuilds: 25,
 		kodeMode: "lite",
 		canvas: true,
+		canvasReferenceImages: 4,
 	},
 	max: {
 		name: "Max",
@@ -155,6 +162,7 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		kodeBuilds: 100,
 		kodeMode: "full",
 		canvas: true,
+		canvasReferenceImages: 8,
 	},
 };
 
@@ -251,4 +259,16 @@ export function getPlanCardHighlights(tier: PlanTier): string[] {
 
 export function getPlanDefinition(tier: PlanTier): PlanDefinition {
 	return PLAN_DEFINITIONS[tier];
+}
+
+// Cheapest plan above `tier` that gives more of something, for Upgrade links.
+export function nextPlanWithMore(
+	tier: PlanTier,
+	pick: (plan: PlanDefinition) => number,
+): PlanTier | undefined {
+	const order: PlanTier[] = ["free", "starter", "plus", "pro", "max"];
+	const current = pick(PLAN_DEFINITIONS[tier]);
+	return order
+		.slice(order.indexOf(tier) + 1)
+		.find((t) => pick(PLAN_DEFINITIONS[t]) > current);
 }

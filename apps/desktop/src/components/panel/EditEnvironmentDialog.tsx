@@ -6,6 +6,8 @@ import { BranchPicker, useBranches } from "@/components/kode/BranchPicker";
 import { getEnvironment, saveEnvironment, type EnvVariable } from "@/lib/kode-environments";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { cn } from "@/lib/utils";
+import { ScopedSettingsPanel, type ScopeTarget } from "./ScopedSettingsPanel";
+import { environmentSettings, loadProjectSettings, saveProjectSettings, type ScopedSettings } from "@/lib/kode-scoped-settings";
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -28,6 +30,18 @@ export function EditEnvironmentDialog({
   const [worktreeBranch, setWorktreeBranch] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [scoped, setScoped] = useState<ScopedSettings>(() => environmentSettings(projectPath));
+  const [scopeTarget, setScopeTarget] = useState<ScopeTarget>("environment");
+  useEffect(() => {
+    // Prefer showing the project file when it has settings and this Mac has none.
+    if (Object.keys(environmentSettings(projectPath)).length > 0) return;
+    void loadProjectSettings(projectPath).then((fromFile) => {
+      if (Object.keys(fromFile).length > 0) {
+        setScoped(fromFile);
+        setScopeTarget("project");
+      }
+    });
+  }, [projectPath]);
   const { branches, reload } = useBranches(projectPath);
   const folderName = projectPath.split("/").filter(Boolean).pop() ?? projectPath;
 
@@ -48,7 +62,8 @@ export function EditEnvironmentDialog({
     setError(null);
     try {
       const cleaned = variables.filter((v) => v.name.trim()).map((v) => ({ name: v.name.trim(), value: v.value }));
-      const env = { name: name.trim() || undefined, variables: cleaned };
+      if (scopeTarget === "project") await saveProjectSettings(projectPath, scoped);
+      const env = { name: name.trim() || undefined, variables: cleaned, settings: scopeTarget === "environment" ? scoped : {} };
       saveEnvironment(projectPath, env);
       if (worktree) {
         if (!worktreeBranch.trim()) throw new Error("Enter a branch name for the worktree.");
@@ -196,6 +211,8 @@ export function EditEnvironmentDialog({
             </div>
           ) : null}
         </div>
+
+        <ScopedSettingsPanel value={scoped} onChange={setScoped} target={scopeTarget} onTargetChange={setScopeTarget} />
 
         {error ? <p className="mt-3 text-[12px] text-rose-400">{error}</p> : null}
 

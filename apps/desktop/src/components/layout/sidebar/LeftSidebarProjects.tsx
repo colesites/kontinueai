@@ -20,6 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { ArrowRightLeft } from "lucide-react";
+import { MoveProjectDialog } from "@/components/kode/ProjectMove";
 import SidebarChatRow from "./SidebarChatRow";
 import { ProjectStatusRollup } from "./ProjectStatusRollup";
 
@@ -158,6 +160,7 @@ const LeftSidebarProjects = () => {
   const { activeTab, projects, chats, draftProjectId, importFolder, removeFolder, newChat } =
     useKodeWorkspace();
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [moving, setMoving] = useState<{ name: string; path: string; chatIds: string[] } | null>(null);
   const [visible, setVisible] = useState<Record<string, number>>({});
   const [projectModalState, setProjectModalState] = useState<{
     open: boolean;
@@ -232,7 +235,13 @@ const LeftSidebarProjects = () => {
       {projects.length === 0 ? (
         <div className="flex items-center gap-2 px-1 py-1 text-[11.5px] text-muted-foreground">
           <Pin size={12} strokeWidth={1.25} className="shrink-0 text-muted-foreground" />
-          <span>Pin projects to keep them here</span>
+          {activeTab === "kode" ? (
+            <button type="button" onClick={handleAddProject} className="cursor-pointer text-left hover:text-foreground">
+              Add a project folder so Kode can read and change its files
+            </button>
+          ) : (
+            <span>Pin projects to keep them here</span>
+          )}
         </div>
       ) : (
         <div className="flex flex-col gap-0.5">
@@ -255,13 +264,14 @@ const LeftSidebarProjects = () => {
                 >
                   <button
                     type="button"
+                    aria-label={isCollapsed ? `Show ${project.name} chats` : `Hide ${project.name} chats`}
                     onClick={() =>
                       setCollapsed((current) => ({
                         ...current,
                         [project.id]: !isCollapsed,
                       }))
                     }
-                    className="flex min-w-0 flex-1 items-center gap-1.5 py-1.5 pl-1.5 text-left"
+                    className="flex shrink-0 cursor-pointer items-center py-1.5 pl-1.5"
                   >
                     <ChevronRight
                       size={13}
@@ -270,6 +280,14 @@ const LeftSidebarProjects = () => {
                         !isCollapsed && "rotate-90",
                       )}
                     />
+                  </button>
+                  <button
+                    type="button"
+                    // Clicking a project starts a new chat in it (like Claude Code / Codex).
+                    onClick={() => newChat(project.id)}
+                    title={`New chat in ${project.name}`}
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1.5 text-left"
+                  >
                     <Folder
                       size={13}
                       className="shrink-0"
@@ -321,6 +339,14 @@ const LeftSidebarProjects = () => {
                         <Pencil size={13.5} strokeWidth={1.25} />
                         <span>Edit project</span>
                       </DropdownMenuItem>
+                      {activeTab === "kode" && project.path ? (
+                        <DropdownMenuItem
+                          onClick={() => setMoving({ name: project.name, path: project.path, chatIds: projectChats.map((chat) => chat.id) })}
+                        >
+                          <ArrowRightLeft size={13.5} strokeWidth={1.25} />
+                          <span>Move to another machine</span>
+                        </DropdownMenuItem>
+                      ) : null}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem
                         variant="destructive"
@@ -375,6 +401,9 @@ const LeftSidebarProjects = () => {
           onClose={() => setProjectModalState({ open: false })}
         />
       )}
+      {moving ? (
+        <MoveProjectDialog project={moving} chatIds={moving.chatIds} onClose={() => setMoving(null)} />
+      ) : null}
     </section>
   );
 };

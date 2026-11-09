@@ -18,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ChatStatusIndicator } from "./ChatStatusIndicator";
+import { KODE_CHAT_DRAG_TYPE } from "@/components/chat/ChatInput";
 
 export const formatWhen = (timestamp: number) => {
   const diff = Date.now() - timestamp;
@@ -53,6 +54,16 @@ const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
 
   return (
     <div
+      // Kode chats can be dragged into the composer to share their context.
+      draggable={activeTab === "kode" && !isRenaming}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(
+          KODE_CHAT_DRAG_TYPE,
+          JSON.stringify({ id: chat.id, title: chat.title }),
+        );
+        e.dataTransfer.setData("text/plain", chat.title);
+        e.dataTransfer.effectAllowed = "copy";
+      }}
       className={cn(
         "group/chat flex items-center justify-between gap-2 rounded-full px-2.5 py-1 text-[11.5px] font-normal text-zinc-600 dark:text-muted-foreground transition-all duration-150 hover:bg-white/60 dark:hover:bg-white/[0.06] hover:text-zinc-950 dark:hover:text-foreground h-[27px]",
         isActive &&

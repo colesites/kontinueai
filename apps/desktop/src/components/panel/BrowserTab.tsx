@@ -2,8 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, RotateCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, ExternalLink, Globe, MousePointerClick, RotateCw, X } from "lucide-react";
+import { addAnnotation } from "@/lib/kode-annotations";
 import { cn } from "@/lib/utils";
+
+/** What the in-page picker reports (src-tauri/src/browser_view.rs). */
+type PickedElement = { url: string; selector: string; label: string; html: string };
 
 const COMMON_PORTS = [3000, 3001, 5173, 4321, 8080, 8000];
 const IN_APP = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -121,6 +125,42 @@ export function BrowserTab({
   useEffect(() => {
     onUrlChange?.(current);
   }, [current, onUrlChange]);
+
+  // Annotate: pick an element in the page, write a note, send it with the next message.
+  const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<PickedElement | null>(null);
+  const [pickNote, setPickNote] = useState("");
+  const togglePicker = () => {
+    const next = !picking;
+    setPicking(next);
+    void invoke("browser_annotate", { label, active: next }).catch(() => setPicking(false));
+  };
+  useEffect(() => {
+    if (!IN_APP) return;
+    let unlisten: (() => void) | undefined;
+    void listen<{ label: string; data: string | null }>("browser-annotation", (event) => {
+      if (event.payload.label !== label) return;
+      setPicking(false);
+      try {
+        const data = event.payload.data ? (JSON.parse(event.payload.data) as PickedElement) : null;
+        if (data?.selector) {
+          setPicked(data);
+          setPickNote("");
+        }
+      } catch {
+        // Unreadable pick: ignore.
+      }
+    }).then((fn) => {
+      unlisten = fn;
+    });
+    return () => unlisten?.();
+  }, [label]);
+  const savePick = () => {
+    if (!picked) return;
+    addAnnotation({ kind: "element", ...picked, note: pickNote.trim() });
+    setPicked(null);
+    setPickNote("");
+  };
 
   useEffect(() => {
     if (!IN_APP) return;
@@ -275,6 +315,31 @@ export function BrowserTab({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {picked ? (
+        <form
+          className="flex shrink-0 items-center gap-1.5 px-2 py-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            savePick();
+          }}
+        >
+          <MousePointerClick size={13} className="ml-1.5 shrink-0 text-purple-500" />
+          <input
+            autoFocus
+            value={pickNote}
+            onChange={(e) => setPickNote(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && setPicked(null)}
+            placeholder={`Note on ${picked.label.slice(0, 40)}`}
+            className="kontinue-3d h-8 min-w-0 flex-1 rounded-full px-3.5 text-[12px] outline-none placeholder:text-muted-foreground/60"
+          />
+          <button type="submit" className="kontinue-3d-primary h-8 shrink-0 cursor-pointer rounded-full px-3 text-[12px] font-medium">
+            Add note
+          </button>
+          <button type="button" aria-label="Cancel" onClick={() => setPicked(null)} className={navButton}>
+            <X size={13} />
+          </button>
+        </form>
+      ) : (
       <form
         className="flex shrink-0 items-center gap-0.5 px-2 py-2"
         onSubmit={(event) => {
@@ -333,7 +398,20 @@ export function BrowserTab({
             <ExternalLink size={12} />
           </button>
         ) : null}
+        {IN_APP ? (
+          <button
+            type="button"
+            aria-label={picking ? "Stop picking" : "Annotate an element"}
+            title={picking ? "Click an element in the page (Esc to cancel)" : "Annotate an element"}
+            disabled={!current}
+            onClick={togglePicker}
+            className={cn(navButton, picking && "bg-purple-500/15 text-purple-500")}
+          >
+            <MousePointerClick size={12} />
+          </button>
+        ) : null}
       </form>
+      )}
 
       <div className="relative min-h-0 flex-1 border-t border-black/[0.05] dark:border-white/[0.05]">
         <div ref={hostRef} className="absolute inset-0">

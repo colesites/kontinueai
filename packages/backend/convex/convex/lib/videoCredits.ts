@@ -1,3 +1,5 @@
+import { ConvexError } from "convex/values";
+import { appError } from "@repo/core/app-errors";
 import { planTierFromPersisted } from "@repo/core/plan-tier";
 import { PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import { AI_USAGE_CREDIT_COSTS } from "@repo/core/ai-usage-credits";
@@ -113,8 +115,10 @@ export async function consumeVideoCredits(
 
 	const available = monthlyRemaining + bonusRemaining;
 	if (cost > available) {
-		throw new Error(
-			`Insufficient credits. ${available} remaining, need ${cost}.`,
+		throw new ConvexError(
+			appError("CREDITS_EXHAUSTED", {
+				message: `This video needs ${cost} video credits and you have ${available}. Try a shorter clip or a lower resolution.`,
+			}),
 		);
 	}
 

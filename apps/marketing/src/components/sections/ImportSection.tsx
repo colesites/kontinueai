@@ -9,7 +9,7 @@ const steps = [
 		icon: Share2,
 		title: "Share the chat",
 		description:
-			"In the web app, open the conversation on ChatGPT, Claude or Gemini, tap Share and copy the link.",
+			"Open the chat on ChatGPT, Claude or Gemini, tap Share and copy the link.",
 	},
 	{
 		icon: FileUp,

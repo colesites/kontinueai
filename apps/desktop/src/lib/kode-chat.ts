@@ -69,9 +69,13 @@ export type KodeChatResponse = {
   finishReason: string | null;
 };
 
-// "auto" lets the model decide; "required" forces it to call some tool this turn;
-// "none" forbids tools. Used to force action on the first turn of file-work asks.
-export type KodeToolChoice = "auto" | "required" | "none";
+// "auto" lets the model decide; "required" forces some tool; "none" forbids tools.
+// A function object forces that one tool (the checklist at the start of a task).
+export type KodeToolChoice =
+  | "auto"
+  | "required"
+  | "none"
+  | { type: "function"; function: { name: string } };
 
 type ClerkGlobal = { session?: { getToken: () => Promise<string | null> } | null };
 

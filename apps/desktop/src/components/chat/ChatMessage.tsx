@@ -1,3 +1,4 @@
+import { ExpandableImage } from "@/components/ui/image-viewer";
 import { Brain, Check, ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { HiSpeakerWave } from "react-icons/hi2";
@@ -173,7 +174,7 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
               <div className="flex flex-wrap justify-end gap-2 mb-1">
                 {images.map((src) => (
                   <div key={src} className="overflow-hidden rounded-xl border border-purple-500/20 bg-black/40 shadow-sm">
-                    <img src={src} alt="Attachment" className="max-h-40 max-w-64 object-cover" />
+                    <ExpandableImage src={src} alt="Attachment" wrapperClassName="block" className="max-h-40 max-w-64 object-cover" />
                   </div>
                 ))}
               </div>

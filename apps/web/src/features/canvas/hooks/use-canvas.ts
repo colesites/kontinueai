@@ -3,7 +3,13 @@
 import { IMAGE_MODELS, VIDEO_MODELS } from "@repo/ai/lib/canvas-models";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
+import { appError } from "@repo/core/app-errors";
 import { canAccessPlanFeature } from "@repo/core/plan-access";
+import {
+	AppError,
+	readApiError,
+	showAppErrorToast,
+} from "@web/lib/app-error-toast";
 import { usePlanTier } from "@web/lib/use-plan-tier";
 import { useMutation, usePaginatedQuery, useQuery } from "convex/react";
 import { useSearchParams } from "next/navigation";
@@ -125,7 +131,7 @@ export function useCanvas() {
 			quality?: "standard" | "pro";
 			audio?: boolean;
 			resolution?: string;
-			imageUrl?: string;
+			imageUrls?: string[];
 		}) => {
 			if (isGenerating) return;
 
@@ -134,12 +140,27 @@ export function useCanvas() {
 			);
 			const isFree = currentModel?.isFree || false;
 
-			if (opts.mode === "image" && !canGenerateImages && !isFree) {
-				toast.error("Upgrade to Starter or Pro to generate images.");
+			// Same rules the server applies, so people see why before waiting.
+			if (opts.mode === "image" && !canGenerateImages) {
+				showAppErrorToast(
+					appError("PLAN_REQUIRED", {
+						title: "Canvas is a Pro feature",
+						message:
+							"Image and video generation in Canvas comes with Pro and Max. Upgrade to start creating.",
+						upgradeTo: "pro",
+					}),
+				);
 				return;
 			}
-			if (opts.mode === "video" && !canGenerateVideos && !isFree) {
-				toast.error("Upgrade to Pro to generate videos.");
+			if (opts.mode === "video" && !canGenerateVideos) {
+				showAppErrorToast(
+					appError("PLAN_REQUIRED", {
+						title: "Video is a Pro feature",
+						message:
+							"Video generation in Canvas comes with Pro and Max. Upgrade to start creating videos.",
+						upgradeTo: "pro",
+					}),
+				);
 				return;
 			}
 
@@ -151,8 +172,10 @@ export function useCanvas() {
 					const cost = (opts.duration ?? 5) * multiplier;
 					// `available` = monthly (Pro) + referral-bonus credits combined.
 					if (!currentCredits || currentCredits.available < cost) {
-						toast.error(
-							`Not enough credits. You have ${currentCredits?.available ?? 0} remaining, need ${cost}.`,
+						showAppErrorToast(
+							appError("CREDITS_EXHAUSTED", {
+								message: `This video needs ${cost} credits and you have ${currentCredits?.available ?? 0}. Try a shorter clip or a lower resolution.`,
+							}),
 						);
 						setIsGenerating(false);
 						return;
@@ -177,7 +200,11 @@ export function useCanvas() {
 						model: opts.model,
 						aspectRatio: opts.aspectRatio,
 						resolution: opts.resolution,
-						...(opts.imageUrl && { image: opts.imageUrl }),
+						...(opts.imageUrls?.length && {
+							images: opts.imageUrls,
+							// Older servers read a single `image`.
+							image: opts.imageUrls[0],
+						}),
 						...(opts.mode === "video" && {
 							duration: opts.duration,
 							quality: opts.quality,
@@ -186,14 +213,14 @@ export function useCanvas() {
 					}),
 				});
 
+				if (!response.ok) throw new AppError(await readApiError(response));
+
 				const data = (await response.json()) as {
-					error?: string;
 					async?: boolean;
 					jobId?: string;
 					mediaUrl?: string;
 					pathname?: string;
 				};
-				if (!response.ok) throw new Error(data.error || "Generation failed");
 
 				// Long-form K-Video renders asynchronously on the worker. The finished
 				// clip lands in the gallery automatically when the job completes.
@@ -205,7 +232,12 @@ export function useCanvas() {
 				}
 
 				if (!data.mediaUrl || !data.pathname) {
-					throw new Error("Generation completed without a media URL.");
+					throw new AppError(
+						appError("UNKNOWN", {
+							message:
+								"The generation finished but no file came back. Please try again.",
+						}),
+					);
 				}
 
 				const newId = await createCreation({
@@ -229,9 +261,8 @@ export function useCanvas() {
 				setTab("mine");
 				if (newId) setExpandedCreationId(newId);
 			} catch (error) {
-				toast.error(
-					error instanceof Error ? error.message : "Generation failed",
-				);
+				console.error("[canvas] generation failed", error);
+				showAppErrorToast(error);
 			} finally {
 				setIsGenerating(false);
 			}

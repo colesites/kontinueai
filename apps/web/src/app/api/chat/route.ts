@@ -24,6 +24,7 @@ import { classifyChatError } from "./lib/error-classifier";
 import { getGatewayRuntimeConfig } from "./lib/gateway-runtime";
 import { getAiGatewayModelsCached } from "./lib/model-utils";
 import { getTokenLimitsByTier, getUserPlanTier } from "./lib/plan-limits";
+import { isLikelyImageRequest } from "./lib/prompt";
 import {
 	createInputTooLongResponse,
 	estimateUiMessageTokens,
@@ -111,7 +112,8 @@ export async function POST(req: Request) {
 			requestedModel = found;
 		}
 
-		const planTier = await getUserPlanTier(userId, hasPlan);
+		const convexToken = (await getToken?.({ template: "convex" })) ?? undefined;
+		const planTier = await getUserPlanTier(userId, hasPlan, convexToken);
 		if (usingKode && !canAccessPlanFeature(planTier, "kode")) {
 			return planDeniedResponse(
 				PLAN_ERROR_CODES.PREMIUM_MODEL_REQUIRED,
@@ -200,9 +202,6 @@ export async function POST(req: Request) {
 			});
 		}
 
-		// Resolve the Convex auth token once; reused for memory context fetch and
-		// any authed tool calls (e.g. create_task) below.
-		const convexToken = (await getToken?.({ template: "convex" })) ?? null;
 		if (!convexToken) {
 			return new Response(
 				"Your account could not be verified. Please try again.",
@@ -321,7 +320,11 @@ export async function POST(req: Request) {
 		if (
 			usingKai &&
 			lastUserContent.trim() &&
-			shouldRunRetrievalPipeline(webSearchPolicy)
+			shouldRunRetrievalPipeline(webSearchPolicy) &&
+			// "Generate an image of…" is a creation request, not a lookup. With the
+			// toggle on it used to fetch links to other image sites; only search
+			// when the wording itself asks for live info.
+			(webSearchPolicy.intentLikely || !isLikelyImageRequest(lastUserContent))
 		) {
 			if (searchQuotaExhausted) {
 				// Only say so when the user actually asked for a search. An auto
@@ -409,6 +412,8 @@ export async function POST(req: Request) {
 			agentId,
 			enableKaiImageGeneration:
 				usingKai && PLAN_DEFINITIONS[planTier].imageGenerations > 0,
+			kaiImagePlanRequired:
+				usingKai && PLAN_DEFINITIONS[planTier].imageGenerations <= 0,
 			// File creation via sandboxed Python. Needs both the plan and a runtime
 			// that can actually start a sandbox (VERCEL_* creds locally, OIDC on
 			// Vercel) — without the latter the tool would only ever fail.

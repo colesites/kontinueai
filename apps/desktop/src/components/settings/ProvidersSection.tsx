@@ -59,6 +59,7 @@ import {
   type ProviderInstance,
 } from "@/lib/kode-cli";
 import { AddProviderDialog } from "./AddProviderDialog";
+import { AccountSwitcher } from "./AccountSwitcher";
 
 type TaskState = {
   label: string;
@@ -168,6 +169,8 @@ export function ProvidersSection() {
           </button>
         </div>
       </div>
+
+      <AccountSwitcher providers={providers} active={settings.kodeActiveAccounts ?? {}} statuses={store.statuses} onAdd={() => setAdding(true)} />
 
       <section className="liquid-glass-dropdown flex min-h-[540px] overflow-hidden !rounded-[20px]">
         {/* Instance list */}

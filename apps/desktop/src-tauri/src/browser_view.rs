@@ -44,6 +44,109 @@ fn allow_http(url: &Url) -> bool {
     matches!(url.scheme(), "http" | "https")
 }
 
+// ---------------------------------------------------------------------------
+// Annotating an element in the preview
+// ---------------------------------------------------------------------------
+//
+// The page has no access to the app, so the injected picker reports the click
+// by navigating to `kontinue-annotate://pick?d=<json>`. on_navigation catches
+// that URL, blocks it, and emits `browser-annotation` to the app.
+
+const ANNOTATE_SCHEME: &str = "kontinue-annotate";
+
+#[derive(Clone, serde::Serialize)]
+struct BrowserAnnotation {
+    label: String,
+    /// JSON from the picker, or None when the user cancelled (Esc).
+    data: Option<String>,
+}
+
+/// Handle a picker URL. Returns true when `url` was one (and must be blocked).
+fn handle_annotate_url(app: &AppHandle, label: &str, url: &Url) -> bool {
+    if url.scheme() != ANNOTATE_SCHEME {
+        return false;
+    }
+    let data = url
+        .query_pairs()
+        .find(|(key, _)| key == "d")
+        .map(|(_, value)| value.into_owned())
+        .filter(|value| value.len() <= 16_000);
+    let _ = app.emit(
+        "browser-annotation",
+        BrowserAnnotation { label: label.to_string(), data },
+    );
+    true
+}
+
+const PICKER_ON: &str = r#"(() => {
+  if (window.__kontinuePicker) return;
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;border:2px solid #a855f7;background:rgba(168,85,247,.12);border-radius:4px;transition:all .05s;display:none';
+  document.documentElement.appendChild(box);
+  const cssPath = (el) => {
+    const parts = [];
+    while (el && el.nodeType === 1 && parts.length < 6) {
+      let part = el.tagName.toLowerCase();
+      if (el.id) { parts.unshift(part + '#' + CSS.escape(el.id)); break; }
+      const cls = [...el.classList].filter(c => !/[:\[\]]/.test(c)).slice(0, 2);
+      if (cls.length) part += '.' + cls.map(c => CSS.escape(c)).join('.');
+      const parent = el.parentElement;
+      if (parent) {
+        const same = [...parent.children].filter(c => c.tagName === el.tagName);
+        if (same.length > 1) part += ':nth-of-type(' + (same.indexOf(el) + 1) + ')';
+      }
+      parts.unshift(part);
+      el = parent;
+    }
+    return parts.join(' > ');
+  };
+  const send = (data) => {
+    stop();
+    location.href = 'kontinue-annotate://pick?d=' + encodeURIComponent(data ? JSON.stringify(data) : '');
+  };
+  const over = (e) => {
+    const r = e.target.getBoundingClientRect();
+    Object.assign(box.style, { display: 'block', left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  };
+  const click = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const el = e.target;
+    const text = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('alt') || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+    const tag = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + ([...el.classList].slice(0, 2).map(c => '.' + c).join(''));
+    send({ url: location.href, selector: cssPath(el), label: text ? tag + ' "' + text + '"' : tag, html: el.outerHTML.slice(0, 1200) });
+  };
+  const key = (e) => { if (e.key === 'Escape') { e.preventDefault(); send(null); } };
+  const stop = () => {
+    document.removeEventListener('mouseover', over, true);
+    document.removeEventListener('click', click, true);
+    document.removeEventListener('keydown', key, true);
+    box.remove();
+    document.documentElement.style.cursor = '';
+    window.__kontinuePicker = null;
+  };
+  document.addEventListener('mouseover', over, true);
+  document.addEventListener('click', click, true);
+  document.addEventListener('keydown', key, true);
+  document.documentElement.style.cursor = 'crosshair';
+  window.__kontinuePicker = { stop };
+})();"#;
+
+const PICKER_OFF: &str = "window.__kontinuePicker && window.__kontinuePicker.stop();";
+
+/// Turn the element picker on or off in a browser view.
+#[tauri::command]
+pub fn browser_annotate(app: AppHandle, label: String, active: bool) -> Result<(), String> {
+    valid_label(&label)?;
+    let view = app
+        .get_webview(&label)
+        .ok_or_else(|| "Open a page first.".to_string())?;
+    if active {
+        let _ = view.set_focus();
+    }
+    view.eval(if active { PICKER_ON } else { PICKER_OFF })
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(target_os = "macos")]
 fn apply_appearance(view: &Webview, dark: bool) {
     use objc2_app_kit::{
@@ -119,12 +222,19 @@ pub fn browser_place(
     let label_for_load = label.clone();
     let app_for_window = app.clone();
     let label_for_window = label.clone();
+    let app_for_nav = app.clone();
+    let label_for_nav = label.clone();
 
     let builder = WebviewBuilder::new(&label, WebviewUrl::External(target))
         .user_agent(CHROME_UA)
         .accept_first_mouse(true)
         .focused(false)
-        .on_navigation(|url| allow_http(url))
+        .on_navigation(move |url| {
+            if handle_annotate_url(&app_for_nav, &label_for_nav, url) {
+                return false;
+            }
+            allow_http(url)
+        })
         .on_new_window(move |url, _features| {
             if allow_http(&url) {
                 if let Some(view) = app_for_window.get_webview(&label_for_window) {

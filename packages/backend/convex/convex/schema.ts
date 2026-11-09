@@ -148,6 +148,64 @@ export default defineSchema({
 		.index("by_owner", ["ownerId"])
 		.index("by_updated", ["updatedAt"]),
 
+	// Continuation context of an imported Kode chat (project state, decisions,
+	// AI summary), so another device can continue the chat with the same
+	// grounding. Kept apart from kodeChats so the chat list stays small.
+	kodeImportContexts: defineTable({
+		chatId: v.id("kodeChats"),
+		ownerId: v.id("users"),
+		contextPrompt: v.string(),
+		summary: v.optional(v.string()),
+		projectName: v.optional(v.string()),
+		updatedAt: v.number(),
+	}).index("by_chat", ["chatId"]),
+
+	// Webhooks that start Kode threads (kodeWebhooks.ts, http.ts).
+	kodeWebhooks: defineTable({
+		ownerId: v.id("users"),
+		name: v.string(),
+		token: v.string(),
+		projectPath: v.optional(v.string()),
+		projectName: v.optional(v.string()),
+		instructions: v.optional(v.string()),
+		enabled: v.boolean(),
+		createdAt: v.number(),
+		lastEventAt: v.optional(v.number()),
+	})
+		.index("by_owner", ["ownerId"])
+		.index("by_token", ["token"]),
+
+	kodeWebhookEvents: defineTable({
+		webhookId: v.id("kodeWebhooks"),
+		ownerId: v.id("users"),
+		source: v.string(),
+		event: v.string(),
+		summary: v.string(),
+		payload: v.string(),
+		createdAt: v.number(),
+		claimedAt: v.optional(v.number()),
+		claimedBy: v.optional(v.string()),
+	})
+		.index("by_owner_claimed", ["ownerId", "claimedAt"])
+		.index("by_webhook", ["webhookId", "createdAt"]),
+
+	// A project packed on one machine for another to pick up (kodeProjectMoves.ts).
+	kodeProjectMoves: defineTable({
+		ownerId: v.id("users"),
+		name: v.string(),
+		remoteUrl: v.optional(v.string()),
+		branch: v.optional(v.string()),
+		headSha: v.optional(v.string()),
+		headPushed: v.boolean(),
+		patch: v.string(),
+		changedFiles: v.array(v.string()),
+		chatIds: v.array(v.id("kodeChats")),
+		fromDevice: v.string(),
+		createdAt: v.number(),
+		claimedAt: v.optional(v.number()),
+		claimedBy: v.optional(v.string()),
+	}).index("by_owner", ["ownerId", "createdAt"]),
+
 	kodeMessages: defineTable({
 		chatId: v.id("kodeChats"),
 		ownerId: v.id("users"),

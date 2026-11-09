@@ -12,6 +12,12 @@
       "runtimeExecutable": "bash",
       "runtimeArgs": ["-lc", "cd apps/marketing && bun run dev"],
       "port": 3002
+    },
+    {
+      "name": "launch-video",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-lc", "cd apps/launch-video && bun scripts/sync-assets.ts && bunx remotion studio --port 3005 --no-open"],
+      "port": 3005
     }
   ]
 }

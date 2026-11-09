@@ -13,6 +13,105 @@ use std::sync::Mutex;
 use tauri::ipc::Channel;
 
 // ---------------------------------------------------------------------------
+// Pull requests (GitHub CLI)
+// ---------------------------------------------------------------------------
+
+/// Run `gh` in the project with the user's login PATH. Async so network calls
+/// don't block the window. Returns stdout, or a readable error.
+async fn gh(root: &str, args: &[&str]) -> Result<String, String> {
+    let output = tokio::process::Command::new("gh")
+        .args(args)
+        .current_dir(root)
+        .env("PATH", crate::cli_agents::login_path())
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await
+        .map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                "GitHub CLI isn't installed. Install it (brew install gh), then run `gh auth login`.".to_string()
+            } else {
+                format!("Could not run gh: {error}")
+            }
+        })?;
+    if output.status.success() {
+        return Ok(String::from_utf8_lossy(&output.stdout).to_string());
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+    if stderr.contains("gh auth login") || stderr.contains("not logged") {
+        return Err("GitHub CLI isn't signed in. Run `gh auth login` in a terminal.".into());
+    }
+    if stderr.contains("none of the git remotes") || stderr.contains("no git remotes") {
+        return Err("This project has no GitHub remote.".into());
+    }
+    Err(if stderr.is_empty() { format!("gh exited with {}", output.status) } else { stderr })
+}
+
+/// GitLab / Bitbucket remotes go through their APIs; GitHub (and unknown
+/// hosts, which may be GitHub Enterprise) stay on `gh`.
+fn other_host(root: &str) -> Option<crate::git_hosts::GitRemote> {
+    crate::git_hosts::remote_for(root).filter(|r| r.kind == "gitlab" || r.kind == "bitbucket")
+}
+
+const PR_FIELDS: &str = "number,title,url,state,isDraft,author,headRefName,baseRefName,updatedAt,reviewDecision,mergeable,mergeStateStatus,statusCheckRollup,additions,deletions";
+
+/// Pull requests for the project's GitHub repo. `state`: "open" | "all".
+#[tauri::command]
+pub async fn panel_pr_list(root: String, state: Option<String>) -> Result<serde_json::Value, String> {
+    let state = match state.as_deref() {
+        Some("all") => "all",
+        _ => "open",
+    };
+    if let Some(remote) = other_host(&root) {
+        return crate::git_hosts::list(&remote, state).await;
+    }
+    let out = gh(&root, &["pr", "list", "--state", state, "--limit", "50", "--json", PR_FIELDS]).await?;
+    serde_json::from_str(&out).map_err(|error| format!("Couldn't read gh output: {error}"))
+}
+
+/// Merge a PR. `method`: "squash" | "merge" | "rebase".
+#[tauri::command]
+pub async fn panel_pr_merge(root: String, number: u32, method: String) -> Result<(), String> {
+    let flag = match method.as_str() {
+        "merge" => "--merge",
+        "rebase" => "--rebase",
+        _ => "--squash",
+    };
+    if let Some(remote) = other_host(&root) {
+        return crate::git_hosts::merge(&remote, number, &method).await;
+    }
+    let number = number.to_string();
+    gh(&root, &["pr", "merge", &number, flag]).await.map(|_| ())
+}
+
+/// Review a PR. `action`: "approve" | "request_changes" | "comment".
+#[tauri::command]
+pub async fn panel_pr_review(
+    root: String,
+    number: u32,
+    action: String,
+    body: Option<String>,
+) -> Result<(), String> {
+    let flag = match action.as_str() {
+        "approve" => "--approve",
+        "request_changes" => "--request-changes",
+        _ => "--comment",
+    };
+    if let Some(remote) = other_host(&root) {
+        return crate::git_hosts::review(&remote, number, &action, body.as_deref().unwrap_or("")).await;
+    }
+    let number = number.to_string();
+    let body = body.unwrap_or_default();
+    let mut args = vec!["pr", "review", number.as_str(), flag];
+    if !body.trim().is_empty() {
+        args.push("--body");
+        args.push(body.as_str());
+    }
+    gh(&root, &args).await.map(|_| ())
+}
+
+// ---------------------------------------------------------------------------
 // Git
 // ---------------------------------------------------------------------------
 
@@ -259,6 +358,20 @@ pub fn panel_git_branches(root: String) -> Result<GitBranches, String> {
         .map(|out| out.lines().filter(|l| !l.trim().is_empty()).count() as u32)
         .unwrap_or(0);
     Ok(GitBranches { is_repo: true, current, branches, uncommitted })
+}
+
+/// Push the current branch to origin. Sets the upstream when the branch has none.
+#[tauri::command]
+pub fn panel_git_push(root: String) -> Result<(), String> {
+    let inside = git(&root, &["rev-parse", "--is-inside-work-tree"])?;
+    if !inside.status.success() {
+        return Err("Not a git repository.".to_string());
+    }
+    let branch = git_ok(&root, &["branch", "--show-current"])?;
+    if branch.trim().is_empty() {
+        return Err("This checkout is not on a branch.".to_string());
+    }
+    git_ok(&root, &["push", "-u", "origin", "HEAD"]).map(|_| ())
 }
 
 /// Switch to a branch, or create it from the current HEAD when `create` is set.

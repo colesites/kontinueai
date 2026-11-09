@@ -469,7 +469,7 @@ pub(super) async fn run(
         if let Some(previous) = req.session_id.as_deref().filter(|id| !id.is_empty()) {
             if can_load {
                 handler.replaying = true;
-                let params = json!({ "sessionId": previous, "cwd": cwd, "mcpServers": [] });
+                let params = json!({ "sessionId": previous, "cwd": cwd, "mcpServers": super::acp_mcp_servers(req) });
                 match conn.request("session/load", params, &mut handler).await {
                     Ok(setup) => session = Some((previous.to_string(), setup)),
                     Err(error) if error.code == AUTH_REQUIRED => return Err(error),
@@ -484,7 +484,7 @@ pub(super) async fn run(
             Some(found) => found,
             None => {
                 let setup = conn
-                    .request("session/new", json!({ "cwd": cwd, "mcpServers": [] }), &mut handler)
+                    .request("session/new", json!({ "cwd": cwd, "mcpServers": super::acp_mcp_servers(req) }), &mut handler)
                     .await?;
                 let id = setup.get("sessionId").and_then(Value::as_str).unwrap_or_default().to_string();
                 (id, setup)
@@ -552,6 +552,7 @@ pub(super) async fn run(
         text: parser.text,
         stopped,
         error,
+        limit_resets_at: parser.limit_resets_at,
     })
 }
 

@@ -60,7 +60,7 @@ export const ChainOfThought = memo(
 
     return (
       <ChainOfThoughtContext.Provider value={chainOfThoughtContext}>
-        <div className={cn("not-prose w-full space-y-4", className)} {...props}>
+        <div className={cn("not-prose w-full", className)} {...props}>
           {children}
         </div>
       </ChainOfThoughtContext.Provider>
@@ -80,19 +80,19 @@ export const ChainOfThoughtHeader = memo(
       <Collapsible onOpenChange={setIsOpen} open={isOpen}>
         <CollapsibleTrigger
           className={cn(
-            "flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground",
+            "flex cursor-pointer items-center gap-1.5 text-[12.5px] text-muted-foreground transition-colors hover:text-foreground",
             className
           )}
           {...props}
         >
-          <BrainIcon className="size-4" />
-          <span className="flex-1 text-left">
-            {children ?? "Chain of Thought"}
+          <BrainIcon className="size-3.5" />
+          <span className="text-left">
+            {children ?? "Thinking"}
           </span>
           <ChevronDownIcon
             className={cn(
-              "size-4 transition-transform",
-              isOpen ? "rotate-180" : "rotate-0"
+              "size-3.5 transition-transform",
+              isOpen ? "rotate-0" : "-rotate-90"
             )}
           />
         </CollapsibleTrigger>
@@ -185,7 +185,7 @@ export const ChainOfThoughtContent = memo(
       <Collapsible open={isOpen}>
         <CollapsibleContent
           className={cn(
-            "mt-2 space-y-3",
+            "mt-1.5 space-y-3 border-l border-black/10 pl-3 dark:border-white/10",
             "data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-popover-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in",
             className
           )}

@@ -21,6 +21,31 @@ function persistedPlan(plan: PlanTier) {
 	return persistedPlanForTier(plan);
 }
 
+/** Dashboard rows are often saved as `pro` rather than `pro_plan`. */
+function canonicalPersistedPlan(plan: string) {
+	const normalized = plan.trim().toLowerCase();
+	if (normalized === "free") return "free";
+	if (normalized === "starter" || normalized === "starter_plan" || normalized === "starter-plan") {
+		return persistedPlan("starter");
+	}
+	if (normalized === "plus" || normalized === "plus_plan" || normalized === "plus-plan") {
+		return persistedPlan("plus");
+	}
+	if (
+		normalized === "pro" ||
+		normalized === "pro_plan" ||
+		normalized === "pro-plan" ||
+		normalized === "pro_plus" ||
+		normalized === "proplus"
+	) {
+		return persistedPlan("pro");
+	}
+	if (normalized === "max" || normalized === "max_plan" || normalized === "max-plan") {
+		return persistedPlan("max");
+	}
+	return plan;
+}
+
 /** Plan string stored for this email, if they are whitelisted with one. */
 export async function whitelistPlanForEmail(
 	ctx: { db: DbReader },
@@ -38,7 +63,7 @@ export async function whitelistPlanForEmail(
 					.query("whitelistedEmails")
 					.withIndex("by_email", (q) => q.eq("email", email))
 					.unique());
-	return entry?.plan ?? null;
+	return entry?.plan ? canonicalPersistedPlan(entry.plan) : null;
 }
 
 export const isWhitelisted = query({

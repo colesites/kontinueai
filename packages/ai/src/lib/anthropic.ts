@@ -20,6 +20,12 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
     description: "Ultra-fast, highly efficient 5.5-generation model for responsive agentic tasks",
   },
   {
+    id: "anthropic/claude-fable-5.2",
+    name: "Claude Fable 5.2",
+    provider: "anthropic",
+    description: "Anthropic's newest frontier model for the hardest coding and research work",
+  },
+  {
     id: "anthropic/claude-fable-5.1",
     name: "Claude Fable 5.1",
     provider: "anthropic",

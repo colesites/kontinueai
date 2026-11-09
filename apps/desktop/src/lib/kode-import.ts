@@ -10,7 +10,14 @@ import { invoke } from "@tauri-apps/api/core";
 // project state captured at import time.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type CodingProvider = "claude_code" | "codex";
+export type CodingProvider =
+  | "claude_code"
+  | "codex"
+  | "gemini_cli"
+  | "cursor"
+  | "opencode"
+  | "aider"
+  | "file";
 
 export const CODING_PROVIDER_META: Record<
   CodingProvider,
@@ -33,7 +40,42 @@ export const CODING_PROVIDER_META: Record<
     description: "OpenAI's coding agent",
     icon: "/openai.svg",
   },
+  gemini_cli: {
+    label: "Gemini CLI",
+    shortLabel: "Gemini",
+    description: "Google's terminal coding agent",
+    icon: "/kontinueai.svg",
+  },
+  cursor: {
+    label: "Cursor",
+    shortLabel: "Cursor",
+    description: "Cursor's agent chats",
+    icon: "/kontinueai.svg",
+  },
+  opencode: {
+    label: "OpenCode",
+    shortLabel: "OpenCode",
+    description: "Open-source terminal agent",
+    icon: "/kontinueai.svg",
+  },
+  aider: {
+    label: "Aider",
+    shortLabel: "Aider",
+    description: "Aider chat history in the project",
+    icon: "/kontinueai.svg",
+  },
+  file: {
+    label: "Exported transcript",
+    shortLabel: "File",
+    description: "A JSON or Markdown export",
+    icon: "/kontinueai.svg",
+  },
 };
+
+/** Providers whose transcripts can be re-read later to sync new turns. */
+export function canSyncProvider(provider: string): boolean {
+  return provider !== "file";
+}
 
 export function providerLabel(provider: string): string {
   return (
@@ -61,19 +103,80 @@ export type CodingSessionSummary = {
   lastActivity: number | null;
   sourcePath: string;
   sizeBytes: number;
+  /** When the session last hit a usage / rate limit (ms). */
+  limitHitAt?: number;
+  /** When that limit resets (ms), if the agent gave a time. */
+  limitResetsAt?: number;
+  /** The agent's own words, e.g. "resets 1:40am (Africa/Lagos)". */
+  limitNote?: string;
 };
+
+/** Limit hits in this window float to the top of the import list. */
+export const LIMIT_RECENT_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Recent limit hits first (newest hit on top), then by latest activity. Same order as the Rust scan. */
+export function sortCodingSessions<T extends Pick<CodingSessionSummary, "lastActivity" | "limitHitAt">>(sessions: T[], now = Date.now()): T[] {
+  const key = (s: T): [number, number] =>
+    s.limitHitAt && now - s.limitHitAt <= LIMIT_RECENT_MS ? [1, s.limitHitAt] : [0, s.lastActivity ?? 0];
+  return sessions.sort((a, b) => {
+    const [ra, ta] = key(a);
+    const [rb, tb] = key(b);
+    return rb - ra || tb - ta;
+  });
+}
+
+/** "Hit limit 2 hr ago · resets 1:40am" for a session that ran out. */
+export function limitLabel(session: Pick<CodingSessionSummary, "limitHitAt" | "limitResetsAt" | "limitNote">, now = Date.now()): string | null {
+  if (!session.limitHitAt) return null;
+  const parts = [`Hit limit ${formatActivity(session.limitHitAt)}`];
+  if (session.limitResetsAt) {
+    parts.push(session.limitResetsAt <= now ? "reset now" : `resets ${new Date(session.limitResetsAt).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" })}`);
+  } else if (session.limitNote) {
+    parts.push(session.limitNote);
+  }
+  return parts.join(" · ");
+}
+
+export type CodingImage = { mediaType: string; data: string };
 
 export type CodingSessionMessage = {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: number | null;
+  /** Screenshots pasted into this turn (Claude Code), base64. */
+  images?: CodingImage[];
 };
 
 export type CodingToolEvent = {
   name: string;
   summary: string;
   timestamp: number | null;
+  id?: string;
+  /** The command, or a diff for edits. */
+  detail?: string;
+  /** What the tool returned (truncated, redacted). */
+  output?: string;
+  isError?: boolean;
+  /** A result came back. Missing on a call with an id = outcome unknown. */
+  hasResult?: boolean;
 };
+
+/**
+ * Tool calls from the session's last turn that never reported a result: the
+ * agent stopped (limit, crash, closed terminal) while they ran. They may have
+ * changed files, so the next agent must check before repeating them.
+ */
+export function unfinishedToolCalls(session: Pick<CodingSession, "messages" | "toolEvents">): CodingToolEvent[] {
+  const lastUser = [...session.messages].reverse().find((m) => m.role === "user" && m.timestamp != null);
+  const since = lastUser?.timestamp ?? null;
+  return session.toolEvents.filter(
+    (event) =>
+      event.id &&
+      !event.hasResult &&
+      event.name !== "tool error" &&
+      (since === null || event.timestamp == null || event.timestamp >= since),
+  );
+}
 
 export type CodingSession = {
   provider: CodingProvider;
@@ -135,10 +238,25 @@ export type ProjectMemory = {
 /** Discover local sessions. Pass a project root to scope the scan. */
 export async function scanCodingSessions(
   projectPath?: string | null,
+  knownRoots: string[] = [],
 ): Promise<CodingSessionSummary[]> {
   return invoke<CodingSessionSummary[]>("kode_scan_coding_sessions", {
     projectPath: projectPath ?? null,
+    knownRoots,
   });
+}
+
+export type SessionSource = {
+  provider: string;
+  label: string;
+  detected: boolean;
+  readable: boolean;
+  note: string | null;
+};
+
+/** Which agents have history on this machine, and whether Kode can read it. */
+export async function detectSessionSources(): Promise<SessionSource[]> {
+  return invoke<SessionSource[]>("kode_detect_session_sources");
 }
 
 /** Read and normalize one transcript (and redact secrets locally). */
@@ -195,41 +313,69 @@ export function diffSessionMessages(
   importedCount: number,
   importedLastHash: string | undefined,
 ): SessionSyncDiff {
-  if (importedCount < 0 || importedCount > session.messages.length) {
+  if (importedCount < 0) {
+    throw new SyncConflictError("Invalid imported message count. Re-import the session.");
+  }
+  if (importedCount > 0 && !importedLastHash) {
     throw new Error(
-      "The source transcript now has fewer messages than the imported chat. Re-import the session.",
+      "This import was created before sync support. Re-import the session to enable syncing.",
     );
   }
-  if (importedCount > 0) {
-    if (!importedLastHash) {
-      throw new Error(
-        "This import was created before sync support. Re-import the session to enable syncing.",
-      );
-    }
-    const lastImported = session.messages[importedCount - 1];
-    if (
-      !lastImported ||
-      hashMessageContent(lastImported.content) !== importedLastHash
-    ) {
-      throw new Error(
-        "The source transcript changed in a way that cannot be appended safely. Re-import the session.",
-      );
-    }
+  const anchor = findSyncAnchor(session, importedCount, importedLastHash);
+  if (anchor === null) {
+    throw new SyncConflictError(
+      "The source transcript changed in a way that cannot be appended safely. Re-import the session.",
+    );
   }
 
   const lastMessage = session.messages[session.messages.length - 1];
+  const newMessages = session.messages.slice(anchor);
   return {
-    newMessages: session.messages.slice(importedCount),
-    messageCount: session.messages.length,
+    newMessages,
+    // Count of turns persisted in the chat after appending, which is the
+    // previous count plus what is new (the source may have dropped old turns).
+    messageCount: importedCount + newMessages.length,
     lastMessageHash: lastMessage
       ? hashMessageContent(lastMessage.content)
-      : "",
+      : importedLastHash ?? "",
   };
+}
+
+/** Thrown when imported turns no longer line up with the source transcript. */
+export class SyncConflictError extends Error {
+  readonly conflict = true;
+}
+
+/**
+ * Index in `session.messages` where new (not yet imported) turns start, or
+ * null when the last imported turn can't be found. Long transcripts drop their
+ * oldest turns from the import window, so the index can move; we look for the
+ * fingerprint near where it was before falling back to a full search.
+ */
+export function findSyncAnchor(
+  session: Pick<CodingSession, "messages">,
+  importedCount: number,
+  importedLastHash: string | undefined,
+): number | null {
+  const messages = session.messages;
+  if (importedCount === 0) return 0;
+  if (!importedLastHash) return null;
+  const expected = importedCount - 1;
+  const matches = (index: number) =>
+    index >= 0 &&
+    index < messages.length &&
+    hashMessageContent(messages[index].content) === importedLastHash;
+  if (matches(expected)) return expected + 1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (matches(index)) return index + 1;
+  }
+  return null;
 }
 
 export function buildContinuationBundle(
   session: CodingSession,
   project: CodingProjectState | null,
+  extras: { summary?: string; imagePaths?: string[] } = {},
 ): ContinuationBundle {
   const messages = session.messages;
   const lastUserMessage = [...messages]
@@ -276,6 +422,14 @@ export function buildContinuationBundle(
   if (session.lastActivity) {
     sections.push(
       `- Last activity: ${new Date(session.lastActivity).toISOString()}`,
+    );
+  }
+
+  if (extras.summary?.trim()) {
+    sections.push(
+      "",
+      "### Architecture and decisions (AI summary of the imported session)",
+      extras.summary.trim(),
     );
   }
 
@@ -368,11 +522,28 @@ export function buildContinuationBundle(
     }
   }
 
+  const unfinished = unfinishedToolCalls(session);
+  if (unfinished.length > 0) {
+    sections.push(
+      "",
+      "### Tool calls with an unknown outcome",
+      "The previous agent started these in its last turn but stopped before any result came back. They may have run fully, partly or not at all, and may still be running. Check their effects (git status and diffs, generated files, running processes) before deciding whether to run them again. Never repeat one blindly.",
+    );
+    for (const event of unfinished.slice(-12)) {
+      sections.push(`- ${event.name}: ${event.detail?.split("\n")[0]?.slice(0, 200) || event.summary}`);
+    }
+  }
+
   if (session.toolEvents.length > 0) {
     sections.push("", "### Recent tool activity from the imported session");
     for (const event of session.toolEvents.slice(-14)) {
       sections.push(`- ${event.name}: ${event.summary}`);
     }
+  }
+
+  if (extras.imagePaths && extras.imagePaths.length > 0) {
+    sections.push("", "### Screenshots from the imported session (open by path)");
+    for (const path of extras.imagePaths.slice(0, 12)) sections.push(`- ${path}`);
   }
 
   if (session.messagesDropped > 0) {
@@ -506,6 +677,21 @@ export function formatActivity(timestamp: number | null): string {
 
 const IMPORT_CONTEXT_KEY = "kontinue:kode-import-context:v1";
 
+export type NativeContinue = "resume" | "fork" | "off";
+
+/** Which CLI kind can pick up a session from this provider natively. */
+export function nativeCliKind(provider: string): "claude" | "codex" | null {
+  if (provider === "claude_code") return "claude";
+  if (provider === "codex") return "codex";
+  return null;
+}
+
+/** How an imported chat continues on its own CLI (Codex resumed natively before this option existed). */
+export function nativeContinueOf(context: Pick<StoredImportContext, "provider" | "native"> | null | undefined): NativeContinue {
+  if (!context || !nativeCliKind(context.provider)) return "off";
+  return context.native ?? (context.provider === "codex" ? "resume" : "off");
+}
+
 export type StoredImportContext = {
   chatId: string;
   provider: CodingProvider | string;
@@ -513,6 +699,14 @@ export type StoredImportContext = {
   /** Local transcript path, used to refresh/sync the checkpoint later. */
   sourcePath?: string;
   projectPath: string | null;
+  /** Folder the original agent ran in (Claude Code resumes a session from there). */
+  sessionCwd?: string;
+  /**
+   * With Claude Code / Codex on the same account: "resume" continues the
+   * original session itself, "fork" branches a new one from it, "off" hands
+   * the work off like any other model.
+   */
+  native?: NativeContinue;
   importedAt: number;
   /** Last time the context bundle was re-read from disk. */
   syncedAt?: number;
@@ -528,6 +722,32 @@ export type StoredImportContext = {
   messageCount: number;
   redactions: number;
   contextPrompt: string;
+  /** Turns persisted in the Kode chat (imported + any typed in Kode). */
+  chatMessageCount?: number;
+  /** Set when sync stopped because the chat and source no longer line up. */
+  conflict?: ImportConflict;
+  /** Queue "continue" when the source session stopped on a usage limit. */
+  autoContinue?: boolean;
+  /** Reset time we already queued a continue for (so it's queued once). */
+  limitScheduledFor?: number;
+  /** AI-written architecture / decision summary, folded into the context. */
+  summary?: string;
+  summaryAt?: number;
+  /** Folder name, so another device can find the same project locally. */
+  projectName?: string;
+  /** Data format version; older entries are migrated on load. */
+  version?: number;
+};
+
+export type ImportConflict = {
+  /**
+   * diverged: the source was rewritten (rewind, /compact, edited file).
+   * chat_changed: turns were added in Kode, so appends would interleave.
+   * missing: the transcript file is gone.
+   */
+  kind: "diverged" | "chat_changed" | "missing";
+  message: string;
+  at: number;
 };
 
 type ImportContextStore = Record<string, StoredImportContext>;
@@ -555,10 +775,27 @@ export function getImportContext(
   return loadStore()[chatId] ?? null;
 }
 
+const contextListeners = new Set<() => void>();
+
+/** Called whenever any stored import context changes (sync, migration…). */
+export function subscribeImportContexts(listener: () => void): () => void {
+  contextListeners.add(listener);
+  return () => contextListeners.delete(listener);
+}
+
+function notifyContexts() {
+  for (const listener of contextListeners) listener();
+}
+
+export function listImportContexts(): StoredImportContext[] {
+  return Object.values(loadStore());
+}
+
 export function saveImportContext(context: StoredImportContext) {
   const store = loadStore();
   store[context.chatId] = context;
   saveStore(store);
+  notifyContexts();
 }
 
 export function removeImportContext(chatId: string) {
@@ -566,6 +803,21 @@ export function removeImportContext(chatId: string) {
   if (!(chatId in store)) return;
   delete store[chatId];
   saveStore(store);
+  notifyContexts();
+}
+
+/** An existing import of the same source session, if any (for dedupe). */
+export function findImportBySession(
+  provider: string,
+  sessionId: string,
+  sourcePath?: string,
+): StoredImportContext | null {
+  for (const context of listImportContexts()) {
+    if (context.provider !== provider) continue;
+    if (context.sessionId === sessionId) return context;
+    if (sourcePath && context.sourcePath === sourcePath) return context;
+  }
+  return null;
 }
 
 function truncate(text: string, max: number): string {

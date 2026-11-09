@@ -156,10 +156,15 @@ export const getCurrentUser = query({
 			return null;
 		}
 
-		return await ctx.db
+		const user = await ctx.db
 			.query("users")
 			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
 			.unique();
+		if (!user?.email) return user;
+
+		const granted = await whitelistPlanForEmail(ctx, user.email);
+		if (!granted || granted === user.plan) return user;
+		return { ...user, plan: granted };
 	},
 });
 

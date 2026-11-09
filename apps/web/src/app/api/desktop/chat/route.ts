@@ -49,7 +49,7 @@ export async function POST(request: Request) {
 		supportsReasoning = Array.isArray(found.tags) && found.tags.includes("reasoning");
 	}
 
-	const planTier = await getUserPlanTier(userId, hasPlan);
+	const planTier = await getUserPlanTier(userId, hasPlan, convexToken);
 	if (modelClass !== "kai" && !canAccessModel(planTier, modelId, modelClass)) {
 		return jsonError(403, "plan_required", "This model isn't included in your plan. Upgrade to use it.");
 	}
@@ -93,5 +93,5 @@ export async function POST(request: Request) {
 	if (!supportsReasoning) delete upstreamBody.reasoning;
 
 	// Home chat is billed per request (above), so usage isn't recorded here.
-	return proxyGatewayChat({ body: upstreamBody, logTag: "desktop/chat", onUsage: async () => {} });
+	return proxyGatewayChat({ body: upstreamBody, logTag: "desktop/chat" });
 }

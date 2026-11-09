@@ -11,6 +11,9 @@
 // in the keychain and only read by Rust when starting the CLI.
 
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { loadMcpConfigs } from "./kode-mcp";
+import { isActiveAccount } from "./kode-accounts";
+import { getPlugins, pluginMcpConfigs } from "./kode-plugins";
 import { useSyncExternalStore } from "react";
 import { KODE_MODELS } from "@repo/ai/lib/kode";
 import type { ModelOption } from "@repo/ai/lib/models";
@@ -61,6 +64,8 @@ type CliRunResult = {
   text: string;
   stopped: boolean;
   error: string | null;
+  /** Epoch ms when the usage limit that stopped this turn resets, if known. */
+  limitResetsAt: number | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -131,6 +136,81 @@ export const ACP_PRESETS: Record<AcpPreset, AcpPresetInfo> = {
     install: "https://opencode.ai/docs",
     command: "opencode acp",
     description: "Open-source agent that works with the providers you have set up in OpenCode.",
+  },
+  // From the ACP agent registry (agentclientprotocol.com/overview/agents).
+  // Commands checked 2026-11-09 against each agent's docs / npm package. The
+  // command stays editable when adding the provider.
+  copilot: {
+    name: "GitHub Copilot",
+    logo: "github-copilot",
+    plan: "GitHub Copilot",
+    loginCommand: "copilot",
+    install: "https://docs.github.com/en/copilot/reference/copilot-cli-reference/acp-server",
+    command: "copilot --acp --stdio",
+    description: "GitHub's coding agent. Uses your Copilot subscription.",
+  },
+  amp: {
+    name: "Amp",
+    logo: "amp",
+    plan: "Amp",
+    loginCommand: "amp login",
+    install: "https://github.com/tao12345666333/amp-acp",
+    command: "npx -y amp-acp",
+    description: "Sourcegraph's Amp through its ACP adapter. Uses your Amp account.",
+  },
+  qwen: {
+    name: "Qwen Code",
+    logo: "alibaba",
+    plan: "Qwen",
+    loginCommand: null,
+    install: "https://github.com/QwenLM/qwen-code",
+    command: "qwen --acp",
+    description: "Alibaba's terminal agent. Sign in with Qwen OAuth or an API key.",
+  },
+  goose: {
+    name: "Goose",
+    logo: "",
+    plan: null,
+    loginCommand: "goose configure",
+    install: "https://block.github.io/goose/docs/getting-started/installation",
+    command: "goose acp",
+    description: "Block's open-source agent, with the providers you set up in Goose.",
+  },
+  auggie: {
+    name: "Auggie",
+    logo: "",
+    plan: "Augment",
+    loginCommand: "auggie login",
+    install: "https://docs.augmentcode.com/cli/overview",
+    command: "auggie --acp",
+    description: "Augment Code's agent. Uses your Augment plan.",
+  },
+  kimi: {
+    name: "Kimi CLI",
+    logo: "moonshotai",
+    plan: "Moonshot",
+    loginCommand: null,
+    install: "https://github.com/MoonshotAI/kimi-cli",
+    command: "kimi acp",
+    description: "Moonshot's Kimi agent.",
+  },
+  "claude-acp": {
+    name: "Claude Code (ACP)",
+    logo: "anthropic",
+    plan: "Claude",
+    loginCommand: "claude auth login",
+    install: "https://github.com/zed-industries/claude-code-acp",
+    command: "npx -y @zed-industries/claude-code-acp",
+    description: "Claude Code through Zed's ACP adapter, as an alternative to the built-in Claude provider.",
+  },
+  "codex-acp": {
+    name: "Codex (ACP)",
+    logo: "openai",
+    plan: "ChatGPT",
+    loginCommand: "codex login",
+    install: "https://github.com/zed-industries/codex-acp",
+    command: "npx -y @zed-industries/codex-acp",
+    description: "Codex through Zed's ACP adapter.",
   },
   custom: {
     name: "ACP agent",
@@ -265,6 +345,7 @@ const BUILTIN_MODELS: Record<ProviderKind, CliModelInfo[]> = {
   claude: [
     claude("Claude Opus 5.5", "claude-opus-5-5", true),
     claude("Claude Sonnet 5.5", "claude-sonnet-5-5"),
+    claude("Claude Fable 5.2", "claude-fable-5-2"),
     claude("Claude Fable 5.1", "claude-fable-5-1"),
     claude("Claude Fable 5", "claude-fable-5"),
     claude("Claude Opus 5", "claude-opus-5", true),
@@ -332,6 +413,8 @@ export function cliPickerModels(settings: AppSettings, store: CliStore): CliMode
   return getProviders(settings).flatMap((instance) => {
     const installed = store.statuses?.some((s) => s.instance === instance.id && s.installed);
     if (!instance.enabled || !installed) return [];
+    // Several accounts of one provider: only the active one is in the picker.
+    if (!isActiveAccount(instance, settings)) return [];
     const disabled = new Set(instance.models.disabled);
     return cliModelCatalog(instance, store.accountModels)
       .filter((m) => !disabled.has(m.id))
@@ -611,6 +694,8 @@ export type RunCliTurnParams = {
   root: string;
   prompt: string;
   sessionId: string | null;
+  /** With `sessionId`: branch a new session from it instead of continuing it. */
+  fork?: boolean;
   /** Model for the agent; null (or "default") keeps its default. */
   model: string | null;
   mode: string;
@@ -618,11 +703,33 @@ export type RunCliTurnParams = {
   onEvent: (event: CliEvent) => void;
 };
 
+/**
+ * Plugins and MCP servers for a CLI turn. Claude Code loads enabled plugins
+ * itself (--plugin-dir, which brings their MCP servers), so it only gets the
+ * servers you added; other CLIs get yours plus the plugin ones.
+ */
+function cliExtensions(kind: ProviderKind) {
+  const plugins = getPlugins().filter((p) => p.enabled);
+  const own = loadMcpConfigs().filter((c) => c.enabled);
+  const servers = kind === "claude" ? own : [...own, ...pluginMcpConfigs(plugins).filter((c) => c.enabled)];
+  return {
+    pluginDirs: kind === "claude" ? plugins.map((p) => p.dir) : [],
+    mcpServers: servers.map((c) => ({
+      name: c.name,
+      command: c.command ?? null,
+      args: c.args ?? [],
+      env: c.env ?? {},
+      url: c.url ?? null,
+    })),
+  };
+}
+
 export async function runCliTurn({
   instance,
   root,
   prompt,
   sessionId,
+  fork = false,
   model,
   mode,
   signal,
@@ -643,9 +750,11 @@ export async function runCliTurn({
         root,
         prompt,
         sessionId,
+        fork: fork && !!sessionId,
         model: model && model !== DEFAULT_MODEL.id ? model : null,
         mode,
         config: rustConfig(instance),
+        ...cliExtensions(instance.kind),
       },
       onEvent: channel,
     });

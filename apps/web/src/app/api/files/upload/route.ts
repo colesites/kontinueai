@@ -46,9 +46,11 @@ export async function POST(request: Request) {
 			);
 		}
 
+		const convexToken = (await authResult.getToken?.({ template: "convex" })) ?? undefined;
 		const planTier = await getUserPlanTier(
 			userId,
 			typeof authResult.has === "function" ? authResult.has : undefined,
+			convexToken,
 		);
 
 		// Get filename from query params
@@ -106,8 +108,6 @@ export async function POST(request: Request) {
 			);
 		}
 
-		const convexToken =
-			(await authResult.getToken?.({ template: "convex" })) ?? null;
 		if (!convexToken) {
 			return NextResponse.json(
 				{ error: "Your account could not be verified. Please try again." },

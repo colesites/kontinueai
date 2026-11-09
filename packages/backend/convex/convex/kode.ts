@@ -295,6 +295,75 @@ export const appendImportedMessages = mutation({
 	},
 });
 
+/**
+ * Save an imported chat's continuation context so the user's other devices
+ * get it. The desktop app calls this after an import or a sync that changed
+ * the context. One row per chat.
+ */
+export const saveImportContext = mutation({
+	args: {
+		chatId: v.id("kodeChats"),
+		contextPrompt: v.string(),
+		summary: v.optional(v.string()),
+		projectName: v.optional(v.string()),
+	},
+	handler: async (ctx, args) => {
+		const user = await requireUser(ctx);
+		const chat = await requireOwnedChat(ctx, args.chatId, user._id);
+		if (!chat.importSource) {
+			throw new Error("This chat was not created from an imported session.");
+		}
+		if (args.contextPrompt.length > 120_000 || (args.summary?.length ?? 0) > 20_000) {
+			throw new Error("The import context is too large.");
+		}
+		const existing = await ctx.db
+			.query("kodeImportContexts")
+			.withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+			.unique();
+		const fields = {
+			contextPrompt: args.contextPrompt,
+			summary: args.summary,
+			projectName: args.projectName,
+			updatedAt: Date.now(),
+		};
+		if (existing) {
+			await ctx.db.patch(existing._id, fields);
+		} else {
+			await ctx.db.insert("kodeImportContexts", {
+				chatId: args.chatId,
+				ownerId: user._id,
+				...fields,
+			});
+		}
+		return null;
+	},
+});
+
+/** The saved continuation context of an imported chat, or null. */
+export const getImportContext = query({
+	args: { chatId: v.id("kodeChats") },
+	handler: async (ctx, args) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return null;
+		const user = await ctx.db
+			.query("users")
+			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+			.unique();
+		if (!user) return null;
+		const row = await ctx.db
+			.query("kodeImportContexts")
+			.withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+			.unique();
+		if (!row || row.ownerId !== user._id) return null;
+		return {
+			contextPrompt: row.contextPrompt,
+			summary: row.summary ?? null,
+			projectName: row.projectName ?? null,
+			updatedAt: row.updatedAt,
+		};
+	},
+});
+
 export const getMessages = query({
 	args: { chatId: v.id("kodeChats") },
 	handler: async (ctx, args) => {
@@ -489,6 +558,14 @@ export const deleteChat = mutation({
 
 		for (const message of messages) {
 			await ctx.db.delete(message._id);
+		}
+
+		const importContext = await ctx.db
+			.query("kodeImportContexts")
+			.withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+			.unique();
+		if (importContext) {
+			await ctx.db.delete(importContext._id);
 		}
 
 		await ctx.db.delete(args.chatId);

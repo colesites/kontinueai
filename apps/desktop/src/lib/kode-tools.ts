@@ -71,6 +71,14 @@ export const KODE_FILE_TOOLS = [
 export type KodeFileTool = (typeof KODE_FILE_TOOLS)[number];
 
 export const KODE_SHELL_TOOL = "run_command";
+export const KODE_BG_START_TOOL = "start_background_command";
+export const KODE_BG_OUTPUT_TOOL = "read_background_output";
+export const KODE_BG_LIST_TOOL = "list_background_tasks";
+export const KODE_BG_STOP_TOOL = "stop_background_command";
+/** Commands that need the same approval rules as run_command. */
+function isCommandTool(name: string): boolean {
+  return name === KODE_SHELL_TOOL || name === KODE_BG_START_TOOL;
+}
 
 /** Extra instructions for Plan mode (read-only investigation → a plan). */
 export const KODE_PLAN_MODE_PROMPT = `PLAN MODE (read-only): Do not create, edit or delete files and do not run commands. Investigate with the read-only tools, ask the user with ask_options when a decision is genuinely theirs, then reply with a concise plan under a "## Plan" heading: numbered steps naming the files you'll change and how you'll verify the result. End by saying the user can approve the plan to start building.`;
@@ -81,21 +89,42 @@ export const KODE_ASK_TOOL = "ask_options";
 // agent loop (renders a Task/Queue list), not executed against the filesystem.
 export const KODE_TODOS_TOOL = "update_todos";
 
-export type KodeTodoStatus = "pending" | "in_progress" | "completed";
+export type KodeTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
 export type KodeTodo = {
   title: string;
   description?: string;
   status: KodeTodoStatus;
 };
 
+export function normalizeTodos(raw: unknown): KodeTodo[] {
+  if (!Array.isArray(raw)) return [];
+  const items: KodeTodo[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const title = typeof record.title === "string" ? record.title.trim() : "";
+    if (!title) continue;
+    const status =
+      record.status === "completed" || record.status === "in_progress" || record.status === "cancelled"
+        ? record.status
+        : "pending";
+    items.push({
+      title,
+      description: typeof record.description === "string" ? record.description : undefined,
+      status,
+    });
+  }
+  return items;
+}
+
 // Web tools — look things up online (docs, error messages, APIs).
 export const KODE_WEB_SEARCH_TOOL = "web_search";
 export const KODE_FETCH_URL_TOOL = "fetch_url";
 export const KODE_WEB_TOOLS: ReadonlySet<string> = new Set([KODE_WEB_SEARCH_TOOL, KODE_FETCH_URL_TOOL]);
 
-// Knowledge tools — skills and bundled official docs, loaded on demand.
+// Knowledge tool — load a skill's full guidance on demand.
 export const KODE_LOAD_SKILL_TOOL = "load_skill";
-export const KODE_SEARCH_DOCS_TOOL = "search_docs";
+export const KODE_READ_SKILL_FILE_TOOL = "read_skill_file";
 
 // Tools that only inspect / ask — never need approval and are allowed in any mode.
 const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
@@ -106,10 +135,68 @@ const READ_ONLY_TOOLS: ReadonlySet<string> = new Set([
   KODE_WEB_SEARCH_TOOL,
   KODE_FETCH_URL_TOOL,
   KODE_LOAD_SKILL_TOOL,
-  KODE_SEARCH_DOCS_TOOL,
+  KODE_READ_SKILL_FILE_TOOL,
+  KODE_BG_OUTPUT_TOOL,
+  KODE_BG_LIST_TOOL,
+  KODE_BG_STOP_TOOL,
 ]);
 
-/** Tool schemas for loading a skill and searching the bundled docs index. */
+/** Long-running commands (dev servers, watchers) that keep running in the background. */
+export function buildBackgroundToolDefinitions(): KodeToolDefinition[] {
+  const id = { type: "string", description: "The task id from start_background_command or list_background_tasks." };
+  return [
+    {
+      type: "function",
+      function: {
+        name: KODE_BG_START_TOOL,
+        description:
+          "Start a long-running command in the background (dev server, watcher, `docker compose up`) and return right away with its first output and port. Use this instead of run_command for anything that doesn't exit on its own. The user sees it under Servers / Background tasks and can stop it. Check on it later with read_background_output.",
+        parameters: {
+          type: "object",
+          properties: {
+            summary: { type: "string", description: "A short plain-English summary, e.g. 'Start the web dev server'." },
+            command: { type: "string", description: "The full shell command." },
+            name: { type: "string", description: "Short label, e.g. 'web'." },
+          },
+          required: ["summary", "command"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: KODE_BG_OUTPUT_TOOL,
+        description: "Read the latest output of a background task (to see errors, or whether a server is ready).",
+        parameters: { type: "object", properties: { id }, required: ["id"] },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: KODE_BG_LIST_TOOL,
+        description: "List this chat's background tasks: running ones (with ports) and finished ones.",
+        parameters: { type: "object", properties: {} },
+      },
+    },
+    {
+      type: "function",
+      function: {
+        name: KODE_BG_STOP_TOOL,
+        description: "Stop a background task (and everything it started).",
+        parameters: { type: "object", properties: { id }, required: ["id"] },
+      },
+    },
+  ];
+}
+
+type BgTask = { id: string; command: string; name: string | null; status: string; port: number | null; exitCode: number | null; startedAt: number };
+
+function describeBgTask(task: BgTask): string {
+  const where = task.port ? ` · http://localhost:${task.port}` : "";
+  return `${task.id} · ${task.name ?? task.command} · ${task.status}${task.exitCode !== null ? ` (exit ${task.exitCode})` : ""}${where}`;
+}
+
+/** Tool schemas for loading a skill's full text and reading its files on demand. */
 export function buildKnowledgeToolDefinitions(): KodeToolDefinition[] {
   return [
     {
@@ -117,7 +204,7 @@ export function buildKnowledgeToolDefinitions(): KodeToolDefinition[] {
       function: {
         name: KODE_LOAD_SKILL_TOOL,
         description:
-          "Load the full text of a skill from the SKILLS list in your instructions. Do this before work the skill covers.",
+          "Load the full text of a skill from the SKILLS list in your instructions. Do this before work the skill covers. The result includes the skill's guidance and the list of supporting files it ships.",
         parameters: {
           type: "object",
           properties: { name: { type: "string", description: "Skill name exactly as listed." } },
@@ -128,13 +215,16 @@ export function buildKnowledgeToolDefinitions(): KodeToolDefinition[] {
     {
       type: "function",
       function: {
-        name: KODE_SEARCH_DOCS_TOOL,
+        name: KODE_READ_SKILL_FILE_TOOL,
         description:
-          "Search the bundled official framework docs (Next.js, React, Tailwind, Prisma, Supabase, Expo and more). Faster than web_search for documented APIs.",
+          "Read a supporting file inside a loaded skill (a reference doc, script, or template). Use after load_skill when the skill points you at a file.",
         parameters: {
           type: "object",
-          properties: { query: { type: "string", description: "What to look up, e.g. 'server actions revalidatePath'." } },
-          required: ["query"],
+          properties: {
+            name: { type: "string", description: "Skill name exactly as listed." },
+            path: { type: "string", description: "Path relative to the skill directory, e.g. 'references/migrations.md'." },
+          },
+          required: ["name", "path"],
         },
       },
     },
@@ -240,11 +330,11 @@ export function needsApproval(
       return true;
     case "auto_edits":
       // Auto-accept edits: writes and edits run freely, ask for shell commands and deletes
-      return toolName === KODE_SHELL_TOOL || toolName === "delete_file";
+      return isCommandTool(toolName) || toolName === "delete_file";
     case "auto":
       // Auto: edits and routine commands run; deletes and risky commands ask.
       if (toolName === "delete_file") return true;
-      if (toolName === KODE_SHELL_TOOL) {
+      if (isCommandTool(toolName)) {
         return isRiskyCommand(typeof args.command === "string" ? args.command : "");
       }
       return false;
@@ -253,7 +343,7 @@ export function needsApproval(
       return false;
     case "design":
       // Design mode: UI edits and styles run freely, ask before shell commands and deletes
-      return toolName === KODE_SHELL_TOOL || toolName === "delete_file";
+      return isCommandTool(toolName) || toolName === "delete_file";
     default:
       return true;
   }
@@ -365,6 +455,11 @@ export function buildShellToolDefinition(): KodeToolDefinition {
       parameters: {
         type: "object",
         properties: {
+          summary: {
+            type: "string",
+            description:
+              "A short plain-English summary of what this command does, e.g. 'Explore the project structure', 'Install dependencies', 'Run the tests'. This is what the user reads when asked to approve the command, so it must be human and never the raw command.",
+          },
           command: {
             type: "string",
             description: "The full shell command to run.",
@@ -389,33 +484,47 @@ export function buildAskOptionsToolDefinition(): KodeToolDefinition {
     function: {
       name: KODE_ASK_TOOL,
       description:
-        "Ask the user to choose from a set of options before continuing. Use this for important unspecified decisions — design style, tech stack, package manager, framework — instead of guessing. The user's selection is returned to you.",
+        "Ask the user a question in the composer banner. Use this instead of writing a questionnaire into the message. kind: single (default), multi, text, confirm, or form. For form, pass questions. Prefer kind single or multi with 2-4 options whenever the answer has likely choices (the user can still type their own answer under the options); use kind text only for truly open questions like a name or a URL. Give every option a one-line description of what it means or its trade-off, put the option you recommend first and end its label with \" (recommended)\".",
       parameters: {
         type: "object",
         properties: {
-          question: {
+          question: { type: "string", description: "The question to ask." },
+          kind: {
             type: "string",
-            description: "The question to ask the user.",
+            enum: ["single", "multi", "text", "confirm", "form"],
           },
           options: {
             type: "array",
-            description: "The choices to present.",
+            description: "Choices for single or multi.",
             items: {
               type: "object",
               properties: {
                 value: { type: "string" },
                 label: { type: "string" },
-                description: { type: "string" },
+                description: { type: "string", description: "One line: what this choice means or its trade-off." },
               },
-              required: ["value", "label"],
+              required: ["value", "label", "description"],
             },
           },
-          multiple: {
-            type: "boolean",
-            description: "Allow selecting more than one option (default false).",
+          multiple: { type: "boolean" },
+          allowOther: { type: "boolean", description: "Let the user type their own answer." },
+          placeholder: { type: "string" },
+          questions: {
+            type: "array",
+            description: "Several questions answered together.",
+            items: {
+              type: "object",
+              properties: {
+                question: { type: "string" },
+                kind: { type: "string" },
+                options: { type: "array" },
+                allowOther: { type: "boolean" },
+              },
+              required: ["question"],
+            },
           },
         },
-        required: ["question", "options"],
+        required: ["question"],
       },
     },
   };
@@ -437,7 +546,7 @@ export function buildTodosToolDefinition(): KodeToolDefinition {
     function: {
       name: KODE_TODOS_TOOL,
       description:
-        "Maintain a visible task list (plan) for multi-step work. Call it at the start with the planned steps, then call again to update statuses as you progress. Replaces the current list each call.",
+        "Replace the visible checklist. On a multi-step task, call this first with the steps you intend to do, exactly one in_progress. Call it again as each step finishes. Before you stop, call it once more: completed for what you finished, cancelled for what you will not do, pending for what is still left.",
       parameters: {
         type: "object",
         properties: {
@@ -451,7 +560,7 @@ export function buildTodosToolDefinition(): KodeToolDefinition {
                 description: { type: "string" },
                 status: {
                   type: "string",
-                  enum: ["pending", "in_progress", "completed"],
+                  enum: ["pending", "in_progress", "completed", "cancelled"],
                 },
               },
               required: ["title", "status"],
@@ -482,8 +591,34 @@ export async function executeFileTool(
   toolName: string,
   args: ToolArgs,
   root: string,
+  scope: { chatId: string | null } = { chatId: null },
 ): Promise<string> {
   switch (toolName) {
+    case KODE_BG_START_TOOL: {
+      const task = await invoke<BgTask>("kode_bg_start", {
+        root,
+        command: str(args, "command"),
+        name: typeof args.name === "string" ? args.name : null,
+        chatId: scope.chatId,
+        env: envVarsFor(root),
+      });
+      // Give it a moment so the first output (and port) can be reported.
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      const [latest] = (await invoke<BgTask[]>("kode_bg_list", { chatId: scope.chatId })).filter((t) => t.id === task.id);
+      const output = await invoke<string>("kode_bg_output", { id: task.id, maxChars: 3_000 });
+      return `Started in the background: ${describeBgTask(latest ?? task)}\n\nFirst output:\n${output.trim() || "(nothing yet)"}`;
+    }
+    case KODE_BG_OUTPUT_TOOL: {
+      const output = await invoke<string>("kode_bg_output", { id: str(args, "id"), maxChars: 8_000 });
+      return output.trim() || "(no output yet)";
+    }
+    case KODE_BG_LIST_TOOL: {
+      const tasks = await invoke<BgTask[]>("kode_bg_list", { chatId: scope.chatId });
+      return tasks.length ? tasks.map(describeBgTask).join("\n") : "No background tasks in this chat.";
+    }
+    case KODE_BG_STOP_TOOL:
+      await invoke("kode_bg_stop", { id: str(args, "id") });
+      return `Stopped ${str(args, "id")}.`;
     case "read_file":
       return await invoke<string>("kode_read_file", {
         root,
@@ -560,19 +695,56 @@ export function describeToolCall(toolName: string, args: ToolArgs): string {
       return `Edit ${path}`;
     case "delete_file":
       return `Delete ${path}`;
-    case KODE_SHELL_TOOL:
-      return `Run: ${typeof args.command === "string" ? args.command : ""}`;
+    case KODE_SHELL_TOOL: {
+      const command = typeof args.command === "string" ? args.command.trim() : "";
+      const summary = typeof args.summary === "string" ? args.summary.trim() : "";
+      if (summary) return summary;
+      return summarizeShellCommand(command) ?? "Run a shell command";
+    }
+    case KODE_BG_START_TOOL: {
+      const summary = typeof args.summary === "string" ? args.summary.trim() : "";
+      return summary || `Start in background: ${typeof args.command === "string" ? args.command : ""}`;
+    }
+    case KODE_BG_OUTPUT_TOOL:
+      return "Check background task output";
+    case KODE_BG_LIST_TOOL:
+      return "List background tasks";
+    case KODE_BG_STOP_TOOL:
+      return "Stop a background task";
     case KODE_ASK_TOOL:
       return typeof args.question === "string" ? args.question : "Choose an option";
     case KODE_WEB_SEARCH_TOOL:
       return `Search the web: ${typeof args.query === "string" ? args.query : ""}`;
     case KODE_LOAD_SKILL_TOOL:
       return `Load skill: ${typeof args.name === "string" ? args.name : ""}`;
-    case KODE_SEARCH_DOCS_TOOL:
-      return `Search docs: ${typeof args.query === "string" ? args.query : ""}`;
+    case KODE_READ_SKILL_FILE_TOOL:
+      return `Read skill file: ${typeof args.path === "string" ? args.path : ""}`;
     case KODE_FETCH_URL_TOOL:
       return `Read ${typeof args.url === "string" ? args.url : "a web page"}`;
     default:
+      if (toolName.startsWith("mcp__")) {
+        const parts = toolName.slice("mcp__".length).split("__");
+        return `Call ${parts.slice(1).join(".")} (${parts[0] ?? "MCP"})`;
+      }
       return toolName;
   }
+}
+
+/** Best-effort plain-English description of a shell command, used only when the
+ *  model didn't provide a `summary`. Returns null when nothing obvious matches. */
+function summarizeShellCommand(command: string): string | null {
+  const first = command.split("\n")[0]?.trim() ?? "";
+  if (!first) return null;
+  if (/^(echo|printf)\b/.test(first)) return "Print text to the terminal";
+  if (/^(find|ls)\b/.test(first) && !/(install|test|build|run|create)/.test(first)) {
+    return "List files in the project";
+  }
+  if (/^git\s+(status|diff|log)\b/.test(first)) return "Check the git status";
+  if (/^git\s+(add|commit|push)\b/.test(first)) return "Commit changes to git";
+  if (/\b(npm|pnpm|yarn|bun)\s+(install|add|i)\b/.test(first)) return "Install dependencies";
+  if (/\b(npm|pnpm|yarn|bun)\s+(test|run\s+test)\b/.test(first)) return "Run the tests";
+  if (/\b(npm|pnpm|yarn|bun)\s+build\b/.test(first)) return "Build the project";
+  if (/\b(npm|pnpm|yarn|bun)\s+run\b/.test(first)) return "Run a project script";
+  if (/^(npx|bunx|pnpm|yarn)\s+create\b/.test(first)) return "Scaffold a new project";
+  return null;
 }
