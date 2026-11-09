@@ -119,6 +119,7 @@ import { resolveConflict, setChatBusy, syncImportContext } from "@/lib/kode-impo
 import { ImportedChatBar, useImportContext, useImportSyncDeps } from "@/components/kode/ImportedChatBar";
 import { IncomingProjectMoves } from "@/components/kode/ProjectMove";
 import { NoProjectBar } from "@/components/kode/NoProjectBar";
+import { PrStatusBar, useVisiblePrUrls } from "@/components/kode/PrStatusBar";
 import { isWebhookEvent, WebhookEventCard } from "@/components/kode/WebhookEventCard";
 import { CodeRunContext } from "@/components/ai-elements/code-run-context";
 import { envVarsFor } from "@/lib/kode-environments";
@@ -139,6 +140,7 @@ import { HandoffChip, HandoffPreviewDialog } from "@/components/kode/HandoffPrev
 import { clearInterruptedTurn, getInterruptedTurn, interruptedTurnNote, ledgerFromSteps, recordInterruptedTurn } from "@/lib/kode-tool-ledger";
 import { gitStatus } from "@/components/panel/panel-api";
 import { recordPrLinks } from "@/lib/kode-prs";
+import { rememberChatModel } from "@/lib/kode-pr-watch";
 import { buildSubagentTool } from "@/lib/kode-fanout";
 import {
   annotationTitle,
@@ -609,6 +611,7 @@ const PlanView = () => {
   // (per chat), kept current by the background sync, and appended to the
   // agent's system context so the captured project state grounds later turns.
   const importContext = useImportContext(activeChatId, chats, projects);
+  const hasPrBar = useVisiblePrUrls(activeChatId).length > 0;
   // A chat imported to continue its own Claude Code / Codex session starts on
   // that account's CLI (once; you can switch models after).
   useEffect(() => {
@@ -1649,13 +1652,15 @@ const PlanView = () => {
     if (!activeChatId || persistedMessages.length === 0) return;
     const title = chats.find((chat) => chat.id === activeChatId)?.title;
     if (!title) return;
+    const replies = persistedMessages.filter((m) => m.role === "assistant");
     recordPrLinks(
       activeChatId,
       title,
-      persistedMessages
-        .filter((m) => m.role === "assistant")
-        .map((m) => m.content),
+      replies.map((m) => m.content),
     );
+    // Auto-fix prompts for this chat's PRs run on the model it last used.
+    const lastModel = replies.at(-1)?.modelId;
+    if (lastModel) rememberChatModel(activeChatId, lastModel);
   }, [activeChatId, persistedMessages, chats]);
 
   // ---- Scheduled prompts ("send when my limit resets") ----
@@ -1925,6 +1930,13 @@ const PlanView = () => {
             chatTitle={chats.find((chat) => chat.id === activeChatId)?.title ?? "Imported chat"}
           />
         ) : null}
+        {inChat && activeChatId ? (
+          <PrStatusBar
+            chatId={activeChatId}
+            projectRoot={activeProject?.path ?? null}
+            className={importContext ? "mt-2" : "mt-[4.5rem]"}
+          />
+        ) : null}
         {!inChat ? (
           <div className="w-full text-center space-y-6 mb-6">
             <div className="flex items-center justify-center">
@@ -1958,7 +1970,7 @@ const PlanView = () => {
           <Conversation className="min-h-0 flex-1 overflow-hidden">
             <ConversationContent
               style={inChat && bottomDockHeight ? { paddingBottom: bottomDockHeight + 24 } : undefined}
-              className={`mx-auto w-full max-w-[51rem] gap-6 px-6 pb-28 ${importContext || syncError ? "pt-4" : "pt-[4.5rem]"}`}
+              className={`mx-auto w-full max-w-[51rem] gap-6 px-6 pb-28 ${importContext || syncError || hasPrBar ? "pt-4" : "pt-[4.5rem]"}`}
             >
               {messages.map((message, index) =>
                 isWebhookEvent(message.role, message.content) ? (

@@ -2155,6 +2155,8 @@ pub fn run() {
             ,panel::panel_pr_list
             ,panel::panel_pr_merge
             ,panel::panel_pr_review
+            ,panel::panel_pr_comments
+            ,panel::panel_pr_cleanup_merged
             ,panel::panel_git_diff
             ,panel::panel_git_branches
             ,panel::panel_git_switch

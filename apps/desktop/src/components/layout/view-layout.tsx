@@ -9,6 +9,7 @@ import { useImportBackgroundSync } from "@/lib/kode-import-sync";
 import { useOrchestrationBridge } from "@/lib/kode-orchestration";
 import { useImportContextUpload } from "@/lib/kode-import-cloud";
 import { useWebhookThreads } from "@/lib/kode-webhooks";
+import { usePrWatcher } from "@/lib/kode-pr-watcher";
 
 type ViewLayoutProps = {
   panelOpen: boolean;
@@ -26,6 +27,7 @@ const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
   useImportContextUpload(kodeChats.map((chat) => chat.id));
   // Webhook events (GitHub, CI, …) start threads.
   useWebhookThreads();
+  usePrWatcher();
 
   // Scheduled Kode prompts send from the Kode view. If one is due while you're
   // on Home or Canvas and you've stepped away, open Kode so it can go out.
