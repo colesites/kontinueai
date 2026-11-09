@@ -1,7 +1,6 @@
 "use client";
 
 import { Download, X } from "lucide-react";
-import Image from "next/image";
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
 
@@ -38,20 +37,23 @@ export async function downloadImage(src: string, baseName: string) {
 	}
 }
 
-// Full-screen view of one image with a download button. Shared by generated
-// images and images that arrive inside message markdown (imports), so both
-// expand the same way. Rendered through a portal: the trigger can sit inside a
-// <p>, and a <div> there is invalid HTML and a hydration error.
+// Full-screen view of one image. Shared by generated images, images inside
+// message markdown (imports) and the user's own attachments; `allowDownload`
+// is off for attachments, since people already have their own files. Rendered
+// through a portal: the trigger can sit inside a <p>, where a <div> is invalid
+// HTML and a hydration error.
 export function ImageLightbox({
 	src,
 	alt,
 	downloadName,
 	onClose,
+	allowDownload = true,
 }: {
 	src: string;
 	alt: string;
 	downloadName: string;
 	onClose: () => void;
+	allowDownload?: boolean;
 }) {
 	useEffect(() => {
 		const onKeyDown = (event: KeyboardEvent) => {
@@ -63,45 +65,55 @@ export function ImageLightbox({
 
 	if (typeof document === "undefined") return null;
 
+	const toolbarButton =
+		"inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-white/15 bg-black/50 px-3 py-1.5 text-xs font-medium text-white backdrop-blur-md transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60";
+
 	return createPortal(
 		<div
-			className="fixed inset-0 z-80 flex items-center justify-center bg-black/85 p-4"
+			className="fixed inset-0 z-80 flex flex-col items-center justify-center bg-black/85 p-4 backdrop-blur-sm"
 			role="dialog"
 			aria-modal="true"
 			aria-label={`Expanded image: ${alt || "image"}`}
 		>
+			{/* Clicking the backdrop closes. */}
 			<button
 				type="button"
 				aria-label="Close expanded image"
+				tabIndex={-1}
 				className="absolute inset-0 cursor-zoom-out"
 				onClick={onClose}
 			/>
-			<button
-				type="button"
-				onClick={onClose}
-				className="absolute right-4 top-4 inline-flex items-center gap-1 rounded-md border border-white/20 bg-black/40 px-2 py-1 text-xs text-white transition-colors hover:bg-black/60"
-			>
-				<X size={12} />
-				Close
-			</button>
-			<div className="relative z-10 max-h-[92vh] max-w-[96vw]">
-				<Image
+
+			<div className="relative z-10 flex max-h-full max-w-full flex-col items-end gap-3">
+				<div className="flex items-center gap-2">
+					{allowDownload && (
+						<button
+							type="button"
+							onClick={() => void downloadImage(src, downloadName)}
+							className={toolbarButton}
+						>
+							<Download size={13} />
+							Download
+						</button>
+					)}
+					<button
+						type="button"
+						onClick={onClose}
+						className={toolbarButton}
+						// biome-ignore lint/a11y/noAutofocus: focus the dialog's close control so Esc/Enter work at once
+						autoFocus
+					>
+						<X size={13} />
+						Close
+					</button>
+				</div>
+				{/* biome-ignore lint/performance/noImgElement: data: and storage URLs; next/image rejects unlisted hosts */}
+				<img
 					src={src}
 					alt={alt}
-					width={1920}
-					height={1080}
-					unoptimized
 					referrerPolicy="no-referrer"
-					className="max-h-[92vh] max-w-[96vw] rounded-lg border border-white/20 object-contain shadow-2xl"
+					className="max-h-[calc(100vh-7rem)] max-w-[min(96vw,1400px)] rounded-xl border border-white/15 object-contain shadow-2xl"
 				/>
-				<button
-					type="button"
-					onClick={() => void downloadImage(src, downloadName)}
-					className="absolute bottom-3 left-3 inline-flex items-center gap-1 rounded-md border border-white/20 bg-black/45 px-2 py-1 text-xs text-white transition-colors hover:bg-black/60"
-				>
-					<Download size={12} />
-					Download
-				</button>
 			</div>
 		</div>,
 		document.body,

@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import {
 	buildSearchFallbackContent,
 	type ClockData,
+	collectAttachmentsFromParts,
 	collectClockDataFromParts,
 	collectEmailDraftFromParts,
 	collectGeneratedFilesFromParts,
@@ -10,9 +11,11 @@ import {
 	collectPerplexitySearchResults,
 	type EmailDraft,
 	type GeneratedFile,
+	type MessageAttachment,
 	mapImportedFlags,
 	mapStoredGeneratedImages,
 	mergeImportedChunks,
+	pickGeneratedImages,
 } from "../lib/message-transformer";
 
 export type DisplayMessage = {
@@ -20,7 +23,10 @@ export type DisplayMessage = {
 	role: "user" | "assistant";
 	content: string;
 	reasoningText?: string;
+	// Images the assistant generated.
 	imageParts: string[];
+	// Files the user attached to their own message.
+	attachments?: MessageAttachment[];
 	isImported: boolean;
 	clockData?: ClockData | null;
 	emailDraft?: EmailDraft | null;
@@ -68,7 +74,9 @@ function mapAiMessageToDisplayMessage(params: {
 
 	// Extract <think>...</think> tags if present in content (common with OpenRouter / open models)
 	if (/<think/i.test(content)) {
-		const thinkMatch = content.match(/<\s*think\s*>([\s\S]*?)(?:<\/\s*think\s*>|$)/i);
+		const thinkMatch = content.match(
+			/<\s*think\s*>([\s\S]*?)(?:<\/\s*think\s*>|$)/i,
+		);
 		if (thinkMatch) {
 			const extracted = thinkMatch[1]?.trim();
 			if (extracted) {
@@ -76,7 +84,9 @@ function mapAiMessageToDisplayMessage(params: {
 					? `${reasoningText}\n\n${extracted}`
 					: extracted;
 			}
-			content = content.replace(/<\s*think\s*>[\s\S]*?<\/\s*think\s*>/gi, "").trim();
+			content = content
+				.replace(/<\s*think\s*>[\s\S]*?<\/\s*think\s*>/gi, "")
+				.trim();
 			if (/^<\s*think/i.test(content)) {
 				content = "";
 			}
@@ -88,11 +98,15 @@ function mapAiMessageToDisplayMessage(params: {
 		content = buildSearchFallbackContent(searchResults);
 	}
 
-	const imageParts = collectImageUrlsFromParts(msg.parts);
-
-	const persisted = persistedImageUrlsByMessageId[msg.id] ?? [];
-	const stored = storedGeneratedImageUrlsByMessageId[msg.id] ?? [];
-	const resolvedImages = [...new Set([...persisted, ...stored, ...imageParts])];
+	const isUser = msg.role === "user";
+	const attachments = isUser ? collectAttachmentsFromParts(msg.parts) : [];
+	const resolvedImages = isUser
+		? []
+		: pickGeneratedImages(
+				collectImageUrlsFromParts(msg.parts),
+				persistedImageUrlsByMessageId[msg.id] ?? [],
+				storedGeneratedImageUrlsByMessageId[msg.id] ?? [],
+			);
 
 	const clockData = collectClockDataFromParts(msg.parts);
 	const emailDraft = collectEmailDraftFromParts(msg.parts);
@@ -104,6 +118,7 @@ function mapAiMessageToDisplayMessage(params: {
 		content,
 		reasoningText: reasoningText.trim() ? reasoningText.trim() : undefined,
 		imageParts: resolvedImages,
+		attachments,
 		isImported: importedById[msg.id] ?? false,
 		clockData,
 		emailDraft,

@@ -134,6 +134,7 @@ export function ChatMessageList({
 							content={message.content}
 							reasoningText={message.reasoningText}
 							imageParts={message.imageParts}
+							attachments={message.attachments}
 							clockData={message.clockData}
 							emailDraft={message.emailDraft}
 							generatedFiles={message.generatedFiles}

@@ -121,3 +121,59 @@ describe("buildStreamOptions web-search accounting", () => {
 		expect(() => finishStep(options, ["perplexity_search"])).not.toThrow();
 	});
 });
+
+describe("buildStreamOptions forced tools", () => {
+	const tools = {
+		image_generation: {},
+		perplexity_search: {},
+		create_task: {},
+	} as unknown as ToolSet;
+
+	function build(forceImageTool: boolean, forceWebSearchTool = false) {
+		return buildStreamOptions({
+			model: {} as LanguageModel,
+			systemPrompt: "system",
+			modelMessages: [],
+			maxOutputTokens: 1000,
+			tools,
+			shouldDisableTools: false,
+			hasTools: true,
+			forceImageTool,
+			forceWebSearchTool,
+			stopWhen: [],
+		});
+	}
+	const step = (...names: string[]) => ({
+		toolCalls: names.map((toolName) => ({ toolName })),
+	});
+
+	test("never pins toolChoice for the whole turn", () => {
+		expect("toolChoice" in build(true)).toBe(false);
+	});
+
+	test("forces the image tool on the first step only", () => {
+		const { prepareStep } = build(true);
+		expect(prepareStep?.({ stepNumber: 0, steps: [] })).toEqual({
+			toolChoice: { type: "tool", toolName: "image_generation" },
+		});
+	});
+
+	test("drops the image tool once an image was made, so it isn't repeated", () => {
+		const { prepareStep } = build(true);
+		const next = prepareStep?.({
+			stepNumber: 1,
+			steps: [step("image_generation")],
+		});
+		expect(next).toEqual({ activeTools: ["perplexity_search", "create_task"] });
+	});
+
+	test("forced web search applies to the first step only", () => {
+		const { prepareStep } = build(false, true);
+		expect(prepareStep?.({ stepNumber: 0, steps: [] })).toEqual({
+			toolChoice: { type: "tool", toolName: "perplexity_search" },
+		});
+		expect(
+			prepareStep?.({ stepNumber: 1, steps: [step("perplexity_search")] }),
+		).toEqual({});
+	});
+});

@@ -11,6 +11,12 @@ vi.mock("@repo/ai/lib/canvas-models", () => ({
 	DEFAULT_VIDEO_MODEL: "vid-1",
 	isRatioSupported: () => true,
 	isDurationSupported: () => true,
+	getCanvasModelById: (id: string) => ({ id, name: id, capability: "image" }),
+	maxReferenceImagesFor: () => 4,
+}));
+
+vi.mock("@web/lib/use-plan-tier", () => ({
+	usePlanTier: () => "pro",
 }));
 
 vi.mock("@repo/ui/components/ui/sidebar", () => ({
