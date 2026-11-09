@@ -19,8 +19,8 @@ export type ScheduledPrompt = {
   /** Epoch ms to send at. */
   fireAt: number;
   createdAt: number;
-  /** Why it was queued: a limit hit, or picked by hand. */
-  reason: "limit" | "manual";
+  /** Why it was queued: a limit hit, picked by hand, or a PR event (Auto-fix). */
+  reason: "limit" | "manual" | "pr";
 };
 
 const STORAGE_KEY = "kode.scheduled-prompts";

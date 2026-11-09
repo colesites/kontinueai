@@ -18,6 +18,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { ChatStatusIndicator } from "./ChatStatusIndicator";
+import { ChatPrBadge } from "@/components/kode/PrStatusBar";
 import { KODE_CHAT_DRAG_TYPE } from "@/components/chat/ChatInput";
 
 export const formatWhen = (timestamp: number) => {
@@ -100,6 +101,7 @@ const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
         ) : (
           <span className="flex-1 truncate">{chat.title}</span>
         )}
+        {!isRenaming ? <ChatPrBadge chatId={chat.id} /> : null}
       </button>
 
       <span className="shrink-0 text-[10px] text-foreground/25 group-hover/chat:hidden">

@@ -32,6 +32,8 @@ import {
 } from "@/lib/kode-prs";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { setPrAutoFix, usePrWatches } from "@/lib/kode-pr-watch";
 import { errorText } from "./panel-api";
 import { EmptyState } from "./WorkspacePanel";
 
@@ -57,6 +59,7 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
   const [composing, setComposing] = useState<{ number: number; action: "request_changes" | "comment" } | null>(null);
   const [reviewBody, setReviewBody] = useState("");
   const threads = usePrThreads();
+  const watches = usePrWatches();
   const { selectChat, setActiveTab } = useKodeWorkspace();
 
   const load = useCallback(async () => {
@@ -191,6 +194,19 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                             <MessageSquare size={10} />
                             <span className="max-w-36 truncate">{thread.chatTitle}</span>
                           </button>
+                        ) : null}
+                        {thread && open ? (
+                          <label
+                            className="flex cursor-pointer items-center gap-1.5 text-muted-foreground"
+                            title="Send new CI failures, merge conflicts and review comments to that chat so Kode fixes them"
+                          >
+                            Auto-fix
+                            <Switch
+                              checked={!!watches[pr.url.toLowerCase()]?.autoFix}
+                              onCheckedChange={(on) => setPrAutoFix(pr.url, thread.chatId, on)}
+                              aria-label={`Auto-fix PR #${pr.number}`}
+                            />
+                          </label>
                         ) : null}
                       </div>
                     </div>

@@ -418,6 +418,180 @@ pub fn panel_git_worktree_add(root: String, branch: String) -> Result<String, St
 }
 
 // ---------------------------------------------------------------------------
+// PR watching: comments to relay to the chat, and cleanup after a merge
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct PrComment {
+    /// Stable id, prefixed by kind so the three sources never collide.
+    pub id: String,
+    /// "comment" (conversation), "review" (review summary) or "inline" (on a line).
+    pub kind: String,
+    pub author: String,
+    pub body: String,
+    pub path: Option<String>,
+    pub line: Option<u64>,
+    pub created_at: String,
+    pub url: Option<String>,
+}
+
+fn json_str(value: &serde_json::Value, key: &str) -> String {
+    value.get(key).and_then(|v| v.as_str()).unwrap_or_default().to_string()
+}
+
+fn login(value: &serde_json::Value) -> String {
+    value
+        .get("author")
+        .or_else(|| value.get("user"))
+        .and_then(|a| a.get("login"))
+        .and_then(|l| l.as_str())
+        .unwrap_or("unknown")
+        .to_string()
+}
+
+/// Conversation comments, review summaries and inline review comments, from
+/// the `gh pr view` JSON and the pulls/{n}/comments API. Empty bodies (a bare
+/// "approved" review) are skipped.
+pub fn parse_pr_comments(view: &serde_json::Value, inline: &serde_json::Value) -> Vec<PrComment> {
+    let mut out = Vec::new();
+    for c in view.get("comments").and_then(|v| v.as_array()).into_iter().flatten() {
+        out.push(PrComment {
+            id: format!("comment:{}", json_str(c, "id")),
+            kind: "comment".into(),
+            author: login(c),
+            body: json_str(c, "body"),
+            path: None,
+            line: None,
+            created_at: json_str(c, "createdAt"),
+            url: Some(json_str(c, "url")).filter(|u| !u.is_empty()),
+        });
+    }
+    for r in view.get("reviews").and_then(|v| v.as_array()).into_iter().flatten() {
+        out.push(PrComment {
+            id: format!("review:{}", json_str(r, "id")),
+            kind: "review".into(),
+            author: login(r),
+            body: json_str(r, "body"),
+            path: None,
+            line: None,
+            created_at: json_str(r, "submittedAt"),
+            url: None,
+        });
+    }
+    for c in inline.as_array().into_iter().flatten() {
+        let id = c.get("id").map(|v| v.to_string()).unwrap_or_default();
+        out.push(PrComment {
+            id: format!("inline:{id}"),
+            kind: "inline".into(),
+            author: login(c),
+            body: json_str(c, "body"),
+            path: Some(json_str(c, "path")).filter(|p| !p.is_empty()),
+            line: c.get("line").or_else(|| c.get("original_line")).and_then(|v| v.as_u64()),
+            created_at: json_str(c, "created_at"),
+            url: Some(json_str(c, "html_url")).filter(|u| !u.is_empty()),
+        });
+    }
+    out.retain(|c| !c.body.trim().is_empty());
+    out.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+    out
+}
+
+/// Every comment on a GitHub PR. GitLab/Bitbucket aren't supported yet and
+/// return an empty list, so the watcher still reports CI and merges there.
+#[tauri::command]
+pub async fn panel_pr_comments(root: String, number: u32) -> Result<Vec<PrComment>, String> {
+    if other_host(&root).is_some() {
+        return Ok(Vec::new());
+    }
+    let n = number.to_string();
+    let view = gh(&root, &["pr", "view", &n, "--json", "comments,reviews"]).await?;
+    let view: serde_json::Value = serde_json::from_str(&view).map_err(|e| e.to_string())?;
+    // gh fills {owner}/{repo} from the checkout's remote.
+    let path = format!("repos/{{owner}}/{{repo}}/pulls/{n}/comments?per_page=100");
+    let inline = gh(&root, &["api", &path]).await.unwrap_or_else(|_| "[]".into());
+    let inline: serde_json::Value = serde_json::from_str(&inline).unwrap_or(serde_json::json!([]));
+    Ok(parse_pr_comments(&view, &inline))
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergedCleanup {
+    /// What was done, in order, as short sentences for the UI.
+    pub done: Vec<String>,
+    /// Why something was left alone (uncommitted work, unpushed commits).
+    pub kept: Vec<String>,
+}
+
+/// After a PR merges: get this checkout back onto the base branch, pull, and
+/// delete the merged local branch, or remove the worktree it lived in. Never
+/// discards work: stops at uncommitted changes and keeps a branch that has
+/// commits the remote never saw.
+#[tauri::command]
+pub fn panel_pr_cleanup_merged(root: String, branch: String, base: String) -> Result<MergedCleanup, String> {
+    valid_branch(&root, &branch)?;
+    valid_branch(&root, &base)?;
+    let top = git_ok(&root, &["rev-parse", "--show-toplevel"])?.trim().to_string();
+    let mut done = Vec::new();
+    let mut kept = Vec::new();
+
+    let dirty = !git_ok(&top, &["status", "--porcelain"])?.trim().is_empty();
+    if dirty {
+        kept.push("Left everything as is: this checkout has uncommitted changes. Commit or stash them, then clean up again.".into());
+        return Ok(MergedCleanup { done, kept });
+    }
+
+    let _ = git(&top, &["fetch", "--prune", "origin"]);
+    done.push("Fetched the latest from origin.".into());
+
+    // Commits on the local branch that never reached the remote would be lost.
+    let unpushed = git_ok(&top, &["rev-list", "--count", &format!("origin/{branch}..{branch}")])
+        .ok()
+        .and_then(|n| n.trim().parse::<u32>().ok())
+        .unwrap_or(0);
+
+    // A linked worktree has its own git dir under the main repo's common one.
+    let git_dir = git_ok(&top, &["rev-parse", "--path-format=absolute", "--git-dir"])?.trim().to_string();
+    let common_dir = git_ok(&top, &["rev-parse", "--path-format=absolute", "--git-common-dir"])?.trim().to_string();
+    let is_worktree = Path::new(&git_dir) != Path::new(&common_dir);
+
+    if is_worktree {
+        let current = git_ok(&top, &["branch", "--show-current"]).unwrap_or_default();
+        if unpushed > 0 {
+            kept.push(format!("Kept the worktree: \"{branch}\" has {unpushed} commit(s) that aren't on GitHub."));
+            return Ok(MergedCleanup { done, kept });
+        }
+        // Run from the main checkout; a worktree can't remove itself.
+        let main = Path::new(&common_dir)
+            .parent()
+            .map(|p| p.to_string_lossy().to_string())
+            .ok_or("Couldn't find the main checkout.")?;
+        git_ok(&main, &["worktree", "remove", &top])?;
+        done.push("Removed the worktree for this branch.".into());
+        if current.trim() == branch {
+            if git_ok(&main, &["branch", "-D", &branch]).is_ok() {
+                done.push(format!("Deleted the local branch \"{branch}\"."));
+            }
+        }
+        return Ok(MergedCleanup { done, kept });
+    }
+
+    git_ok(&top, &["switch", &base])?;
+    done.push(format!("Switched to \"{base}\"."));
+    match git_ok(&top, &["pull", "--ff-only", "origin", &base]) {
+        Ok(_) => done.push(format!("Pulled the merge into \"{base}\".")),
+        Err(e) => kept.push(format!("Couldn't fast-forward \"{base}\": {e}")),
+    }
+    if unpushed > 0 {
+        kept.push(format!("Kept \"{branch}\": it has {unpushed} commit(s) that aren't on GitHub."));
+    } else if git_ok(&top, &["branch", "-D", &branch]).is_ok() {
+        // -D because squash merges never look "merged" to git; the PR is.
+        done.push(format!("Deleted the local branch \"{branch}\"."));
+    }
+    Ok(MergedCleanup { done, kept })
+}
+
+// ---------------------------------------------------------------------------
 // Environment variables (from the project's environment settings)
 // ---------------------------------------------------------------------------
 
@@ -600,6 +774,26 @@ pub fn pty_kill(state: tauri::State<'_, PtyState>, id: u32) -> Result<(), String
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_all_three_comment_kinds_and_skips_empty_reviews() {
+        let view = serde_json::json!({
+            "comments": [{ "id": "IC_1", "author": { "login": "amy" }, "body": "Looks good", "createdAt": "2026-11-10T10:00:00Z", "url": "https://x/c1" }],
+            "reviews": [
+                { "id": "R_1", "author": { "login": "bo" }, "body": "", "submittedAt": "2026-11-10T09:00:00Z" },
+                { "id": "R_2", "author": { "login": "bo" }, "body": "Please rename", "submittedAt": "2026-11-10T11:00:00Z" }
+            ]
+        });
+        let inline = serde_json::json!([
+            { "id": 42, "user": { "login": "cy" }, "body": "nit", "path": "src/a.ts", "line": 7, "created_at": "2026-11-10T08:00:00Z", "html_url": "https://x/i42" }
+        ]);
+        let comments = parse_pr_comments(&view, &inline);
+        let ids: Vec<&str> = comments.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["inline:42", "comment:IC_1", "review:R_2"]);
+        assert_eq!(comments[0].path.as_deref(), Some("src/a.ts"));
+        assert_eq!(comments[0].line, Some(7));
+        assert_eq!(comments[0].author, "cy");
+    }
 
     // Runs against this repository's own working tree.
     #[test]

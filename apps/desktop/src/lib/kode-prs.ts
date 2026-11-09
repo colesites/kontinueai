@@ -81,6 +81,42 @@ export const listPullRequests = (root: string, state: "open" | "all") =>
 export const mergePullRequest = (root: string, number: number, method: "squash" | "merge" | "rebase") =>
   invoke<void>("panel_pr_merge", { root, number, method });
 
+export type PrComment = {
+  id: string;
+  kind: "comment" | "review" | "inline";
+  author: string;
+  body: string;
+  path: string | null;
+  line: number | null;
+  createdAt: string;
+  url: string | null;
+};
+
+/** Conversation, review and inline comments (GitHub; empty on other hosts). */
+export const listPrComments = (root: string, number: number) =>
+  invoke<PrComment[]>("panel_pr_comments", { root, number });
+
+export type MergedCleanup = { done: string[]; kept: string[] };
+
+/** Back to the base branch after a merge; never discards uncommitted or unpushed work. */
+export const cleanupMergedPr = (root: string, branch: string, base: string) =>
+  invoke<MergedCleanup>("panel_pr_cleanup_merged", { root, branch, base });
+
+/** Names of the checks that finished and failed. */
+export function failingCheckNames(checks: Check[] | null | undefined): string[] {
+  const names: string[] = [];
+  for (const check of checks ?? []) {
+    if (check.__typename === "CheckRun") {
+      if (check.status === "COMPLETED" && !["SUCCESS", "NEUTRAL", "SKIPPED"].includes(check.conclusion ?? "")) {
+        names.push(check.name || "check");
+      }
+    } else if (!["SUCCESS", "PENDING", "EXPECTED"].includes(check.state ?? "")) {
+      names.push(check.context || "status");
+    }
+  }
+  return [...new Set(names)].sort();
+}
+
 export const reviewPullRequest = (
   root: string,
   number: number,
@@ -144,6 +180,9 @@ export function usePrThreads(): Record<string, PrThread> {
     () => links,
   );
 }
+
+/** Current PR-to-chat links (outside React). */
+export const getPrThreads = () => links;
 
 export const prThreadFor = (threads: Record<string, PrThread>, url: string) =>
   threads[url.toLowerCase()] ?? null;
