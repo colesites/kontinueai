@@ -11,11 +11,10 @@ import { getLenis, scrollToTarget } from "@/lib/scroll";
 
 const navLinks = [
 	{ href: "/kontinue-model", label: "K-AI 1.0" },
-	{ href: "/import-ai-conversations", label: "Import" },
 	{ href: "/supported-models", label: "Models" },
 	{ href: "/pricing", label: "Pricing" },
+	{ href: "/download", label: "Download" },
 	{ href: "/blog", label: "Blog" },
-	{ href: "/about", label: "About" },
 ];
 
 export function Header() {
