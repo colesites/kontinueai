@@ -1,94 +1,68 @@
 "use client";
 
 import { track } from "@vercel/analytics";
-import { ArrowDown, Check } from "lucide-react";
+import { ArrowDown } from "lucide-react";
+import Image from "next/image";
 import { useRef } from "react";
 import { TrackedLink } from "@/components/marketing/TrackedLink";
 import { Button } from "@/components/ui/button";
+import { modelLogos } from "@/data/models";
 import { appLinks } from "@/data/product";
 import { gsap, useGSAP } from "@/lib/gsap";
 import { scrollToTarget } from "@/lib/scroll";
-import { HeroWorkspace } from "./HeroWorkspace";
+
+const DEMO_SRC =
+	"https://res.cloudinary.com/djsskkp4r/video/upload/q_auto/f_auto/v1784125732/Kontinue_AI_Demo_lqp7s6.mp4";
+const DEMO_POSTER =
+	"https://res.cloudinary.com/djsskkp4r/video/upload/so_2,q_auto/v1784125732/Kontinue_AI_Demo_lqp7s6.jpg";
 
 export function HeroSection() {
 	const root = useRef<HTMLElement>(null);
-	const card = useRef<HTMLDivElement>(null);
+	const stage = useRef<HTMLDivElement>(null);
 
 	useGSAP(
 		() => {
 			const reduced = window.matchMedia(
 				"(prefers-reduced-motion: reduce)",
 			).matches;
-			const underline = root.current?.querySelector<SVGPathElement>(
-				"[data-h='underline']",
-			);
-			if (underline && !reduced) {
-				const len = underline.getTotalLength();
-				gsap.set(underline, {
-					strokeDasharray: `${len} ${len}`,
-					strokeDashoffset: len,
-				});
-			}
 
 			const tl = gsap.timeline({ defaults: { ease: "power3.out" } });
 			tl.fromTo(
-				"[data-h='eyebrow']",
-				{ autoAlpha: 0, y: 14 },
-				{ autoAlpha: 1, y: 0, duration: 0.7 },
+				"[data-h='line']",
+				{ autoAlpha: 0, yPercent: 110 },
+				{ autoAlpha: 1, yPercent: 0, duration: 0.9, stagger: 0.1 },
 			)
 				.fromTo(
-					"[data-h='line']",
-					{ autoAlpha: 0, yPercent: 118 },
-					{ autoAlpha: 1, yPercent: 0, duration: 1, stagger: 0.12 },
-					"-=0.3",
-				)
-				.fromTo(
-					"[data-h='sub']",
-					{ autoAlpha: 0, y: 18 },
-					{ autoAlpha: 1, y: 0, duration: 0.8 },
-					"-=0.55",
-				)
-				.fromTo(
-					"[data-h='cta']",
-					{ autoAlpha: 0, y: 18 },
-					{ autoAlpha: 1, y: 0, duration: 0.7 },
-					"-=0.6",
+					"[data-h='fade']",
+					{ autoAlpha: 0, y: 14 },
+					{ autoAlpha: 1, y: 0, duration: 0.7, stagger: 0.08 },
+					"-=0.5",
 				)
 				.fromTo(
 					"[data-h='card']",
-					{ autoAlpha: 0, y: 44, scale: 0.97 },
-					{ autoAlpha: 1, y: 0, scale: 1, duration: 1.1 },
-					"-=0.65",
+					{ autoAlpha: 0, y: 48 },
+					{ autoAlpha: 1, y: 0, duration: 1.1 },
+					"-=0.6",
 				);
 
-			if (underline && !reduced) {
-				tl.to(
-					underline,
+			// The window starts leaning back and settles flat as you scroll in.
+			if (!reduced && stage.current) {
+				gsap.fromTo(
+					stage.current,
+					{ rotateX: 16, scale: 0.94 },
 					{
-						strokeDashoffset: 0,
-						duration: 0.75,
-						ease: "power2.inOut",
-						onComplete: () => {
-							gsap.set(underline, {
-								strokeDasharray: "none",
-								strokeDashoffset: 0,
-							});
+						rotateX: 0,
+						scale: 1,
+						ease: "none",
+						scrollTrigger: {
+							trigger: stage.current,
+							start: "top 92%",
+							end: "top 22%",
+							scrub: 0.6,
 						},
 					},
-					"-=0.8",
 				);
 			}
-
-			gsap.to(card.current, {
-				yPercent: -6,
-				ease: "none",
-				scrollTrigger: {
-					trigger: root.current,
-					start: "top top",
-					end: "bottom top",
-					scrub: true,
-				},
-			});
 		},
 		{ scope: root },
 	);
@@ -96,7 +70,7 @@ export function HeroSection() {
 	return (
 		<section
 			ref={root}
-			className="bg-noise relative overflow-hidden pt-28 pb-16 sm:pt-36 lg:pt-44 lg:pb-24"
+			className="relative overflow-hidden pt-28 sm:pt-36 lg:pt-36"
 		>
 			<div
 				aria-hidden
@@ -104,59 +78,31 @@ export function HeroSection() {
 			/>
 
 			<div className="relative mx-auto max-w-6xl px-5 lg:px-8">
-				<div className="mx-auto max-w-3xl text-center">
-					<p
-						data-h="eyebrow"
-						data-anim
-						className="eyebrow inline-flex items-center gap-2"
-					>
-						<span className="size-1.5 rounded-full bg-brand" />
-						Never start over
-					</p>
-
-					<h1 className="font-display tracking-tightest mt-6 text-[2.75rem] leading-[1.02] sm:text-6xl lg:text-[4.75rem]">
-						<span className="block overflow-hidden pb-[0.05em]">
+				<div className="mx-auto max-w-4xl text-center">
+					<h1 className="font-display tracking-tightest text-[2.9rem] leading-[1] sm:text-7xl lg:text-[5.5rem]">
+						<span className="block overflow-hidden pb-[0.06em]">
 							<span data-h="line" data-anim className="block">
-								Hit your <span className="text-brand">AI limit?</span>
+								Hit your AI limit?
 							</span>
 						</span>
-						<span className="block overflow-hidden pb-[0.28em]">
-							<span data-h="line" data-anim className="block">
-								<span className="relative inline-block whitespace-nowrap">
-									Keep going.
-									<svg
-										aria-hidden="true"
-										viewBox="0 0 200 12"
-										preserveAspectRatio="none"
-										className="pointer-events-none absolute left-0 top-full -mt-[0.08em] h-[0.3em] w-full overflow-visible text-brand"
-									>
-										<path
-											data-h="underline"
-											d="M2 6 C 35 11, 62 1, 99 6 S 166 11, 198 4"
-											fill="none"
-											stroke="currentColor"
-											strokeWidth={3}
-											strokeLinecap="round"
-											vectorEffect="non-scaling-stroke"
-										/>
-									</svg>
-								</span>
+						<span className="block overflow-hidden pb-[0.14em]">
+							<span data-h="line" data-anim className="block text-brand">
+								Keep going.
 							</span>
 						</span>
 					</h1>
 
 					<p
-						data-h="sub"
+						data-h="fade"
 						data-anim
-						className="mx-auto mt-7 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl"
+						className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted-foreground sm:text-xl"
 					>
-						Out of messages on Claude or ChatGPT in the middle of something?
-						Bring the chat to Kontinue and pick up right where you left off, with
-						all the context, on the model you choose.
+						Bring any chat from ChatGPT, Claude or Gemini into Kontinue and pick
+						up where you left off, on the model you choose.
 					</p>
 
 					<div
-						data-h="cta"
+						data-h="fade"
 						data-anim
 						className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
 					>
@@ -180,7 +126,7 @@ export function HeroSection() {
 								track("hero_import_demo_clicked", {
 									location: "homepage_hero",
 								});
-								scrollToTarget("#import-conversations");
+								scrollToTarget("#how-it-works");
 							}}
 						>
 							<ArrowDown className="size-4" />
@@ -188,31 +134,88 @@ export function HeroSection() {
 						</Button>
 					</div>
 
-					<ul className="mx-auto mt-9 grid max-w-2xl justify-items-center gap-3 text-center text-sm text-muted-foreground sm:grid-cols-2">
-						{[
-							"Bring chats from ChatGPT, Claude and Gemini",
-							"Your full context comes with it",
-							"Keep going on any leading model",
-							"Start free with K-AI 1.0",
-						].map((point) => (
-							<li
-								key={point}
-								className="flex items-center justify-center gap-2"
-							>
-								<Check className="size-4 shrink-0 text-brand" />
-								{point}
-							</li>
-						))}
-					</ul>
+					<p
+						data-h="fade"
+						data-anim
+						className="mt-6 text-sm text-muted-foreground"
+					>
+						Free to start. On the web today,{" "}
+						<a
+							href="#apps"
+							className="font-medium text-foreground underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-foreground"
+						>
+							desktop and mobile coming soon
+						</a>
+						.
+					</p>
 				</div>
 
+				{/* Product stage */}
 				<div
-					ref={card}
 					data-h="card"
 					data-anim
-					className="mx-auto mt-16 max-w-xl sm:mt-20"
+					className="relative mx-auto mt-14 max-w-5xl sm:mt-16"
+					style={{ perspective: "2200px" }}
 				>
-					<HeroWorkspace />
+					<div
+						aria-hidden
+						className="bloom pointer-events-none absolute inset-x-[8%] top-[18%] bottom-[-6%] opacity-60"
+					/>
+					<div
+						ref={stage}
+						className="glow-rail card-shadow rounded-[1.25rem]"
+						style={{ transformOrigin: "50% 100%" }}
+					>
+						<div className="aspect-[1920/1200] overflow-hidden rounded-[inherit] bg-foreground">
+							<video
+								aria-label="Kontinue AI conversation import demo"
+								autoPlay
+								className="block size-full object-cover"
+								disablePictureInPicture
+								disableRemotePlayback
+								loop
+								muted
+								playsInline
+								poster={DEMO_POSTER}
+								preload="auto"
+								src={DEMO_SRC}
+								width={1920}
+								height={1200}
+							>
+								<track kind="captions" />
+							</video>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div className="relative mx-auto mt-16 max-w-6xl px-5 lg:mt-20 lg:px-8">
+				<div className="flex flex-col items-center gap-x-10 gap-y-5 border-t border-border py-8 xl:flex-row xl:justify-between">
+					<p className="shrink-0 text-sm text-muted-foreground">
+						Continue on K-AI 1.0 or models from
+					</p>
+					<ul
+						aria-label="Supported AI model providers"
+						className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4"
+					>
+						{modelLogos
+							.filter((model) => model.name !== "K-AI 1.0")
+							.map((model) => (
+								<li
+									key={model.name}
+									className="flex items-center gap-2 text-sm font-medium text-muted-foreground"
+								>
+									<Image
+										src={model.src}
+										alt=""
+										width={20}
+										height={20}
+										className="size-5 object-contain opacity-70 grayscale"
+									/>
+									{model.name}
+								</li>
+							))}
+					</ul>
 				</div>
 			</div>
 		</section>

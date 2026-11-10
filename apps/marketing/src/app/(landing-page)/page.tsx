@@ -1,16 +1,13 @@
-import { DemoVideo } from "@/components/sections/DemoVideo";
+import type { Metadata } from "next";
+import { JsonLd } from "@/components/marketing/JsonLd";
+import { AppsSection } from "@/components/sections/AppsSection";
 import { FAQSection } from "@/components/sections/FAQSection";
 import { FeaturesSection } from "@/components/sections/FeaturesSection";
 import { FinalCTA } from "@/components/sections/FinalCTA";
 import { HeroSection } from "@/components/sections/HeroSection";
-import { ImportSection } from "@/components/sections/ImportSection";
-import { ModelStrip } from "@/components/sections/ModelStrip";
+import { HowItWorksSection } from "@/components/sections/HowItWorksSection";
 import { PricingSection } from "@/components/sections/PricingSection";
-import { ProblemSection } from "@/components/sections/ProblemSection";
-import { ProductDefinitionSection } from "@/components/sections/ProductDefinitionSection";
-import { UseCasesSection } from "@/components/sections/UseCasesSection";
 import { pricingTiers } from "@/data/pricing";
-import { marketingScenarios } from "@/data/useCases";
 import { pageMetadata } from "@/lib/metadata";
 import { softwareSchema } from "@/lib/structured-data";
 
@@ -26,19 +23,12 @@ export default function Home() {
 		<>
 			<JsonLd data={softwareSchema} />
 			<HeroSection />
-			<ProblemSection />
-			<ImportSection />
-			<DemoVideo />
-			<ModelStrip />
-			<ProductDefinitionSection />
+			<HowItWorksSection />
 			<FeaturesSection />
-			<UseCasesSection items={marketingScenarios} />
+			<AppsSection />
 			<PricingSection tiers={pricingTiers} />
 			<FAQSection />
 			<FinalCTA />
 		</>
 	);
 }
-
-import type { Metadata } from "next";
-import { JsonLd } from "@/components/marketing/JsonLd";
