@@ -1,0 +1,21 @@
+# Builds the Windows installer and adds it to the draft release for the version
+# in apps/desktop/src-tauri/tauri.conf.json. Run it from the Actions tab.
+name: Desktop release Windows
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-release-windows
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ./.github/workflows/_desktop.yml
+    with:
+      platform: windows
+      release: true
+    secrets: inherit
