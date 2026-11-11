@@ -1,0 +1,28 @@
+# Checks the desktop app still compiles on Linux. Uploads nothing.
+name: Desktop build Linux
+
+on:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - packages/ai/**
+      - packages/backend/convex/**
+      - bun.lock
+      - .github/workflows/_desktop.yml
+      - .github/workflows/desktop-build-linux.yml
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-build-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/_desktop.yml
+    with:
+      platform: linux
+      release: false
+    secrets: inherit

@@ -1,62 +1,45 @@
-# Builds the Kontinue AI desktop app for macOS (universal: Apple silicon and
-# Intel), Windows and Linux, and puts it on a draft GitHub Release with the
-# auto-update file (latest.json). Publishing the draft is what ships it: the
-# app checks .../releases/latest/download/latest.json.
+# Shared steps for the Kontinue AI desktop app, used by:
+#   desktop-build-{macos,windows,linux}.yml    compile check on PRs, uploads nothing
+#   desktop-release-{macos,windows,linux}.yml  build and add to the draft release
 #
-# Release: bump "version" in apps/desktop/src-tauri/tauri.conf.json, then push
-# a tag `desktop-v<version>` (or run this workflow from the Actions tab).
+# Each platform runs on its own, so one failing never blocks the others. All
+# release runs for the same version (apps/desktop/src-tauri/tauri.conf.json)
+# go into one draft release, "Kontinue AI <version>", and add their platform to
+# its latest.json. Publishing the draft (Releases → Edit → Publish release) is
+# what ships it; installed apps check .../releases/latest/download/latest.json.
 #
-# Secrets (Settings → Secrets and variables → Actions):
-#   TAURI_SIGNING_PRIVATE_KEY           update signing key (~/.tauri/kontinue-ai.key)
-#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  its password (empty)
-#   Optional, macOS signing and notarization (without them macOS warns the
-#   app is from an unidentified developer):
-#   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
-#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
-# Variables (public values baked into the app):
-#   VITE_CLERK_PUBLISHABLE_KEY, VITE_CONVEX_URL, VITE_WEB_APP_URL
+# Secrets: TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD, empty). Optional macOS
+# signing: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
+# APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID.
+# Variables: VITE_CLERK_PUBLISHABLE_KEY, VITE_CONVEX_URL, VITE_WEB_APP_URL.
 
-name: Desktop release
+name: Desktop (shared)
 
 on:
-  push:
-    tags: ["desktop-v*"]
-  workflow_dispatch:
-
-concurrency:
-  group: desktop-release-${{ github.ref }}
-  cancel-in-progress: false
-
-permissions:
-  contents: write
+  workflow_call:
+    inputs:
+      platform:
+        description: macos, windows or linux
+        required: true
+        type: string
+      release:
+        description: Build installers and add them to the draft release
+        required: true
+        type: boolean
 
 jobs:
-  build:
-    name: ${{ matrix.name }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS (universal)
-            os: macos-latest
-            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
-            args: --target universal-apple-darwin
-          - name: Windows
-            os: windows-latest
-            rust-targets: ""
-            args: ""
-          - name: Linux
-            os: ubuntu-22.04
-            rust-targets: ""
-            args: ""
-    runs-on: ${{ matrix.os }}
+  desktop:
+    name: ${{ inputs.release && 'Release' || 'Build' }} ${{ inputs.platform }}
+    runs-on: ${{ inputs.platform == 'macos' && 'macos-latest' || inputs.platform == 'windows' && 'windows-latest' || 'ubuntu-22.04' }}
     timeout-minutes: 90
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Linux system libraries
-        if: runner.os == 'Linux'
+        if: inputs.platform == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libdbus-1-dev pkg-config
@@ -65,14 +48,16 @@ jobs:
         with:
           bun-version: 1.3.5
 
+      # Releases ship one macOS app for Apple silicon and Intel; checks build
+      # only for the runner's own chip to stay quick.
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.rust-targets }}
+          targets: ${{ inputs.platform == 'macos' && inputs.release && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
-          key: ${{ matrix.os }}
+          key: ${{ inputs.platform }}-${{ inputs.release && 'release' || 'check' }}
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -89,10 +74,15 @@ jobs:
             echo "$name=${!name}" >> apps/desktop/.env.production
           done
 
+      - name: Build check
+        if: ${{ !inputs.release }}
+        working-directory: apps/desktop
+        run: bun run tauri build --no-bundle
+
       # Tauri signs (and notarizes) whenever these are set, even to "", so
       # only pass the ones that exist.
       - name: macOS signing
-        if: runner.os == 'macOS'
+        if: inputs.release && inputs.platform == 'macos'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -115,7 +105,8 @@ jobs:
             done
           fi
 
-      - name: Build and upload
+      - name: Build and add to the draft release
+        if: inputs.release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -124,7 +115,7 @@ jobs:
         with:
           projectPath: apps/desktop
           tauriScript: bun run tauri
-          args: ${{ matrix.args }}
+          args: ${{ inputs.platform == 'macos' && '--target universal-apple-darwin' || '' }}
           tagName: desktop-v__VERSION__
           releaseName: Kontinue AI __VERSION__
           releaseBody: Download the installer for your computer below. Installed copies update themselves.
