@@ -1,0 +1,28 @@
+# Checks the desktop app still compiles on Windows. Uploads nothing.
+name: Desktop build Windows
+
+on:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - packages/ai/**
+      - packages/backend/convex/**
+      - bun.lock
+      - .github/workflows/_desktop.yml
+      - .github/workflows/desktop-build-windows.yml
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-build-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/_desktop.yml
+    with:
+      platform: windows
+      release: false
+    secrets: inherit

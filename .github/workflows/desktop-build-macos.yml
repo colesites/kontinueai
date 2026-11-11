@@ -1,0 +1,28 @@
+# Checks the desktop app still compiles on macOS. Uploads nothing.
+name: Desktop build macOS
+
+on:
+  pull_request:
+    paths:
+      - apps/desktop/**
+      - packages/ai/**
+      - packages/backend/convex/**
+      - bun.lock
+      - .github/workflows/_desktop.yml
+      - .github/workflows/desktop-build-macos.yml
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-build-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/_desktop.yml
+    with:
+      platform: macos
+      release: false
+    secrets: inherit

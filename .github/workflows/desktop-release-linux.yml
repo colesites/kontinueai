@@ -1,0 +1,21 @@
+# Builds the Linux installer and adds it to the draft release for the version
+# in apps/desktop/src-tauri/tauri.conf.json. Run it from the Actions tab.
+name: Desktop release Linux
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: desktop-release-linux
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    uses: ./.github/workflows/_desktop.yml
+    with:
+      platform: linux
+      release: true
+    secrets: inherit
