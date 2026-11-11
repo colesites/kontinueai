@@ -3,7 +3,7 @@ import { product } from "@/data/product";
 
 export const SITE_URL = product.company.website;
 export const APP_URL = product.company.appUrl;
-export const DEFAULT_OG_IMAGE = "/og.png?v=4";
+export const DEFAULT_OG_IMAGE = "/og.png?v=5";
 export const OG_IMAGE_WIDTH = 1200;
 export const OG_IMAGE_HEIGHT = 630;
 

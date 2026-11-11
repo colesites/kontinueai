@@ -226,23 +226,6 @@
 		background-size: 100% 1.5px;
 	}
 
-	/* Marquee for the model strip */
-	@keyframes marquee {
-		from {
-			transform: translateX(0);
-		}
-		to {
-			transform: translateX(-50%);
-		}
-	}
-	.marquee-track {
-		animation: marquee 42s linear infinite;
-		will-change: transform;
-	}
-	.marquee:hover .marquee-track {
-		animation-play-state: paused;
-	}
-
 	.hover-lift {
 		transition:
 			transform 0.32s cubic-bezier(0.4, 0, 0.2, 1),
@@ -286,11 +269,6 @@
 	opacity: 0;
 }
 
-/* Rotating word: only the first option shows until GSAP takes over. */
-[data-rotate] [data-word]:not(:first-child) {
-	opacity: 0;
-}
-
 @media (prefers-reduced-motion: reduce) {
 	html {
 		scroll-behavior: auto;
@@ -299,7 +277,95 @@
 		opacity: 1 !important;
 		transform: none !important;
 	}
-	.marquee-track {
-		animation: none !important;
+}
+
+/* =========================================================================
+   Signature motion: the "live wire" edge glow shared with the web app,
+   a local dark surface, and small keyframes for the product visuals.
+   ========================================================================= */
+/* The comet is one rotating layer clipped to a 1.5px border, so it runs on
+   the compositor with no per-frame repaint. Put the element's own background
+   on a child with rounded-[inherit]. */
+.glow-rail {
+	position: relative;
+	isolation: isolate;
+	overflow: hidden;
+	padding: 1.5px;
+	background: color-mix(in oklch, var(--brand) 22%, var(--border-strong));
+}
+.glow-rail::before {
+	content: "";
+	position: absolute;
+	z-index: -1;
+	left: 50%;
+	top: 50%;
+	width: 150%;
+	aspect-ratio: 1;
+	translate: -50% -50%;
+	background: conic-gradient(
+		transparent 0 62%,
+		var(--brand) 82%,
+		oklch(0.86 0.12 295) 92%,
+		transparent 100%
+	);
+	animation: glow-spin 7s linear infinite;
+	will-change: rotate;
+}
+@keyframes glow-spin {
+	to {
+		rotate: 360deg;
+	}
+}
+
+/* Local dark theme: remaps the tokens so every utility works unchanged. */
+.surface-dark {
+	--background: oklch(0.155 0.008 285);
+	--foreground: oklch(0.97 0.003 95);
+	--card: oklch(0.2 0.01 285);
+	--card-foreground: oklch(0.97 0.003 95);
+	--primary: oklch(0.97 0.003 95);
+	--primary-foreground: oklch(0.19 0.006 60);
+	--secondary: oklch(0.245 0.011 285);
+	--secondary-foreground: oklch(0.97 0.003 95);
+	--muted: oklch(0.245 0.011 285);
+	--muted-foreground: oklch(0.72 0.012 285);
+	--accent: oklch(0.275 0.012 285);
+	--accent-foreground: oklch(0.97 0.003 95);
+	--brand-strong: oklch(0.8 0.14 295);
+	--brand-tint: oklch(0.53 0.245 295 / 0.2);
+	--border: oklch(1 0 0 / 0.1);
+	--border-strong: oklch(1 0 0 / 0.18);
+	--input: oklch(1 0 0 / 0.14);
+	background: var(--background);
+	color: var(--foreground);
+}
+
+/* Soft brand bloom placed behind showcase elements. */
+.bloom {
+	background: radial-gradient(
+		ellipse at center,
+		color-mix(in oklch, var(--brand) 55%, transparent) 0%,
+		transparent 70%
+	);
+}
+
+@keyframes wave {
+	0%,
+	100% {
+		transform: scaleY(0.25);
+	}
+	50% {
+		transform: scaleY(1);
+	}
+}
+.animate-wave {
+	transform-origin: center;
+	animation: wave 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.glow-rail::before,
+	.animate-wave {
+		animation: none;
 	}
 }

@@ -6,7 +6,6 @@ import {
 	Hanken_Grotesk,
 	JetBrains_Mono,
 } from "next/font/google";
-import { BottomBlur } from "@/components/BottomBlur";
 import { JsonLd } from "@/components/marketing/JsonLd";
 import { SmoothScroll } from "@/components/SmoothScroll";
 import { product } from "@/data/product";
@@ -140,7 +139,6 @@ export default function RootLayout({
 				<JsonLd data={organizationSchema} />
 				<JsonLd data={websiteSchema} />
 				<SmoothScroll>{children}</SmoothScroll>
-				<BottomBlur />
 				<Analytics />
 			</body>
 		</html>
