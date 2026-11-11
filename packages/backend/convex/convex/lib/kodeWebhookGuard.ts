@@ -35,7 +35,8 @@ export function safeEqual(a: string, b: string): boolean {
 
 export async function hmacSha256Hex(secret: string, body: Uint8Array): Promise<string> {
 	const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-	return toHex(await crypto.subtle.sign("HMAC", key, body));
+	// Copy into a plain ArrayBuffer: Web Crypto's types reject views that may sit on a SharedArrayBuffer.
+	return toHex(await crypto.subtle.sign("HMAC", key, new Uint8Array(body)));
 }
 
 export async function checkSignature(
