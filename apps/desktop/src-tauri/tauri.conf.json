@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Kontinue AI",
   "version": "0.1.0",
-  "identifier": "com.admin.kode-ide",
+  "identifier": "ai.kontinue.desktop",
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
@@ -38,6 +38,15 @@
           "kontinueai"
         ]
       }
+    },
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFCM0I0OEU3Q0RCRDEzNkYKUldSdkU3M041MGc3cTFFYVBZWlp6NlNlVUE3bDdZQ3EzLzZ4U05GazJBaUtzSUxDbmdGY21Ga3UK",
+      "endpoints": [
+        "https://github.com/colesites/kontinueai/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {
@@ -52,6 +61,7 @@
     ],
     "macOS": {
       "entitlements": "./Entitlements.plist"
-    }
+    },
+    "createUpdaterArtifacts": true
   }
 }

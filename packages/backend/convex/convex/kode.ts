@@ -458,6 +458,44 @@ export const addMessage = mutation({
 	},
 });
 
+/** Most messages one page of a chat's history can hold. */
+const MAX_RECENT_MESSAGES = 500;
+
+/**
+ * The newest `limit` messages of a chat (oldest first) and whether there are
+ * older ones. The chat view loads history a page at a time instead of every
+ * message at once; the full history (getMessages) is only read when a turn
+ * needs it for the model.
+ */
+export const getRecentMessages = query({
+	args: { chatId: v.id("kodeChats"), limit: v.number() },
+	handler: async (ctx, args) => {
+		const empty = { messages: [], hasMore: false };
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return empty;
+
+		const chat = await ctx.db.get(args.chatId);
+		if (!chat) return empty;
+
+		const user = await ctx.db
+			.query("users")
+			.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", identity.subject))
+			.unique();
+		if (!user || chat.ownerId !== user._id) return empty;
+
+		const limit = Math.max(1, Math.min(Math.floor(args.limit), MAX_RECENT_MESSAGES));
+		const newestFirst = await ctx.db
+			.query("kodeMessages")
+			.withIndex("by_chat_order", (q) => q.eq("chatId", args.chatId))
+			.order("desc")
+			.take(limit + 1);
+		return {
+			messages: newestFirst.slice(0, limit).reverse(),
+			hasMore: newestFirst.length > limit,
+		};
+	},
+});
+
 /**
  * Delete every message in a chat created at or after the given message. Used by
  * the IDE "rewind / redo turn" flow (inclusive = drop the message too).

@@ -98,11 +98,11 @@ export function useImportContext(
   return context;
 }
 
-type Persisted = { role: string; content: string }[] | undefined;
+type Persisted = { role: string; content: string }[];
 
 export function ImportedChatBar({
   context,
-  persisted,
+  loadPersisted,
   syncing,
   error,
   onSync,
@@ -110,7 +110,8 @@ export function ImportedChatBar({
   className,
 }: {
   context: StoredImportContext;
-  persisted: Persisted;
+  /** Every saved turn of the chat (the view only loads the newest page). */
+  loadPersisted: () => Promise<Persisted>;
   syncing: boolean;
   error: string | null;
   onSync: () => void;
@@ -123,11 +124,13 @@ export function ImportedChatBar({
   const [notice, setNotice] = useState<string | null>(null);
 
   // Migrate imports made before sync fingerprints, from the chat's own turns.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs per context, not per history page
   useEffect(() => {
-    if (!persisted || context.version === 2 || !context.sourcePath) return;
+    if (context.version === 2 || !context.sourcePath) return;
     let cancelled = false;
     void (async () => {
       try {
+        const persisted = await loadPersisted();
         const session = await readCodingSession(context.provider as never, context.sourcePath!);
         if (cancelled) return;
         const migrated = migrateImportContext(context, session, persisted);
@@ -146,7 +149,7 @@ export function ImportedChatBar({
     return () => {
       cancelled = true;
     };
-  }, [context, persisted]);
+  }, [context]);
 
   const update = (next: StoredImportContext) => saveImportContext(next);
 
@@ -161,14 +164,14 @@ export function ImportedChatBar({
           return;
         }
         if (action === "after_kode_turns") {
-          const next = resolveConflict(context, action, { chatMessageCount: persisted?.length });
+          const next = resolveConflict(context, action, { chatMessageCount: (await loadPersisted()).length });
           update(next);
           await syncImportContext(next, deps);
           return;
         }
         const session = await readCodingSession(context.provider as never, context.sourcePath!);
         if (action === "reanchor") {
-          update(resolveConflict(context, action, { session, chatMessageCount: persisted?.length }));
+          update(resolveConflict(context, action, { session, chatMessageCount: (await loadPersisted()).length }));
           setNotice("Sync point moved. New turns from now on will sync.");
           return;
         }
@@ -188,7 +191,7 @@ export function ImportedChatBar({
         setBusy(null);
       }
     },
-    [context, deps, ensureFolder, importKodeSession, persisted?.length, selectChat],
+    [context, deps, ensureFolder, importKodeSession, loadPersisted, selectChat],
   );
 
   const summarize = async () => {
@@ -210,7 +213,7 @@ export function ImportedChatBar({
   };
 
   const exportChat = async (format: "md" | "json") => {
-    const turns = (persisted ?? []).map((m) => ({ role: m.role, content: stripImportDecorations(m.content) }));
+    const turns = (await loadPersisted()).map((m) => ({ role: m.role, content: stripImportDecorations(m.content) }));
     const safe = chatTitle.replace(/[^\w.-]+/g, "-").slice(0, 60) || "chat";
     const path = await save({ defaultPath: `${safe}.${format}`, filters: [{ name: format.toUpperCase(), extensions: [format] }] });
     if (!path) return;
@@ -229,11 +232,11 @@ export function ImportedChatBar({
   };
 
   const conflict = context.conflict;
-  const pill = "flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] text-foreground/50 transition-colors hover:bg-black/[0.05] hover:text-foreground/80 disabled:cursor-default disabled:opacity-50 dark:hover:bg-white/[0.06]";
+  const pill = "flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-caption text-foreground/50 transition-colors kontinue-hover hover:text-foreground/80 disabled:cursor-default disabled:opacity-50";
 
   return (
     <div className={cn("mx-auto mb-2 w-[min(48rem,calc(100%-3rem))] space-y-1.5", className)}>
-      <div className="flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/[0.06] px-3 py-1.5 text-[11px] text-foreground/60">
+      <div className="flex items-center gap-2 rounded-full border border-purple-500/20 bg-purple-500/[0.06] px-3 py-1.5 text-caption text-foreground/60">
         <img src={providerIcon(context.provider)} alt="" className="size-3.5 shrink-0 invert dark:invert-0" />
         <span className="min-w-0 truncate">
           Imported from <span className="font-medium text-foreground/80">{providerLabel(context.provider)}</span>
@@ -292,7 +295,7 @@ export function ImportedChatBar({
       </div>
 
       {conflict ? (
-        <div className="kontinue-3d flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2 text-[11.5px]">
+        <div className="kontinue-3d flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2 text-label">
           <AlertTriangle className="size-3.5 shrink-0 text-amber-500" />
           <span className="min-w-0 flex-1 text-foreground/75">
             <span className="font-medium text-foreground">Sync paused.</span> {conflict.message}
@@ -312,14 +315,14 @@ export function ImportedChatBar({
         </div>
       ) : null}
 
-      {error || notice ? <p className={cn("px-3 text-[10.5px]", error ? "text-amber-500" : "text-muted-foreground")}>{error ?? notice}</p> : null}
+      {error || notice ? <p className={cn("px-3 text-caption", error ? "text-amber-500" : "text-muted-foreground")}>{error ?? notice}</p> : null}
     </div>
   );
 }
 
 function ConflictButton({ busy, onClick, icon, children }: { busy: boolean; onClick: () => void; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} disabled={busy} className="kontinue-3d flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11px] text-foreground/80 hover:text-foreground disabled:cursor-default disabled:opacity-60">
+    <button type="button" onClick={onClick} disabled={busy} className="kontinue-3d flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-caption text-foreground/80 hover:text-foreground disabled:cursor-default disabled:opacity-60">
       {busy ? <Loader2 className="size-3 animate-spin" /> : icon}
       {children}
     </button>

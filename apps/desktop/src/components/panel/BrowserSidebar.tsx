@@ -65,10 +65,10 @@ export function BrowserSidebar({
               <div
                 key={tab.id}
                 className={cn(
-                  "flex h-7 min-w-0 max-w-[9.5rem] shrink-0 items-center rounded-md border pl-2 pr-0.5 text-[12px]",
+                  "flex h-7 min-w-0 max-w-[9.5rem] shrink-0 items-center rounded-md border pl-2 pr-0.5 text-label",
                   selected
                     ? "border-black/10 bg-black/[0.05] text-foreground dark:border-white/15 dark:bg-white/[0.08]"
-                    : "border-transparent text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+                    : "border-transparent text-muted-foreground kontinue-hover hover:text-foreground",
                 )}
               >
                 <button
@@ -96,7 +96,7 @@ export function BrowserSidebar({
           aria-label="New tab"
           title="New tab"
           onClick={addTab}
-          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground kontinue-hover hover:text-foreground"
         >
           <Plus size={14} />
         </button>

@@ -9,6 +9,7 @@
 // conflict or comment reaches the chat once, across restarts.
 
 import { useSyncExternalStore } from "react";
+import { getSettings } from "./app-settings";
 import type { ChecksSummary, PrComment, PullRequest } from "./kode-prs";
 import { failingCheckNames, summarizeChecks } from "./kode-prs";
 
@@ -24,6 +25,10 @@ export type PrWatch = {
   base?: string;
   checks?: ChecksSummary;
   conflicting?: boolean;
+  isDraft?: boolean;
+  reviewDecision?: PullRequest["reviewDecision"];
+  /** GitHub's own verdict ("CLEAN", "BLOCKED", "BEHIND", …). */
+  mergeStateStatus?: string;
   /** Failing checks already sent to the chat (sorted, joined). */
   reportedFailing?: string;
   reportedConflict?: boolean;
@@ -84,12 +89,22 @@ export const getChatModel = (chatId: string) => store.chatModels[chatId];
 
 export function updatePrWatch(url: string, chatId: string, patch: Partial<PrWatch>) {
   const key = url.toLowerCase();
-  const current = store.watches[key] ?? { url: key, chatId, autoFix: false };
+  const current = store.watches[key] ?? { url: key, chatId, autoFix: getSettings().prAutoFixDefault };
   commit({ ...store, watches: { ...store.watches, [key]: { ...current, ...patch, url: key } } });
 }
 
 export function setPrAutoFix(url: string, chatId: string, autoFix: boolean) {
   updatePrWatch(url, chatId, { autoFix });
+}
+
+/** Forget merged and closed PRs (Settings → Storage). Returns how many. */
+export function clearFinishedPrWatches(): number {
+  const keep = Object.fromEntries(
+    Object.entries(store.watches).filter(([, w]) => w.state !== "MERGED" && w.state !== "CLOSED"),
+  );
+  const removed = Object.keys(store.watches).length - Object.keys(keep).length;
+  if (removed) commit({ ...store, watches: keep });
+  return removed;
 }
 
 export function rememberChatModel(chatId: string, modelId: string) {
@@ -132,6 +147,9 @@ export function diffPr(
     base: pr.baseRefName,
     checks: summarizeChecks(pr.statusCheckRollup),
     conflicting: pr.mergeable === "CONFLICTING",
+    isDraft: pr.isDraft,
+    reviewDecision: pr.reviewDecision,
+    mergeStateStatus: pr.mergeStateStatus,
     lastCheckedAt: now,
     lastError: undefined,
   };
@@ -241,4 +259,65 @@ export function prEventPrompt(
     "When done: commit with a clear message and push to the PR branch (never force-push). Then reply with what you changed, or what you couldn't fix and why.",
   );
   return lines.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Where a watched PR stands (the bar above the chat and the sidebar icon)
+// ---------------------------------------------------------------------------
+
+export type PrStage =
+  | "checking"
+  | "ready"
+  | "open"
+  | "running"
+  | "review"
+  | "draft"
+  | "failing"
+  | "conflict"
+  | "changes"
+  | "merged"
+  | "closed";
+
+export type PrStanding = {
+  stage: PrStage;
+  label: string;
+  tone: "good" | "wait" | "bad" | "muted" | "merged";
+  /** Offer Merge. False when GitHub would refuse or there is nothing to merge. */
+  canMerge: boolean;
+};
+
+export function prStanding(watch: PrWatch | undefined): PrStanding {
+  const of = (stage: PrStage, label: string, tone: PrStanding["tone"], canMerge = false): PrStanding => ({
+    stage,
+    label,
+    tone,
+    canMerge,
+  });
+  if (!watch?.state) return of("checking", "Checking…", "muted");
+  if (watch.state === "MERGED") return of("merged", "Merged", "merged");
+  if (watch.state === "CLOSED") return of("closed", "Closed", "muted");
+  if (watch.isDraft) return of("draft", "Draft", "muted");
+  if (watch.conflicting) return of("conflict", "Merge conflict", "bad");
+  const checks = watch.checks;
+  // Failing checks can still be merged on purpose (they may not be required).
+  if (checks?.failed) return of("failing", `${checks.failed} check${checks.failed === 1 ? "" : "s"} failing`, "bad", true);
+  if (watch.reviewDecision === "CHANGES_REQUESTED") return of("changes", "Changes requested", "bad");
+  if (checks?.pending) return of("running", "Checks running", "wait", true);
+  if (watch.reviewDecision === "REVIEW_REQUIRED") return of("review", "Needs review", "wait");
+  if (watch.mergeStateStatus === "BLOCKED") return of("review", "Blocked by branch rules", "wait");
+  if (checks?.total) return of("ready", "Ready to merge", "good", true);
+  return of("open", "Open", "good", true);
+}
+
+/** The PR a chat should show: one needing work first, then mergeable, open, merged. */
+export function pickChatPr(watches: (PrWatch | undefined)[]): PrWatch | undefined {
+  const rank = (watch: PrWatch | undefined) => {
+    const { tone, stage } = prStanding(watch);
+    if (tone === "bad") return 0;
+    if (stage === "ready") return 1;
+    if (tone === "wait" || tone === "good") return 2;
+    if (stage === "merged") return 3;
+    return 4;
+  };
+  return [...watches].sort((a, b) => rank(a) - rank(b))[0];
 }

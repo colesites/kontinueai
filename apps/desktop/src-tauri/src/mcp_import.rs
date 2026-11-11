@@ -217,7 +217,7 @@ pub fn discover(home: &Path, project_roots: &[PathBuf]) -> Vec<FoundMcpServer> {
     out
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_mcp_discover(project_roots: Option<Vec<String>>) -> Result<Vec<FoundMcpServer>, String> {
     let home = std::env::var("HOME").map(PathBuf::from).map_err(|_| "No home folder.".to_string())?;
     let roots: Vec<PathBuf> = project_roots

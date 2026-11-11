@@ -27,20 +27,20 @@ export function ToolCardBlock({ card }: { card: ToolCard }) {
   const Icon = toolIcon(card.name);
   const isDiff = !!card.detail && /^(?:---|\+\+\+|\*\*\* )/m.test(card.detail);
   const expandable = Boolean(card.detail || card.output);
-  const box = "mt-1 ml-5 max-h-72 overflow-auto rounded-lg bg-black/[0.04] py-1.5 font-mono text-[11.5px] leading-[1.55] dark:bg-white/[0.05]";
+  const box = "mt-1 ml-5 max-h-72 overflow-auto rounded-lg bg-black/[0.04] py-1.5 font-mono text-label leading-[1.55] dark:bg-white/[0.05]";
   return (
     <div className="my-0.5">
       <button
         type="button"
         onClick={() => expandable && setOpen((v) => !v)}
-        className={cn("flex w-full items-center gap-1.5 text-left text-[12.5px] text-foreground/55", expandable ? "cursor-pointer hover:text-foreground/80" : "cursor-default")}
+        className={cn("flex w-full items-center gap-1.5 text-left text-body text-foreground/55", expandable ? "cursor-pointer hover:text-foreground/80" : "cursor-default")}
       >
         <Icon className="size-3 shrink-0" />
         <span className="shrink-0">{card.name}</span>
-        <span className="min-w-0 truncate font-mono text-[11.5px] text-foreground/45">{card.summary}</span>
-        {card.isError ? <span className="shrink-0 rounded-full bg-red-500/10 px-1.5 text-[10.5px] text-red-500 dark:text-red-400">failed</span> : null}
+        <span className="min-w-0 truncate font-mono text-label text-foreground/45">{card.summary}</span>
+        {card.isError ? <span className="shrink-0 rounded-full bg-red-500/10 px-1.5 text-caption text-red-500 dark:text-red-400">failed</span> : null}
         {card.unknown ? (
-          <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-[10.5px] text-amber-600 dark:text-amber-400" title="The session ended before this call reported back. It may or may not have run.">
+          <span className="shrink-0 rounded-full bg-amber-500/10 px-1.5 text-caption text-amber-600 dark:text-amber-400" title="The session ended before this call reported back. It may or may not have run.">
             no result
           </span>
         ) : null}
@@ -70,7 +70,14 @@ export function ToolCardBlock({ card }: { card: ToolCard }) {
 }
 
 /** A screenshot saved into the project's .kode/attachments by the import. */
-export function ImageBlock({ image }: { image: { path: string; mediaType: string; root?: string | null } }) {
+export function ImageBlock({
+  image,
+  compact = false,
+}: {
+  image: { path: string; mediaType: string; root?: string | null };
+  /** Thumbnail for the attachment row above a user message. */
+  compact?: boolean;
+}) {
   const [src, setSrc] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -88,16 +95,25 @@ export function ImageBlock({ image }: { image: { path: string; mediaType: string
   }, [image.path, image.root, image.mediaType]);
   if (failed) {
     return (
-      <div className="my-2 flex items-center gap-2 rounded-2xl border border-dashed border-black/10 px-3 py-2 text-[11px] text-muted-foreground dark:border-white/10">
+      <div className={(compact ? "" : "my-2 ") + "flex items-center gap-2 rounded-2xl border border-dashed border-black/10 px-3 py-2 text-caption text-muted-foreground dark:border-white/10"}>
         <ImageOff className="size-3.5" /> Screenshot saved on another device ({image.path})
       </div>
     );
   }
   const name = image.path.split("/").pop()?.replace(/^\d+-/, "") || "Image";
   return src ? (
-    <ExpandableImage src={src} alt={name} wrapperClassName="my-2 block" className="max-h-72 rounded-2xl border border-black/[0.07] object-contain dark:border-white/[0.08]" />
+    <ExpandableImage
+      src={src}
+      alt={name}
+      wrapperClassName={compact ? "block" : "my-2 block"}
+      className={
+        compact
+          ? "h-24 max-w-[220px] rounded-[14px] border border-black/[0.07] object-cover dark:border-white/[0.08]"
+          : "max-h-72 rounded-2xl border border-black/[0.07] object-contain dark:border-white/[0.08]"
+      }
+    />
   ) : (
-    <div className="my-2 h-24 w-40 animate-pulse rounded-2xl bg-black/[0.05] dark:bg-white/[0.05]" />
+    <div className={compact ? "h-24 w-36 animate-pulse rounded-[14px] bg-black/[0.05] dark:bg-white/[0.05]" : "my-2 h-24 w-40 animate-pulse rounded-2xl bg-black/[0.05] dark:bg-white/[0.05]"} />
   );
 }
 
@@ -129,7 +145,7 @@ export function ArtifactBlock({ html, title }: { html: string; title: string | n
   }, [id]);
   return (
     <div className="my-3 overflow-hidden rounded-2xl border border-black/[0.07] dark:border-white/[0.08]">
-      <div className="flex items-center gap-2 border-b border-black/[0.06] px-3 py-1.5 text-[11px] text-muted-foreground dark:border-white/[0.06]">
+      <div className="flex items-center gap-2 border-b border-black/[0.06] px-3 py-1.5 text-caption text-muted-foreground dark:border-white/[0.06]">
         <span className="min-w-0 flex-1 truncate font-medium text-foreground/75">{title ?? "Interactive view"}</span>
         <button type="button" onClick={() => setShowCode((v) => !v)} className="cursor-pointer rounded-full p-1 hover:text-foreground" title={showCode ? "Show result" : "Show code"}>
           <Code2 className="size-3.5" />
@@ -139,7 +155,7 @@ export function ArtifactBlock({ html, title }: { html: string; title: string | n
         </button>
       </div>
       {showCode ? (
-        <pre className="max-h-96 overflow-auto px-3 py-2 font-mono text-[11px]">{html}</pre>
+        <pre className="max-h-96 overflow-auto px-3 py-2 font-mono text-caption">{html}</pre>
       ) : (
         <iframe
           title={title ?? "Interactive view"}
@@ -167,7 +183,7 @@ export function SavedStepsBlock({ json }: { json: string }) {
   if (failed) parts.push(`${failed} failed`);
   return (
     <div className="mb-2">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex cursor-pointer items-center gap-1.5 text-[12.5px] text-foreground/50 hover:text-foreground/75">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex cursor-pointer items-center gap-1.5 text-body text-foreground/50 hover:text-foreground/75">
         <ChevronRight size={12} className={cn("shrink-0 transition-transform", open && "rotate-90")} />
         Worked through {parts.join(" · ")}
       </button>
@@ -217,7 +233,7 @@ function CopyButton({ text, className }: { text: string; className?: string }) {
           window.setTimeout(() => setCopied(false), 1400);
         })
       }
-      className={cn("flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground/55 transition-colors hover:bg-black/[0.06] hover:text-foreground dark:hover:bg-white/[0.08]", className)}
+      className={cn("flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md text-foreground/55 transition-colors kontinue-hover hover:text-foreground", className)}
     >
       {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
     </button>
@@ -268,7 +284,7 @@ export function CodeBlockView({ lang, code, complete }: { lang: string; code: st
 
   return (
     <div className="my-3">
-      <div className="group/code relative flex items-start gap-2 rounded-xl border border-[var(--code-border)] bg-[var(--code-bg)] py-2.5 pr-2 pl-4 font-mono text-[12.5px] leading-[1.65]">
+      <div className="group/code relative flex items-start gap-2 rounded-xl border border-[var(--code-border)] bg-[var(--code-bg)] py-2.5 pr-2 pl-4 font-mono text-body leading-[1.65]">
         <div className="min-w-0 flex-1 py-0.5">{body}</div>
         {shell ? (
           // Commands: Run and Copy always visible, like Claude.
@@ -280,7 +296,7 @@ export function CodeBlockView({ lang, code, complete }: { lang: string; code: st
                 title={`Run in ${target?.root.split(/[\\/]/).pop() ?? "the project"}`}
                 onClick={() => void runCommand()}
                 disabled={run?.status === "running"}
-                className="flex size-7 cursor-pointer items-center justify-center rounded-md text-foreground/55 transition-colors hover:bg-black/[0.06] hover:text-foreground disabled:cursor-default dark:hover:bg-white/[0.08]"
+                className="flex size-7 cursor-pointer items-center justify-center rounded-md text-foreground/55 transition-colors kontinue-hover hover:text-foreground disabled:cursor-default"
               >
                 {run?.status === "running" ? <Loader2 className="size-3.5 animate-spin" /> : <Play className="size-3.5" />}
               </button>
@@ -293,12 +309,12 @@ export function CodeBlockView({ lang, code, complete }: { lang: string; code: st
         )}
       </div>
       {run ? (
-        <div className="mt-1.5 rounded-xl border border-[var(--code-border)] bg-[var(--code-bg)] px-4 py-2.5 font-mono text-[12px] leading-[1.6]">
+        <div className="mt-1.5 rounded-xl border border-[var(--code-border)] bg-[var(--code-bg)] px-4 py-2.5 font-mono text-label leading-[1.6]">
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words text-foreground/80">
             <span className="text-foreground/45">$ </span>
             {command}
             {run.status === "running" ? (
-              <span className="mt-1 flex items-center gap-1.5 font-sans text-[11.5px] text-muted-foreground">
+              <span className="mt-1 flex items-center gap-1.5 font-sans text-label text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" /> Running…
               </span>
             ) : run.output ? (
@@ -308,7 +324,7 @@ export function CodeBlockView({ lang, code, complete }: { lang: string; code: st
             )}
           </pre>
           {run.status === "done" ? (
-            <p className={cn("mt-1.5 font-sans text-[11px]", run.ok ? "text-muted-foreground" : "text-red-500 dark:text-red-400")}>
+            <p className={cn("mt-1.5 font-sans text-caption", run.ok ? "text-muted-foreground" : "text-red-500 dark:text-red-400")}>
               {run.ok ? "Finished" : `Failed${run.exitCode !== null ? ` (exit code ${run.exitCode})` : ""}`}
             </p>
           ) : null}

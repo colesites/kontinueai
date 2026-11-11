@@ -104,20 +104,20 @@ pub fn remote_for(root: &str) -> Option<GitRemote> {
     Some(classify(&host, &path, &known_gitlab_hosts()))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_git_remote(root: String) -> Option<GitRemote> {
     remote_for(&root)
 }
 
 /// Whether a token is saved for a host (the token itself never leaves Rust).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_git_host_token_status(host: String) -> bool {
     read_token(&host).is_some()
 }
 
 /// Save (or with an empty value, remove) a host's token. Bitbucket tokens are
 /// "email:api-token"; GitLab tokens are a personal access token.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_git_host_token_set(host: String, kind: String, token: String) -> Result<(), String> {
     let entry = token_entry(&host)?;
     if token.trim().is_empty() {

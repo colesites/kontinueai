@@ -35,7 +35,7 @@ const FloatingSidebarButtonGroup = () => {
             className={iconBtn}
             title="Open sidebar"
           >
-            <PanelLeft size={13.5} strokeWidth={1.25} />
+            <PanelLeft size={15} strokeWidth={1.5} />
           </button>
 
           {/* 2. Search Icon */}
@@ -46,7 +46,7 @@ const FloatingSidebarButtonGroup = () => {
             className={iconBtn}
             title="Search threads"
           >
-            <Search size={13.5} strokeWidth={1.25} />
+            <Search size={15} strokeWidth={1.5} />
           </button>
 
           <span className="mx-0.5 h-3.5 w-px bg-purple-400/30" />
@@ -59,7 +59,7 @@ const FloatingSidebarButtonGroup = () => {
             className={iconBtn}
             title="New chat"
           >
-            <Plus size={13.5} strokeWidth={1.25} />
+            <Plus size={15} strokeWidth={1.5} />
           </button>
         </div>
       </div>

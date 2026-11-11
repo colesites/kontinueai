@@ -1,3 +1,4 @@
+import { trimToolResults } from "./kode-compact";
 import { invoke } from "@tauri-apps/api/core";
 import type { LanguageModelUsage } from "ai";
 import { getSessionToken, type KodeChatMessage, type KodeContentPart, type KodeToolCall, type KodeToolDefinition, sendKodeChat } from "./kode-chat";
@@ -58,6 +59,60 @@ function declineMessage(stepId: string, base: string): string {
   return note ? `${base} They said what to do instead: ${note}` : base;
 }
 
+const RETRY_DELAYS_MS = [1_500, 4_000];
+
+/** A failure worth trying again: the network or the provider hiccuped.
+ *  Usage limits, sign-in problems and bad requests are not. */
+export function isTransientModelError(error: unknown): boolean {
+  const text = String(error instanceof Error ? error.message : error);
+  if (/\[\[limit-reset|\[\[auth-expired|usage limit|limit reached|plan|sign in|unauthori[sz]ed|forbidden|invalid|unknown model/i.test(text)) return false;
+  return /stream interrupted|request failed|error sending request|connection|timed? ?out|overloaded|temporarily|try again|\b(429|500|502|503|504|520|522|524)\b|empty response/i.test(text);
+}
+
+/** Run a model call, retrying temporary failures twice with a short wait. */
+async function withTransientRetry<T>(call: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await call();
+    } catch (error) {
+      const delay = RETRY_DELAYS_MS[attempt];
+      if (delay === undefined || signal?.aborted || !isTransientModelError(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      if (signal?.aborted) throw error;
+    }
+  }
+}
+
+/** Ask before building when the request leaves the big choices open. */
+export const KODE_CLARIFY_PROMPT =
+  "When the request starts something new (a new app, project, site, service or major feature) and leaves choices open that change what you build (framework or stack, styling, data and storage, auth, deployment target, scope), ask first: one ask_options questionnaire with the few questions that matter, each with sensible options and a recommended default. Do this before the checklist and before writing files. Do not ask when the user already made those choices, said to decide for them, or asked for a small or clearly specified change; then just do it.";
+
+/** Told to the model when the permission mode changes during a turn. */
+export function modeChangeNote(mode: KodeAgentMode): string {
+  const what: Partial<Record<KodeAgentMode, string>> = {
+    plan: "Plan mode: read-only. Do not edit files or run commands; finish the plan instead.",
+    supervised: "Supervised: every edit and command now asks the user first.",
+    ask: "Supervised: every edit and command now asks the user first.",
+    auto_edits: "Accept edits: file edits run without asking; commands and deletes still ask.",
+    auto: "Auto: edits and routine commands run without asking; deletes and risky commands ask.",
+    full_access: "Full access: edits and commands run without asking.",
+  };
+  return `(The user changed the permission mode during this turn. ${what[mode] ?? `Mode is now ${mode}.`} Continue the task under it.)`;
+}
+
+/** A cut-off reply is continued at most this many times in a row. */
+const MAX_CONTINUATIONS = 3;
+
+export const CONTINUE_CUT_OFF =
+  "Your last reply was cut off before it finished (it hit the output limit or the connection dropped), so any tool call in it did not run. Continue exactly where you stopped. If you were writing a large file, write it in smaller pieces: create it with the first part, then add the rest with edits.";
+
+/** What to tell the model on its last allowed step: stop, and say what's left. */
+export function stepLimitPrompt(todos: KodeTodo[]): string {
+  const left = todos.filter((todo) => todo.status !== "completed" && todo.status !== "cancelled");
+  const list = left.length ? ` Still open: ${left.map((todo) => `"${todo.title}"`).join(", ")}.` : "";
+  return `You have reached the step limit for this turn, so stop working now and write the closing report: what you did, and what is not done yet.${list} End by telling the user to send "continue" to carry on from there. Do not list tool names.`;
+}
+
 /** Nudge the model to update its checklist after this many tool calls without one. */
 const CHECKLIST_NUDGE_AFTER = 5;
 
@@ -89,6 +144,9 @@ export type RunKodeAgentParams = {
   /** Multimodal content (text + images) for the user turn; overrides userText when set. */
   userContent?: KodeContentPart[];
   mode: KodeAgentMode;
+  /** The permission mode right now. Read before every step, so changing it in
+   *  the picker applies to the turn that is already running. */
+  getMode?: () => KodeAgentMode;
   /** Absolute on-disk path of the active project, or null if none is open. */
   projectRoot: string | null;
   /** The chat this run belongs to (background tasks are listed per chat). */
@@ -120,6 +178,8 @@ export type RunKodeAgentParams = {
   /** Called when the model updates its plan/todo list. */
   onTodos?: (todos: KodeTodo[]) => void;
   maxIterations?: number;
+  /** The chat's context budget in tokens; a long turn is kept inside it. */
+  contextBudget?: number;
   reasoningEnabled?: boolean;
   /** Abort the run between/within steps (the Stop button). */
   signal?: AbortSignal;
@@ -234,7 +294,8 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     history,
     userText,
     userContent,
-    mode,
+    mode: startMode,
+    getMode,
     projectRoot,
     extraSystemContext,
     activeSkills = [],
@@ -250,8 +311,9 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     // Each file read/write/edit/run/ask is one step, so a real "build X" task
     // burns several quickly. Token budgets now bound runaway cost, so this can be
     // generous without risking an infinite loop.
-    maxIterations = 48,
+    maxIterations = 80,
     reasoningEnabled,
+    contextBudget,
     fast = false,
     reasoningEffort,
     signal,
@@ -265,14 +327,15 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     },
   ];
 
+  const currentMode = (): KodeAgentMode => getMode?.() ?? startMode;
+  let mode = currentMode();
   // No open project or the (disabled) design mode → plain chat, no file tools.
   const toolsEnabled = Boolean(projectRoot) && mode !== "design";
-  const tools = toolsEnabled
-    ? [
-        ...toolsForMode(mode, mcpTools),
-        ...(mode === "plan" ? [] : extraTools.map((tool) => tool.definition)),
-      ]
-    : undefined;
+  const toolsFor = (m: KodeAgentMode) =>
+    toolsEnabled
+      ? [...toolsForMode(m, mcpTools), ...(m === "plan" ? [] : extraTools.map((tool) => tool.definition))]
+      : undefined;
+  let tools = toolsFor(mode);
   // Force the model to call a tool on the first turn when the request clearly
   // implies file work — weak models otherwise paste code into chat instead of
   // acting. Don't force in Plan (read-only) — let it reason and choose.
@@ -312,7 +375,8 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
   const activeBlock = activeSkillBodies.length
     ? `\n\nACTIVE SKILLS — you are using these skills for this task. Follow them over generic advice.\n${activeSkillBodies.map((skill) => renderSkill(skill)).join("\n\n---\n\n")}`
     : "";
-  const systemContext = `${buildKodeSkillsContext(repoProfile, skills)}${activeBlock}${extraSystemContext ? `\n\n${extraSystemContext}` : ""}${mode === "plan" ? `\n\n${KODE_PLAN_MODE_PROMPT}` : ""}\n\nFinish the task you were asked to do. Do not stop after searching, and do not repeat the same search. For any task with more than one step, your first tool call is update_todos: a short checklist, exactly one item in_progress. Update that checklist the moment each item finishes (mark it completed and the next one in_progress), so the user sees live progress. Do not end the turn while any item is still pending or in progress. Cancel an item only when you are deliberately dropping it. End the turn with a short report in the message: what you did, and what you did not do. If nothing is left, say so. Decisions that belong to the user go through ask_options (single, multi, text, confirm, or a short questionnaire), not as a questionnaire written into the message.${KODE_ARTIFACT_HINT}`;
+  const systemFor = (m: KodeAgentMode) => `${buildKodeSkillsContext(repoProfile, skills)}${activeBlock}${extraSystemContext ? `\n\n${extraSystemContext}` : ""}${m === "plan" ? `\n\n${KODE_PLAN_MODE_PROMPT}` : ""}\n\n${KODE_CLARIFY_PROMPT}\n\nFinish the task you were asked to do. Do not stop after searching, and do not repeat the same search. For any task with more than one step, your first tool call is update_todos (or ask_options, when you have to ask first as described above): a short checklist, exactly one item in_progress. Update that checklist the moment each item finishes (mark it completed and the next one in_progress), so the user sees live progress. Do not end the turn while any item is still pending or in progress. Cancel an item only when you are deliberately dropping it. End the turn with a short report in the message: what you did, and what you did not do. If nothing is left, say so. Decisions that belong to the user go through ask_options (single, multi, text, confirm, or a short questionnaire), not as a questionnaire written into the message.${KODE_ARTIFACT_HINT}`;
+  let systemContext = systemFor(mode);
 
   let finalContent = "";
   const narrations: string[] = [];
@@ -330,6 +394,8 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
   let tokensConsumed = 0;
 
   let stopped = false;
+  // Cut-off replies continued in a row (reset by any complete reply).
+  let continuations = 0;
   // Whether any visible text has streamed in this turn yet.
   let streamedEarlier = false;
 
@@ -337,6 +403,19 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     if (signal?.aborted) {
       stopped = true;
       break;
+    }
+
+    // Long turns: keep the request inside the chat's context budget.
+    if (contextBudget) trimToolResults(messages, contextBudget);
+
+    // The mode was changed in the picker since the last step: switch the
+    // tools and prompt, and tell the model what it may do now.
+    const nextMode = currentMode();
+    if (nextMode !== mode && nextMode !== "design") {
+      mode = nextMode;
+      tools = toolsFor(mode);
+      systemContext = systemFor(mode);
+      if (iteration > 0) messages.push({ role: "user", content: modeChangeNote(mode) });
     }
 
     // Filter the streamed content so models that emit tool calls as raw text
@@ -354,10 +433,13 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
       onText(delta);
     });
     let response: Awaited<ReturnType<typeof sendKodeChat>>;
-    const finishing = iteration === maxIterations - 1 || closePhase === 2;
+    const atStepLimit = iteration === maxIterations - 1;
+    const finishing = atStepLimit || closePhase === 2;
+    // The last allowed step must say where the work stands, not just stop.
+    if (atStepLimit && closePhase !== 2) messages.push({ role: "user", content: stepLimitPrompt(latestTodos) });
     const checklistTool = { type: "function" as const, function: { name: KODE_TODOS_TOOL } };
-    try {
-      response = await abortable(
+    const callModel = () =>
+      abortable(
         sendKodeChat({
           modelId,
           messages,
@@ -371,9 +453,12 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
           // checklist, and an unfinished list is refreshed once before the report.
           toolChoice: finishing
             ? "none"
-            : closePhase === 1 || (iteration === 0 && wantsChecklist)
+            : closePhase === 1
               ? checklistTool
-              : "auto",
+              : iteration === 0 && wantsChecklist
+                ? // A tool, not necessarily the checklist: asking first must stay possible.
+                  "required"
+                : "auto",
           onEvent: (event) => {
             if (signal?.aborted) return;
             if (event.type === "reasoning") onReasoning(event.delta);
@@ -382,6 +467,8 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
         }),
         signal,
       );
+    try {
+      response = await withTransientRetry(callModel, signal);
     } catch (error) {
       if (signal?.aborted || (error as Error)?.name === "AbortError") {
         contentFilter.flush();
@@ -400,6 +487,21 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
     tokensConsumed += response.usage?.totalTokens ?? 0;
     finalContent = stripKodeArtifacts(response.content);
     if (finalContent.trim()) narrations.push(finalContent.trim());
+
+    // Cut off with nothing to run: ask for the rest instead of ending the turn
+    // on half a sentence (this was "it just stops").
+    if (response.truncated && response.toolCalls.length === 0 && !atStepLimit) {
+      continuations += 1;
+      if (continuations > MAX_CONTINUATIONS) {
+        throw new Error(
+          "The model kept getting cut off before finishing its reply. This usually means a single step was too large. Ask it to continue in smaller steps, or switch models.",
+        );
+      }
+      messages.push({ role: "assistant", content: finalContent ? finalContent : null });
+      messages.push({ role: "user", content: CONTINUE_CUT_OFF });
+      continue;
+    }
+    continuations = 0;
 
     const unfinished = latestTodos.some((todo) => todo.status !== "completed" && todo.status !== "cancelled");
     const hadTask = didWork || latestTodos.length > 0;
@@ -467,7 +569,7 @@ export async function runKodeAgent(params: RunKodeAgentParams): Promise<RunKodeA
         continue;
       }
       let result = await handleToolCall(call, {
-        mode,
+        mode: currentMode(),
         projectRoot,
         chatId,
         extraTools,

@@ -13,9 +13,10 @@ export function usagePercent(used: number, limit: number) {
 export function formatReset(resetAt: number) {
   const date = new Date(resetAt);
   const time = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  return date.toDateString() === new Date().toDateString()
-    ? `Resets ${time}`
-    : `Resets ${date.toLocaleDateString([], { weekday: "short" })} ${time}`;
+  if (date.toDateString() === new Date().toDateString()) return `Resets ${time}`;
+  // A weekday alone is ambiguous more than a week out (monthly limits).
+  if (resetAt - Date.now() > 6 * 86_400_000) return `Resets ${date.toLocaleDateString([], { month: "short", day: "numeric" })}`;
+  return `Resets ${date.toLocaleDateString([], { weekday: "short" })} ${time}`;
 }
 
 export function UsageBar({ pct, className }: { pct: number; className?: string }) {
@@ -62,14 +63,14 @@ export function PlanUsageLimits({
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between">
-        <p className="text-[11.5px] text-muted-foreground">
+        <p className="text-label text-muted-foreground">
           Plan usage limits · {PLAN_LABEL[usage.plan]}
         </p>
         {onSeeAll ? (
           <button
             type="button"
             onClick={onSeeAll}
-            className="flex cursor-pointer items-center gap-1 text-[11.5px] font-medium text-foreground/85 hover:text-foreground"
+            className="flex cursor-pointer items-center gap-1 text-label font-medium text-foreground/85 hover:text-foreground"
           >
             See all <ArrowRight size={11} />
           </button>
@@ -77,7 +78,7 @@ export function PlanUsageLimits({
       </div>
       {rows.map((row) => (
         <div key={row.label}>
-          <div className="mb-1.5 flex items-center justify-between gap-3 text-[12px]">
+          <div className="mb-1.5 flex items-center justify-between gap-3 text-label">
             <span className="shrink-0 text-foreground/90">{row.label}</span>
             <span className="truncate text-muted-foreground">
               {row.detail}

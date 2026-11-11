@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { FolderTree, Globe, X } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import PlanView from "@/components/view/PlanView";
@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useKeybinding } from "@/lib/kode-keybindings";
 import { ImportSessionModal } from "@/components/kode/KodeSessionImport";
 import { SnapshotDialog } from "@/components/kode/SnapshotDialog";
+import { getSettings } from "@/lib/app-settings";
 
 type DeskTab =
   | { id: "chat"; kind: "chat" }
@@ -44,7 +45,9 @@ export default function KodeView(_props: KodeViewProps) {
   const [filesPath, setFilesPath] = useState<string | null>(null);
   useKeybinding("kode.newChat", () => newChat(activeProjectId));
   useKeybinding("kode.importSession", () => setDialog("import"));
-  useKeybinding("kode.snapshot", () => setDialog("snapshot"));
+  useKeybinding("kode.snapshot", () => {
+    if (getSettings().snapshotsEnabled) setDialog("snapshot");
+  });
   const [tabs, setTabs] = useState<DeskTab[]>([{ id: "chat", kind: "chat" }]);
   const [activeId, setActiveId] = useState("chat");
   // The right panel belongs to a chat (and a tab): closed by default, and
@@ -75,10 +78,21 @@ export default function KodeView(_props: KodeViewProps) {
     setActiveId(id);
   };
 
+  // ⌘⇧T brings back the last closed tab (Files or a browser tab).
+  const closedTabs = useRef<DeskTab[]>([]);
   const closeTab = (id: string) => {
+    const closing = tabs.find((tab) => tab.id === id);
+    if (closing && closing.kind !== "chat") closedTabs.current = [...closedTabs.current, closing].slice(-20);
     setTabs((current) => current.filter((tab) => tab.id !== id));
     setActiveId((current) => (current === id ? "chat" : current));
   };
+  useKeybinding("kode.reopenTab", () => {
+    const tab = closedTabs.current.at(-1);
+    if (!tab) return;
+    closedTabs.current = closedTabs.current.slice(0, -1);
+    if (tab.kind === "files") openFilesTab(null);
+    else if (tab.kind === "browser") openBrowserTab(tab.url ?? tab.initialUrl);
+  });
 
   return (
     <div className="flex h-full w-full overflow-hidden">
@@ -111,7 +125,7 @@ export default function KodeView(_props: KodeViewProps) {
                   initialPath={filesPath}
                 />
               ) : (
-                <div className="flex flex-1 items-center justify-center px-6 text-center text-[13px] text-muted-foreground">
+                <div className="flex flex-1 items-center justify-center px-6 text-center text-body text-muted-foreground">
                   Open a project folder to browse its files.
                 </div>
               )}
@@ -170,13 +184,13 @@ export default function KodeView(_props: KodeViewProps) {
               >
                 {activeProject ? (
                   <>
-                    <span className="shrink-0 truncate text-[12px] font-medium text-foreground/80">
+                    <span className="shrink-0 truncate text-label font-medium text-foreground/80">
                       {activeProject.name}
                     </span>
                     <span className="shrink-0 text-foreground/20">/</span>
                   </>
                 ) : null}
-                <span className="min-w-0 truncate text-[12px] text-foreground/45">
+                <span className="min-w-0 truncate text-label text-foreground/45">
                   {activeChat.title}
                 </span>
               </button>
@@ -188,10 +202,10 @@ export default function KodeView(_props: KodeViewProps) {
                 <div
                   key={tab.id}
                   className={cn(
-                    "flex h-7 max-w-[12rem] shrink-0 items-center rounded-full text-[12px]",
+                    "flex h-7 max-w-[12rem] shrink-0 items-center rounded-full text-label",
                     selected
                       ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                      : "text-foreground/55 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+                      : "text-foreground/55 kontinue-hover hover:text-foreground",
                   )}
                 >
                   <button

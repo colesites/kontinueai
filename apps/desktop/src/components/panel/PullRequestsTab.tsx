@@ -34,6 +34,7 @@ import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { setPrAutoFix, usePrWatches } from "@/lib/kode-pr-watch";
+import { useAppSettings } from "@/lib/app-settings";
 import { errorText } from "./panel-api";
 import { EmptyState } from "./WorkspacePanel";
 
@@ -61,6 +62,7 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
   const threads = usePrThreads();
   const watches = usePrWatches();
   const { selectChat, setActiveTab } = useKodeWorkspace();
+  const { prMergeMethod } = useAppSettings();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -109,10 +111,10 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
             type="button"
             onClick={() => setState(value)}
             className={cn(
-              "h-7 cursor-pointer rounded-full px-3 text-[11.5px] transition-colors",
+              "h-7 cursor-pointer rounded-full px-3 text-label transition-colors",
               state === value
                 ? "kontinue-menu-active"
-                : "text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+                : "text-muted-foreground kontinue-hover",
             )}
           >
             {value === "open" ? "Open" : "All"}
@@ -123,13 +125,13 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
           type="button"
           aria-label="Refresh pull requests"
           onClick={() => void load()}
-          className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+          className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground kontinue-hover hover:text-foreground"
         >
           <RefreshCw size={13} className={cn(loading && "animate-spin")} />
         </button>
       </div>
 
-      {actionError ? <p className="px-3 pb-1 text-[11.5px] text-rose-400">{actionError}</p> : null}
+      {actionError ? <p className="px-3 pb-1 text-label text-rose-400">{actionError}</p> : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {!prs ? (
@@ -160,17 +162,17 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                       <button
                         type="button"
                         onClick={() => void openUrl(pr.url)}
-                        className="block w-full cursor-pointer truncate text-left text-[12.5px] font-medium hover:underline"
+                        className="block w-full cursor-pointer truncate text-left text-body font-medium hover:underline"
                         title={pr.title}
                       >
                         {pr.title}
                       </button>
-                      <p className="mt-0.5 truncate font-mono text-[10.5px] text-muted-foreground">
+                      <p className="mt-0.5 truncate font-mono text-caption text-muted-foreground">
                         #{pr.number} · {pr.headRefName} → {pr.baseRefName}
                         <span className="text-emerald-500"> +{pr.additions}</span>
                         <span className="text-rose-500"> −{pr.deletions}</span>
                       </p>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-caption">
                         <span className={cn("rounded-full px-2 py-0.5 font-medium", TONE[readiness.tone])}>
                           {readiness.label}
                         </span>
@@ -218,19 +220,22 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                             <DropdownMenuTrigger asChild>
                               <button
                                 type="button"
-                                className="kontinue-3d-primary flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-[11.5px] font-medium"
+                                className="kontinue-3d-primary flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-label font-medium"
                               >
                                 <GitMerge size={12} /> Merge
                               </button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" sideOffset={6} className="w-44 p-1.5">
-                              {(["squash", "merge", "rebase"] as const).map((method) => (
+                              {(["squash", "merge", "rebase"] as const)
+                                .slice()
+                                .sort((a, b) => Number(b === prMergeMethod) - Number(a === prMergeMethod))
+                                .map((method) => (
                                 <DropdownMenuItem
                                   key={method}
                                   onSelect={() =>
                                     void run(pr, "merge", () => mergePullRequest(projectPath, pr.number, method))
                                   }
-                                  className="px-3 py-1.5 text-[12px]"
+                                  className="px-3 py-1.5 text-label"
                                 >
                                   {method === "squash"
                                     ? "Squash and merge"
@@ -248,7 +253,7 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                             onClick={() => setConfirmMerge(pr.number)}
                             title={pr.isDraft ? "Draft PRs can't be merged" : "Merge"}
                             className={cn(
-                              "flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-[11.5px] font-medium disabled:cursor-not-allowed disabled:opacity-40",
+                              "flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-label font-medium disabled:cursor-not-allowed disabled:opacity-40",
                               readiness.tone === "good" ? "kontinue-3d-primary" : "kontinue-3d text-foreground/80",
                             )}
                           >
@@ -266,7 +271,7 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                               type="button"
                               aria-label="More actions"
                               disabled={busy}
-                              className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-black/[0.05] hover:text-foreground disabled:opacity-40 dark:hover:bg-white/[0.06]"
+                              className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground kontinue-hover hover:text-foreground disabled:opacity-40"
                             >
                               {busy && pending?.action !== "merge" ? (
                                 <Loader2 size={13} className="animate-spin" />
@@ -280,7 +285,7 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                               onSelect={() =>
                                 void run(pr, "approve", () => reviewPullRequest(projectPath, pr.number, "approve"))
                               }
-                              className="flex items-center gap-2 px-3 py-1.5 text-[12px]"
+                              className="flex items-center gap-2 px-3 py-1.5 text-label"
                             >
                               <Check size={13} className="text-emerald-500" /> Approve
                             </DropdownMenuItem>
@@ -289,7 +294,7 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                                 setReviewBody("");
                                 setComposing({ number: pr.number, action: "request_changes" });
                               }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-[12px]"
+                              className="flex items-center gap-2 px-3 py-1.5 text-label"
                             >
                               <XCircle size={13} className="text-rose-500" /> Request changes…
                             </DropdownMenuItem>
@@ -298,14 +303,14 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                                 setReviewBody("");
                                 setComposing({ number: pr.number, action: "comment" });
                               }}
-                              className="flex items-center gap-2 px-3 py-1.5 text-[12px]"
+                              className="flex items-center gap-2 px-3 py-1.5 text-label"
                             >
                               <MessageSquare size={13} /> Comment…
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
                               onSelect={() => void openUrl(pr.url)}
-                              className="flex items-center gap-2 px-3 py-1.5 text-[12px]"
+                              className="flex items-center gap-2 px-3 py-1.5 text-label"
                             >
                               <ExternalLink size={13} /> Open on GitHub
                             </DropdownMenuItem>
@@ -336,20 +341,20 @@ export function PullRequestsTab({ projectPath, active }: { projectPath: string; 
                           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.form?.requestSubmit();
                         }}
                         placeholder={composing.action === "request_changes" ? "What needs to change?" : "Leave a comment"}
-                        className="w-full resize-none rounded-[12px] bg-black/[0.04] px-3 py-2 text-[12px] outline-none placeholder:text-muted-foreground/60 dark:bg-white/[0.05]"
+                        className="w-full resize-none rounded-[12px] bg-black/[0.04] px-3 py-2 text-label outline-none placeholder:text-muted-foreground/60 dark:bg-white/[0.05]"
                       />
                       <div className="flex justify-end gap-1.5">
                         <button
                           type="button"
                           onClick={() => setComposing(null)}
-                          className="kontinue-3d h-7 cursor-pointer rounded-full px-3 text-[11.5px]"
+                          className="kontinue-3d h-7 cursor-pointer rounded-full px-3 text-label"
                         >
                           Cancel
                         </button>
                         <button
                           type="submit"
                           disabled={!reviewBody.trim()}
-                          className="kontinue-3d-primary h-7 cursor-pointer rounded-full px-3 text-[11.5px] font-medium disabled:opacity-50"
+                          className="kontinue-3d-primary h-7 cursor-pointer rounded-full px-3 text-label font-medium disabled:opacity-50"
                         >
                           {composing.action === "request_changes" ? "Request changes" : "Comment"}
                         </button>
@@ -396,16 +401,16 @@ function HostTokenForm({ ask, onSaved }: { ask: TokenAsk; onSaved: () => void })
       setSaving(false);
     }
   };
-  const input = "kontinue-3d h-8 w-full rounded-full bg-transparent px-3 text-[12px] outline-none placeholder:text-muted-foreground/60";
+  const input = "kontinue-3d h-8 w-full rounded-full bg-transparent px-3 text-label outline-none placeholder:text-muted-foreground/60";
   return (
-    <div className="mx-auto mt-10 w-full max-w-sm space-y-2.5 px-4 text-[12px]">
+    <div className="mx-auto mt-10 w-full max-w-sm space-y-2.5 px-4 text-label">
       <p className="font-medium text-foreground">{bitbucket ? "Connect Bitbucket" : `Connect GitLab (${ask.host})`}</p>
       <p className="text-muted-foreground">{ask.message} The token stays in your Mac's keychain.</p>
       {bitbucket ? <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Atlassian account email" className={input} /> : null}
       <input type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder={bitbucket ? "Bitbucket API token" : "Personal access token (api scope)"} className={input} />
       {failed ? <p className="text-rose-400">{failed}</p> : null}
       <div className="flex items-center gap-2">
-        <button type="button" disabled={saving || !token.trim() || (bitbucket && !email.trim())} onClick={() => void save()} className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-3.5 text-[12px] font-medium disabled:cursor-default disabled:opacity-60">
+        <button type="button" disabled={saving || !token.trim() || (bitbucket && !email.trim())} onClick={() => void save()} className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-3.5 text-label font-medium disabled:cursor-default disabled:opacity-60">
           {saving ? "Saving…" : "Save token"}
         </button>
         <button type="button" onClick={() => void openUrl(help)} className="cursor-pointer text-purple-600 hover:underline dark:text-purple-400">

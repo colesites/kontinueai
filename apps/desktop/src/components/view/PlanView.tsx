@@ -52,6 +52,7 @@ import {
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { ChatInput, type StagedAttachment } from "@/components/chat/ChatInput";
 import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
+import { UserAttachments } from "@/components/chat/UserAttachments";
 import {
   type ChatTurn,
   DesktopChatTurnNavigator,
@@ -67,7 +68,7 @@ import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { getSettings, useAppSettings, type ProviderInstance } from "@/lib/app-settings";
 import { getScopedSettings, loadProjectSettings, useScopedSettings } from "@/lib/kode-scoped-settings";
-import { api } from "@/lib/convex-api";
+import { api, type KodeConvexMessage } from "@/lib/convex-api";
 import { type KodeToolStep, runKodeAgent } from "@/lib/kode-agent";
 import { useKodeAgentRuntime } from "@/lib/kode-agent-runtime";
 import { expandSlashPrompt, resolveSlash } from "@/lib/kode-commands";
@@ -84,12 +85,23 @@ import { hasHooks, runHooks } from "@/lib/kode-hooks";
 import type { KodeExtraTool } from "@/lib/kode-agent";
 import type { KodeContentPart, KodeToolDefinition } from "@/lib/kode-chat";
 import { publishChatContext } from "@/lib/kode-chat-context";
+import { createDeltaBatcher, createRunSlot, liveModes, runAborts, useRunSlot } from "@/lib/kode-run-state";
+import { stripLeftoverToolMarkup } from "@/lib/kode-sanitize";
+import { interruptedReply } from "@/lib/kode-turn-notes";
+import { clearCheckpoint, leftoverCheckpoints, throttle, writeCheckpoint } from "@/lib/kode-turn-checkpoint";
+import {
+  clearReportedChatContextUsage,
+  contextTokensFor,
+  forgetChatContextUsage,
+  recordChatContextUsage,
+  rememberChatContextEstimate,
+  useChatContextUsage,
+} from "@/lib/kode-context-usage";
 import {
   cliLoginCommand,
   cliModelDisplayName,
   cliNeedsLogin,
   cliPickerModels,
-  cliPlanLabel,
   cliTodos,
   cliToolStep,
   cliVersionIssue,
@@ -113,23 +125,27 @@ import {
   getContextWindow,
   loadContextWindows,
 } from "@/lib/kode-context";
-import { getImportContext, nativeContinueOf, readCodingSession, saveImportContext } from "@/lib/kode-import";
+import { getImportContext, nativeContinueOf, providerLabel, readCodingSession, saveImportContext } from "@/lib/kode-import";
+import { resumeOffer, resumePrompt } from "@/lib/kode-import-resume";
+import { ImportResumeCard } from "@/components/kode/ImportResumeCard";
 import { invoke } from "@tauri-apps/api/core";
 import { resolveConflict, setChatBusy, syncImportContext } from "@/lib/kode-import-sync";
 import { ImportedChatBar, useImportContext, useImportSyncDeps } from "@/components/kode/ImportedChatBar";
 import { IncomingProjectMoves } from "@/components/kode/ProjectMove";
 import { NoProjectBar } from "@/components/kode/NoProjectBar";
-import { PrStatusBar, useVisiblePrUrls } from "@/components/kode/PrStatusBar";
+import { PrStatusBar } from "@/components/kode/PrStatusBar";
 import { isWebhookEvent, WebhookEventCard } from "@/components/kode/WebhookEventCard";
 import { CodeRunContext } from "@/components/ai-elements/code-run-context";
 import { envVarsFor } from "@/lib/kode-environments";
-import type { KodeAgentMode, KodeTodo } from "@/lib/kode-tools";
+import { FILE_AND_SHELL_TOOLS, needsApproval, type KodeAgentMode, type KodeTodo } from "@/lib/kode-tools";
 import {
   type KodeWorkspaceMessage,
   useKodeWorkspace,
 } from "@/lib/kode-workspace";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
 import { LimitCard, ScheduledBar } from "@/components/kode/ScheduledPrompts";
+import { notifyRunEvent } from "@/lib/kode-notify";
+import { addWorktree, isWorktreePath, threadBranch } from "@/lib/kode-branches";
 import { mergeQueued, QueuedMessages, type QueuedMessage } from "@/components/chat/QueuedMessages";
 import { cleanLimitMarker, detectLimit, type LimitHit } from "@/lib/kode-limits";
 import { buildHandoff, describeHandoff } from "@/lib/kode-handoff";
@@ -142,6 +158,7 @@ import { gitStatus } from "@/components/panel/panel-api";
 import { recordPrLinks } from "@/lib/kode-prs";
 import { rememberChatModel } from "@/lib/kode-pr-watch";
 import { buildSubagentTool } from "@/lib/kode-fanout";
+import { formatEditorContext, getEditorContext } from "@/lib/editor-context";
 import {
   annotationTitle,
   formatAnnotations,
@@ -151,12 +168,14 @@ import {
 import {
   saveAttachmentsToProject,
   savedAttachmentsNote,
+  splitUserAttachments,
 } from "@/lib/kode-attachments";
 import {
   getScheduledPrompts,
   idleFor,
   removeScheduledPrompt,
   schedulePrompt,
+  RESET_BUFFER_MS,
   useScheduledPrompts,
   type ScheduledPrompt,
 } from "@/lib/kode-schedule";
@@ -195,6 +214,9 @@ type ChatMessage = KodeWorkspaceMessage & {
   toolTodos?: KodeTodo[];
   // Imported retry/limit events render as system notices, not chat bubbles.
   notice?: boolean;
+  // Already saved to Convex (the user's message is saved when it is sent), so
+  // the persisted copy shows instead of this one.
+  saved?: boolean;
   // The turn stopped on a usage limit: what to resend, and when it resets.
   limit?: {
     resetAt: number | null;
@@ -219,33 +241,19 @@ const SCHEDULE_IDLE_MS = 2 * 60_000;
 const DRAFT_KEY = "draft";
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
 
-// Real context size per chat, as reported by the provider on the last turn
-// (prompt incl. system instructions + tools, plus the reply). Saved so the
-// meter survives a restart; chats with no saved value fall back to a
-// message-only estimate.
-const CONTEXT_STORE_KEY = "kontinue.kode.context-tokens";
+// Real context size per chat lives in @/lib/kode-context-usage, shared with the
+// workspace panel so the meter survives a chat switch and a tab switch.
 
-function readContextTokens(chatId: string): number | null {
-  try {
-    const store = JSON.parse(
-      localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}",
-    ) as Record<string, number>;
-    return typeof store[chatId] === "number" ? store[chatId] : null;
-  } catch {
-    return null;
+// A user message's text and attachments, parsed once per distinct message.
+const userPartsCache = new Map<string, ReturnType<typeof splitUserAttachments>>();
+function userParts(content: string) {
+  let parts = userPartsCache.get(content);
+  if (!parts) {
+    parts = splitUserAttachments(content);
+    if (userPartsCache.size > 500) userPartsCache.clear();
+    userPartsCache.set(content, parts);
   }
-}
-
-function saveContextTokens(chatId: string, tokens: number) {
-  try {
-    const store = JSON.parse(
-      localStorage.getItem(CONTEXT_STORE_KEY) ?? "{}",
-    ) as Record<string, number>;
-    store[chatId] = tokens;
-    localStorage.setItem(CONTEXT_STORE_KEY, JSON.stringify(store));
-  } catch {
-    // Storage unavailable: the meter just falls back to the estimate.
-  }
+  return parts;
 }
 
 const getModelName = (modelId: string) =>
@@ -354,7 +362,7 @@ function MessageMeta({
     </MessageAction>
   ) : null;
   const time = stamp ? (
-    <span className="px-1 text-[11px] text-foreground/35">{stamp}</span>
+    <span className="px-1 text-caption text-foreground/35">{stamp}</span>
   ) : null;
 
   return (
@@ -437,7 +445,7 @@ function SystemNotice({
 
   return (
     <div
-      className={`flex items-start justify-center gap-2 py-1 text-center text-[12px] leading-snug ${warning ? "text-amber-600 dark:text-amber-400/90" : "text-foreground/60"}`}
+      className={`flex items-start justify-center gap-2 py-1 text-center text-label leading-snug ${warning ? "text-amber-600 dark:text-amber-400/90" : "text-foreground/60"}`}
     >
       <span className="mt-2 h-px w-8 shrink-0 bg-black/10 dark:bg-white/10" />
       {warning ? (
@@ -457,20 +465,80 @@ function SystemNotice({
   );
 }
 
+/** Messages per page of chat history. */
+const HISTORY_PAGE = 60;
+
+function toChatMessage(message: KodeConvexMessage, fallbackModel: string): ChatMessage {
+  const meta = message.metadata as { model?: string; todos?: KodeTodo[] } | undefined;
+  const isNotice = message.role === "system";
+  return {
+    id: message._id,
+    role: isNotice ? "assistant" : message.role === "assistant" ? "assistant" : "user",
+    content: message.role === "assistant" ? stripLeftoverToolMarkup(message.content) : message.content,
+    modelId: meta?.model ?? fallbackModel,
+    createdAt: message.createdAt,
+    status: "complete",
+    notice: isNotice,
+    toolTodos: meta?.todos,
+  };
+}
+
+/** Chat turns as the model sees them (no notices, steps condensed). */
+function toModelHistory(messages: ChatMessage[]): { role: "user" | "assistant"; content: string }[] {
+  return messages.flatMap((message) => {
+    if (message.notice || !message.content) return [];
+    if (message.role !== "user" && message.role !== "assistant") return [];
+    return [{ role: message.role, content: condenseSteps(message.content) }];
+  });
+}
+
+// In-flight turns, shared across mounts (see kode-run-state.ts).
+const pendingSlot = createRunSlot<Record<string, ChatMessage[]>>({});
+const sendingSlot = createRunSlot<Record<string, boolean>>({});
+const compactingSlot = createRunSlot<Record<string, boolean>>({});
+const queuedSlot = createRunSlot<Record<string, QueuedMessage[]>>({});
+
+// Checkpoint running turns (kode-turn-checkpoint.ts) so quitting mid-reply
+// doesn't lose them.
+const checkpointRunningTurns = throttle(() => {
+  const sending = sendingSlot.get();
+  const pending = pendingSlot.get();
+  for (const [chatId, running] of Object.entries(sending)) {
+    if (!running || chatId === DRAFT_KEY) continue;
+    const items = pending[chatId] ?? [];
+    const reply = [...items].reverse().find((item) => item.role === "assistant" && !item.notice);
+    if (!reply) continue;
+    const user = items.find((item) => item.role === "user" && !item.saved);
+    writeCheckpoint({
+      chatId,
+      userText: user?.content,
+      reply: withSteps(reply.content, reply.toolSteps ?? []),
+      todos: reply.toolTodos?.length ? reply.toolTodos : undefined,
+      modelId: reply.modelId,
+      at: Date.now(),
+    });
+  }
+});
+pendingSlot.subscribe(checkpointRunningTurns);
+// Recover turns left by a previous run of the app once per launch.
+let checkpointsRecovered = false;
+
 const PlanView = () => {
   const { user } = useUser();
   const firstName = user?.firstName || user?.fullName || "there";
   const planTier = normalizePlanTier(usePlanTier());
   const { reasoningEnabled: legacyReasoningEnabled, setReasoningEnabled } =
     useReasoningPreference();
-  const { kodeContextWindow, kodeReasoning } = useAppSettings();
+  const { kodeReasoning } = useAppSettings();
   // Reasoning comes from the picker (Settings store); "off" only where allowed.
   const reasoningEnabled = kodeReasoning !== "off";
   void legacyReasoningEnabled;
   // New sessions start from Settings → General defaults.
   const [selectedModelId, setSelectedModelId] = useState(() => {
     const preferred = getSettings().defaultKodeModel;
-    return preferred && KODE_MODELS.some((m) => m.id === preferred)
+    // CLI models (Settings → Providers) are allowed too; the effect below
+    // falls back to Kode if that provider isn't available.
+    return preferred && (KODE_MODELS.some((m) => m.id === preferred) || parseCliModelId(preferred))
       ? preferred
       : KODE_DEFAULT_MODEL_ID;
   });
@@ -540,20 +608,16 @@ const PlanView = () => {
   const selectedCli = selectedCliId
     ? (getProvider(selectedCliId, appSettings) ?? null)
     : null;
+  const cliNotSignedIn = selectedCli && cliNeedsLogin(cliStatuses, selectedCli.id) ? selectedCli : null;
   // All in-flight state is keyed by chat id (or DRAFT_KEY for an unsaved home
   // chat) so multiple chats/projects can run concurrently and switching chats
   // shows the correct per-chat loading + overlay.
-  const [pendingByChat, setPendingByChat] = useState<
-    Record<string, ChatMessage[]>
-  >({});
-  const [sendingChats, setSendingChats] = useState<Record<string, boolean>>({});
+  // These live outside the component (kode-run-state.ts) so a turn that is
+  // still running is there when you come back to Kode.
+  const [pendingByChat, setPendingByChat] = useRunSlot(pendingSlot);
+  const [sendingChats, setSendingChats] = useRunSlot(sendingSlot);
   // Per-chat flag: the summarizer is folding older turns to fit the model window.
-  const [compactingChats, setCompactingChats] = useState<
-    Record<string, boolean>
-  >({});
-  const [usageByChat, setUsageByChat] = useState<
-    Record<string, ChatMessage["usage"]>
-  >({});
+  const [compactingChats, setCompactingChats] = useRunSlot(compactingSlot);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [seed, setSeed] = useState<{ text: string; nonce: number }>({
@@ -573,7 +637,7 @@ const PlanView = () => {
   // Per-chat compaction summary cache + which chats have been compacted (for UI).
   const compactionByChat = useRef<Map<string, CompactionState>>(new Map());
   // Per-run AbortController so the Stop button can cancel an in-flight agent run.
-  const abortByChat = useRef<Map<string, AbortController>>(new Map());
+  const abortByChat = useRef(runAborts);
   const [compactedChats, setCompactedChats] = useState<Record<string, boolean>>(
     {},
   );
@@ -598,6 +662,53 @@ const PlanView = () => {
     newChat,
     assignChatsToFolder,
   } = useKodeWorkspace();
+  // A mode change applies to this chat's running turn too: the agent reads it
+  // before each step, and a step waiting for approval goes ahead if the new
+  // mode wouldn't have asked about it.
+  const modeChatKey = activeChatId ?? DRAFT_KEY;
+  useEffect(() => {
+    if (!sendingSlot.get()[modeChatKey]) return;
+    liveModes.set(modeChatKey, mode);
+    if (mode === "plan") return;
+    for (const step of runtime.pendingByChat[modeChatKey] ?? []) {
+      if (step.state !== "pending-approval") continue;
+      if (!FILE_AND_SHELL_TOOLS.has(step.name)) continue;
+      if (!needsApproval(step.name, mode, step.args)) runtime.resolveApproval(step.id, true);
+    }
+  }, [mode, modeChatKey, runtime]);
+
+  // A reply that was still streaming when Kontinue last quit: save it into
+  // its chat with a note, so the work and the point it stopped at are kept.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once per launch
+  useEffect(() => {
+    if (checkpointsRecovered) return;
+    checkpointsRecovered = true;
+    const leftovers = leftoverCheckpoints((chatId) => !!sendingSlot.get()[chatId]);
+    void (async () => {
+      for (const checkpoint of leftovers) {
+        try {
+          if (checkpoint.userText) {
+            await addMessageRecord({ chatId: checkpoint.chatId, role: "user", content: checkpoint.userText, model: checkpoint.modelId });
+          }
+          await addMessageRecord({
+            chatId: checkpoint.chatId,
+            role: "assistant",
+            content: interruptedReply(
+              checkpoint.reply,
+              "Kontinue was closed before this reply finished.",
+              (checkpoint.todos ?? []) as KodeTodo[],
+            ),
+            model: checkpoint.modelId,
+            todos: checkpoint.todos,
+          });
+          clearCheckpoint(checkpoint.chatId);
+        } catch (error) {
+          // Offline: try again next launch. A deleted chat can't take it.
+          if (/not found|unauthori[sz]ed/i.test(String(error))) clearCheckpoint(checkpoint.chatId);
+        }
+      }
+    })();
+  }, []);
 
   // Resolve the on-disk root of the active chat's (or draft's) project, if any.
   const activeProjectId =
@@ -611,7 +722,6 @@ const PlanView = () => {
   // (per chat), kept current by the background sync, and appended to the
   // agent's system context so the captured project state grounds later turns.
   const importContext = useImportContext(activeChatId, chats, projects);
-  const hasPrBar = useVisiblePrUrls(activeChatId).length > 0;
   // A chat imported to continue its own Claude Code / Codex session starts on
   // that account's CLI (once; you can switch models after).
   useEffect(() => {
@@ -731,17 +841,14 @@ const PlanView = () => {
     setSeed((current) => ({ text, nonce: current.nonce + 1 }));
     try {
       await rewindAfter(messageId);
+      // The history was cut back: the last reported total no longer applies.
+      if (activeChatId) forgetChatContextUsage(activeChatId);
     } catch {
       // Ignore — Convex will surface its own error; the input is already seeded.
     }
   };
 
-  const priorHistory = (index: number) =>
-    messages.slice(0, index).flatMap((message) => {
-      if (message.notice || !message.content) return [];
-      if (message.role !== "user" && message.role !== "assistant") return [];
-      return [{ role: message.role, content: condenseSteps(message.content) }];
-    });
+  const priorHistory = (index: number) => toModelHistory(messages.slice(0, index));
 
   const forkMessage = async (index: number) => {
     const slice = messages.slice(0, index + 1).filter((message) => {
@@ -775,10 +882,19 @@ const PlanView = () => {
   ) => {
     const text = next.trim();
     if (!text) return;
-    const history = priorHistory(index);
     const persisted =
       !messageId.startsWith("user-") && !messageId.startsWith("assistant-");
-    if (persisted) await rewindAfter(messageId);
+    // Older messages may not be loaded: build the history from all of them.
+    let history = priorHistory(index);
+    if (persisted && hasEarlierMessages) {
+      const all = await allPersistedMessages();
+      const at = all.findIndex((message) => message.id === messageId);
+      if (at >= 0) history = toModelHistory(all.slice(0, at));
+    }
+    if (persisted) {
+      await rewindAfter(messageId);
+      if (activeChatId) forgetChatContextUsage(activeChatId);
+    }
     setEditingMessageId(null);
     await submitPrompt(
       text,
@@ -794,43 +910,42 @@ const PlanView = () => {
     activeChatId && chats.some((chat) => chat.id === activeChatId),
   );
 
-  const convexMessages = useQuery(
-    api.kode.getMessages,
-    isKodeChat && activeChatId ? { chatId: activeChatId } : "skip",
+  // History loads a page at a time (newest first); "Show earlier messages"
+  // asks for more. The full history is only read when a turn needs it.
+  const [historyLimit, setHistoryLimit] = useState(HISTORY_PAGE);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new chat starts at one page
+  useEffect(() => setHistoryLimit(HISTORY_PAGE), [activeChatId]);
+  const recentPage = useQuery(
+    api.kode.getRecentMessages,
+    isKodeChat && activeChatId ? { chatId: activeChatId, limit: historyLimit } : "skip",
   );
+  // Keep showing the current page while a bigger one loads (no flash).
+  const lastPage = useRef<{ chatId: string; page: NonNullable<typeof recentPage> } | null>(null);
+  if (recentPage && activeChatId) lastPage.current = { chatId: activeChatId, page: recentPage };
+  const shownPage =
+    recentPage ?? (lastPage.current && lastPage.current.chatId === activeChatId ? lastPage.current.page : undefined);
+  const convexMessages = shownPage?.messages;
+  const hasEarlierMessages = shownPage?.hasMore ?? false;
 
   // General token budget for the signed-in user (daily + weekly). Used to block a
   // turn before it runs when the budget is exhausted.
 
   const persistedMessages = useMemo<ChatMessage[]>(
-    () =>
-      (convexMessages ?? []).map((message) => {
-        const meta = message.metadata as
-          | { model?: string; todos?: KodeTodo[] }
-          | undefined;
-        const isNotice = message.role === "system";
-        return {
-          id: message._id,
-          role: isNotice
-            ? "assistant"
-            : message.role === "assistant"
-              ? "assistant"
-              : "user",
-          content: message.content,
-          modelId: meta?.model ?? selectedModelId,
-          createdAt: message.createdAt,
-          status: "complete" as const,
-          notice: isNotice,
-          toolTodos: meta?.todos,
-        };
-      }),
+    () => (convexMessages ?? []).map((message) => toChatMessage(message, selectedModelId)),
     [convexMessages, selectedModelId],
   );
+  // Every saved message of this chat, for the model: the loaded page when
+  // that's all there is, otherwise read once from Convex.
+  const allPersistedMessages = async (): Promise<ChatMessage[]> => {
+    if (!activeChatId || !hasEarlierMessages) return persistedMessages;
+    const rows = await convex.query(api.kode.getMessages, { chatId: activeChatId });
+    return rows.map((message) => toChatMessage(message, selectedModelId));
+  };
 
   const currentKey = activeChatId ?? DRAFT_KEY;
 
   // ---- Messages typed while Kode is working (sent when the turn ends) ----
-  const [queuedByChat, setQueuedByChat] = useState<Record<string, QueuedMessage[]>>({});
+  const [queuedByChat, setQueuedByChat] = useRunSlot(queuedSlot);
   const queued = queuedByChat[currentKey] ?? [];
   const enqueue = (item: Omit<QueuedMessage, "id">) =>
     setQueuedByChat((current) => ({
@@ -854,12 +969,20 @@ const PlanView = () => {
   }, [currentKey]);
   const overlay = pendingByChat[currentKey] ?? EMPTY_CHAT_MESSAGES;
   const messages = useMemo(
-    () => [...persistedMessages, ...overlay],
+    () => [...persistedMessages, ...overlay.filter((item) => !item.saved)],
     [persistedMessages, overlay],
   );
   const isCurrentSending = !!sendingChats[currentKey];
+  // An imported session that stopped on a usage limit: offer to carry on.
+  const resumeOfferNow = useMemo(
+    () => (importContext ? resumeOffer(importContext, persistedMessages) : null),
+    [importContext, persistedMessages],
+  );
   const isCompacting = !!compactingChats[currentKey];
-  const latestUsage = usageByChat[currentKey];
+  // Context usage lives in a module store keyed by chat id, so leaving the Kode
+  // tab (which unmounts this view) or switching chats doesn't lose the number.
+  const contextUsage = useChatContextUsage(activeChatId);
+  const latestUsage = contextUsage?.usage;
   const messagesLoading = activeChatId !== null && convexMessages === undefined;
 
   // Imported chats sync in the background (useImportBackgroundSync in
@@ -963,6 +1086,51 @@ const PlanView = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedModelId, activeChatId, persistedMessages, importContext?.contextPrompt, projectRoot]);
 
+  // Settings → Source control → "New threads start in": a new thread's first
+  // message creates a git worktree on its own branch and runs there. Falls
+  // back to the project folder when it isn't a git repo.
+  const workspaceForNewThread = async (text: string): Promise<{ root: string | null; projectId: string | null }> => {
+    const base = { root: projectRoot, projectId: draftProjectId ?? null };
+    if (activeChatId || !projectRoot || sendingChats[DRAFT_KEY] || text.trim().startsWith("/")) return base;
+    if (getSettings().newThreadWorkspace !== "worktree" || isWorktreePath(projectRoot)) return base;
+    try {
+      const path = await addWorktree(projectRoot, threadBranch(text));
+      return { root: path, projectId: ensureFolder(path) };
+    } catch (error) {
+      console.warn("[Kode] New worktree failed, using the project folder:", error);
+      return base;
+    }
+  };
+
+  /**
+   * Save a failed turn that is still only on screen (a usage-limit card, or a
+   * turn whose save failed) so the next message adds to the chat instead of
+   * replacing it. Returns what could not be saved, to keep showing.
+   */
+  const settleLeftoverTurn = async (chatKey: string, chatId: string | null): Promise<ChatMessage[]> => {
+    const leftover = (pendingSlot.get()[chatKey] ?? []).filter((item) => !item.notice && !item.saved);
+    if (leftover.length === 0) return [];
+    const unsaved: ChatMessage[] = [];
+    for (const item of leftover) {
+      if (!chatId || !item.content.trim()) {
+        if (item.content.trim()) unsaved.push(item);
+        continue;
+      }
+      try {
+        await addMessageRecord({
+          chatId,
+          role: item.role === "assistant" ? "assistant" : "user",
+          content: item.role === "assistant" ? withSteps(item.content, item.toolSteps ?? []) : item.content,
+          model: item.modelId,
+          todos: item.toolTodos?.length ? item.toolTodos : undefined,
+        });
+      } catch {
+        unsaved.push(item);
+      }
+    }
+    return unsaved;
+  };
+
   const submitPrompt = async (
     text: string,
     modelId = selectedModelId,
@@ -972,6 +1140,10 @@ const PlanView = () => {
     historyOverride?: { role: "user" | "assistant"; content: string }[],
     annotations: KodeAnnotation[] = [],
   ) => {
+    // Everything below runs in this thread's folder (maybe a fresh worktree).
+    const workspace = await workspaceForNewThread(text);
+    const projectRoot = workspace.root;
+    const draftProjectId = workspace.projectId;
     // Approving a plan switches mode and sends in the same tick, so use the
     // override instead of the (not yet updated) state.
     const activeMode = modeOverride ?? mode;
@@ -1042,7 +1214,10 @@ const PlanView = () => {
     // The last turn stopped mid-way: tell this turn what its tools really did.
     const interruptedTurn = getInterruptedTurn(activeChatId);
     const interruptedPrefix = interruptedTurn ? `${interruptedTurnNote(interruptedTurn)}\n\n---\n\n` : "";
-    const modelText = `${interruptedPrefix}${expandedText}${fileBlocks}${savedAttachmentsNote(savedFiles)}${formatAnnotations(annotations)}`;
+    // What's open in the file editor (and any selection) rides along so the
+    // agent can act on "this file" / "this function".
+    const editorNote = formatEditorContext(getEditorContext(projectRoot));
+    const modelText = `${interruptedPrefix}${expandedText}${fileBlocks}${savedAttachmentsNote(savedFiles)}${formatAnnotations(annotations)}${editorNote}`;
     // Steps of this turn, kept for the ledger if the turn doesn't finish.
     const turnSteps = new Map<string, KodeToolStep>();
     const noteLine = annotations.length
@@ -1133,18 +1308,32 @@ const PlanView = () => {
 
     const abortController = new AbortController();
     abortByChat.current.set(key, abortController);
+    liveModes.set(key, activeMode);
 
     setSendingChats((current) => ({ ...current, [key]: true }));
     runtime.setRunning(key, true);
+    // A failed turn still on screen is saved before this one starts, so a new
+    // message never replaces it. Whatever can't be saved stays above.
+    const kept = await settleLeftoverTurn(key, activeChatId);
     setPendingByChat((current) => ({
       ...current,
-      [key]: [userMessage, thinkingMessage],
+      [key]: [...kept, userMessage, thinkingMessage],
     }));
+    const runItemIds = new Set([userMessage.id, thinkingMessage.id]);
+    // Remove this turn's own bubbles, leaving anything else in the overlay.
+    const dropRunItems = (chatKey: string) =>
+      setPendingByChat((current) => {
+        const rest = (current[chatKey] ?? []).filter((item) => !runItemIds.has(item.id));
+        const next = { ...current };
+        if (rest.length) next[chatKey] = rest;
+        else delete next[chatKey];
+        return next;
+      });
 
     // History only exists for an already-active chat (draft sends start empty).
     const history =
       historyOverride ??
-      persistedMessages.reduce<
+      (await allPersistedMessages()).reduce<
         { role: "user" | "assistant"; content: string }[]
       >((items, message) => {
         if (message.notice) return items;
@@ -1156,6 +1345,22 @@ const PlanView = () => {
 
     let runKey = key;
     let chatId = activeChatId;
+    // Applies streamed text that is still batched (set once streaming starts).
+    let flushStream = () => {};
+    // Your message is saved as soon as the chat exists, not when the reply
+    // ends, so quitting or a crash mid-turn never loses what you asked.
+    let userMessageId: string | null = null;
+    const saveUserMessage = async (id: string) => {
+      try {
+        userMessageId = await addMessageRecord({ chatId: id, role: "user", content: displayText, model: modelId });
+        setPendingByChat((current) => ({
+          ...current,
+          [runKey]: (current[runKey] ?? []).map((item) => (item.id === userMessage.id ? { ...item, saved: true } : item)),
+        }));
+      } catch {
+        // Offline or similar: it is saved with the reply instead.
+      }
+    };
     try {
       if (!chatId) {
         chatId = await createChatRecord({
@@ -1184,28 +1389,36 @@ const PlanView = () => {
         // the Stop button (which looks up by the now-active chat id) finds it.
         abortByChat.current.delete(key);
         abortByChat.current.set(newId, abortController);
+        liveModes.set(newId, liveModes.get(key) ?? activeMode);
         runKey = newId;
       }
+      await saveUserMessage(chatId);
 
       // Live-update the in-flight assistant bubble as reasoning/content tokens
       // stream in, so the chain-of-thought fills in progressively.
       const assistantId = thinkingMessage.id;
-      const applyDelta = (field: "reasoning" | "content", delta: string) => {
-        // Once stopped, ignore any tokens still arriving from the orphaned stream.
-        if (abortController.signal.aborted) return;
+      const streamed = createDeltaBatcher<"reasoning" | "content">((field, text) =>
         setPendingByChat((current) => ({
           ...current,
           [runKey]: (current[runKey] ?? []).map((item) =>
             item.id === assistantId
-              ? { ...item, [field]: (item[field] ?? "") + delta }
+              ? { ...item, [field]: (item[field] ?? "") + text }
               : item,
           ),
-        }));
+        })),
+      );
+      flushStream = streamed.flush;
+      const applyDelta = (field: "reasoning" | "content", delta: string) => {
+        // Once stopped, ignore any tokens still arriving from the orphaned stream.
+        if (abortController.signal.aborted) return;
+        streamed.push(field, delta);
       };
 
       // Upsert a tool step into the in-flight assistant bubble so its approval /
       // status card renders and updates as the agent runs.
       const upsertToolStep = (step: KodeToolStep) => {
+        // Text streamed before this step shows above its card.
+        streamed.flush();
         turnSteps.set(step.id, step);
         setPendingByChat((current) => ({
           ...current,
@@ -1387,12 +1600,9 @@ const PlanView = () => {
         const content =
           (result.text.trim() + noticeText).trim() ||
           (result.stopped ? "_Stopped._" : "");
-        await addMessageRecord({
-          chatId,
-          role: "user",
-          content: displayText,
-          model: modelId,
-        });
+        if (!userMessageId) {
+          await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
+        }
         await addMessageRecord({
           chatId,
           role: "assistant",
@@ -1400,11 +1610,9 @@ const PlanView = () => {
           model: modelId,
           todos: latestTodos.length > 0 ? latestTodos : undefined,
         });
-        setPendingByChat((current) => {
-          const next = { ...current };
-          delete next[runKey];
-          return next;
-        });
+        // The CLI counts its own prompt; our last provider total is stale.
+        clearReportedChatContextUsage(chatId);
+        dropRunItems(runKey);
         return;
       }
 
@@ -1476,6 +1684,9 @@ const PlanView = () => {
         userText: modelText,
         userContent,
         mode: activeMode,
+        contextBudget: window,
+        // Changing the mode in the picker applies from the next step.
+        getMode: () => (liveModes.get(runKey) as KodeAgentMode | undefined) ?? activeMode,
         projectRoot,
         extraSystemContext:
           [importContext?.contextPrompt, ...hookContext].filter(Boolean).join("\n\n") ||
@@ -1560,14 +1771,11 @@ const PlanView = () => {
         setActiveSkills(chatId, response.loadedSkills);
       }
 
-      // Persist both turns only after the model responds — avoids a duplicate
-      // user bubble during the wait and avoids saving an unanswered turn.
-      await addMessageRecord({
-        chatId,
-        role: "user",
-        content: displayText,
-        model: modelId,
-      });
+      // The user's message was saved when the turn started; save it now only
+      // if that failed.
+      if (!userMessageId) {
+        await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
+      }
       await addMessageRecord({
         chatId,
         role: "assistant",
@@ -1580,21 +1788,12 @@ const PlanView = () => {
       });
 
       const finishedId = chatId;
-      setUsageByChat((current) => ({
-        ...current,
-        [finishedId]: response.usage,
-      }));
-      if (response.usage?.totalTokens)
-        saveContextTokens(finishedId, response.usage.totalTokens);
+      if (response.usage) recordChatContextUsage(finishedId, response.usage);
       clearInterruptedTurn(runKey);
-      // Clear this chat's overlay — Convex now renders the persisted turns
-      // (with sources/todos from metadata).
-      setPendingByChat((current) => {
-        const next = { ...current };
-        delete next[runKey];
-        return next;
-      });
+      // Convex now renders the persisted turns (with sources/todos).
+      dropRunItems(runKey);
     } catch (error) {
+      flushStream();
       const message =
         error instanceof Error
           ? error.message
@@ -1612,10 +1811,50 @@ const PlanView = () => {
         });
       }
 
+      // Save what this turn did before it failed, so the chat keeps it: the
+      // bubbles used to exist only on screen and were gone after a restart,
+      // and the next "continue" had no record of the work. Usage limits keep
+      // their card (it can schedule the retry) and are not saved here.
+      if (!limit && chatId && runKey !== DRAFT_KEY) {
+        const live = pendingSlot.get()[runKey] ?? [];
+        const reply = live.find((item) => item.id === thinkingMessage.id);
+        const todos = reply?.toolTodos ?? [];
+        try {
+          if (!userMessageId) await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
+          await addMessageRecord({
+            chatId,
+            role: "assistant",
+            content: withSteps(
+              interruptedReply(reply?.content ?? "", cleanLimitMarker(message), todos),
+              [...turnSteps.values()],
+            ),
+            model: modelId,
+            todos: todos.length > 0 ? todos : undefined,
+          });
+          clearInterruptedTurn(runKey);
+          dropRunItems(runKey);
+          notifyRunEvent({ chatId: runKey, kind: "failed", detail: cleanLimitMarker(message).slice(0, 140) });
+          return;
+        } catch {
+          // Couldn't save (offline?): keep the turn on screen as before.
+        }
+      }
+
+      // A usage limit leaves the turn unanswered: take back the saved message
+      // so the card's "send when it resets" doesn't show it twice.
+      if (limit && userMessageId) {
+        try {
+          await rewindAfter(userMessageId);
+        } catch {
+          // Leave it saved; the retry will just repeat it.
+        }
+      }
       setPendingByChat((current) => ({
         ...current,
         [runKey]: (current[runKey] ?? []).map((item) =>
-          item.role === "assistant"
+          item.id === userMessage.id && limit
+            ? { ...item, saved: false }
+            : item.id === thinkingMessage.id
             ? {
                 ...item,
                 content: cleanLimitMarker(message),
@@ -1633,7 +1872,34 @@ const PlanView = () => {
             : item,
         ),
       }));
+
+      // Settings → General → Auto-resume limited threads: queue the prompt for
+      // the reset time instead of waiting for a click on the limit card.
+      const settingsNow = getSettings();
+      if (
+        limit &&
+        settingsNow.autoResumeLimited &&
+        limit.resetAt &&
+        limit.resetAt > Date.now() &&
+        runKey !== DRAFT_KEY
+      ) {
+        schedulePrompt({
+          chatId: runKey,
+          chatTitle: chats.find((chat) => chat.id === runKey)?.title ?? null,
+          text,
+          modelId,
+          mode: activeMode,
+          attachments,
+          fireAt: limit.resetAt + RESET_BUFFER_MS,
+          reason: "limit",
+        });
+        dropRunItems(runKey);
+        setScheduleNow(Date.now());
+      }
+      notifyRunEvent({ chatId: runKey === DRAFT_KEY ? null : runKey, kind: limit ? "limit" : "failed", detail: cleanLimitMarker(message).slice(0, 140) });
     } finally {
+      // The turn is saved (or kept on screen): drop its checkpoint.
+      clearCheckpoint(runKey);
       setSendingChats((current) => ({ ...current, [runKey]: false }));
       setCompactingChats((current) => ({ ...current, [runKey]: false }));
       abortByChat.current.delete(runKey);
@@ -1645,6 +1911,12 @@ const PlanView = () => {
   // Stop the in-flight run for the chat currently in view.
   const stopCurrentRun = () => {
     abortByChat.current.get(currentKey)?.abort();
+    // A turn waiting on you (an approval or a question) only checks for Stop
+    // once that is answered, so it hung: decline whatever is waiting.
+    for (const step of runtime.pendingByChat[currentKey] ?? []) {
+      if (step.state === "pending-approval") runtime.resolveApproval(step.id, false);
+      else if (step.state === "pending-options") runtime.resolveOptions(step.id, []);
+    }
   };
 
   // Link PRs to the chat that opened them (their URL shows up in its messages).
@@ -1852,32 +2124,38 @@ const PlanView = () => {
     setSeed((current) => ({ text: limit.text, nonce: current.nonce + 1 }));
   };
 
-  // Whole-chat context usage. The persisted estimate (system prompt + every
-  // message, all in Convex) is the cumulative floor that survives reloads. When the
-  // provider reported real usage this session we TRUE UP to it (exact tokenizer vs
-  // our chars/4 estimate) by taking the larger of the two — so the number is exact
-  // during a session and a stable estimate after a reload, never resetting to 0 or
-  // shrinking below the real conversation. The denominator follows the SELECTED
-  // model's window, so switching models reprices the SAME conversation against the
-  // new window (numerator unchanged) — like Codex / Claude Code. Only compaction
-  // (kode-compact) shrinks it, not a new turn.
-  // Empty chat → 0. Otherwise the provider's real count from the last turn
-  // (this session, or saved), else an estimate from the messages alone.
-  const reportedTokens =
-    latestUsage?.totalTokens ??
-    (activeChatId ? readContextTokens(activeChatId) : null);
+  // Whole-chat context usage. Three sources, in order of trust:
+  //   1. the provider's own count for the last turn (exact tokenizer, includes
+  //      system prompt + tool schemas) — kept in the shared store so it survives
+  //      a chat switch, a remount and a restart;
+  //   2. an estimate from the persisted history (chars/4, no system prompt);
+  //   3. nothing yet — the chat's history is still loading.
+  // The old code returned 0 for case 3 whenever `messages` was momentarily empty,
+  // which is exactly the frame Convex returns `undefined` on a chat switch: the
+  // meter flashed 0% before settling. `historyLoaded` distinguishes "empty chat"
+  // from "not loaded yet", and the store keeps the last known number meanwhile.
+  const historyLoaded = !messagesLoading || messages.length > 0;
+  const importTokens =
+    messages.length > 0 && importContext
+      ? Math.ceil(importContext.contextPrompt.length / 4)
+      : 0;
+  const estimate = estimateTokens(messages) + importTokens;
   const usedTokens =
-    messages.length === 0
+    messages.length === 0 && !contextUsage
       ? 0
-      : (reportedTokens ??
-        estimateTokens(messages) +
-          (importContext
-            ? Math.ceil(importContext.contextPrompt.length / 4)
-            : 0));
+      : contextTokensFor(contextUsage) || estimate;
+  // Keep the estimate warm per chat, so switching back shows a number before
+  // Convex answers and an emptied history clears it.
+  useEffect(() => {
+    if (!activeChatId || !historyLoaded) return;
+    rememberChatContextEstimate(activeChatId, messages.length === 0 ? null : estimate);
+  }, [activeChatId, historyLoaded, messages.length, estimate]);
+  // The meter and the send path must agree on the window: both use the scoped
+  // setting (project / environment overrides), not the global one.
   const contextWindow = getContextWindow(
     selectedModelId,
     contextWindows,
-    kodeContextWindow,
+    scopedSettings.kodeContextWindow,
   );
   useEffect(() => {
     publishChatContext({
@@ -1886,6 +2164,9 @@ const PlanView = () => {
       modelName: getModelName(selectedModelId),
     });
   }, [usedTokens, contextWindow, selectedModelId]);
+  // Leaving Kode (this view unmounts) shouldn't leave the workspace panel's
+  // Environment tab showing the last chat's number.
+  useEffect(() => () => publishChatContext(null), []);
   const inChat = activeChatId !== null || messages.length > 0;
   const [jumpSlot, setJumpSlot] = useState<HTMLDivElement | null>(null);
   const userTurns = useMemo<ChatTurn[]>(
@@ -1923,18 +2204,11 @@ const PlanView = () => {
           <ImportedChatBar
             className="mt-[4.5rem]"
             context={importContext}
-            persisted={convexMessages}
+            loadPersisted={allPersistedMessages}
             syncing={syncingImport}
             error={syncError}
             onSync={() => void syncImportedSession()}
             chatTitle={chats.find((chat) => chat.id === activeChatId)?.title ?? "Imported chat"}
-          />
-        ) : null}
-        {inChat && activeChatId ? (
-          <PrStatusBar
-            chatId={activeChatId}
-            projectRoot={activeProject?.path ?? null}
-            className={importContext ? "mt-2" : "mt-[4.5rem]"}
           />
         ) : null}
         {!inChat ? (
@@ -1970,8 +2244,21 @@ const PlanView = () => {
           <Conversation className="min-h-0 flex-1 overflow-hidden">
             <ConversationContent
               style={inChat && bottomDockHeight ? { paddingBottom: bottomDockHeight + 24 } : undefined}
-              className={`mx-auto w-full max-w-[51rem] gap-6 px-6 pb-28 ${importContext || syncError || hasPrBar ? "pt-4" : "pt-[4.5rem]"}`}
+              className={`mx-auto w-full max-w-[51rem] gap-6 px-6 pb-28 ${importContext || syncError ? "pt-4" : "pt-[4.5rem]"}`}
             >
+              {hasEarlierMessages ? (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryLimit((limit) => limit + HISTORY_PAGE)}
+                    disabled={recentPage === undefined}
+                    className="kontinue-3d flex h-8 items-center gap-1.5 rounded-full px-3.5 text-label text-foreground/85 hover:text-foreground disabled:opacity-60"
+                  >
+                    {recentPage === undefined ? <Loader2 size={12} className="animate-spin" /> : null}
+                    Show earlier messages
+                  </button>
+                </div>
+              ) : null}
               {messages.map((message, index) =>
                 isWebhookEvent(message.role, message.content) ? (
                   <WebhookEventCard key={message.id} content={message.content} />
@@ -2003,7 +2290,14 @@ const PlanView = () => {
                         : undefined
                     }
                   >
-                    <MessageContent>
+                    {message.role === "user" ? <UserAttachments {...userParts(message.content)} /> : null}
+                    <MessageContent
+                      className={
+                        message.role === "user" && !userParts(message.content).text && editingMessageId !== message.id
+                          ? "hidden"
+                          : undefined
+                      }
+                    >
                       {message.role === "assistant" ? (
                         <>
                           {(() => {
@@ -2025,7 +2319,7 @@ const PlanView = () => {
                                 </ChainOfThoughtHeader>
                                 {reasoningText ? (
                                   <ChainOfThoughtContent>
-                                    <div className="whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/60">
+                                    <div className="whitespace-pre-wrap text-body leading-relaxed text-foreground/60">
                                       {reasoningText}
                                     </div>
                                   </ChainOfThoughtContent>
@@ -2105,7 +2399,7 @@ const PlanView = () => {
                         </div>
                       ) : (
                         <CollapsibleUserText>
-                          <MessageResponse>{message.content}</MessageResponse>
+                          <MessageResponse>{userParts(message.content).text}</MessageResponse>
                         </CollapsibleUserText>
                       )}
                     </MessageContent>
@@ -2130,7 +2424,7 @@ const PlanView = () => {
                         !message.id.startsWith("assistant-")
                           ? () => {
                               setEditingMessageId(message.id);
-                              setEditDraft(message.content.replace(/\n*```kode-image\n[\s\S]*?\n```/g, ""));
+                              setEditDraft(splitUserAttachments(message.content).text);
                             }
                           : undefined
                       }
@@ -2166,20 +2460,20 @@ const PlanView = () => {
                       size={14}
                       className="shrink-0 text-purple-500"
                     />
-                    <p className="min-w-0 flex-1 text-[12.5px] text-foreground/85">
+                    <p className="min-w-0 flex-1 text-body text-foreground/85">
                       Ready to build this plan?
                     </p>
                     <button
                       type="button"
                       onClick={() => approve("supervised")}
-                      className="kontinue-3d h-8 cursor-pointer rounded-full px-3.5 text-[12px] text-foreground/85 hover:text-foreground"
+                      className="kontinue-3d h-8 cursor-pointer rounded-full px-3.5 text-label text-foreground/85 hover:text-foreground"
                     >
                       Approve, review each edit
                     </button>
                     <button
                       type="button"
                       onClick={() => approve("auto_edits")}
-                      className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-3.5 text-[12px] font-medium"
+                      className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-3.5 text-label font-medium"
                     >
                       Approve &amp; build
                     </button>
@@ -2212,6 +2506,26 @@ const PlanView = () => {
             <div className="pointer-events-auto mx-auto mb-2 flex justify-center">
               <NoProjectBar inChat onPick={(projectId) => assignChatsToFolder([activeChatId], projectId)} className="liquid-glass-pill rounded-full px-3 py-1" />
             </div>
+          ) : null}
+          {/* The chat's pull request sits with the plan, right above the
+              input, so Merge is where your hands already are. */}
+          {inChat && activeChatId && importContext && resumeOfferNow && !isCurrentSending ? (
+            <ImportResumeCard
+              offer={resumeOfferNow}
+              provider={providerLabel(importContext.provider)}
+              onDismiss={() => saveImportContext({ ...importContext, resumeHandled: true })}
+              onContinue={() => {
+                saveImportContext({ ...importContext, resumeHandled: true });
+                // Continuing now replaces the continue queued for the reset time.
+                for (const item of getScheduledPrompts()) {
+                  if (item.chatId === importContext.chatId && item.reason === "limit") removeScheduledPrompt(item.id);
+                }
+                void submitPrompt(resumePrompt(resumeOfferNow));
+              }}
+            />
+          ) : null}
+          {inChat && activeChatId ? (
+            <PrStatusBar chatId={activeChatId} projectRoot={activeProject?.path ?? null} />
           ) : null}
           {inChat && dockPlan ? (
             <TodoDock todos={dockPlan.todos} running={isCurrentSending} planKey={dockPlan.key} compact={promptWaiting} />
@@ -2246,7 +2560,7 @@ const PlanView = () => {
                   openDelay={120}
                   closeDelay={250}
                 >
-                  <ContextTrigger className="h-6 gap-1 rounded-md px-1 text-[11px] text-foreground/55 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06] [&_svg]:size-3" />
+                  <ContextTrigger className="h-6 gap-1 rounded-md px-1 text-caption text-foreground/55 kontinue-hover hover:text-foreground [&_svg]:size-3" />
                   <ContextContent
                     align="end"
                     side="top"
@@ -2326,7 +2640,7 @@ const PlanView = () => {
                       openDelay={120}
                       closeDelay={250}
                     >
-                      <ContextTrigger className="h-6 gap-1 rounded-md px-1 text-[11px] text-foreground/55 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06] [&_svg]:size-3" />
+                      <ContextTrigger className="h-6 gap-1 rounded-md px-1 text-caption text-foreground/55 kontinue-hover hover:text-foreground [&_svg]:size-3" />
                       <ContextContent
                         align="end"
                         side="top"
@@ -2391,37 +2705,33 @@ const PlanView = () => {
           {showSummary && compactionByChat.current.get(currentKey) ? (
             <div className="mb-2 rounded-lg border border-white/[0.08] bg-white/[0.02] p-3">
               <div className="mb-1.5 flex items-center justify-between">
-                <span className="text-[11px] font-medium uppercase text-foreground/45">
+                <span className="text-caption font-medium uppercase text-foreground/45">
                   Compacted context summary
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowSummary(false)}
-                  className="text-[11px] text-foreground/40 hover:text-foreground/70"
+                  className="text-caption text-foreground/40 hover:text-foreground/70"
                 >
                   Close
                 </button>
               </div>
-              <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-[12px] text-foreground/65">
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-label text-foreground/65">
                 {compactionByChat.current.get(currentKey)?.summary}
               </pre>
             </div>
           ) : null}
 
-          {selectedCli || isCompacting || compactedChats[currentKey] ? (
+          {cliNotSignedIn || isCompacting || compactedChats[currentKey] ? (
             <div className="mt-2 flex items-center justify-end gap-2">
-              {selectedCli ? (
-                <span
-                  className="mr-auto rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-600 dark:text-emerald-400"
-                  title="Runs the CLI installed on this computer with your own sign-in. Not counted in Kode usage."
-                >
-                  {cliNeedsLogin(cliStatuses, selectedCli.id)
-                    ? `${selectedCli.label} is not signed in. Sign in from Settings → Providers`
-                    : `${selectedCli.label} · ${cliPlanLabel(selectedCli).replace("Uses", "uses")} · not counted in Kode usage`}
+              {/* Which plan an agent uses is in the model picker; here only when it can't run. */}
+              {cliNotSignedIn ? (
+                <span className="mr-auto rounded-full bg-amber-500/10 px-2 py-0.5 text-caption text-amber-600 dark:text-amber-400">
+                  {cliNotSignedIn.label} is not signed in. Sign in from Settings → Providers
                 </span>
               ) : null}
               {isCompacting ? (
-                <span className="mr-auto flex items-center gap-1.5 text-[11px] text-foreground/45">
+                <span className="mr-auto flex items-center gap-1.5 text-caption text-foreground/45">
                   <Loader2 className="size-3 animate-spin" />
                   <Shimmer>Compacting context…</Shimmer>
                 </span>
@@ -2430,7 +2740,7 @@ const PlanView = () => {
                 <button
                   type="button"
                   onClick={() => setShowSummary((v) => !v)}
-                  className="text-[11px] text-foreground/40 underline-offset-2 hover:text-foreground/70 hover:underline"
+                  className="text-caption text-foreground/40 underline-offset-2 hover:text-foreground/70 hover:underline"
                   title="Older messages were summarized to fit the model's context window. Click to view."
                 >
                   context compacted · view summary
@@ -2463,7 +2773,7 @@ const PlanView = () => {
                       className="text-purple-500/40 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all"
                     />
                   </div>
-                  <p className="text-[11.5px] text-zinc-500 dark:text-zinc-400 line-clamp-1 mt-0.5 leading-relaxed group-hover:text-zinc-700 dark:group-hover:text-zinc-300 transition-colors">
+                  <p className="text-label text-zinc-500 dark:text-zinc-400 line-clamp-1 mt-0.5 leading-relaxed group-hover:text-zinc-700 dark:group-hover:text-zinc-300 transition-colors">
                     {starter.prompt}
                   </p>
                 </div>
@@ -2527,9 +2837,9 @@ function ChatContextSummary({ used, max }: { used: number; max: number }) {
   const compact = new Intl.NumberFormat("en-US", { notation: "compact" });
   return (
     <>
-      <div className="flex items-center justify-between text-[12px]">
+      <div className="flex items-center justify-between text-label">
         <span className="text-foreground/90">Context · this chat</span>
-        <span className="font-mono text-[11px] text-muted-foreground">
+        <span className="font-mono text-caption text-muted-foreground">
           {compact.format(used)} / {compact.format(max)}
           <span className="ml-2 font-sans tabular-nums text-foreground/75">
             {pct < 1 && pct > 0 ? pct.toFixed(1) : Math.round(pct)}%
@@ -2537,7 +2847,7 @@ function ChatContextSummary({ used, max }: { used: number; max: number }) {
         </span>
       </div>
       <UsageBar pct={pct} />
-      <p className="text-[10.5px] leading-relaxed text-muted-foreground">
+      <p className="text-caption leading-relaxed text-muted-foreground">
         Older messages are summarized automatically when the chat gets close to
         the limit.
       </p>

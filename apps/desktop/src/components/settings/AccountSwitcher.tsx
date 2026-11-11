@@ -26,8 +26,8 @@ export function AccountSwitcher({
   if (keys.length === 0) return null;
   return (
     <section className="liquid-glass-dropdown !rounded-[20px] px-4 py-3.5">
-      <p className="text-[13px] font-medium text-foreground">Accounts</p>
-      <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+      <p className="text-body font-medium text-foreground">Accounts</p>
+      <p className="mt-0.5 text-label text-muted-foreground">
         Add a second account of a provider with its own config folder, then pick which one Kode uses. Turn a provider on in the list below first. In a chat, type <code>/switch</code>.
       </p>
       <div className="mt-3 space-y-2.5">
@@ -36,7 +36,7 @@ export function AccountSwitcher({
           const activeId = activeAccountId(key, providers, active);
           return (
             <div key={key} className="flex flex-wrap items-center gap-1.5">
-              <span className="w-28 shrink-0 text-[12px] text-foreground/70">{kindName(accounts[0])}</span>
+              <span className="w-28 shrink-0 text-label text-foreground/70">{kindName(accounts[0])}</span>
               {accounts.map((account) => {
                 const status = statuses?.find((s) => s.instance === account.id);
                 // A provider that's off isn't "in use", even if it's the default.
@@ -49,7 +49,7 @@ export function AccountSwitcher({
                     onClick={() => setActiveAccount(account)}
                     title={account.enabled ? (status?.loggedIn === false ? "Not signed in" : `Use ${account.label}`) : "Turn this provider on first"}
                     className={cn(
-                      "flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11.5px] disabled:cursor-default disabled:opacity-45",
+                      "flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label disabled:cursor-default disabled:opacity-45",
                       selected ? "kontinue-3d-primary font-medium" : "kontinue-3d text-foreground/75 hover:text-foreground",
                     )}
                   >
@@ -58,7 +58,7 @@ export function AccountSwitcher({
                   </button>
                 );
               })}
-              <button type="button" onClick={onAdd} className="flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-[11.5px] text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={onAdd} className="flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-label text-muted-foreground hover:text-foreground">
                 <Plus size={11} /> Add account
               </button>
             </div>

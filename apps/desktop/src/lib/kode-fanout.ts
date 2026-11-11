@@ -5,11 +5,11 @@
 // result back to compare. Runs are unattended: edits are accepted, and anything
 // that would need your approval is declined.
 
-import { invoke } from "@tauri-apps/api/core";
 import { gitStatus } from "@/components/panel/panel-api";
 import { runKodeAgent, type KodeExtraTool } from "./kode-agent";
 import { getProvider, parseCliModelId, runCliTurn, saveCliSession } from "./kode-cli";
 import type { KodeAgentMode, KodeTodo } from "./kode-tools";
+import { addWorktree, branchPrefix, slugify } from "./kode-branches";
 
 export type FanOutRunStatus = "starting" | "running" | "done" | "error" | "stopped";
 
@@ -83,15 +83,8 @@ export function stopFanOutRun(runId: string) {
 // ---------------------------------------------------------------------------
 
 /** "kode/fix-login-claude-opus-k3f9" style branch names. */
-export function fanOutBranch(prompt: string, modelName: string, suffix: string): string {
-  const slug = (text: string, max: number) =>
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, max)
-      .replace(/-+$/g, "");
-  return `kode/${slug(prompt, 24) || "task"}-${slug(modelName, 20) || "model"}-${suffix}`;
+export function fanOutBranch(prompt: string, modelName: string, suffix: string, prefix = branchPrefix()): string {
+  return `${prefix}${slugify(prompt, 24) || "task"}-${slugify(modelName, 20) || "model"}-${suffix}`;
 }
 
 const REPLY_CHARS = 2_000;
@@ -153,7 +146,7 @@ async function runOne(
   let todos: KodeTodo[] = [];
   const declined: string[] = [];
   try {
-    const worktree = await invoke<string>("panel_git_worktree_add", { root, branch: run.branch });
+    const worktree = await addWorktree(root, run.branch);
     const projectId = deps.ensureFolder(worktree);
     const title = `${prompt.replace(/\s+/g, " ").trim().slice(0, 48)} · ${run.modelName}`;
     const chatId = await deps.createChatRecord({ title, projectId });

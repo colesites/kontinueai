@@ -19,7 +19,7 @@ use tauri::ipc::Channel;
 /// Run `gh` in the project with the user's login PATH. Async so network calls
 /// don't block the window. Returns stdout, or a readable error.
 async fn gh(root: &str, args: &[&str]) -> Result<String, String> {
-    let output = tokio::process::Command::new("gh")
+    let output = tokio::process::Command::new(crate::cli_agents::program_path("gh"))
         .args(args)
         .current_dir(root)
         .env("PATH", crate::cli_agents::login_path())
@@ -167,7 +167,7 @@ fn count_lines(path: &Path) -> u32 {
         .unwrap_or(0)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panel_git_status(root: String) -> Result<GitStatus, String> {
     let empty = GitStatus {
         is_repo: false,
@@ -290,20 +290,37 @@ pub fn panel_git_status(root: String) -> Result<GitStatus, String> {
 
 /// Unified diff for one file against HEAD. Untracked files diff against an
 /// empty file so they show as fully added.
-#[tauri::command]
-pub fn panel_git_diff(root: String, path: String, untracked: bool) -> Result<String, String> {
+#[tauri::command(async)]
+pub fn panel_git_diff(
+    root: String,
+    path: String,
+    untracked: bool,
+    ignore_whitespace: Option<bool>,
+) -> Result<String, String> {
     if path.contains("..") {
         return Err("Invalid path".to_string());
     }
+    // Settings → General → Hide whitespace changes.
+    let ws: &[&str] = if ignore_whitespace.unwrap_or(false) { &["-w"] } else { &[] };
+    let with = |args: &[&str]| -> Vec<String> {
+        let mut out: Vec<String> = vec!["diff".into(), "--no-color".into()];
+        out.extend(ws.iter().map(|s| s.to_string()));
+        out.extend(args.iter().map(|s| s.to_string()));
+        out
+    };
+    let run = |args: Vec<String>| {
+        let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        git(&root, &refs)
+    };
     let output = if untracked {
-        git(&root, &["diff", "--no-color", "--no-index", "--", "/dev/null", &path])?
+        run(with(&["--no-index", "--", "/dev/null", &path]))?
     } else {
-        let head = git(&root, &["diff", "--no-color", "HEAD", "--", &path])?;
+        let head = run(with(&["HEAD", "--", &path]))?;
         if head.status.success() {
             head
         } else {
             // No commits yet: show the staged version.
-            git(&root, &["diff", "--no-color", "--cached", "--", &path])?
+            run(with(&["--cached", "--", &path]))?
         }
     };
     // `--no-index` exits 1 when files differ, which is the normal case.
@@ -339,7 +356,7 @@ fn valid_branch(root: &str, branch: &str) -> Result<(), String> {
         .map_err(|_| format!("\"{branch}\" isn't a valid branch name."))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panel_git_branches(root: String) -> Result<GitBranches, String> {
     let inside = git(&root, &["rev-parse", "--is-inside-work-tree"])?;
     if !inside.status.success() {
@@ -361,7 +378,7 @@ pub fn panel_git_branches(root: String) -> Result<GitBranches, String> {
 }
 
 /// Push the current branch to origin. Sets the upstream when the branch has none.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panel_git_push(root: String) -> Result<(), String> {
     let inside = git(&root, &["rev-parse", "--is-inside-work-tree"])?;
     if !inside.status.success() {
@@ -375,7 +392,7 @@ pub fn panel_git_push(root: String) -> Result<(), String> {
 }
 
 /// Switch to a branch, or create it from the current HEAD when `create` is set.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panel_git_switch(root: String, branch: String, create: bool) -> Result<(), String> {
     valid_branch(&root, &branch)?;
     let args: Vec<&str> = if create { vec!["switch", "-c", &branch] } else { vec!["switch", &branch] };
@@ -384,8 +401,13 @@ pub fn panel_git_switch(root: String, branch: String, create: bool) -> Result<()
 
 /// Create a git worktree for `branch` (new branch if it doesn't exist) under
 /// ~/.kontinue/worktrees/<repo>/<branch>. Returns the project folder inside it.
-#[tauri::command]
-pub fn panel_git_worktree_add(root: String, branch: String) -> Result<String, String> {
+#[tauri::command(async)]
+pub fn panel_git_worktree_add(
+    root: String,
+    branch: String,
+    from_origin: Option<bool>,
+    base_dir: Option<String>,
+) -> Result<String, String> {
     valid_branch(&root, &branch)?;
     let top = git_ok(&root, &["rev-parse", "--show-toplevel"])?.trim().to_string();
     let prefix = git_ok(&root, &["rev-parse", "--show-prefix"])?.trim().to_string();
@@ -393,12 +415,12 @@ pub fn panel_git_worktree_add(root: String, branch: String) -> Result<String, St
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "repo".to_string());
-    let home = std::env::var("HOME").map_err(|_| "Couldn't find your home folder".to_string())?;
     let safe_branch: String = branch
         .chars()
         .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' { c } else { '-' })
         .collect();
-    let target = Path::new(&home).join(".kontinue").join("worktrees").join(&repo).join(&safe_branch);
+    // Settings → Storage → Worktree location (default ~/.kontinue/worktrees).
+    let target = crate::settings_info::worktree_base(base_dir.as_deref())?.join(&repo).join(&safe_branch);
     if target.exists() {
         return Err(format!("A worktree for \"{branch}\" already exists at {}", target.display()));
     }
@@ -412,7 +434,28 @@ pub fn panel_git_worktree_add(root: String, branch: String) -> Result<String, St
     if exists {
         git_ok(&top, &["worktree", "add", &target_str, &branch])?;
     } else {
-        git_ok(&top, &["worktree", "add", "-b", &branch, &target_str])?;
+        // Settings → Source control → Start from origin: base the new branch
+        // on the latest origin/<current branch>; fall back to local HEAD.
+        let base = if from_origin.unwrap_or(false) {
+            git_ok(&top, &["rev-parse", "--abbrev-ref", "HEAD"])
+                .ok()
+                .map(|b| b.trim().to_string())
+                .filter(|b| !b.is_empty() && b != "HEAD")
+                .and_then(|current| {
+                    git_ok(&top, &["fetch", "--quiet", "origin", &current]).ok()?;
+                    Some(format!("origin/{current}"))
+                })
+        } else {
+            None
+        };
+        match base {
+            Some(base) => {
+                git_ok(&top, &["worktree", "add", "--no-track", "-b", &branch, &target_str, &base])?;
+            }
+            None => {
+                git_ok(&top, &["worktree", "add", "-b", &branch, &target_str])?;
+            }
+        }
     }
     Ok(target.join(prefix.trim_end_matches('/')).to_string_lossy().trim_end_matches('/').to_string())
 }
@@ -527,7 +570,7 @@ pub struct MergedCleanup {
 /// delete the merged local branch, or remove the worktree it lived in. Never
 /// discards work: stops at uncommitted changes and keeps a branch that has
 /// commits the remote never saw.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn panel_pr_cleanup_merged(root: String, branch: String, base: String) -> Result<MergedCleanup, String> {
     valid_branch(&root, &branch)?;
     valid_branch(&root, &base)?;
@@ -812,7 +855,7 @@ mod tests {
         assert!(status.is_repo);
         assert!(status.branch.is_some());
         if let Some(file) = status.files.iter().find(|f| f.status != "deleted") {
-            let diff = panel_git_diff(root, file.path.clone(), file.status == "untracked")
+            let diff = panel_git_diff(root, file.path.clone(), file.status == "untracked", None)
                 .expect("git diff");
             assert!(diff.contains("@@") || diff.contains("Binary"), "diff for {}", file.path);
         }

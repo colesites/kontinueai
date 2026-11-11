@@ -32,11 +32,11 @@ export function TodoDock({ todos, running, planKey, compact = false }: { todos: 
           ) : (
             <ListChecks size={14} className="shrink-0 text-purple-500" />
           )}
-          <span className="shrink-0 text-[12.5px] font-medium">{finished ? "Plan done" : "Plan"}</span>
-          <span className="shrink-0 text-[12px] text-muted-foreground">
+          <span className="shrink-0 text-body font-medium">{finished ? "Plan done" : "Plan"}</span>
+          <span className="shrink-0 text-label text-muted-foreground">
             {done} of {todos.length}
           </span>
-          {(!open || compact) && current && !finished ? <span className="min-w-0 truncate text-[12px] text-foreground/70">· {current.title}</span> : null}
+          {(!open || compact) && current && !finished ? <span className="min-w-0 truncate text-label text-foreground/70">· {current.title}</span> : null}
           <ChevronDown size={13} className={cn("ml-auto shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
         </button>
         {!running ? (

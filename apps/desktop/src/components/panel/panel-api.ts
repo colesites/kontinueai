@@ -49,8 +49,9 @@ export function gitDiff(
   root: string,
   path: string,
   untracked: boolean,
+  ignoreWhitespace = false,
 ): Promise<string> {
-  return invoke<string>("panel_git_diff", { root, path, untracked });
+  return invoke<string>("panel_git_diff", { root, path, untracked, ignoreWhitespace });
 }
 
 export function listDir(root: string, path: string): Promise<FileEntry[]> {

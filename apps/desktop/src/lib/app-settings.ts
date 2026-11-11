@@ -5,6 +5,7 @@ import type { KodeAgentMode } from "@/lib/kode-tools";
 import type { KodeEffort } from "@repo/ai/lib/kode";
 
 export type TextSize = "small" | "default" | "large";
+export type InterfaceFont = "system" | "figtree";
 
 export type AppSettings = {
   /** ChatInput: Enter sends (true) or ⌘/Ctrl+Enter sends (false). */
@@ -33,6 +34,70 @@ export type AppSettings = {
   /** Active account per provider ("claude", "codex", "acp:<preset>") when
    *  there are several accounts of it (kode-accounts.ts). */
   kodeActiveAccounts: Record<string, string>;
+  /** Root font family for the whole UI. */
+  interfaceFont: InterfaceFont;
+  /** kode-workspace deleteChat: ask before deleting a chat. */
+  confirmDelete: boolean;
+  /** KodeView / session import: the snapshot shortcut and menu entry. */
+  snapshotsEnabled: boolean;
+  /** SnapshotDialog: seconds to switch apps before capturing. */
+  snapshotDelay: number;
+  /** SnapshotDialog: send the front app's accessibility tree as text. */
+  snapshotIncludeTree: boolean;
+  /** SnapshotDialog: also save the screenshot into the project. */
+  snapshotSaveImage: boolean;
+  /** SnapshotDialog: model and mode the snapshot thread runs on (null = Kode default). */
+  snapshotModel: string | null;
+  snapshotMode: KodeAgentMode;
+  /** kode-pr-watch: Auto-fix starts on for PRs a chat opens. */
+  prAutoFixDefault: boolean;
+  /** kode-pr-watcher: seconds between PR checks (0 = paused). */
+  prPollSeconds: number;
+  /** PR tab: merge method preselected when merging. */
+  prMergeMethod: "squash" | "merge" | "rebase";
+  /** task-reminders: macOS notification when a task's reminder is due. */
+  taskReminders: boolean;
+  /** kode-notify: macOS notifications for Kode threads. */
+  threadNotifications: "off" | "background" | "always";
+  /** kode-notify: toast when another thread finishes while the app has focus. */
+  inAppNotifications: boolean;
+  /** PlanView: queue a limited prompt for the reset time automatically. */
+  autoResumeLimited: boolean;
+  /** KodeComposerBar: where new threads start ("worktree" = a new git worktree). */
+  newThreadWorkspace: "local" | "worktree";
+  /** Prefix for branches Kode names (new worktrees, sub-agents). "" = none. */
+  branchPrefix: string;
+  /** ChangesTab: diff display. */
+  diffLayout: "stacked" | "split";
+  diffHideWhitespace: boolean;
+  diffDefaultCollapsed: boolean;
+  /** kode-notify: play a sound with thread notifications. */
+  notificationSound: boolean;
+  /** macOS alert sound name (settings_info::SOUNDS). */
+  notificationSoundName: string;
+  /** Sidebar + command palette project order. */
+  projectOrder: "recent" | "added" | "name";
+  /** importFolder: folder the Add project dialog opens in ("" = ~/). */
+  addProjectDir: string;
+  /** addWorktree: base new branches on origin/<current branch>. */
+  worktreeFromOrigin: boolean;
+  /** kode-workspace togglePinChat: ask before unpinning. */
+  confirmUnpin: boolean;
+  /** kode-pr-watcher: archive a Kode chat when its PR merges. */
+  autoArchiveMerged: boolean;
+  /** AutoArchive: archive Kode chats idle this many days (0 = off). */
+  autoArchiveInactiveDays: number;
+  /** addWorktree: folder for new worktrees ("" = ~/.kontinue/worktrees). */
+  worktreeLocation: string;
+  /** kode-cleanup rules (Settings → Storage). */
+  cleanupDeletedThreads: boolean;
+  cleanupInactiveDays: number;
+  cleanupMerged: boolean;
+  cleanupUnchanged: boolean;
+  /** Worktrees kept even when a rule matches. */
+  cleanupKeep: "uncommitted" | "unpushed" | "none";
+  /** Delete .kode/attachments files older than this many days (0 = off). */
+  cleanupAttachmentsDays: number;
 };
 
 /** "acp" = any agent started with an Agent Client Protocol command. */
@@ -40,6 +105,7 @@ export type ProviderKind = "claude" | "codex" | "cursor" | "acp";
 /** Known ACP agents (sets the default command, logo and update method). */
 export type AcpPreset =
   | "gemini"
+  | "antigravity"
   | "opencode"
   | "copilot"
   | "amp"
@@ -50,6 +116,10 @@ export type AcpPreset =
   | "claude-acp"
   | "codex-acp"
   | "custom";
+
+/** ACP Registry agent an instance came from. `binary` agents are downloaded
+ *  and updated by the app (~/.kontinue/acp-agents/<id>). */
+export type RegistryRef = { id: string; name: string; icon: string | null; binary: boolean };
 
 export type CliConfigSetting = {
   /** Command name or full path to the binary. */
@@ -80,6 +150,8 @@ export type ProviderInstance = {
   id: string;
   kind: ProviderKind;
   preset?: AcpPreset;
+  /** Added from the ACP Registry: the registry entry it came from. */
+  registry?: RegistryRef;
   label: string;
   /** Optional marker color shown in the picker. */
   accent: string | null;
@@ -132,6 +204,41 @@ export const DEFAULT_SETTINGS: AppSettings = {
   kodeProviders: DEFAULT_PROVIDERS,
   kodeCliHealthInterval: 300,
   kodeActiveAccounts: {},
+  interfaceFont: "system",
+  confirmDelete: true,
+  snapshotsEnabled: true,
+  snapshotDelay: 3,
+  snapshotIncludeTree: true,
+  snapshotSaveImage: true,
+  snapshotModel: null,
+  snapshotMode: "supervised",
+  prAutoFixDefault: false,
+  prPollSeconds: 60,
+  prMergeMethod: "squash",
+  taskReminders: true,
+  threadNotifications: "background",
+  inAppNotifications: true,
+  autoResumeLimited: false,
+  newThreadWorkspace: "local",
+  branchPrefix: "kode/",
+  diffLayout: "stacked",
+  diffHideWhitespace: false,
+  diffDefaultCollapsed: false,
+  notificationSound: true,
+  notificationSoundName: "Glass",
+  projectOrder: "added",
+  addProjectDir: "",
+  worktreeFromOrigin: false,
+  confirmUnpin: false,
+  autoArchiveMerged: false,
+  autoArchiveInactiveDays: 0,
+  worktreeLocation: "",
+  cleanupDeletedThreads: false,
+  cleanupInactiveDays: 0,
+  cleanupMerged: false,
+  cleanupUnchanged: false,
+  cleanupKeep: "uncommitted",
+  cleanupAttachmentsDays: 0,
 };
 
 /** Fill in missing fields and make sure the built-in providers exist. Also
@@ -197,6 +304,7 @@ function apply(settings: AppSettings) {
   const root = document.documentElement;
   root.style.setProperty("zoom", ZOOM[settings.textSize]);
   root.classList.toggle("reduce-motion", settings.reduceMotion);
+  root.classList.toggle("font-figtree", settings.interfaceFont === "figtree");
 }
 
 export function getSettings(): AppSettings {

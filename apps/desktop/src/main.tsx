@@ -4,10 +4,13 @@ import "./styles/globals.css";
 import { installScrollbarActivity } from "./lib/scrollbar-activity";
 import { installAppSettings } from "./lib/app-settings";
 import { installTextSelectionHighlight } from "./lib/text-selection";
+import { ensureKontinueServer } from "./lib/desktop-auth";
 
 installScrollbarActivity();
 installAppSettings();
 installTextSelectionHighlight();
+// Before any request: which web server matches this build's sign-in.
+void ensureKontinueServer();
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 

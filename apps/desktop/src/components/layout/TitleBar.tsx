@@ -18,7 +18,7 @@ export function TitleBar({ className }: { className?: string }) {
       >
         <span
           data-tauri-drag-region
-          className="text-[11.5px] font-medium tracking-tight text-foreground/70 dark:text-purple-200/70"
+          className="text-label font-medium tracking-tight text-foreground/70 dark:text-purple-200/70"
         >
           Kontinue AI
         </span>

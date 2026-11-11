@@ -41,7 +41,7 @@ export function ImageLightbox({ src, alt, onClose }: { src: string; alt?: string
       >
         <X size={16} />
       </button>
-      {alt ? <p className="absolute bottom-4 max-w-[80vw] truncate text-[12px] text-white/70">{alt}</p> : null}
+      {alt ? <p className="absolute bottom-4 max-w-[80vw] truncate text-label text-white/70">{alt}</p> : null}
     </div>,
     document.body,
   );

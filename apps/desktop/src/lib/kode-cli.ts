@@ -26,6 +26,7 @@ import {
   type AppSettings,
   type ProviderInstance,
   type ProviderKind,
+  type RegistryRef,
 } from "./app-settings";
 import type { KodeToolStep } from "./kode-agent";
 import type { KodeTodo, KodeTodoStatus } from "./kode-tools";
@@ -111,7 +112,13 @@ export type AcpPresetInfo = KindInfo & {
   description: string;
   /** Sign-in methods the agent offers through ACP `authenticate`. */
   authMethods?: { id: string; label: string; description: string }[];
+  /** ACP Registry id when the app downloads and updates the agent itself. */
+  registryId?: string;
 };
+
+const ACP_REGISTRY_CDN = "https://cdn.agentclientprotocol.com/registry/v1/latest";
+/** Where managed registry downloads live (see acp_registry.rs). */
+export const ACP_AGENTS_DIR = "~/.kontinue/acp-agents";
 
 export const ACP_PRESETS: Record<AcpPreset, AcpPresetInfo> = {
   gemini: {
@@ -127,6 +134,22 @@ export const ACP_PRESETS: Record<AcpPreset, AcpPresetInfo> = {
       { id: "gemini-api-key", label: "Gemini API key", description: "Billed to your key. Add GEMINI_API_KEY." },
       { id: "vertex-ai", label: "Vertex AI", description: "Billed to your Google Cloud project." },
     ],
+  },
+  antigravity: {
+    name: "Antigravity",
+    logo: `${ACP_REGISTRY_CDN}/antigravity-acp.svg`,
+    plan: "Google",
+    loginCommand: null,
+    install: "https://antigravity.google/docs/ide/extensions",
+    command: `${ACP_AGENTS_DIR}/antigravity-acp/agy_acp_server.par`,
+    description: "Google's official Antigravity agent. Kontinue downloads and updates it for you.",
+    authMethods: [
+      { id: "oauth-personal", label: "Google account", description: "Uses your Google subscription." },
+      { id: "oauth-business", label: "Gemini Enterprise", description: "Signs in with your Gemini Enterprise account." },
+      { id: "gemini-api-key", label: "Gemini API key", description: "Billed to your key. Add GEMINI_API_KEY." },
+      { id: "agent-platform", label: "Agent Platform (Vertex AI)", description: "Billed to your Google Cloud project." },
+    ],
+    registryId: "antigravity-acp",
   },
   opencode: {
     name: "OpenCode",
@@ -223,31 +246,44 @@ export const ACP_PRESETS: Record<AcpPreset, AcpPresetInfo> = {
   },
 };
 
-function info(instance: Pick<ProviderInstance, "kind" | "preset">): KindInfo {
+type InstanceRef = Pick<ProviderInstance, "kind" | "preset" | "registry">;
+
+function info(instance: InstanceRef): KindInfo {
+  if (instance.kind === "acp" && instance.registry) {
+    const { name, icon } = instance.registry;
+    return { name, logo: icon ?? "", plan: null, loginCommand: null, install: "https://agentclientprotocol.com/registry" };
+  }
   return instance.kind === "acp" ? ACP_PRESETS[instance.preset ?? "custom"] : KIND_INFO[instance.kind];
 }
 
+/** Registry id when the app installs this agent itself (a download, not a CLI on PATH). */
+export function managedAgentId(instance: InstanceRef): string | null {
+  if (instance.kind !== "acp") return null;
+  if (instance.registry) return instance.registry.binary ? instance.registry.id : null;
+  return ACP_PRESETS[instance.preset ?? "custom"].registryId ?? null;
+}
+
 /** "Claude Code", "Gemini CLI", … (the kind, not the user's label). */
-export function kindName(instance: Pick<ProviderInstance, "kind" | "preset">): string {
+export function kindName(instance: InstanceRef): string {
   return info(instance).name;
 }
 
-export function providerLogo(instance: Pick<ProviderInstance, "kind" | "preset">): string {
+export function providerLogo(instance: InstanceRef): string {
   return info(instance).logo;
 }
 
-export function installUrl(instance: Pick<ProviderInstance, "kind" | "preset">): string {
+export function installUrl(instance: InstanceRef): string {
   return info(instance).install;
 }
 
 /** "Uses your Claude plan", or a neutral line for agents billed elsewhere. */
-export function cliPlanLabel(instance: Pick<ProviderInstance, "kind" | "preset">): string {
+export function cliPlanLabel(instance: InstanceRef): string {
   const plan = info(instance).plan;
   return plan ? `Uses your ${plan} plan` : "Runs with your own account";
 }
 
 /** Terminal command that signs the CLI in, when it has one. */
-export function cliLoginCommand(instance: Pick<ProviderInstance, "kind" | "preset">): string | null {
+export function cliLoginCommand(instance: InstanceRef): string | null {
   return info(instance).loginCommand;
 }
 
@@ -628,7 +664,7 @@ export function cliVersionIssue(model: string, instance: ProviderInstance, statu
 // Update / sign in / sign out (the agents' own commands)
 // ---------------------------------------------------------------------------
 
-export type CliTask = { kind: "update" } | { kind: "login" } | { kind: "logout" };
+export type CliTask = { kind: "update" } | { kind: "login" } | { kind: "logout" } | { kind: "install"; agentId: string };
 
 /** Start a maintenance task; streams output lines and can be cancelled. */
 export function startCliTask(
@@ -650,6 +686,9 @@ export function startCliTask(
     const config = rustConfig(instance);
     const provider = instance.kind;
     try {
+      if (task.kind === "install") {
+        return await invoke<CliTaskResult>("kode_acp_install", { runId, agentId: task.agentId, onLine: channel });
+      }
       return task.kind === "update"
         ? await invoke<CliTaskResult>("kode_cli_update", { runId, provider, config, onLine: channel })
         : await invoke<CliTaskResult>("kode_cli_auth", { runId, provider, action: task.kind, config, onLine: channel });
@@ -861,4 +900,57 @@ export function cliTodos(items: { title: string; status: string }[]): KodeTodo[]
     title: item.title,
     status: (TODO_STATUSES as string[]).includes(item.status) ? (item.status as KodeTodoStatus) : "pending",
   }));
+}
+
+// ---------------------------------------------------------------------------
+// ACP Registry (agentclientprotocol.com/registry)
+// ---------------------------------------------------------------------------
+
+type RegistryPackage = { package: string; args?: string[] };
+
+export type RegistryAgent = {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  website?: string;
+  repository?: string;
+  icon?: string;
+  distribution: {
+    npx?: RegistryPackage;
+    uvx?: RegistryPackage;
+    binary?: Record<string, { archive: string; cmd: string; args?: string[] }>;
+  };
+};
+
+export type AcpRegistry = { agents: RegistryAgent[]; platform: string };
+
+let registryRequest: Promise<AcpRegistry> | null = null;
+
+/** The registry index (fetched by the app, cached for the session). */
+export function loadAcpRegistry(): Promise<AcpRegistry> {
+  registryRequest ??= invoke<AcpRegistry>("kode_acp_registry").catch((error: unknown) => {
+    registryRequest = null;
+    throw error;
+  });
+  return registryRequest;
+}
+
+const quoteArg = (arg: string) => (/[\s"']/.test(arg) ? JSON.stringify(arg) : arg);
+
+/** How to start a registry agent here, or null when it has nothing for this computer.
+ *  Prefers a download (the app manages it), then npx, then uvx. */
+export function registryLaunch(agent: RegistryAgent, platform: string): { command: string; ref: RegistryRef } | null {
+  const ref = (binary: boolean): RegistryRef => ({ id: agent.id, name: agent.name, icon: agent.icon ?? null, binary });
+  const join = (words: string[]) => words.map(quoteArg).join(" ");
+  const binary = agent.distribution.binary?.[platform];
+  if (binary) {
+    const cmd = binary.cmd.replace(/^\.\//, "");
+    return { command: join([`${ACP_AGENTS_DIR}/${agent.id}/${cmd}`, ...(binary.args ?? [])]), ref: ref(true) };
+  }
+  const npx = agent.distribution.npx;
+  if (npx) return { command: join(["npx", "-y", npx.package, ...(npx.args ?? [])]), ref: ref(false) };
+  const uvx = agent.distribution.uvx;
+  if (uvx) return { command: join(["uvx", uvx.package, ...(uvx.args ?? [])]), ref: ref(false) };
+  return null;
 }

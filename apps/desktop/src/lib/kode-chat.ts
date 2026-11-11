@@ -1,3 +1,4 @@
+import { ensureKontinueServer } from "./desktop-auth";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { LanguageModelUsage } from "ai";
 import { getActiveByokKeyForModel } from "@/lib/kode-byok";
@@ -58,6 +59,7 @@ type KodeChatCommandResponse = {
   resolved_model_id: string;
   tool_calls?: KodeToolCall[] | null;
   finish_reason?: string | null;
+  truncated?: boolean;
 };
 
 export type KodeChatResponse = {
@@ -67,6 +69,8 @@ export type KodeChatResponse = {
   resolvedModelId: string;
   toolCalls: KodeToolCall[];
   finishReason: string | null;
+  /** The reply stopped early (output limit, dropped stream, inside a tool call). */
+  truncated: boolean;
 };
 
 // "auto" lets the model decide; "required" forces some tool; "none" forbids tools.
@@ -77,17 +81,37 @@ export type KodeToolChoice =
   | "none"
   | { type: "function"; function: { name: string } };
 
-type ClerkGlobal = { session?: { getToken: () => Promise<string | null> } | null };
+type ClerkGlobal = {
+  session?: { getToken: (options?: { skipCache?: boolean }) => Promise<string | null> } | null;
+};
 
-/** Clerk session token for the Kontinue server (Clerk sets window.Clerk). */
-export async function getSessionToken(): Promise<string | null> {
-  const clerk = (window as unknown as { Clerk?: ClerkGlobal }).Clerk;
-  try {
-    return (await clerk?.session?.getToken()) ?? null;
-  } catch {
-    return null;
+const TOKEN_RETRY_DELAYS_MS = [250, 750, 1500];
+
+/** Clerk session token for the Kontinue server (Clerk sets window.Clerk).
+ *
+ *  Clerk's tokens last about a minute and are refreshed over the network.
+ *  One failed refresh (the Mac just woke, the network blinked, Clerk is
+ *  still restoring the session) used to come back as "no token", which the
+ *  app reported as "sign in again" although the user was signed in and the
+ *  next message worked. So a miss is retried a few times, asking Clerk for a
+ *  fresh token, before giving up. */
+export async function getSessionToken(options: { fresh?: boolean } = {}): Promise<string | null> {
+  for (let attempt = 0; ; attempt += 1) {
+    const clerk = (window as unknown as { Clerk?: ClerkGlobal }).Clerk;
+    try {
+      const token = await clerk?.session?.getToken(attempt > 0 || options.fresh ? { skipCache: true } : undefined);
+      if (token) return token;
+    } catch {
+      // Fall through to the retry.
+    }
+    const delay = TOKEN_RETRY_DELAYS_MS[attempt];
+    if (delay === undefined) return null;
+    await new Promise((resolve) => window.setTimeout(resolve, delay));
   }
 }
+
+/** Marker the native side adds when the server refused the session (401). */
+export const AUTH_EXPIRED = "[[auth-expired]]";
 
 export async function sendKodeChat({
   messages,
@@ -125,7 +149,8 @@ export async function sendKodeChat({
 
   const activeByok = await getActiveByokKeyForModel(modelId);
 
-  const response = await invoke<KodeChatCommandResponse>("kode_chat", {
+  const call = async (freshToken: boolean) =>
+    invoke<KodeChatCommandResponse>("kode_chat", {
     request: {
       model_id: modelId,
       messages,
@@ -136,13 +161,32 @@ export async function sendKodeChat({
       byok_provider: activeByok?.provider ?? null,
       reasoning_enabled: reasoningEnabled !== undefined ? reasoningEnabled : null,
       kontinue_server: kontinueServer,
-      session_token: kontinueServer ? await getSessionToken() : null,
+      session_token: kontinueServer ? await getSessionToken({ fresh: freshToken }) : null,
       fast,
       kontinue_surface: surface,
       reasoning_effort: reasoningEffort ?? null,
     },
     onEvent: channel,
   });
+
+  if (kontinueServer) await ensureKontinueServer();
+  let response: KodeChatCommandResponse;
+  try {
+    response = await call(false);
+  } catch (error) {
+    const text = String(error);
+    // The server refused the session token. A token can expire between
+    // being read and being checked (or after the Mac wakes), so get a fresh
+    // one and try once more before telling you to sign in.
+    if (!kontinueServer || !text.includes(AUTH_EXPIRED)) throw error;
+    try {
+      response = await call(true);
+    } catch (retryError) {
+      throw new Error(
+        `${String(retryError).replace(AUTH_EXPIRED, "").trim()} If you are signed in, quit and reopen Kontinue.`,
+      );
+    }
+  }
 
   return {
     content: response.content,
@@ -151,6 +195,7 @@ export async function sendKodeChat({
     usage: toLanguageModelUsage(response.usage),
     toolCalls: response.tool_calls ?? [],
     finishReason: response.finish_reason ?? null,
+    truncated: response.truncated ?? false,
   };
 }
 

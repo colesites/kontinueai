@@ -9,7 +9,25 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
+import { WEBHOOK_KINDS, type WebhookKind } from "./lib/kodeWebhookSummary";
+
+const filtersValidator = v.object({
+	kinds: v.optional(v.array(v.string())),
+	branches: v.optional(v.array(v.string())),
+	authors: v.optional(v.array(v.string())),
+});
+
+/** Keep filters small and to known event kinds. */
+function cleanFilters(filters: { kinds?: string[]; branches?: string[]; authors?: string[] }) {
+	const list = (items: string[] | undefined, max: number) =>
+		[...new Set((items ?? []).map((i) => i.trim().slice(0, 100)).filter(Boolean))].slice(0, max);
+	return {
+		kinds: list(filters.kinds, 10).filter((k): k is WebhookKind => WEBHOOK_KINDS.includes(k as WebhookKind)),
+		branches: list(filters.branches, 20),
+		authors: list(filters.authors, 50),
+	};
+}
 
 const MAX_WEBHOOKS = 25;
 const MAX_EVENTS_PER_HOUR = 60;
@@ -36,8 +54,8 @@ async function ownedWebhook(ctx: MutationCtx, id: Id<"kodeWebhooks">, userId: Id
 	return hook;
 }
 
-function newToken(): string {
-	const bytes = new Uint8Array(24);
+function newToken(size = 24): string {
+	const bytes = new Uint8Array(size);
 	crypto.getRandomValues(bytes);
 	return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
@@ -48,6 +66,8 @@ export const createWebhook = mutation({
 		projectPath: v.optional(v.string()),
 		projectName: v.optional(v.string()),
 		instructions: v.optional(v.string()),
+		requireSignature: v.optional(v.boolean()),
+		filters: v.optional(filtersValidator),
 	},
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
@@ -66,6 +86,9 @@ export const createWebhook = mutation({
 			instructions: args.instructions?.slice(0, 4000),
 			enabled: true,
 			createdAt: Date.now(),
+			signingSecret: newToken(32),
+			requireSignature: args.requireSignature ?? true,
+			filters: args.filters ? cleanFilters(args.filters) : undefined,
 		});
 		return { id, token };
 	},
@@ -89,6 +112,13 @@ export const listWebhooks = query({
 			instructions: hook.instructions ?? null,
 			enabled: hook.enabled,
 			lastEventAt: hook.lastEventAt ?? null,
+			signingSecret: hook.signingSecret ?? null,
+			requireSignature: hook.requireSignature ?? false,
+			filters: {
+				kinds: hook.filters?.kinds ?? [],
+				branches: hook.filters?.branches ?? [],
+				authors: hook.filters?.authors ?? [],
+			},
 		}));
 	},
 });
@@ -99,14 +129,21 @@ export const updateWebhook = mutation({
 		enabled: v.optional(v.boolean()),
 		instructions: v.optional(v.string()),
 		rotateToken: v.optional(v.boolean()),
+		rotateSecret: v.optional(v.boolean()),
+		requireSignature: v.optional(v.boolean()),
+		filters: v.optional(filtersValidator),
 	},
 	handler: async (ctx, args) => {
 		const user = await requireUser(ctx);
-		await ownedWebhook(ctx, args.id, user._id);
+		const hook = await ownedWebhook(ctx, args.id, user._id);
 		const patch: Partial<Doc<"kodeWebhooks">> = {};
 		if (args.enabled !== undefined) patch.enabled = args.enabled;
 		if (args.instructions !== undefined) patch.instructions = args.instructions.slice(0, 4000);
 		if (args.rotateToken) patch.token = newToken();
+		// Older webhooks get a secret the first time signing is turned on.
+		if (args.rotateSecret || (args.requireSignature && !hook.signingSecret)) patch.signingSecret = newToken(32);
+		if (args.requireSignature !== undefined) patch.requireSignature = args.requireSignature;
+		if (args.filters !== undefined) patch.filters = cleanFilters(args.filters);
 		await ctx.db.patch(args.id, patch);
 		return null;
 	},
@@ -168,6 +205,26 @@ export const claimWebhookEvent = mutation({
 		if (event.claimedAt !== undefined) return false;
 		await ctx.db.patch(args.eventId, { claimedAt: Date.now(), claimedBy: args.deviceId.slice(0, 80) });
 		return true;
+	},
+});
+
+/** Called by the HTTP route before recording: signing settings and filters. */
+export const webhookGate = internalQuery({
+	args: { token: v.string() },
+	handler: async (ctx, args) => {
+		const hook = await ctx.db
+			.query("kodeWebhooks")
+			.withIndex("by_token", (q) => q.eq("token", args.token))
+			.unique();
+		if (!hook) return null;
+		return {
+			enabled: hook.enabled,
+			signingSecret: hook.signingSecret ?? null,
+			requireSignature: hook.requireSignature ?? false,
+			filters: hook.filters
+				? { kinds: (hook.filters.kinds ?? []) as WebhookKind[], branches: hook.filters.branches ?? [], authors: hook.filters.authors ?? [] }
+				: null,
+		};
 	},
 });
 

@@ -124,7 +124,7 @@ pub async fn kode_bg_start(
     if !dir.is_dir() {
         return Err("The project folder doesn't exist.".into());
     }
-    let mut cmd = tokio::process::Command::new("sh");
+    let mut cmd = tokio::process::Command::new("/bin/sh");
     cmd.arg("-lc")
         .arg(&command)
         .current_dir(dir)
@@ -189,7 +189,7 @@ pub async fn kode_bg_start(
 }
 
 /// Tasks for a chat (or all when no chat is given), running first, newest first.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_bg_list(chat_id: Option<String>) -> Vec<TaskInfo> {
     let tasks = registry().lock().unwrap();
     let mut list: Vec<TaskInfo> = tasks
@@ -202,7 +202,7 @@ pub fn kode_bg_list(chat_id: Option<String>) -> Vec<TaskInfo> {
 }
 
 /// The latest output of a task (up to `max_chars`, newest kept).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_bg_output(id: String, max_chars: Option<usize>) -> Result<String, String> {
     let tasks = registry().lock().unwrap();
     let task = tasks.get(&id).ok_or("No such background task.")?;
@@ -230,7 +230,7 @@ fn kill_group(pid: u32) {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_bg_stop(id: String) -> Result<(), String> {
     let pid = {
         let mut tasks = registry().lock().unwrap();
@@ -249,7 +249,7 @@ pub fn kode_bg_stop(id: String) -> Result<(), String> {
 }
 
 /// Forget finished tasks (for a chat, or all).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_bg_clear_finished(chat_id: Option<String>) {
     let mut tasks = registry().lock().unwrap();
     tasks.retain(|_, task| task.info.status == "running" || (chat_id.is_some() && task.info.chat_id != chat_id));

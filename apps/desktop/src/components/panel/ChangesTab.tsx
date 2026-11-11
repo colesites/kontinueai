@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Columns2, Loader2, RefreshCw, Rows2, Space } from "lucide-react";
+import { updateSettings, useAppSettings } from "@/lib/app-settings";
 import { cn } from "@/lib/utils";
 import {
   errorText,
@@ -25,16 +26,17 @@ const STATUS_LETTER: Record<GitFileChange["status"], { letter: string; className
 };
 
 export function ChangesTab({ projectPath, git }: { projectPath: string; git: GitState }) {
-  const [open, setOpen] = useState<Set<string>>(new Set());
+  // Settings → General: files start expanded or collapsed; a click overrides.
+  const { diffDefaultCollapsed, diffHideWhitespace, diffLayout } = useAppSettings();
+  const [overrides, setOverrides] = useState<Map<string, boolean>>(new Map());
   const status = git.status;
+  const isOpen = (path: string) => overrides.get(path) ?? !diffDefaultCollapsed;
+  const anyOpen = status?.files.some((f) => isOpen(f.path)) ?? false;
 
   const toggle = (path: string) =>
-    setOpen((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
+    setOverrides((current) => new Map(current).set(path, !isOpen(path)));
+  const setAll = (value: boolean) =>
+    setOverrides(new Map((status?.files ?? []).map((f) => [f.path, value])));
 
   if (!status) {
     return (
@@ -49,7 +51,7 @@ export function ChangesTab({ projectPath, git }: { projectPath: string; git: Git
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-2 px-3 text-[11.5px] text-muted-foreground">
+      <div className="flex h-9 shrink-0 items-center gap-2 px-3 text-label text-muted-foreground">
         <span className="truncate">
           {status.branch ?? "HEAD"} → working tree
         </span>
@@ -61,17 +63,35 @@ export function ChangesTab({ projectPath, git }: { projectPath: string; git: Git
         ) : null}
         <div className="ml-auto flex items-center gap-0.5">
           {status.files.length > 0 ? (
-            <button
-              type="button"
-              onClick={() =>
-                setOpen(
-                  open.size > 0 ? new Set() : new Set(status.files.map((f) => f.path)),
-                )
-              }
-              className="cursor-pointer rounded-full px-2 py-0.5 hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
-            >
-              {open.size > 0 ? "Collapse all" : "Expand all"}
-            </button>
+            <>
+              <button
+                type="button"
+                title={diffHideWhitespace ? "Show whitespace changes" : "Hide whitespace changes"}
+                aria-pressed={diffHideWhitespace}
+                onClick={() => updateSettings({ diffHideWhitespace: !diffHideWhitespace })}
+                className={cn(
+                  "flex size-6 cursor-pointer items-center justify-center rounded-full hover:text-foreground",
+                  diffHideWhitespace && "text-purple-500",
+                )}
+              >
+                <Space size={12} />
+              </button>
+              <button
+                type="button"
+                title={diffLayout === "split" ? "Stacked diff" : "Side-by-side diff"}
+                onClick={() => updateSettings({ diffLayout: diffLayout === "split" ? "stacked" : "split" })}
+                className="flex size-6 cursor-pointer items-center justify-center rounded-full hover:text-foreground"
+              >
+                {diffLayout === "split" ? <Rows2 size={12} /> : <Columns2 size={12} />}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAll(!anyOpen)}
+                className="cursor-pointer rounded-full px-2 py-0.5 kontinue-hover hover:text-foreground"
+              >
+                {anyOpen ? "Collapse all" : "Expand all"}
+              </button>
+            </>
           ) : null}
           <button
             type="button"
@@ -93,7 +113,9 @@ export function ChangesTab({ projectPath, git }: { projectPath: string; git: Git
               key={file.path}
               root={projectPath}
               file={file}
-              open={open.has(file.path)}
+              open={isOpen(file.path)}
+              ignoreWhitespace={diffHideWhitespace}
+              split={diffLayout === "split"}
               onToggle={() => toggle(file.path)}
             />
           ))}
@@ -108,11 +130,15 @@ function FileDiffRow({
   file,
   open,
   onToggle,
+  ignoreWhitespace,
+  split,
 }: {
   root: string;
   file: GitFileChange;
   open: boolean;
   onToggle: () => void;
+  ignoreWhitespace: boolean;
+  split: boolean;
 }) {
   const [diff, setDiff] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -125,47 +151,47 @@ function FileDiffRow({
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    gitDiff(root, file.path, file.status === "untracked")
+    gitDiff(root, file.path, file.status === "untracked", ignoreWhitespace)
       .then((text) => !cancelled && (setDiff(text), setError(null)))
       .catch((err) => !cancelled && setError(errorText(err)));
     return () => {
       cancelled = true;
     };
-  }, [open, root, file.path, file.status, file.additions, file.deletions]);
+  }, [open, root, file.path, file.status, file.additions, file.deletions, ignoreWhitespace]);
 
   return (
     <div className="border-b border-black/[0.04] dark:border-white/[0.04]">
       <button
         type="button"
         onClick={onToggle}
-        className="sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 bg-white/90 px-3 dark:bg-[#050506] py-1.5 text-left transition-colors hover:bg-black/[0.03] dark:hover:bg-white/[0.03]"
+        className="sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 bg-white/90 px-3 dark:bg-[#050506] py-1.5 text-left transition-colors kontinue-hover"
       >
         {open ? (
           <ChevronDown size={13} className="shrink-0 text-muted-foreground" />
         ) : (
           <ChevronRight size={13} className="shrink-0 text-muted-foreground" />
         )}
-        <span className={cn("w-3 shrink-0 font-mono text-[11px] font-semibold", marker.className)}>
+        <span className={cn("w-3 shrink-0 font-mono text-caption font-semibold", marker.className)}>
           {marker.letter}
         </span>
-        <span className="min-w-0 flex-1 truncate text-[12px]">
+        <span className="min-w-0 flex-1 truncate text-label">
           <span className="text-foreground/90">{name}</span>
           {dir ? <span className="ml-1.5 text-muted-foreground/60">{dir}</span> : null}
         </span>
-        <span className="shrink-0 font-mono text-[11px]">
+        <span className="shrink-0 font-mono text-caption">
           {file.additions > 0 ? <span className="text-emerald-500">+{file.additions}</span> : null}{" "}
           {file.deletions > 0 ? <span className="text-rose-500">−{file.deletions}</span> : null}
         </span>
       </button>
       {open ? (
         error ? (
-          <p className="px-4 pb-2 text-[11px] text-rose-400">{error}</p>
+          <p className="px-4 pb-2 text-caption text-rose-400">{error}</p>
         ) : diff === null ? (
           <div className="px-4 pb-3">
             <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <DiffView diff={diff} />
+          split ? <SplitDiffView diff={diff} /> : <DiffView diff={diff} />
         )
       ) : null}
     </div>
@@ -204,18 +230,18 @@ function parseDiff(diff: string): { lines: DiffLine[]; binary: boolean } {
 function DiffView({ diff }: { diff: string }) {
   const [showAll, setShowAll] = useState(false);
   const { lines, binary } = parseDiff(diff);
-  if (binary) return <p className="px-4 pb-2 text-[11px] text-muted-foreground">Binary file changed.</p>;
-  if (lines.length === 0) return <p className="px-4 pb-2 text-[11px] text-muted-foreground">No text changes.</p>;
+  if (binary) return <p className="px-4 pb-2 text-caption text-muted-foreground">Binary file changed.</p>;
+  if (lines.length === 0) return <p className="px-4 pb-2 text-caption text-muted-foreground">No text changes.</p>;
   const visible = showAll ? lines : lines.slice(0, MAX_LINES);
 
   return (
-    <div className="overflow-x-auto pb-1 font-mono text-[11.5px] leading-[1.55]">
+    <div className="overflow-x-auto pb-1 font-mono text-label leading-[1.55]">
       <table className="w-full border-collapse">
         <tbody>
           {visible.map((line, index) =>
             line.kind === "hunk" ? (
               <tr key={index} className="bg-purple-500/[0.06] text-muted-foreground/70">
-                <td colSpan={3} className="px-3 py-0.5 text-[10.5px]">
+                <td colSpan={3} className="px-3 py-0.5 text-caption">
                   ⋯ {line.text}
                 </td>
               </tr>
@@ -255,9 +281,112 @@ function DiffView({ diff }: { diff: string }) {
         <button
           type="button"
           onClick={() => setShowAll(true)}
-          className="mx-3 my-2 cursor-pointer text-[11px] text-purple-500 hover:underline"
+          className="mx-3 my-2 cursor-pointer text-caption text-purple-500 hover:underline"
         >
           Show {lines.length - MAX_LINES} more lines
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+type SplitRow =
+  | { kind: "hunk"; text: string }
+  | { kind: "pair"; left: Extract<DiffLine, { oldNo: number | null }> | null; right: Extract<DiffLine, { oldNo: number | null }> | null };
+
+/** Side by side: removed lines on the left, added on the right, paired up. */
+function toSplitRows(lines: DiffLine[]): SplitRow[] {
+  const rows: SplitRow[] = [];
+  let dels: Extract<DiffLine, { oldNo: number | null }>[] = [];
+  let adds: Extract<DiffLine, { oldNo: number | null }>[] = [];
+  const flush = () => {
+    for (let i = 0; i < Math.max(dels.length, adds.length); i += 1) {
+      rows.push({ kind: "pair", left: dels[i] ?? null, right: adds[i] ?? null });
+    }
+    dels = [];
+    adds = [];
+  };
+  for (const line of lines) {
+    if (line.kind === "hunk") {
+      flush();
+      rows.push(line);
+    } else if (line.kind === "del") dels.push(line);
+    else if (line.kind === "add") adds.push(line);
+    else {
+      flush();
+      rows.push({ kind: "pair", left: line, right: line });
+    }
+  }
+  flush();
+  return rows;
+}
+
+function SplitDiffView({ diff }: { diff: string }) {
+  const [showAll, setShowAll] = useState(false);
+  const { lines, binary } = parseDiff(diff);
+  if (binary) return <p className="px-4 pb-2 text-caption text-muted-foreground">Binary file changed.</p>;
+  if (lines.length === 0) return <p className="px-4 pb-2 text-caption text-muted-foreground">No text changes.</p>;
+  const rows = toSplitRows(lines);
+  const visible = showAll ? rows : rows.slice(0, MAX_LINES);
+
+  const cell = (line: Extract<DiffLine, { oldNo: number | null }> | null, side: "left" | "right") => {
+    const no = line ? (side === "left" ? line.oldNo : line.newNo) : null;
+    const tone = line?.kind === "del" ? "del" : line?.kind === "add" ? "add" : line ? "ctx" : "empty";
+    return (
+      <>
+        <td
+          className={cn(
+            "w-9 select-none px-1.5 text-right align-top text-muted-foreground/40",
+            tone === "del" && "bg-rose-500/[0.10]",
+            tone === "add" && "bg-emerald-500/[0.10]",
+            tone === "empty" && "bg-black/[0.02] dark:bg-white/[0.02]",
+          )}
+        >
+          {no ?? ""}
+        </td>
+        <td
+          className={cn(
+            "w-1/2 whitespace-pre-wrap break-all pr-3 pl-1 align-top",
+            side === "left" && "border-r border-black/[0.05] dark:border-white/[0.05]",
+            tone === "del" && "bg-rose-500/[0.10] text-rose-700 dark:text-rose-300",
+            tone === "add" && "bg-emerald-500/[0.10] text-emerald-700 dark:text-emerald-200",
+            tone === "ctx" && "text-foreground/75",
+            tone === "empty" && "bg-black/[0.02] dark:bg-white/[0.02]",
+          )}
+        >
+          {line?.text ?? ""}
+        </td>
+      </>
+    );
+  };
+
+  return (
+    <div className="pb-1 font-mono text-label leading-[1.55]">
+      <table className="w-full table-fixed border-collapse">
+        <tbody>
+          {visible.map((row, index) =>
+            row.kind === "hunk" ? (
+              <tr key={index} className="bg-purple-500/[0.06] text-muted-foreground/70">
+                <td colSpan={4} className="px-3 py-0.5 text-caption">
+                  ⋯ {row.text}
+                </td>
+              </tr>
+            ) : (
+              <tr key={index}>
+                {cell(row.left, "left")}
+                {cell(row.right, "right")}
+              </tr>
+            ),
+          )}
+        </tbody>
+      </table>
+      {rows.length > MAX_LINES && !showAll ? (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mx-3 my-2 cursor-pointer text-caption text-purple-500 hover:underline"
+        >
+          Show {rows.length - MAX_LINES} more lines
         </button>
       ) : null}
     </div>

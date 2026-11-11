@@ -19,6 +19,21 @@ export const KODE_GATEWAY_CHAIN = [
 	"zai/glm-5.3-flash",
 ];
 
+/**
+ * Output token cap sent with each Kode request. Without one, providers fall
+ * back to their own default, which for DeepSeek is a few thousand tokens: a
+ * large file write was cut off mid-way, the tool call was lost and the run
+ * stopped ("it just cuts off"). Every Kode model and fallback allows at least
+ * 64k (AI Gateway catalog, Nov 2026). OpenAI models are left alone: their
+ * default is already their maximum and their reasoning models reject
+ * `max_tokens`.
+ */
+export const KODE_MAX_OUTPUT_TOKENS = 64_000;
+
+export function kodeMaxOutputTokens(gatewayId: string): number | null {
+	return gatewayId.startsWith("openai/") ? null : KODE_MAX_OUTPUT_TOKENS;
+}
+
 // Legacy: the web /api/chat path still serves Kode 1.0 through OpenRouter.
 export const KODE_PRIMARY_MODEL = "nex-agi/nex-n2-pro:free";
 export const KODE_FALLBACK_MODELS: string[] = [];

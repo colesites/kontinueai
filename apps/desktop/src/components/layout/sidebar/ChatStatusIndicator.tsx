@@ -9,6 +9,7 @@ import {
   OptionsList,
   OptionsPrompt,
 } from "@/components/ai-elements/options";
+import { ChatPrIcon, useChatPr } from "@/components/kode/PrStatusBar";
 import { useKodeAgentRuntime } from "@/lib/kode-agent-runtime";
 import type { KodeToolStep } from "@/lib/kode-agent";
 import { Loader2, MessageSquare, Pin } from "lucide-react";
@@ -36,7 +37,7 @@ function PendingAnswer({ step }: { step: KodeToolStep }) {
         multiple={multiple}
         onSubmit={(values) => resolveOptions(step.id, values)}
       >
-        <OptionsPrompt className="text-[13px]">{question}</OptionsPrompt>
+        <OptionsPrompt className="text-body">{question}</OptionsPrompt>
         <OptionsList>
           {rawOptions.map((opt) => (
             <Option key={opt.value} value={opt.value} description={opt.description}>
@@ -51,21 +52,21 @@ function PendingAnswer({ step }: { step: KodeToolStep }) {
   // pending-approval — a confirm.
   return (
     <div className="flex flex-col gap-2.5">
-      <p className="text-[13px] font-medium text-foreground">
+      <p className="text-body font-medium text-foreground">
         {step.description}
       </p>
       <div className="flex items-center gap-1.5">
         <button
           type="button"
           onClick={() => resolveApproval(step.id, false)}
-          className="kontinue-3d flex h-8 cursor-pointer items-center rounded-full px-4 text-[13px] text-foreground/85 hover:text-foreground"
+          className="kontinue-3d flex h-8 cursor-pointer items-center rounded-full px-4 text-body text-foreground/85 hover:text-foreground"
         >
           Deny
         </button>
         <button
           type="button"
           onClick={() => resolveApproval(step.id, true)}
-          className="kontinue-3d-primary flex h-8 cursor-pointer items-center rounded-full px-4 text-[13px] font-medium"
+          className="kontinue-3d-primary flex h-8 cursor-pointer items-center rounded-full px-4 text-body font-medium"
         >
           Allow
         </button>
@@ -86,9 +87,10 @@ export function ChatStatusIndicator({
 }) {
   const { statusByChat, pendingByChat } = useKodeAgentRuntime();
   const status = statusByChat[chatId] ?? "idle";
+  const pr = useChatPr(chatId);
 
   if (status === "running") {
-    return <Loader2 size={13} className="shrink-0 animate-spin text-white" />;
+    return <Loader2 size={14} aria-label="Working" className="shrink-0 animate-spin text-[var(--brand)]" />;
   }
 
   if (status === "awaiting") {
@@ -100,7 +102,7 @@ export function ChatStatusIndicator({
           <span
             role="img"
             aria-label="Needs your reply"
-            className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-white/20 text-[11px] font-bold leading-none text-white ring-1 ring-white/40"
+            className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-micro font-bold leading-none text-brand ring-1 ring-brand/40"
           >
             ?
           </span>
@@ -119,16 +121,20 @@ export function ChatStatusIndicator({
     );
   }
 
+  // A chat tied to a pull request shows the PR's state as its icon.
+  if (pr) return <ChatPrIcon chatId={chatId} />;
+
   if (isPinned) {
     return (
-      <Pin size={12} className="shrink-0 text-white" fill="currentColor" />
+      <Pin size={13} aria-label="Pinned" className="shrink-0 text-foreground/70" fill="currentColor" />
     );
   }
 
   return (
     <MessageSquare
-      size={13}
-      className="shrink-0 text-foreground/35 group-hover/chat:text-foreground/75"
+      size={14}
+      strokeWidth={1.5}
+      className="shrink-0 text-foreground/40 group-hover/chat:text-foreground/75"
     />
   );
 }

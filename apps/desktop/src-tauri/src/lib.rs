@@ -19,6 +19,10 @@ mod mcp_import;
 
 mod browser_view;
 mod panel;
+mod settings_info;
+mod menu;
+mod agent_usage;
+mod editor;
 mod plugins;
 mod cli_agents;
 
@@ -114,6 +118,10 @@ struct KodeChatResponse {
     tool_calls: Option<Value>,
     // "stop" | "tool_calls" | "length" | … — lets the frontend know to loop.
     finish_reason: Option<String>,
+    // The reply did not finish: it hit the output limit, the stream dropped,
+    // or it ended inside a tool call. The agent asks the model to go on
+    // instead of treating the partial text as the final answer.
+    truncated: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -236,6 +244,12 @@ async fn kode_chat(
                                 route.url
                             ));
                         }
+                        // The session token was refused (expired between fetch and
+                        // use, or a clock skew). The frontend fetches a fresh one
+                        // and retries once before showing "sign in".
+                        if status.as_u16() == 401 {
+                            return Err(format!("{message}\n[[auth-expired]]"));
+                        }
                         // Usage limits carry `resetAt` (epoch ms); keep it for the
                         // "send when it resets" card (src/lib/kode-limits.ts).
                         if let Some(reset_at) = reset_at {
@@ -268,10 +282,22 @@ async fn kode_chat(
     let mut finish_reason: Option<String> = None;
     // How much of `content` has been streamed to the UI.
     let mut streamed = 0usize;
+    // `[DONE]` or a finish_reason arrived: the reply ended on purpose.
+    let mut saw_end = false;
+    // The connection dropped after some of the reply arrived.
+    let mut interrupted = false;
 
     while let Some(chunk) = stream.next().await {
-        let bytes =
-            chunk.map_err(|error| format!("{} stream interrupted: {error}", route.name))?;
+        let bytes = match chunk {
+            Ok(bytes) => bytes,
+            // Keep what arrived and let the agent continue from it; with
+            // nothing yet there is nothing to keep.
+            Err(_) if !content.is_empty() || !tool_calls.is_empty() => {
+                interrupted = true;
+                break;
+            }
+            Err(error) => return Err(format!("{} stream interrupted: {error}", route.name)),
+        };
         buffer.push_str(&String::from_utf8_lossy(&bytes));
 
         // SSE events are separated by a blank line; process complete frames only.
@@ -285,7 +311,11 @@ async fn kode_chat(
                     continue;
                 };
                 let data = data.trim();
-                if data.is_empty() || data == "[DONE]" {
+                if data == "[DONE]" {
+                    saw_end = true;
+                    continue;
+                }
+                if data.is_empty() {
                     continue;
                 }
 
@@ -307,6 +337,7 @@ async fn kode_chat(
                     .and_then(Value::as_str)
                 {
                     finish_reason = Some(reason.to_string());
+                    saw_end = true;
                 }
 
                 let delta = choice.and_then(|choice| choice.get("delta"));
@@ -374,6 +405,8 @@ async fn kode_chat(
         }
     }
 
+    let mut truncated = interrupted || !saw_end || finish_reason.as_deref() == Some("length");
+
     // Tool calls written as text markup become real tool calls.
     let mut content = content;
     let mut text_calls: Vec<Value> = Vec::new();
@@ -382,7 +415,20 @@ async fn kode_chat(
             content = clean;
             text_calls = calls;
             finish_reason = Some("tool_calls".to_string());
+        } else if let Some(prefix) = text_tool_markup::unfinished_markup_prefix(&content) {
+            // Markup that never became a call: the reply was cut off inside it.
+            // Drop it (it used to be shown as raw `<｜DSML｜…>` text) and let
+            // the agent ask for the rest.
+            content = prefix;
+            truncated = true;
         }
+    }
+    // A cut-off reply can end inside a tool call's JSON arguments. Running a
+    // call with half its arguments would do damage, so drop those.
+    if truncated {
+        tool_calls.retain(|call| {
+            call.arguments.trim().is_empty() || serde_json::from_str::<Value>(&call.arguments).is_ok()
+        });
     }
     // Text after the markup that wasn't streamed (rare): send it now.
     if streamed < content.len() && content.is_char_boundary(streamed) && text_calls.is_empty() {
@@ -413,7 +459,8 @@ async fn kode_chat(
 
     // An empty-content turn is normal when the model only requested tool calls;
     // only substitute the placeholder when there is genuinely nothing to show.
-    let content = if content.trim().is_empty() && serialized_tool_calls.is_none() {
+    // A cut-off reply stays empty: the agent asks for the rest.
+    let content = if content.trim().is_empty() && serialized_tool_calls.is_none() && !truncated {
         "The model returned an empty response.".to_string()
     } else {
         content
@@ -434,6 +481,7 @@ async fn kode_chat(
         resolved_model_id: route.model_id.to_string(),
         tool_calls: serialized_tool_calls,
         finish_reason,
+        truncated,
     })
 }
 
@@ -838,15 +886,19 @@ fn resolve_model_route(
 
 const KONTINUE_ROUTE_NAME: &str = "Kontinue";
 
-/// Kontinue's Kode model proxy (apps/web/src/app/api/kode/chat). Override with
-/// KONTINUE_API_URL (e.g. http://localhost:3001 while developing the web app).
+/// Kontinue's web server (apps/web), which proxies models and other APIs.
+///
+/// Decided once, at startup: KONTINUE_API_URL if set, else the URL the
+/// frontend was built with (VITE_WEB_APP_URL, sent by `kontinue_set_base_url`),
+/// else production. The frontend's value matters because it comes from the
+/// same .env file as the Clerk key: a dev build signs in to Clerk's test
+/// instance and must talk to the local web app. Sending its token to
+/// production made every Kode turn fail with "Sign in to use Kode".
+static KONTINUE_BASE: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
 fn kontinue_base_url() -> &'static str {
-    static URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    URL.get_or_init(|| {
-        // KONTINUE_API_URL if set, else the same web app URL the frontend uses
-        // (VITE_WEB_APP_URL), else production.
+    KONTINUE_BASE.get_or_init(|| {
         std::env::var("KONTINUE_API_URL")
-            .or_else(|_| std::env::var("VITE_WEB_APP_URL"))
             .ok()
             .filter(|value| !value.trim().is_empty())
             .unwrap_or_else(|| "https://chat.kontinueai.com".to_string())
@@ -855,8 +907,45 @@ fn kontinue_base_url() -> &'static str {
     })
 }
 
-/// POST JSON to the Kontinue API as the signed-in user (e.g. starting a Stripe
-/// checkout). Runs in Rust so the web view isn't subject to CORS.
+/// https anywhere, or http on this machine (the local web app).
+fn valid_base_url(url: &str) -> bool {
+    let Ok(parsed) = reqwest::Url::parse(url) else { return false };
+    match parsed.scheme() {
+        "https" => parsed.host_str().is_some(),
+        "http" => matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")),
+        _ => false,
+    }
+}
+
+/// Called by the frontend at startup with the web app URL it was built for.
+/// KONTINUE_API_URL still wins, and the first value sticks.
+#[tauri::command]
+fn kontinue_set_base_url(url: String) -> Result<String, String> {
+    let env_override = std::env::var("KONTINUE_API_URL").ok().filter(|v| !v.trim().is_empty());
+    if env_override.is_none() {
+        if !valid_base_url(url.trim()) {
+            return Err(format!("Not a usable Kontinue server URL: {url}"));
+        }
+        let _ = KONTINUE_BASE.set(url.trim().trim_end_matches('/').to_string());
+    }
+    Ok(kontinue_base_url().to_string())
+}
+
+#[cfg(test)]
+mod base_url_tests {
+    use super::valid_base_url;
+
+    #[test]
+    fn only_https_or_local_http() {
+        assert!(valid_base_url("https://chat.kontinueai.com"));
+        assert!(valid_base_url("http://localhost:3000"));
+        assert!(valid_base_url("http://127.0.0.1:3001/"));
+        assert!(!valid_base_url("http://example.com"));
+        assert!(!valid_base_url("file:///etc/passwd"));
+        assert!(!valid_base_url("not a url"));
+    }
+}
+
 #[tauri::command]
 async fn kontinue_api_post(path: String, session_token: String, body: Value) -> Result<Value, String> {
     if !path.starts_with("/api/") || path.contains("..") {
@@ -951,7 +1040,7 @@ fn gateway_provider(model_id: &str) -> Option<&'static str> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_byok_status() -> Vec<ByokKeyStatus> {
     ["anthropic", "openai", "agent_router"]
         .into_iter()
@@ -962,7 +1051,7 @@ fn kode_byok_status() -> Vec<ByokKeyStatus> {
         .collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_byok_set_key(provider: String, api_key: String) -> Result<(), String> {
     let key = api_key.trim();
     if key.len() < 8 {
@@ -992,7 +1081,7 @@ fn read_byok_key(provider: &str) -> Option<String> {
 }
 
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_byok_remove_key(provider: String) -> Result<(), String> {
     match byok_entry(&provider)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -1000,7 +1089,7 @@ fn kode_byok_remove_key(provider: String) -> Result<(), String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_byok_get_key(provider: String) -> Result<Option<String>, String> {
     Ok(read_byok_key(&provider))
 }
@@ -1099,13 +1188,13 @@ fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
     Ok(result)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_read_file(root: String, path: String) -> Result<String, String> {
     let target = safe_join(&root, &path)?;
     std::fs::read_to_string(&target).map_err(|error| format!("Could not read {path}: {error}"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_list_dir(root: String, path: String) -> Result<Vec<KodeFileEntry>, String> {
     let dir = safe_join(&root, &path)?;
     let root_canon = std::fs::canonicalize(&root).map_err(|e| e.to_string())?;
@@ -1146,7 +1235,7 @@ fn is_binary_name(name: &str) -> bool {
 
 // Recursively list text files in the project (for the `@` file mention picker).
 // Skips hidden dirs, build artifacts and binary files. Capped for huge trees.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_list_project_files(root: String) -> Result<Vec<String>, String> {
     let root_canon = std::fs::canonicalize(&root).map_err(|e| format!("Invalid project root '{root}': {e}"))?;
     let mut out: Vec<String> = Vec::new();
@@ -1186,7 +1275,7 @@ fn kode_list_project_files(root: String) -> Result<Vec<String>, String> {
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_write_file(root: String, path: String, content: String) -> Result<(), String> {
     let target = safe_join(&root, &path)?;
     if let Some(parent) = target.parent() {
@@ -1203,7 +1292,7 @@ const ATTACHMENT_DIR: &str = ".kode/attachments";
 /// (Claude Code and Codex can open images by path; Kode's own tools can too).
 /// `data` is base64 (an image data URL's payload, or a text file's bytes).
 /// Returns the path relative to the project root.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_save_attachment(root: String, filename: String, data: String) -> Result<String, String> {
     use base64::Engine;
     let bytes = base64::engine::general_purpose::STANDARD
@@ -1240,7 +1329,7 @@ fn kode_save_attachment(root: String, filename: String, data: String) -> Result<
 
 /// Read a saved attachment back (for imported screenshot cards). Only files
 /// under the project's attachments folder can be read this way.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_read_attachment(root: String, path: String) -> Result<String, String> {
     use base64::Engine;
     if !path.starts_with(ATTACHMENT_DIR) || path.contains("..") {
@@ -1279,7 +1368,7 @@ fn exclude_from_git(root: &str, pattern: &str) {
     let _ = std::fs::write(exclude, next);
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_edit_file(
     root: String,
     path: String,
@@ -1320,7 +1409,7 @@ struct UserSkillEntry {
 // relative paths under a well-known home root.
 const USER_SKILL_ROOTS: [&str; 3] = [".agents/skills", ".claude/skills", ".kontinue/skills"];
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_discover_user_skills(app: tauri::AppHandle) -> Result<Vec<UserSkillEntry>, String> {
     use tauri::Manager;
 
@@ -1412,7 +1501,7 @@ fn user_skill_dir(app: &tauri::AppHandle, dir: &std::path::Path) -> Result<std::
     Err("Skill directory is outside the user skill roots".to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_list_user_skill_files(app: tauri::AppHandle, dir: String) -> Result<Vec<UserSkillFile>, String> {
     let base = user_skill_dir(&app, std::path::Path::new(&dir))?;
     let mut out: Vec<UserSkillFile> = Vec::new();
@@ -1451,7 +1540,7 @@ fn kode_list_user_skill_files(app: tauri::AppHandle, dir: String) -> Result<Vec<
     Ok(out)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_read_user_skill_file(app: tauri::AppHandle, dir: String, rel: String) -> Result<String, String> {
     let base = user_skill_dir(&app, std::path::Path::new(&dir))?;
     let rel_path = std::path::Path::new(&rel);
@@ -1466,7 +1555,7 @@ fn kode_read_user_skill_file(app: tauri::AppHandle, dir: String, rel: String) ->
     std::fs::read_to_string(&target).map_err(|error| format!("Could not read {rel}: {error}"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_write_user_skill(app: tauri::AppHandle, name: String, skill_md: String) -> Result<String, String> {
     use tauri::Manager;
 
@@ -1485,7 +1574,7 @@ fn kode_write_user_skill(app: tauri::AppHandle, name: String, skill_md: String) 
     Ok(dir.to_string_lossy().to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_delete_user_skill(app: tauri::AppHandle, dir: String) -> Result<(), String> {
     let base = user_skill_dir(&app, std::path::Path::new(&dir))?;
     std::fs::remove_dir_all(&base).map_err(|error| error.to_string())
@@ -1499,7 +1588,7 @@ struct SkillWriteFile {
 
 // Install a skill's full file tree (SKILL.md + references/scripts/assets) into
 // ~/.agents/skills/<name>/. Every path must stay inside the skill directory.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_install_user_skill(app: tauri::AppHandle, name: String, files: Vec<SkillWriteFile>) -> Result<String, String> {
     use tauri::Manager;
 
@@ -1544,7 +1633,7 @@ fn kode_install_user_skill(app: tauri::AppHandle, name: String, files: Vec<Skill
 
 // Read a local skill folder (picked by the user) into its full file tree, so it
 // can be installed into the user skills root.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_read_local_skill_dir(dir: String) -> Result<Vec<SkillWriteFile>, String> {
     let base = std::path::Path::new(&dir);
     if !base.is_dir() {
@@ -1589,7 +1678,7 @@ fn kode_read_local_skill_dir(dir: String) -> Result<Vec<SkillWriteFile>, String>
 
 // Extract a .zip archive and return the skill's file tree (the files under the
 // directory that contains SKILL.md).
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_extract_skill_zip(zip_path: String) -> Result<Vec<SkillWriteFile>, String> {
     let file = std::fs::File::open(&zip_path).map_err(|error| format!("Could not open zip: {error}"))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|error| format!("Invalid zip: {error}"))?;
@@ -1636,7 +1725,7 @@ struct KodeRepoProfile {
 
 // Inspect the project root and detect framework, package manager, and notable
 // dependencies so the agent can pick the right skills and conventions.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_repo_profile(root: String) -> Result<KodeRepoProfile, String> {
     let root_path = std::fs::canonicalize(&root)
         .map_err(|error| format!("Invalid project root '{root}': {error}"))?;
@@ -1777,7 +1866,7 @@ async fn kode_run_command(
 }
 
 /// Rename or move a file or folder inside the project. Never overwrites.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_rename_path(root: String, from: String, to: String) -> Result<(), String> {
     let source = safe_join(&root, &from)?;
     let target = safe_join(&root, &to)?;
@@ -1794,7 +1883,7 @@ fn kode_rename_path(root: String, from: String, to: String) -> Result<(), String
 }
 
 /// Create an empty file or a folder inside the project. Never overwrites.
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_create_entry(root: String, path: String, is_dir: bool) -> Result<(), String> {
     let target = safe_join(&root, &path)?;
     if target.exists() {
@@ -1815,7 +1904,7 @@ fn kode_create_entry(root: String, path: String, is_dir: bool) -> Result<(), Str
 }
 
 /// Move a file or folder from the project to the Trash (recoverable).
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_trash_path(root: String, path: String) -> Result<(), String> {
     let target = safe_join(&root, &path)?;
     if target == std::fs::canonicalize(&root).unwrap_or_default() {
@@ -1843,7 +1932,7 @@ fn kode_trash_path(root: String, path: String) -> Result<(), String> {
     std::fs::rename(&target, &dest).map_err(|error| format!("Could not move {path} to the Trash: {error}"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn kode_delete_file(root: String, path: String) -> Result<(), String> {
     let target = safe_join(&root, &path)?;
     if target.is_dir() {
@@ -2042,6 +2131,12 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
+        .manage(menu::MenuState::default())
+        .menu(|app| menu::build(app))
+        .on_menu_event(|app, event| menu::handle_event(app, event.id().as_ref()))
         .manage(panel::PtyState::default())
         .manage(cli_agents::CliRunState::default())
         .manage(mcp::McpManager::default())
@@ -2088,6 +2183,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            menu::menu_set_accelerators,
             kode_chat,
             kode_read_file,
             kode_list_dir,
@@ -2099,6 +2195,10 @@ pub fn run() {
             kode_rename_path,
             kode_create_entry,
             kode_trash_path,
+            editor::editor_file_stat,
+            editor::editor_read_text_files,
+            editor::editor_type_packages,
+            editor::editor_type_roots,
             mcp_import::kode_mcp_discover,
             kode_run_command,
             kode_repo_profile,
@@ -2151,6 +2251,7 @@ pub fn run() {
             ,git_hosts::kode_git_host_token_set
             ,start_desktop_auth_server
             ,kontinue_api_post
+            ,kontinue_set_base_url
             ,panel::panel_git_status
             ,panel::panel_pr_list
             ,panel::panel_pr_merge
@@ -2162,6 +2263,17 @@ pub fn run() {
             ,panel::panel_git_switch
             ,panel::panel_git_push
             ,panel::panel_git_worktree_add
+            ,settings_info::settings_tool_status
+            ,settings_info::settings_list_worktrees
+            ,settings_info::settings_remove_worktree
+            ,settings_info::settings_storage_usage
+            ,settings_info::settings_agent_storage
+            ,agent_usage::settings_agent_usage
+            ,settings_info::settings_open_privacy_pane
+            ,settings_info::settings_reveal
+            ,settings_info::notify_send
+            ,settings_info::play_sound
+            ,settings_info::settings_clean_attachments
             ,panel::pty_spawn
             ,panel::pty_write
             ,panel::pty_resize
@@ -2171,6 +2283,8 @@ pub fn run() {
             ,cli_agents::kode_cli_run
             ,cli_agents::kode_cli_stop
             ,cli_agents::kode_cli_update
+            ,cli_agents::kode_acp_registry
+            ,cli_agents::kode_acp_install
             ,cli_agents::kode_cli_auth
             ,cli_agents::kode_cli_models
             ,cli_agents::kode_cli_secret_set

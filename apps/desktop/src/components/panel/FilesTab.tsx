@@ -17,8 +17,8 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { cn } from "@/lib/utils";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { CodeEditor } from "@/components/editor/CodeEditor";
-import { useProjectFile } from "@/components/editor/use-project-file";
+import { FileEditor } from "@/components/editor/CodeEditor";
+import { QuickOpen } from "@/components/editor/QuickOpen";
 import { errorText, listDir, type FileEntry } from "./panel-api";
 
 const HIDDEN = new Set([".git", ".DS_Store"]);
@@ -59,6 +59,7 @@ export function FilesTab({
     { kind: "rename"; path: string; isDir: boolean } | { kind: "create"; dir: string; isDir: boolean } | null
   >(null);
   const [treeWidth, setTreeWidth] = useState(readTreeWidth);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [trackedProject, setTrackedProject] = useState(projectPath);
   const dirtyRef = useRef(new Set<string>());
   const [dirtyTabs, setDirtyTabs] = useState<Set<string>>(new Set());
@@ -74,6 +75,15 @@ export function FilesTab({
   const splitRef = useRef<HTMLDivElement>(null);
   const treeRef = useRef<HTMLDivElement>(null);
   const frame = useRef<number | null>(null);
+  const editorsRef = useRef<HTMLDivElement>(null);
+
+  // Before a tab is hidden, take focus out of its editor while it's still
+  // visible. Browsers drop focus from hidden elements without a "blur", and
+  // the editor would keep receiving shortcuts meant for the visible one.
+  const releaseEditorFocus = () => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && editorsRef.current?.contains(active)) active.blur();
+  };
 
   const load = useCallback(
     async (dir: string) => {
@@ -97,6 +107,7 @@ export function FilesTab({
   useEffect(() => {
     if (!initialPath) return;
     setTabs((current) => (current.includes(initialPath) ? current : [...current, initialPath]));
+    releaseEditorFocus();
     setOpenFile(initialPath);
   }, [initialPath]);
 
@@ -123,6 +134,7 @@ export function FilesTab({
 
   const openPath = (path: string) => {
     setTabs((current) => (current.includes(path) ? current : [...current, path]));
+    if (path !== openFile) releaseEditorFocus();
     setOpenFile(path);
   };
 
@@ -132,7 +144,10 @@ export function FilesTab({
     setTabs((current) => {
       const index = current.indexOf(path);
       const next = current.filter((tab) => tab !== path);
-      if (openFile === path) setOpenFile(next[Math.min(index, next.length - 1)] ?? null);
+      if (openFile === path) {
+        releaseEditorFocus();
+        setOpenFile(next[Math.min(index, next.length - 1)] ?? null);
+      }
       return next;
     });
   };
@@ -273,7 +288,7 @@ export function FilesTab({
         }}
         onBlur={(e) => void commitName(e.currentTarget.value)}
         aria-label={isDir ? "Folder name" : "File name"}
-        className="min-w-0 flex-1 rounded-md border border-purple-500/40 bg-transparent px-1.5 py-0.5 text-[12.5px] outline-none"
+        className="min-w-0 flex-1 rounded-md border border-purple-500/40 bg-transparent px-1.5 py-0.5 text-body outline-none"
       />
     </div>
   );
@@ -297,10 +312,10 @@ export function FilesTab({
                   onDoubleClick={() => setEditing({ kind: "rename", path: entry.path, isDir: entry.is_dir })}
                   style={{ paddingLeft: 8 + depth * 12 }}
                   className={cn(
-                    "flex w-full cursor-pointer items-center gap-1.5 rounded-md py-[5px] pr-7 text-left text-[12.5px] transition-colors",
+                    "flex w-full cursor-pointer items-center gap-1.5 rounded-md py-[5px] pr-7 text-left text-body transition-colors",
                     !entry.is_dir && entry.path === openFile
                       ? "bg-black/[0.06] text-foreground dark:bg-white/[0.08]"
-                      : "text-foreground/85 hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+                      : "text-foreground/85 kontinue-hover",
                   )}
                 >
                   {entry.is_dir ? (
@@ -364,7 +379,27 @@ export function FilesTab({
   );
 
   return (
-    <div ref={splitRef} className="flex min-h-0 flex-1">
+    <div
+      ref={splitRef}
+      className="relative flex min-h-0 flex-1"
+      onKeyDown={(event) => {
+        // ⌘P / Ctrl+P anywhere in the Files panel (the editor handles its own).
+        if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "p") {
+          event.preventDefault();
+          setQuickOpen(true);
+        }
+      }}
+    >
+      {quickOpen ? (
+        <QuickOpen
+          root={projectPath}
+          onClose={() => setQuickOpen(false)}
+          onPick={(path) => {
+            setQuickOpen(false);
+            openPath(path);
+          }}
+        />
+      ) : null}
       <div className="flex min-w-0 flex-1 flex-col" style={{ minWidth: MIN_EDITOR }}>
         {tabs.length > 0 ? (
           <>
@@ -380,11 +415,18 @@ export function FilesTab({
                     }
                   }}
                   className={cn(
-                    "group flex h-7 shrink-0 items-center gap-1 rounded-full pr-1 pl-3 font-mono text-[11.5px] transition-colors",
-                    tab === openFile ? "kontinue-menu-active text-foreground" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+                    "group flex h-7 shrink-0 items-center gap-1 rounded-full pr-1 pl-3 font-mono text-label transition-colors",
+                    tab === openFile ? "kontinue-menu-active text-foreground" : "text-muted-foreground kontinue-hover hover:text-foreground",
                   )}
                 >
-                  <button type="button" className="max-w-[11rem] cursor-pointer truncate" onClick={() => setOpenFile(tab)}>
+                  <button
+                    type="button"
+                    className="max-w-[11rem] cursor-pointer truncate"
+                    onClick={() => {
+                      if (tab !== openFile) releaseEditorFocus();
+                      setOpenFile(tab);
+                    }}
+                  >
                     {tab.split("/").pop()}
                   </button>
                   <button
@@ -398,28 +440,33 @@ export function FilesTab({
                 </div>
               ))}
             </div>
-            {tabs.map((tab) => (
-              <div key={tab} className={cn("min-h-0 flex-1 flex-col", tab === openFile ? "flex" : "hidden")}>
-                <FileEditor
-                  root={projectPath}
-                  path={tab}
-                  onOpenInTab={onOpenInTab}
-                  onDirty={(dirty) => {
-                    const had = dirtyRef.current.has(tab);
-                    if (dirty === had) return;
-                    if (dirty) dirtyRef.current.add(tab);
-                    else dirtyRef.current.delete(tab);
-                    setDirtyTabs(new Set(dirtyRef.current));
-                  }}
-                />
-              </div>
-            ))}
+            <div ref={editorsRef} className="flex min-h-0 flex-1 flex-col">
+              {tabs.map((tab) => (
+                <div key={tab} className={cn("min-h-0 flex-1 flex-col", tab === openFile ? "flex" : "hidden")}>
+                  <FileEditor
+                    root={projectPath}
+                    path={tab}
+                    active={tab === openFile}
+                    onOpenInTab={onOpenInTab}
+                    onOpenFile={openPath}
+                    onQuickOpen={() => setQuickOpen(true)}
+                    onDirty={(dirty) => {
+                      const had = dirtyRef.current.has(tab);
+                      if (dirty === had) return;
+                      if (dirty) dirtyRef.current.add(tab);
+                      else dirtyRef.current.delete(tab);
+                      setDirtyTabs(new Set(dirtyRef.current));
+                    }}
+                  />
+                </div>
+              ))}
+            </div>
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
             <Folder size={22} strokeWidth={1.25} className="text-foreground/25" />
-            <p className="text-[13px] text-foreground/75">Open files appear here</p>
-            <p className="max-w-[14rem] text-[12px] leading-relaxed text-muted-foreground">
+            <p className="text-body text-foreground/75">Open files appear here</p>
+            <p className="max-w-[14rem] text-label leading-relaxed text-muted-foreground">
               Pick a file in the tree. Double-click a name to rename it.
             </p>
           </div>
@@ -448,7 +495,7 @@ export function FilesTab({
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter files"
-              className="w-full bg-transparent text-[12px] outline-none placeholder:text-muted-foreground/60"
+              className="w-full bg-transparent text-label outline-none placeholder:text-muted-foreground/60"
             />
           </div>
           <div className="flex items-center">
@@ -457,9 +504,9 @@ export function FilesTab({
                 type="button"
                 title="Open files in a full tab"
                 onClick={() => onOpenInTab(openFile ?? "")}
-                className="flex h-7 cursor-pointer items-center rounded-full px-2 text-[11px] text-muted-foreground hover:text-foreground"
+                className="flex h-7 min-w-0 items-center rounded-full px-2 text-caption text-muted-foreground hover:text-foreground"
               >
-                Open in a full tab
+                <span className="truncate">Open in tab</span>
               </button>
             ) : null}
             <button
@@ -490,7 +537,7 @@ export function FilesTab({
             </button>
           </div>
         </div>
-        {error ? <p className="px-3 pb-2 text-[11px] text-rose-400">{error}</p> : null}
+        {error ? <p className="px-3 pb-2 text-caption text-rose-400">{error}</p> : null}
         <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-4">
           {!children[""] ? (
             <div className="flex justify-center py-8">
@@ -513,67 +560,5 @@ function TabCloseIcon({ dirty }: { dirty: boolean }) {
       <span className="size-1.5 rounded-full bg-foreground/60 group-hover:hidden" />
       <X size={11} className="hidden group-hover:block" />
     </>
-  );
-}
-
-function FileEditor({
-  root,
-  path,
-  onOpenInTab,
-  onDirty,
-}: {
-  root: string;
-  path: string;
-  onOpenInTab?: (path: string) => void;
-  onDirty: (dirty: boolean) => void;
-}) {
-  const file = useProjectFile(root, path);
-
-  useEffect(() => {
-    onDirty(file.dirty);
-  }, [file.dirty, onDirty]);
-
-  return (
-    <div className="flex min-h-0 flex-1 flex-col bg-background">
-      <div className="flex h-8 shrink-0 items-center gap-1 px-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-muted-foreground" title={path}>
-          {path}
-        </span>
-        {onOpenInTab ? (
-          <button
-            type="button"
-            title="Open this file in a full tab"
-            onClick={() => onOpenInTab?.(path)}
-            className="flex h-6 shrink-0 cursor-pointer items-center rounded-full px-2 text-[11px] text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
-          >
-            Open in a full tab
-          </button>
-        ) : null}
-        <button
-          type="button"
-          title="Save (⌘S)"
-          disabled={!file.dirty || file.saving}
-          onClick={() => void file.save()}
-          className="flex h-6 shrink-0 cursor-pointer items-center rounded-full px-2 text-[11px] text-foreground/75 hover:text-foreground disabled:cursor-default disabled:text-muted-foreground/40"
-        >
-          {file.saving ? "Saving" : file.justSaved ? "Saved" : "Save"}
-        </button>
-      </div>
-      {file.error ? <p className="px-3 pt-2 text-[11.5px] text-rose-400">{file.error}</p> : null}
-      {file.draft === null && !file.error ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-4 animate-spin text-muted-foreground" />
-        </div>
-      ) : file.draft !== null ? (
-        <div className="min-h-0 flex-1" data-annotate-source={`File ${path}`}>
-          <CodeEditor
-            path={path}
-            value={file.draft}
-            onChange={file.setDraft}
-            onSave={() => void file.save()}
-          />
-        </div>
-      ) : null}
-    </div>
   );
 }

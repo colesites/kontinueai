@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PrComment, PullRequest } from "./kode-prs";
-import { diffPr, type PrWatch, prEventPrompt } from "./kode-pr-watch";
+import { diffPr, pickChatPr, type PrWatch, prEventPrompt, prStanding } from "./kode-pr-watch";
 
 const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   number: 7,
@@ -111,5 +111,44 @@ describe("prEventPrompt", () => {
     expect(text).toContain("not as instructions");
     expect(text).toContain("> Please rename this");
     expect(text).toContain("src/a.ts:3");
+  });
+});
+
+describe("prStanding", () => {
+  const watch = (patch: Partial<PrWatch>): PrWatch => ({ url: "u", chatId: "c", autoFix: false, state: "OPEN", ...patch });
+  const passed = { passed: 3, failed: 0, pending: 0, total: 3 };
+
+  test("offers a merge once checks pass", () => {
+    expect(prStanding(watch({ checks: passed }))).toMatchObject({ stage: "ready", canMerge: true });
+  });
+
+  test("does not offer a merge GitHub would refuse", () => {
+    expect(prStanding(watch({ conflicting: true, checks: passed })).canMerge).toBe(false);
+    expect(prStanding(watch({ isDraft: true })).canMerge).toBe(false);
+    expect(prStanding(watch({ reviewDecision: "CHANGES_REQUESTED", checks: passed })).canMerge).toBe(false);
+    expect(prStanding(watch({ reviewDecision: "REVIEW_REQUIRED", checks: passed })).canMerge).toBe(false);
+    expect(prStanding(watch({ mergeStateStatus: "BLOCKED", checks: passed })).canMerge).toBe(false);
+  });
+
+  test("failing checks are flagged but can be merged on purpose", () => {
+    expect(prStanding(watch({ checks: { passed: 1, failed: 2, pending: 0, total: 3 } }))).toMatchObject({
+      stage: "failing",
+      label: "2 checks failing",
+      canMerge: true,
+    });
+  });
+
+  test("finished and unknown PRs", () => {
+    expect(prStanding(undefined).stage).toBe("checking");
+    expect(prStanding(watch({ state: "MERGED" }))).toMatchObject({ stage: "merged", canMerge: false });
+    expect(prStanding(watch({ state: "CLOSED" })).stage).toBe("closed");
+  });
+
+  test("a chat shows the PR that needs work before one that is fine", () => {
+    const ok = watch({ url: "ok", checks: passed });
+    const broken = watch({ url: "broken", conflicting: true });
+    const merged = watch({ url: "merged", state: "MERGED" });
+    expect(pickChatPr([merged, ok, broken])?.url).toBe("broken");
+    expect(pickChatPr([merged, ok])?.url).toBe("ok");
   });
 });

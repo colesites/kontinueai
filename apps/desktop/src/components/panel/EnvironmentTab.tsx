@@ -1,4 +1,5 @@
 import { BackgroundTasksSections } from "./BackgroundTasks";
+import { isWorktreePath } from "@/lib/kode-branches";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
@@ -63,7 +64,7 @@ export function EnvironmentTab({
   const [prNote, setPrNote] = useState<string | null>(null);
 
   const status = git.status;
-  const inWorktree = projectPath.includes("/.kontinue/worktrees/");
+  const inWorktree = isWorktreePath(projectPath);
   const shortPath = projectPath.replace(/^\/Users\/[^/]+/, "~");
   const contextPct = context && context.max > 0 ? Math.min(100, (context.used / context.max) * 100) : 0;
 
@@ -194,7 +195,7 @@ export function EnvironmentTab({
         }
       >
         <div className="space-y-4 pt-2 pb-1">
-          <div className="text-[12px] text-muted-foreground">
+          <div className="text-label text-muted-foreground">
             {context ? (
               <>
                 <span className="text-foreground/90">
@@ -228,20 +229,20 @@ export function EnvironmentTab({
           {(connectors ?? []).map((c) => {
             const bad = needsReconnect.includes(c);
             return (
-              <div key={c._id} className="flex items-center gap-2.5 py-1 text-[12.5px]">
+              <div key={c._id} className="flex items-center gap-2.5 py-1 text-body">
                 <span className={cn("size-1.5 rounded-full", bad ? "bg-amber-500" : "bg-emerald-500")} />
                 <span className="min-w-0 flex-1 truncate capitalize">{c.provider.replace(/_/g, " ")}</span>
-                <span className="text-[11px] text-muted-foreground">{bad ? "Reconnect" : (c.accountLabel ?? "Connected")}</span>
+                <span className="text-caption text-muted-foreground">{bad ? "Reconnect" : (c.accountLabel ?? "Connected")}</span>
               </div>
             );
           })}
           {connectors && connectors.length === 0 ? (
-            <p className="py-1 text-[12px] text-muted-foreground">No connectors yet.</p>
+            <p className="py-1 text-label text-muted-foreground">No connectors yet.</p>
           ) : null}
           <button
             type="button"
             onClick={() => openSettings("connectors")}
-            className="cursor-pointer pt-1 text-[12px] font-medium text-purple-500 hover:underline"
+            className="cursor-pointer pt-1 text-label font-medium text-purple-500 hover:underline"
           >
             Manage connectors
           </button>
@@ -262,9 +263,9 @@ export function EnvironmentTab({
             >
               <FileDiff size={14} className="shrink-0 text-muted-foreground" />
               {status.files.length === 0 ? (
-                <span className="text-[12.5px] text-muted-foreground">No changes</span>
+                <span className="text-body text-muted-foreground">No changes</span>
               ) : (
-                <span className="font-mono text-[12.5px]">
+                <span className="font-mono text-body">
                   <span className="text-emerald-500">+{status.additions.toLocaleString()}</span>{" "}
                   <span className="text-rose-500">−{status.deletions.toLocaleString()}</span>
                 </span>
@@ -275,15 +276,15 @@ export function EnvironmentTab({
               disabled={!canOpenPr || prBusy}
               title={prHint}
               onClick={() => void createPr()}
-              className="kontinue-3d h-7 shrink-0 cursor-pointer rounded-full px-3 text-[12px] text-foreground/85 disabled:cursor-default disabled:opacity-45"
+              className="kontinue-3d h-7 shrink-0 cursor-pointer rounded-full px-3 text-label text-foreground/85 disabled:cursor-default disabled:opacity-45"
             >
               {prBusy ? "Pushing…" : "Create PR"}
             </button>
           </div>
-          {prNote ? <p className="pt-1 text-[11px] leading-relaxed text-muted-foreground">{prNote}</p> : null}
+          {prNote ? <p className="pt-1 text-caption leading-relaxed text-muted-foreground">{prNote}</p> : null}
           </>
         ) : (
-          <p className="py-1 text-[12px] text-muted-foreground">{git.error ?? "Not a git repository."}</p>
+          <p className="py-1 text-label text-muted-foreground">{git.error ?? "Not a git repository."}</p>
         )}
       </Section>
 
@@ -296,7 +297,7 @@ export function EnvironmentTab({
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="py-2">
-      <h3 className="mb-1.5 text-[12.5px] font-medium text-foreground/90">{title}</h3>
+      <h3 className="mb-1.5 text-body font-medium text-foreground/90">{title}</h3>
       <div className="space-y-0.5">{children}</div>
     </section>
   );
@@ -318,9 +319,9 @@ function Disclosure({
   return (
     <section className="py-2">
       <button type="button" onClick={onToggle} className="flex w-full cursor-pointer items-center gap-1.5 text-left">
-        <span className="text-[12.5px] font-medium text-foreground/90">{title}</span>
+        <span className="text-body font-medium text-foreground/90">{title}</span>
         <ChevronRight size={12} className={cn("text-muted-foreground transition-transform", open && "rotate-90")} />
-        <span className="ml-auto text-[12px] text-muted-foreground">{summary}</span>
+        <span className="ml-auto text-label text-muted-foreground">{summary}</span>
       </button>
       {open ? children : null}
     </section>
@@ -343,7 +344,7 @@ function Row({
   const body = (
     <>
       <span className="shrink-0 text-muted-foreground">{icon}</span>
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/90">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-body text-foreground/90">{label}</span>
     </>
   );
   return (
@@ -370,10 +371,10 @@ function RowButton({
     <button
       type="button"
       {...props}
-      className="-mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-2.5 rounded-full px-2 py-1 text-left transition-colors hover:bg-black/[0.04] data-[state=open]:bg-black/[0.05] dark:hover:bg-white/[0.05] dark:data-[state=open]:bg-white/[0.07]"
+      className="-mx-2 flex w-[calc(100%+1rem)] cursor-pointer items-center gap-2.5 rounded-full px-2 py-1 text-left transition-colors kontinue-hover data-[state=open]:bg-black/[0.05] dark:data-[state=open]:bg-white/[0.07]"
     >
       <span className="shrink-0 text-muted-foreground">{icon}</span>
-      <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/90">{label}</span>
+      <span className="min-w-0 flex-1 truncate text-body text-foreground/90">{label}</span>
     </button>
   );
 }
@@ -385,7 +386,7 @@ function IconButton({ title, onClick, children }: { title: string; onClick: () =
       title={title}
       aria-label={title}
       onClick={onClick}
-      className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]"
+      className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground kontinue-hover hover:text-foreground"
     >
       {children}
     </button>

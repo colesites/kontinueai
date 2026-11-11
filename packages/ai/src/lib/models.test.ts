@@ -97,3 +97,11 @@ describe("AI model catalog", () => {
 		expect(new Set(ids).size).toBe(ids.length);
 	});
 });
+
+import { KODE_MAX_OUTPUT_TOKENS, kodeMaxOutputTokens } from "./kode";
+
+test("Kode requests carry an output budget except on OpenAI models", () => {
+	expect(kodeMaxOutputTokens("deepseek/deepseek-v4.1-flash-1017")).toBe(KODE_MAX_OUTPUT_TOKENS);
+	expect(kodeMaxOutputTokens("zai/glm-5.3-flash")).toBe(KODE_MAX_OUTPUT_TOKENS);
+	expect(kodeMaxOutputTokens("openai/gpt-6-luna")).toBeNull();
+});

@@ -145,3 +145,16 @@ export function parseAuthCallback(rawUrl: string): CallbackResult {
 	clearPendingBrowserSignIn();
 	return { ok: true, ticket };
 }
+
+let serverReady: Promise<void> | null = null;
+
+/** Tell the native side which web server goes with this build's sign-in
+ *  (see kontinue_set_base_url in src-tauri/src/lib.rs). Safe to call often. */
+export function ensureKontinueServer(): Promise<void> {
+	serverReady ??= invoke("kontinue_set_base_url", { url: WEB_APP_URL })
+		.then(() => undefined)
+		.catch((error) => {
+			console.warn("[kontinue] could not set the server URL", error);
+		});
+	return serverReady;
+}

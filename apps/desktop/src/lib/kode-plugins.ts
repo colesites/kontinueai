@@ -3,7 +3,7 @@
 // and MCP servers, which show as "Provided by the … plugin" connectors.
 
 import { invoke } from "@tauri-apps/api/core";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { notifyMcpChanged, type McpServerConfig } from "./kode-mcp";
 
 export type PluginCommand = {
@@ -276,4 +276,70 @@ export function pluginMcpConfigs(list: InstalledPlugin[] = plugins): PluginMcpCo
         };
       }),
     );
+}
+
+// ---------------------------------------------------------------------------
+// Plugin marketplaces (Claude Code format: .claude-plugin/marketplace.json)
+// ---------------------------------------------------------------------------
+
+export type PluginMarketplace = { source: string; label: string; builtIn?: boolean };
+
+/** Public marketplaces offered in Customize → Plugins. Checked 2026-11-11. */
+export const BUILT_IN_MARKETPLACES: PluginMarketplace[] = [
+  { source: "anthropics/claude-plugins-official", label: "Claude official", builtIn: true },
+  { source: "anthropics/knowledge-work-plugins", label: "Knowledge work", builtIn: true },
+  { source: "anthropics/financial-services", label: "Financial services", builtIn: true },
+  { source: "anthropics/claude-for-legal", label: "Legal", builtIn: true },
+  { source: "anthropics/life-sciences", label: "Life sciences", builtIn: true },
+  { source: "obra/superpowers-marketplace", label: "Superpowers", builtIn: true },
+];
+
+const MARKETPLACES_KEY = "kode.pluginMarketplaces.v1";
+const marketplaceListeners = new Set<() => void>();
+let savedMarketplaces: PluginMarketplace[] = readSavedMarketplaces();
+
+function readSavedMarketplaces(): PluginMarketplace[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(MARKETPLACES_KEY) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((m) => typeof m?.source === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeSavedMarketplaces(next: PluginMarketplace[]) {
+  savedMarketplaces = next;
+  try {
+    localStorage.setItem(MARKETPLACES_KEY, JSON.stringify(next));
+  } catch {
+    // storage unavailable; keep it for this session
+  }
+  for (const listener of marketplaceListeners) listener();
+}
+
+const sameSource = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+export function isKnownMarketplace(source: string): boolean {
+  return [...BUILT_IN_MARKETPLACES, ...savedMarketplaces].some((m) => sameSource(m.source, source));
+}
+
+export function saveMarketplace(source: string, label: string) {
+  if (isKnownMarketplace(source)) return;
+  writeSavedMarketplaces([...savedMarketplaces, { source: source.trim(), label: label.trim() || source.trim() }]);
+}
+
+export function removeMarketplace(source: string) {
+  writeSavedMarketplaces(savedMarketplaces.filter((m) => !sameSource(m.source, source)));
+}
+
+/** Built-in marketplaces, then the ones you saved. */
+export function useMarketplaces(): PluginMarketplace[] {
+  const saved = useSyncExternalStore(
+    (listener) => {
+      marketplaceListeners.add(listener);
+      return () => marketplaceListeners.delete(listener);
+    },
+    () => savedMarketplaces,
+  );
+  return useMemo(() => [...BUILT_IN_MARKETPLACES, ...saved], [saved]);
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
+import { addWorktree } from "@/lib/kode-branches";
 import { createPortal } from "react-dom";
-import { invoke } from "@tauri-apps/api/core";
 import { ChevronDown, ChevronRight, Folder, Loader2, Plus, X } from "lucide-react";
 import { BranchPicker, useBranches } from "@/components/kode/BranchPicker";
 import { getEnvironment, saveEnvironment, type EnvVariable } from "@/lib/kode-environments";
@@ -67,7 +67,7 @@ export function EditEnvironmentDialog({
       saveEnvironment(projectPath, env);
       if (worktree) {
         if (!worktreeBranch.trim()) throw new Error("Enter a branch name for the worktree.");
-        const path = await invoke<string>("panel_git_worktree_add", { root: projectPath, branch: worktreeBranch.trim() });
+        const path = await addWorktree(projectPath, worktreeBranch.trim());
         // The worktree is its own folder; carry the same environment over.
         saveEnvironment(path, env);
         newChat(ensureFolder(path));
@@ -82,7 +82,7 @@ export function EditEnvironmentDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-md animate-in fade-in duration-150 dark:bg-black/70"
+      className="fixed inset-0 z-50 flex items-center justify-center kontinue-scrim p-4 animate-in fade-in duration-150"
       onClick={() => !saving && onClose()}
     >
       <div className="liquid-glass-dropdown w-full max-w-lg p-5 text-foreground" onClick={(e) => e.stopPropagation()}>
@@ -92,36 +92,36 @@ export function EditEnvironmentDialog({
             type="button"
             aria-label="Close"
             onClick={onClose}
-            className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+            className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground kontinue-hover hover:text-foreground"
           >
             <X size={15} />
           </button>
         </div>
 
-        <label className="mb-1.5 block text-[12.5px] font-medium text-foreground/85">Name</label>
+        <label className="mb-1.5 block text-body font-medium text-foreground/85">Name</label>
         <input
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="kontinue-3d mb-5 h-9 w-full rounded-full px-4 text-[13px] outline-none"
+          className="kontinue-3d mb-5 h-9 w-full rounded-full px-4 text-body outline-none"
         />
 
-        <p className="mb-1.5 text-[12.5px] font-medium text-foreground/85">Folder</p>
+        <p className="mb-1.5 text-body font-medium text-foreground/85">Folder</p>
         <div className="kontinue-3d mb-3 rounded-[16px] px-3.5 py-2.5">
           <div className="flex items-center gap-2.5">
             <Folder size={14} className="shrink-0 text-muted-foreground" />
-            <span className="min-w-0 flex-1 truncate text-[13px]">{folderName}</span>
+            <span className="min-w-0 flex-1 truncate text-body">{folderName}</span>
             <BranchPicker root={projectPath} repoName={folderName} side="bottom" align="end" onChanged={() => void reload()}>
               <button
                 type="button"
-                className="flex h-7 cursor-pointer items-center gap-1 rounded-full px-2 font-mono text-[12px] text-foreground/80 hover:bg-black/[0.05] dark:hover:bg-white/[0.06]"
+                className="flex h-7 cursor-pointer items-center gap-1 rounded-full px-2 font-mono text-label text-foreground/80 kontinue-hover"
               >
                 {branches?.current ?? "branch"}
                 <span className="font-sans text-muted-foreground">Current</span>
                 <ChevronDown size={12} className="text-muted-foreground" />
               </button>
             </BranchPicker>
-            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-muted-foreground">
+            <label className="flex cursor-pointer items-center gap-1.5 text-label text-muted-foreground">
               <input
                 type="checkbox"
                 checked={worktree}
@@ -137,9 +137,9 @@ export function EditEnvironmentDialog({
                 value={worktreeBranch}
                 onChange={(e) => setWorktreeBranch(e.target.value)}
                 placeholder="Branch for the new worktree"
-                className="kontinue-3d h-8 w-full rounded-full px-3 text-[12px] outline-none placeholder:text-muted-foreground/60"
+                className="kontinue-3d h-8 w-full rounded-full px-3 text-label outline-none placeholder:text-muted-foreground/60"
               />
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-caption text-muted-foreground">
                 Creates a separate folder on that branch and moves this session there.
               </p>
             </div>
@@ -153,8 +153,8 @@ export function EditEnvironmentDialog({
             className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left"
           >
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium">Environment variables</span>
-              <span className="block text-[11.5px] text-muted-foreground">
+              <span className="block text-body font-medium">Environment variables</span>
+              <span className="block text-label text-muted-foreground">
                 {variables.filter((v) => v.name.trim()).length === 0
                   ? "None for this environment"
                   : `${variables.filter((v) => v.name.trim()).length} set · used by the terminal and agent commands`}
@@ -174,7 +174,7 @@ export function EditEnvironmentDialog({
                     placeholder="NAME"
                     spellCheck={false}
                     className={cn(
-                      "h-8 w-[40%] rounded-full bg-black/[0.04] px-3 font-mono text-[12px] outline-none dark:bg-white/[0.05]",
+                      "h-8 w-[40%] rounded-full bg-black/[0.04] px-3 font-mono text-label outline-none dark:bg-white/[0.05]",
                       variable.name.trim() && !NAME_RE.test(variable.name.trim()) && "ring-1 ring-rose-500/60",
                     )}
                   />
@@ -186,7 +186,7 @@ export function EditEnvironmentDialog({
                     }
                     placeholder="value"
                     spellCheck={false}
-                    className="h-8 min-w-0 flex-1 rounded-full bg-black/[0.04] px-3 font-mono text-[12px] outline-none dark:bg-white/[0.05]"
+                    className="h-8 min-w-0 flex-1 rounded-full bg-black/[0.04] px-3 font-mono text-label outline-none dark:bg-white/[0.05]"
                   />
                   <button
                     type="button"
@@ -201,11 +201,11 @@ export function EditEnvironmentDialog({
               <button
                 type="button"
                 onClick={() => setVariables((list) => [...list, { name: "", value: "" }])}
-                className="flex cursor-pointer items-center gap-1.5 px-1 pt-1 text-[12px] font-medium text-purple-500 hover:underline"
+                className="flex cursor-pointer items-center gap-1.5 px-1 pt-1 text-label font-medium text-purple-500 hover:underline"
               >
                 <Plus size={12} /> Add variable
               </button>
-              <p className="px-1 text-[10.5px] text-muted-foreground">
+              <p className="px-1 text-caption text-muted-foreground">
                 Stored on this Mac. PATH, HOME and other system variables can't be overridden.
               </p>
             </div>
@@ -214,14 +214,14 @@ export function EditEnvironmentDialog({
 
         <ScopedSettingsPanel value={scoped} onChange={setScoped} target={scopeTarget} onTargetChange={setScopeTarget} />
 
-        {error ? <p className="mt-3 text-[12px] text-rose-400">{error}</p> : null}
+        {error ? <p className="mt-3 text-label text-rose-400">{error}</p> : null}
 
         <div className="mt-5 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="kontinue-3d h-9 cursor-pointer rounded-full px-4 text-[13px] text-foreground/85"
+            className="kontinue-3d h-9 cursor-pointer rounded-full px-4 text-body text-foreground/85"
           >
             Cancel
           </button>
@@ -229,7 +229,7 @@ export function EditEnvironmentDialog({
             type="button"
             onClick={() => void save()}
             disabled={saving}
-            className="kontinue-3d-primary flex h-9 cursor-pointer items-center gap-1.5 rounded-full px-4 text-[13px] font-medium disabled:opacity-60"
+            className="kontinue-3d-primary flex h-9 cursor-pointer items-center gap-1.5 rounded-full px-4 text-body font-medium disabled:opacity-60"
           >
             {saving ? <Loader2 size={13} className="animate-spin" /> : null}
             Save

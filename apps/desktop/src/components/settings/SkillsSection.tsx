@@ -28,7 +28,7 @@ function scopeBadge(scope: KodeSkill["scope"]) {
   return (
     <span
       className={cn(
-        "shrink-0 rounded-full border px-1.5 py-px text-[9.5px]",
+        "shrink-0 rounded-full border px-1.5 py-px text-micro",
         scope === "project"
           ? "border-purple-500/30 text-purple-500"
           : "border-black/10 text-muted-foreground dark:border-white/10",
@@ -137,14 +137,14 @@ export function SkillsSection() {
           <button
             type="button"
             onClick={() => setView("installed")}
-            className={cn("flex h-7 cursor-pointer items-center rounded-full px-3 text-[11.5px] transition-colors", view === "installed" ? "kontinue-capsule font-semibold text-purple-900 dark:text-purple-100" : "text-muted-foreground hover:text-foreground")}
+            className={cn("flex h-7 cursor-pointer items-center rounded-full px-3 text-label transition-colors", view === "installed" ? "kontinue-capsule font-semibold text-purple-900 dark:text-purple-100" : "text-muted-foreground hover:text-foreground")}
           >
             Installed
           </button>
           <button
             type="button"
             onClick={() => setView("discover")}
-            className={cn("flex h-7 cursor-pointer items-center rounded-full px-3 text-[11.5px] transition-colors", view === "discover" ? "kontinue-capsule font-semibold text-purple-900 dark:text-purple-100" : "text-muted-foreground hover:text-foreground")}
+            className={cn("flex h-7 cursor-pointer items-center rounded-full px-3 text-label transition-colors", view === "discover" ? "kontinue-capsule font-semibold text-purple-900 dark:text-purple-100" : "text-muted-foreground hover:text-foreground")}
           >
             Discover
           </button>
@@ -153,13 +153,13 @@ export function SkillsSection() {
           <button
             type="button"
             onClick={() => setCreating((v) => !v)}
-            className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium"
+            className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-label font-medium"
           >
             {creating ? <X size={13} /> : <Plus size={13} />}
             {creating ? "Cancel" : "New skill"}
           </button>
         ) : (
-          <span className="px-1 text-[11.5px] text-muted-foreground">
+          <span className="px-1 text-label text-muted-foreground">
             {skills.length} skill{skills.length === 1 ? "" : "s"} installed
           </span>
         )}
@@ -170,7 +170,7 @@ export function SkillsSection() {
       {view !== "installed" ? null : (
         <>
       <div className="mb-4 flex items-center justify-between">
-        <p className="px-1 text-[11.5px] text-muted-foreground">
+        <p className="px-1 text-label text-muted-foreground">
           {skills.length} skill{skills.length === 1 ? "" : "s"} installed
           {projectRoot ? " · project + user" : " · user-level"}
         </p>
@@ -181,41 +181,41 @@ export function SkillsSection() {
           <div className="liquid-glass-dropdown !rounded-[20px] p-4">
             <div className="space-y-3">
               <div>
-                <label htmlFor="new-skill-name" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">Name</label>
+                <label htmlFor="new-skill-name" className="mb-1 block text-label font-medium text-muted-foreground">Name</label>
                 <input
                   id="new-skill-name"
                   value={draft.name}
                   onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                   placeholder="my-skill"
-                  className="kontinue-3d h-8 w-full rounded-full px-3.5 text-[12.5px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d h-8 w-full rounded-full px-3.5 text-body outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
               <div>
-                <label htmlFor="new-skill-desc" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">Description</label>
+                <label htmlFor="new-skill-desc" className="mb-1 block text-label font-medium text-muted-foreground">Description</label>
                 <input
                   id="new-skill-desc"
                   value={draft.description}
                   onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
                   placeholder="One line describing what this skill does"
-                  className="kontinue-3d h-8 w-full rounded-full px-3.5 text-[12.5px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d h-8 w-full rounded-full px-3.5 text-body outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
               <div>
-                <label htmlFor="new-skill-body" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">Instructions</label>
+                <label htmlFor="new-skill-body" className="mb-1 block text-label font-medium text-muted-foreground">Instructions</label>
                 <textarea
                   id="new-skill-body"
                   value={draft.body}
                   onChange={(e) => setDraft((d) => ({ ...d, body: e.target.value }))}
                   rows={5}
                   placeholder="Markdown guidance for the agent…"
-                  className="kontinue-3d w-full rounded-[16px] px-3.5 py-2.5 text-[12.5px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d w-full rounded-[16px] px-3.5 py-2.5 text-body outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
-              {error ? <p className="text-[11.5px] text-rose-400">{error}</p> : null}
+              {error ? <p className="text-label text-rose-400">{error}</p> : null}
               <button
                 type="button"
                 onClick={() => void submitCreate()}
-                className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-4 text-[12px] font-medium"
+                className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-4 text-label font-medium"
               >
                 Create skill
               </button>
@@ -224,12 +224,12 @@ export function SkillsSection() {
         </section>
       ) : null}
 
-      {error && !creating ? <p className="mb-4 text-[11.5px] text-rose-400">{error}</p> : null}
+      {error && !creating ? <p className="mb-4 text-label text-rose-400">{error}</p> : null}
 
       {loading ? (
-        <p className="px-1 py-6 text-[12.5px] text-muted-foreground">Loading skills…</p>
+        <p className="px-1 py-6 text-body text-muted-foreground">Loading skills…</p>
       ) : skills.length === 0 ? (
-        <p className="px-1 py-6 text-[12.5px] text-muted-foreground">
+        <p className="px-1 py-6 text-body text-muted-foreground">
           No skills installed. Create one, or drop a <code className="font-mono">SKILL.md</code> folder into{" "}
           <code className="font-mono">~/.agents/skills/</code> or <code className="font-mono">.agents/skills/</code>.
         </p>
@@ -300,7 +300,7 @@ function SkillGroup({
 }) {
   return (
     <section>
-      <h2 className="mb-2 px-1 text-[11.5px] font-medium text-muted-foreground">{title}</h2>
+      <h2 className="mb-2 px-1 text-label font-medium text-muted-foreground">{title}</h2>
       <div className="liquid-glass-dropdown divide-y divide-black/[0.05] !rounded-[20px] dark:divide-white/[0.05]">
         {skills.map((skill) => {
           const isOpen = expanded === skill.name;
@@ -320,20 +320,20 @@ function SkillGroup({
                   <span className="min-w-0">
                     <span className="flex items-center gap-2">
                       <Sparkles size={13} className="shrink-0 text-purple-400" />
-                      <span className="truncate text-[13px] font-medium text-foreground/90">{skill.name}</span>
+                      <span className="truncate text-body font-medium text-foreground/90">{skill.name}</span>
                       {scopeBadge(skill.scope)}
                       {meta ? (
-                        <span className="shrink-0 rounded-full border border-black/10 px-1.5 py-px font-mono text-[9.5px] text-muted-foreground dark:border-white/10">
+                        <span className="shrink-0 rounded-full border border-black/10 px-1.5 py-px font-mono text-micro text-muted-foreground dark:border-white/10">
                           {meta.source}
                         </span>
                       ) : null}
                       {skill.license ? (
-                        <span className="shrink-0 rounded-full border border-black/10 px-1.5 py-px text-[9.5px] text-muted-foreground dark:border-white/10">
+                        <span className="shrink-0 rounded-full border border-black/10 px-1.5 py-px text-micro text-muted-foreground dark:border-white/10">
                           {skill.license}
                         </span>
                       ) : null}
                     </span>
-                    <span className="mt-0.5 block truncate text-[11.5px] text-muted-foreground">{skill.description}</span>
+                    <span className="mt-0.5 block truncate text-label text-muted-foreground">{skill.description}</span>
                   </span>
                 </button>
                 <div className="flex shrink-0 items-center gap-2">
@@ -354,21 +354,21 @@ function SkillGroup({
               {isOpen ? (
                 <div className="mt-3 space-y-3 border-l border-black/[0.06] pl-4 dark:border-white/[0.08]">
                   <div>
-                    <p className="mb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">Instructions</p>
-                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-black/[0.04] px-3 py-2 text-[11.5px] leading-5 text-foreground/75 dark:bg-white/[0.04]">
+                    <p className="mb-1 text-caption font-medium uppercase tracking-wide text-muted-foreground">Instructions</p>
+                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-black/[0.04] px-3 py-2 text-label leading-5 text-foreground/75 dark:bg-white/[0.04]">
                       {skill.body}
                     </pre>
                   </div>
                   {textFiles.length > 0 ? (
                     <div>
-                      <p className="mb-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground">Files</p>
+                      <p className="mb-1 text-caption font-medium uppercase tracking-wide text-muted-foreground">Files</p>
                       <div className="space-y-0.5">
                         {textFiles.map((file) => (
                           <button
                             key={file.path}
                             type="button"
                             onClick={() => onViewFile(skill, file.path)}
-                            className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11.5px] text-foreground/70 hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                            className="flex w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-label text-foreground/70 kontinue-hover"
                           >
                             <FileText size={12} className="shrink-0 text-muted-foreground" />
                             <span className="truncate font-mono">{file.path}</span>
@@ -378,7 +378,7 @@ function SkillGroup({
                     </div>
                   ) : null}
                   {fileContent !== null ? (
-                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-black/[0.04] px-3 py-2 font-mono text-[11px] leading-5 text-foreground/70 dark:bg-white/[0.04]">
+                    <pre className="max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-black/[0.04] px-3 py-2 font-mono text-caption leading-5 text-foreground/70 dark:bg-white/[0.04]">
                       {fileContent}
                     </pre>
                   ) : null}

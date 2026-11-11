@@ -115,7 +115,7 @@ pub(crate) fn read_events(path: &Path, since: i64) -> Vec<ImportEvent> {
         .collect()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_import_events(since: i64) -> Vec<ImportEvent> {
     events_path().map(|p| read_events(&p, since)).unwrap_or_default()
 }
@@ -251,13 +251,13 @@ fn status() -> SyncHooksStatus {
     SyncHooksStatus { claude, codex, codex_notify_taken: taken && !codex }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_sync_hooks_status() -> SyncHooksStatus {
     status()
 }
 
 /// Install or remove the sync hooks for Claude Code and Codex.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_sync_hooks_set(enabled: bool) -> Result<SyncHooksStatus, String> {
     let events = events_path().ok_or("No home folder.")?;
     if let Some(path) = claude_settings_path() {
@@ -494,13 +494,13 @@ fn workspace_path() -> Option<PathBuf> {
     kode_dir().map(|dir| dir.join("workspace.json"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_shared_workspace_read() -> Option<Value> {
     let text = std::fs::read_to_string(workspace_path()?).ok()?;
     serde_json::from_str(&text).ok()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_shared_workspace_write(workspace: Value) -> Result<(), String> {
     let path = workspace_path().ok_or("No home folder.")?;
     if let Some(parent) = path.parent() {

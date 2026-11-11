@@ -51,7 +51,7 @@ function toolIcon(name: string): LucideIcon {
 }
 
 const OUTPUT_BOX =
-  "mt-1 ml-5 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black/[0.04] px-3 py-2 font-mono text-[11.5px] leading-5 text-foreground/65 dark:bg-white/[0.05]";
+  "mt-1 ml-5 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black/[0.04] px-3 py-2 font-mono text-label leading-5 text-foreground/65 dark:bg-white/[0.05]";
 
 export function CommandBlock({ command, status, result }: { command: string; status?: StepStatus; result?: string }) {
   const [open, setOpen] = useState(false);
@@ -59,10 +59,10 @@ export function CommandBlock({ command, status, result }: { command: string; sta
 
   return (
     <div className="my-0.5">
-      <button type="button" onClick={() => setOpen((current) => !current)} className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[12.5px] text-foreground/55 hover:text-foreground/80">
+      <button type="button" onClick={() => setOpen((current) => !current)} className="flex w-full cursor-pointer items-center gap-1.5 text-left text-body text-foreground/55 hover:text-foreground/80">
         {status === "running" ? <Loader2 className="size-3 shrink-0 animate-spin" /> : <Terminal className="size-3 shrink-0" />}
-        <span className="truncate font-mono text-[11.5px]">{preview}</span>
-        {status === "error" ? <span className="shrink-0 rounded-full bg-red-500/10 px-1.5 text-[10.5px] text-red-500 dark:text-red-400">failed</span> : null}
+        <span className="truncate font-mono text-label">{preview}</span>
+        {status === "error" ? <span className="shrink-0 rounded-full bg-red-500/10 px-1.5 text-caption text-red-500 dark:text-red-400">failed</span> : null}
         <ChevronRight size={12} className={cn("shrink-0 opacity-50 transition-transform", open && "rotate-90")} />
       </button>
       {open ? <pre className={OUTPUT_BOX}>{result ? `$ ${command}\n\n${result}` : `$ ${command}`}</pre> : null}
@@ -81,7 +81,7 @@ export function ToolStepView({ step }: { step: KodeToolStep; onApprove?: (id: st
   if (step.name === "ask_options" && step.result) {
     const answer = step.result.replace(/^User selected:\s*/, "").replace(/^User did not select anything\.?$/, "no answer");
     return (
-      <div className="my-0.5 flex min-w-0 items-center gap-1.5 text-[12.5px] text-foreground/50">
+      <div className="my-0.5 flex min-w-0 items-center gap-1.5 text-body text-foreground/50">
         <MessageCircleQuestion size={12} className="shrink-0" />
         <span className="min-w-0 truncate">{step.description.replace(/`/g, "")}</span>
         <span className="shrink-0 text-foreground/80">→ {answer}</span>
@@ -111,7 +111,7 @@ function ResultBlock({ name, description, result, status }: { name: string; desc
         onClick={() => expandable && setOpen((current) => !current)}
         disabled={!expandable}
         className={cn(
-          "flex w-full items-center gap-1.5 text-left text-[12.5px] text-foreground/50",
+          "flex w-full items-center gap-1.5 text-left text-body text-foreground/50",
           expandable ? "cursor-pointer hover:text-foreground/75" : "cursor-default",
         )}
       >
@@ -122,7 +122,7 @@ function ResultBlock({ name, description, result, status }: { name: string; desc
         </span>
         {/* A failed read or search is usually harmless (a guessed path), so
             it gets a small label rather than turning the whole row red. */}
-        {status === "error" ? <span className="shrink-0 rounded-full bg-red-500/10 px-1.5 text-[10.5px] text-red-500 dark:text-red-400">failed</span> : null}
+        {status === "error" ? <span className="shrink-0 rounded-full bg-red-500/10 px-1.5 text-caption text-red-500 dark:text-red-400">failed</span> : null}
         {expandable ? <ChevronRight size={12} className={cn("shrink-0 opacity-50 transition-transform", open && "rotate-90")} /> : null}
       </button>
       {open && detail ? <pre className={OUTPUT_BOX}>{detail}</pre> : null}
@@ -139,7 +139,7 @@ function ToolStepGroup({ steps }: { steps: KodeToolStep[] }) {
 
   return (
     <div className="my-0.5">
-      <button type="button" onClick={() => setOpen((current) => !current)} className="flex w-full cursor-pointer items-center gap-1.5 text-left text-[12.5px] text-foreground/55 hover:text-foreground/80">
+      <button type="button" onClick={() => setOpen((current) => !current)} className="flex w-full cursor-pointer items-center gap-1.5 text-left text-body text-foreground/55 hover:text-foreground/80">
         <GroupIcon className="size-3 shrink-0" />
         <span className="truncate">{label}</span>
         <ChevronRight size={12} className={cn("shrink-0 opacity-50 transition-transform", open && "rotate-90")} />

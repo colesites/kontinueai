@@ -183,13 +183,13 @@ pub async fn kode_project_restore(target: String, bundle: ProjectBundle) -> Resu
 }
 
 /// Whether a path exists (to tell an existing checkout from a parent folder).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_path_exists(path: String) -> bool {
     Path::new(&path).exists()
 }
 
 /// A readable name for this machine ("Cole's MacBook Pro").
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_device_name() -> String {
     let try_cmd = |cmd: &str, args: &[&str]| {
         Command::new(cmd)

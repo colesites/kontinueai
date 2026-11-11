@@ -730,6 +730,8 @@ export type StoredImportContext = {
   autoContinue?: boolean;
   /** Reset time we already queued a continue for (so it's queued once). */
   limitScheduledFor?: number;
+  /** The "continue from where it stopped" offer was answered (or dismissed). */
+  resumeHandled?: boolean;
   /** AI-written architecture / decision summary, folded into the context. */
   summary?: string;
   summaryAt?: number;

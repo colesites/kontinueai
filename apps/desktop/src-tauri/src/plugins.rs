@@ -184,7 +184,7 @@ pub async fn plugin_inspect_source(source: String, subdir: Option<String>) -> Re
     std::fs::create_dir_all(staging.parent().unwrap_or(&staging)).map_err(|e| e.to_string())?;
 
     if let Some(url) = git_url(&source) {
-        let output = tokio::process::Command::new("git")
+        let output = tokio::process::Command::new(crate::cli_agents::program_path("git"))
             .args(["clone", "--depth", "1", &url])
             .arg(&staging)
             .env("PATH", crate::cli_agents::login_path())
@@ -262,7 +262,7 @@ pub async fn plugin_inspect_source(source: String, subdir: Option<String>) -> Re
 }
 
 /// Install one plugin from a staged source.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn plugin_install(staging_dir: String, rel_path: String, source: String) -> Result<RegistryEntry, String> {
     let base = plugins_dir()?;
     let staging = PathBuf::from(&staging_dir);
@@ -302,7 +302,7 @@ pub fn plugin_install(staging_dir: String, rel_path: String, source: String) -> 
 }
 
 /// Remove a staged source once installing is done or cancelled.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn plugin_discard_staging(staging_dir: String) -> Result<(), String> {
     let staging = PathBuf::from(&staging_dir);
     if staging.starts_with(plugins_dir()?.join(".staging")) && staging.is_dir() {
@@ -500,7 +500,7 @@ pub struct UserCommands {
 }
 
 /// Your own Claude Code style commands, so `/name` works the same in Kode.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_list_user_commands(project_root: Option<String>) -> Result<UserCommands, String> {
     let home = home()?;
     let mut user = read_commands(&home.join(".claude").join("commands"), "Your command");
@@ -514,7 +514,7 @@ pub fn kode_list_user_commands(project_root: Option<String>) -> Result<UserComma
     Ok(UserCommands { user, project })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn plugin_list() -> Result<Vec<InstalledPlugin>, String> {
     let base = plugins_dir()?;
     Ok(read_registry()
@@ -526,7 +526,7 @@ pub fn plugin_list() -> Result<Vec<InstalledPlugin>, String> {
         .collect())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn plugin_set_enabled(name: String, enabled: bool) -> Result<(), String> {
     let mut registry = read_registry();
     let entry = registry
@@ -537,7 +537,7 @@ pub fn plugin_set_enabled(name: String, enabled: bool) -> Result<(), String> {
     write_registry(&registry)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn plugin_set_hooks_allowed(name: String, allowed: bool) -> Result<(), String> {
     let mut registry = read_registry();
     let entry = registry
@@ -595,7 +595,7 @@ pub async fn plugin_run_hook(
     }
 
     let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    let mut child = tokio::process::Command::new(shell)
+    let mut child = tokio::process::Command::new(crate::cli_agents::program_path(&shell))
         .args(["-c", &command])
         .current_dir(if std::path::Path::new(&cwd).is_dir() { cwd.clone() } else { described.dir.clone() })
         .env("PATH", crate::cli_agents::login_path())
@@ -646,7 +646,7 @@ pub async fn plugin_install_deps(name: String) -> Result<String, String> {
     let run = |program: &'static str, args: Vec<&'static str>| {
         let dir = dir.clone();
         async move {
-            tokio::process::Command::new(program)
+            tokio::process::Command::new(crate::cli_agents::program_path(program))
                 .args(&args)
                 .current_dir(&dir)
                 .env("PATH", crate::cli_agents::login_path())
@@ -683,7 +683,7 @@ pub async fn plugin_install_deps(name: String) -> Result<String, String> {
     Ok(format!("Dependencies installed with {used}."))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn plugin_remove(name: String) -> Result<(), String> {
     let name = safe_name(&name)?;
     let dir = plugins_dir()?.join(&name);

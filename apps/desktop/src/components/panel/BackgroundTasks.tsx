@@ -43,9 +43,11 @@ export function useBackgroundTasks(chatId: string | null) {
   const refresh = useCallback(async () => {
     if (!chatId) return setTasks([]);
     try {
-      setTasks(await invoke<BackgroundTask[]>("kode_bg_list", { chatId }));
+      const next = await invoke<BackgroundTask[]>("kode_bg_list", { chatId });
+      // Polled every 2s: only re-render when something actually changed.
+      setTasks((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
     } catch {
-      setTasks([]);
+      setTasks((current) => (current.length ? [] : current));
     }
   }, [chatId]);
   useEffect(() => {
@@ -79,14 +81,14 @@ function TaskRow({ task, onStop, icon }: { task: BackgroundTask; onStop?: () => 
       <div className="flex items-center gap-2.5 py-1">
         <button type="button" onClick={() => setOpen((v) => !v)} title={task.command} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left hover:text-foreground">
           <span className="shrink-0 text-muted-foreground">{icon}</span>
-          <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground/90">{label}</span>
+          <span className="min-w-0 flex-1 truncate text-body text-foreground/90">{label}</span>
         </button>
         {task.port ? (
-          <button type="button" onClick={() => void openUrl(`http://localhost:${task.port}`)} title="Open in your browser" className="shrink-0 cursor-pointer text-[12px] text-muted-foreground hover:text-foreground hover:underline">
+          <button type="button" onClick={() => void openUrl(`http://localhost:${task.port}`)} title="Open in your browser" className="shrink-0 cursor-pointer text-label text-muted-foreground hover:text-foreground hover:underline">
             localhost:{task.port}
           </button>
         ) : (
-          <span className="shrink-0 text-[12px] text-muted-foreground">
+          <span className="shrink-0 text-label text-muted-foreground">
             {task.status === "running" ? elapsed(task.startedAt) : task.status === "exited" ? "done" : task.status}
           </span>
         )}
@@ -97,7 +99,7 @@ function TaskRow({ task, onStop, icon }: { task: BackgroundTask; onStop?: () => 
         ) : null}
       </div>
       {open ? (
-        <pre className="mb-1.5 ml-6 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black/[0.04] px-2.5 py-2 font-mono text-[11px] leading-[1.55] text-foreground/70 dark:bg-white/[0.05]">
+        <pre className="mb-1.5 ml-6 max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-black/[0.04] px-2.5 py-2 font-mono text-caption leading-[1.55] text-foreground/70 dark:bg-white/[0.05]">
           <span className="text-foreground/45">$ {task.command}</span>
           {output ? `\n${output.trimEnd()}` : "\n(no output yet)"}
         </pre>
@@ -137,7 +139,7 @@ export function BackgroundTasksSections({ chatId, Section, Divider }: { chatId: 
                   <span className="shrink-0 text-muted-foreground">
                     <CheckCircle2 size={14} />
                   </span>
-                  <span className="flex-1 text-[12.5px] text-foreground/90">{finished.length} finished</span>
+                  <span className="flex-1 text-body text-foreground/90">{finished.length} finished</span>
                   <ChevronRight size={12} className={cn("text-muted-foreground transition-transform", showFinished && "rotate-90")} />
                 </button>
                 {showFinished

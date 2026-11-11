@@ -4,6 +4,7 @@ import {
 	isKodeModel,
 	KODE_EFFORTS,
 	KODE_GATEWAY_CHAIN,
+	kodeMaxOutputTokens,
 	resolveKodeEffort,
 	type KodeEffort,
 } from "@repo/ai/lib/kode";
@@ -74,6 +75,11 @@ export async function POST(request: Request) {
 	}
 	// Kode 1.0 fails over across its gateway chain.
 	if (isKodeModel(model.id) && !fast) upstreamBody.models = KODE_GATEWAY_CHAIN;
+	// A real output budget, so long replies aren't cut at the provider default.
+	const maxOutput = kodeMaxOutputTokens(String(upstreamBody.model));
+	if (maxOutput && upstreamBody.max_tokens == null && upstreamBody.max_completion_tokens == null) {
+		upstreamBody.max_tokens = maxOutput;
+	}
 
 	return proxyGatewayChat({
 		body: upstreamBody,

@@ -8,8 +8,10 @@
 
 // Markers that indicate the model has started emitting a text tool-call block.
 // Everything from here on is machine syntax, not prose — drop it.
+// DeepSeek's `<｜DSML｜…>` (full-width or ASCII bar) is parsed natively
+// (text_tool_markup.rs); this is the safety net if any reaches the UI.
 const TOOL_CALL_START =
-  /<\|tool_call|<\|tool|<\|call|<\|function|\bcall:(?:ask_options|update_todos|kode_[a-z_]+)\b/i;
+  /<\|tool_call|<\|tool|<\|call|<\|function|<\s*[｜|]\s*DSML|\bcall:(?:ask_options|update_todos|kode_[a-z_]+)\b/i;
 
 /** Index of the first text tool-call marker, or -1 if there is none. */
 export function findToolCallStart(text: string): number {
@@ -71,4 +73,14 @@ export function createContentFilter(emit: (text: string) => void) {
       emitUpTo(clean, clean.length);
     },
   };
+}
+
+const DSML_LINE = /^[ \t]*<\s*\/?\s*[｜|]\s*DSML\s*[｜|][^\n]*$/gm;
+
+/** Saved replies from before the native parser existed can hold leftover
+ *  DeepSeek tool markup (`<｜DSML｜function_calls>` lines). Drop those lines
+ *  for display, keeping the prose around them. */
+export function stripLeftoverToolMarkup(text: string): string {
+  if (!/DSML/.test(text)) return text;
+  return text.replace(DSML_LINE, "").replace(/\n{3,}/g, "\n\n").trim();
 }
