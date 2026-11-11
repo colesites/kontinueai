@@ -33,6 +33,10 @@ jobs:
     runs-on: ${{ inputs.platform == 'macos' && 'macos-latest' || inputs.platform == 'windows' && 'windows-latest' || 'ubuntu-22.04' }}
     timeout-minutes: 90
     # Permissions come from the caller: read for build checks, write for releases.
+    env:
+      # Vite's production bundle (Monaco, Mermaid, Shiki languages) needs more
+      # than Node's ~2 GB default heap; runners have about 7 GB.
+      NODE_OPTIONS: --max-old-space-size=6144
 
     steps:
       - uses: actions/checkout@v4
