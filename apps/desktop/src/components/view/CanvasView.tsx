@@ -516,7 +516,7 @@ function CreationCardItem({
                 onPublish();
               }}
               className={cn(
-                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider shadow-lg border backdrop-blur-md transition-all cursor-pointer",
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-micro font-bold uppercase tracking-wider shadow-lg border backdrop-blur-md transition-all cursor-pointer",
                 creation.isPublished
                   ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/40"
                   : "bg-black/50 text-white/90 border-white/20 hover:bg-black/70"
@@ -540,7 +540,7 @@ function CreationCardItem({
         <div className="absolute inset-x-0 bottom-0 p-3 flex items-end justify-between pointer-events-none">
           {/* Bottom Left: Owner Name */}
           <div className="opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-            <span className="rounded-full bg-black/40 px-2.5 py-1 text-[10.5px] font-medium text-white/95 ring-1 ring-white/15 backdrop-blur-md">
+            <span className="rounded-full bg-black/40 px-2.5 py-1 text-caption font-medium text-white/95 ring-1 ring-white/15 backdrop-blur-md">
               {creation.ownerName || "Anonymous"}
             </span>
           </div>
@@ -586,7 +586,7 @@ function CreationCardItem({
               />
             </button>
             {creation.likeCount > 0 && (
-              <span className="text-[10.5px] font-semibold text-white drop-shadow-md">
+              <span className="text-caption font-semibold text-white drop-shadow-md">
                 {creation.likeCount}
               </span>
             )}
@@ -699,7 +699,7 @@ function CreationLightboxModal({
               <p className="text-xs font-semibold text-foreground">
                 {creation.ownerName || "Anonymous"}
               </p>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-caption text-muted-foreground">
                 {new Date(creation.createdAt).toLocaleDateString()}
               </p>
             </div>
@@ -707,7 +707,7 @@ function CreationLightboxModal({
 
           {/* Prompt */}
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <p className="text-micro font-bold uppercase tracking-wider text-muted-foreground">
               Prompt
             </p>
             <p className="mt-1 text-xs leading-relaxed text-foreground/90 font-medium select-text">
@@ -717,16 +717,16 @@ function CreationLightboxModal({
 
           {/* Metadata Badges */}
           <div className="flex flex-wrap gap-1.5">
-            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2.5 py-1 text-[10.5px] font-medium text-purple-700 dark:text-purple-300">
+            <span className="inline-flex items-center gap-1 rounded-full bg-purple-500/10 px-2.5 py-1 text-caption font-medium text-purple-700 dark:text-purple-300">
               <Cpu className="h-3 w-3" />
               <span>{creation.modelId.split("/").pop()}</span>
             </span>
-            <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/5 px-2.5 py-1 text-[10.5px] font-medium text-muted-foreground">
+            <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/5 px-2.5 py-1 text-caption font-medium text-muted-foreground">
               <Ratio className="h-3 w-3" />
               <span>{creation.aspectRatio}</span>
             </span>
             {creation.duration && (
-              <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/5 px-2.5 py-1 text-[10.5px] font-medium text-muted-foreground">
+              <span className="inline-flex items-center gap-1 rounded-full bg-black/5 dark:bg-white/5 px-2.5 py-1 text-caption font-medium text-muted-foreground">
                 <Clock className="h-3 w-3" />
                 <span>{creation.duration}s</span>
               </span>

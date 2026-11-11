@@ -161,3 +161,41 @@ export async function compactHistory(
     compacted: true,
   };
 }
+
+/** Tool results kept whole however full the context gets (the latest ones). */
+const KEEP_RECENT_TOOL_RESULTS = 8;
+const TRIMMED_HEAD = 400;
+const TRIM_NOTE = "\n…[earlier tool output trimmed to keep the conversation within its context budget. Run the tool again if you need it.]";
+
+/**
+ * Keep one long turn inside the context budget. Compaction runs between turns,
+ * but inside a turn every file read and command output is added to the
+ * request, so a long run could grow to several times the budget: slower and
+ * pricier calls, and eventually a request the model refuses. Once the turn
+ * passes 70% of the budget, the oldest tool results (beyond the latest few)
+ * are cut to their first lines, oldest first, until it is back under 60%.
+ * Returns how many were trimmed; `messages` is changed in place.
+ */
+export function trimToolResults(
+  messages: { role: string; content?: unknown }[],
+  budget: number,
+): number {
+  const size = () => {
+    let chars = 0;
+    for (const m of messages) chars += typeof m.content === "string" ? m.content.length : JSON.stringify(m.content ?? "").length;
+    return Math.ceil(chars / 4);
+  };
+  if (!budget || size() < budget * 0.7) return 0;
+  const toolIndexes = messages.flatMap((m, i) => (m.role === "tool" ? [i] : []));
+  const trimmable = toolIndexes.slice(0, Math.max(0, toolIndexes.length - KEEP_RECENT_TOOL_RESULTS));
+  let trimmed = 0;
+  for (const index of trimmable) {
+    const message = messages[index];
+    if (typeof message.content !== "string" || message.content.length <= TRIMMED_HEAD + TRIM_NOTE.length) continue;
+    if (message.content.endsWith(TRIM_NOTE)) continue;
+    message.content = message.content.slice(0, TRIMMED_HEAD) + TRIM_NOTE;
+    trimmed += 1;
+    if (size() < budget * 0.6) break;
+  }
+  return trimmed;
+}

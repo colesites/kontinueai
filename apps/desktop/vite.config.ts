@@ -11,37 +11,31 @@ export default defineConfig(async () => ({
   // such as /assets/index.js resolve outside the packaged asset directory on
   // macOS, leaving the window black before the frontend can start.
   base: "./",
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      // The editor runs its own TypeScript worker (MonacoEnvironment.getWorker),
+      // so drop Monaco's fallback reference to its stock one; otherwise Vite
+      // bundles a second ~7 MB copy that is never loaded.
+      name: "kontinue:monaco-ts-worker",
+      enforce: "pre" as const,
+      transform(code: string, id: string) {
+        if (!id.replace(/\\/g, "/").endsWith("monaco-editor/esm/vs/languages/features/typescript/workerManager.js")) return null;
+        const next = code.replace(/createWorker: \(\) => new Worker\(new URL\('ts\.worker\.js', import\.meta\.url\), \{ type: "module" \}\),/, "");
+        if (next === code) this.warn("Monaco's TypeScript worker reference changed; check vite.config.ts");
+        return next;
+      },
+    },
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
     },
-    // Language packs ship their own nested CodeMirror. A second copy makes
-    // the editor throw "Unrecognized extension value" as soon as a file opens.
-    dedupe: [
-      "@codemirror/state",
-      "@codemirror/view",
-      "@codemirror/language",
-      "@codemirror/commands",
-      "@codemirror/search",
-      "@codemirror/autocomplete",
-      "@codemirror/lint",
-      "@codemirror/theme-one-dark",
-      "@codemirror/language-data",
-      "@lezer/common",
-      "@lezer/highlight",
-    ],
   },
-  optimizeDeps: {
-    include: [
-      "@uiw/react-codemirror",
-      "@codemirror/state",
-      "@codemirror/view",
-      "@codemirror/language",
-      "@codemirror/commands",
-      "@codemirror/language-data",
-      "@codemirror/theme-one-dark",
-    ],
+  worker: {
+    // Monaco's language workers are ES modules.
+    format: "es" as const,
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

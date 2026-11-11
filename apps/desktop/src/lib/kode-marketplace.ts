@@ -34,6 +34,37 @@ export function parseRepoRef(input: string): { owner: string; repo: string; skil
   return { owner: parts[0] ?? "", repo: parts[1] ?? "", skill: parts.length >= 3 ? parts.slice(2).join("/") : undefined };
 }
 
+/** Run `fn` over `items`, at most `limit` at a time, keeping order. */
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      out[index] = await fn(items[index] as T);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
+
+// Branch + file list per repo, kept for the session (one GitHub API call each).
+const repoCache = new Map<string, Promise<{ branch: string; tree: string[] }>>();
+
+function repoFiles(owner: string, repo: string): Promise<{ branch: string; tree: string[] }> {
+  const key = `${owner}/${repo}`.toLowerCase();
+  let entry = repoCache.get(key);
+  if (!entry) {
+    entry = (async () => {
+      const branch = await repoDefaultBranch(owner, repo);
+      return { branch, tree: await repoTree(owner, repo, branch) };
+    })();
+    entry.catch(() => repoCache.delete(key));
+    repoCache.set(key, entry);
+  }
+  return entry;
+}
+
 async function repoDefaultBranch(owner: string, repo: string): Promise<string> {
   try {
     const meta = await fetchJson(`https://api.github.com/repos/${owner}/${repo}`);
@@ -63,31 +94,28 @@ export type SkillListing = {
 
 /** Find every SKILL.md in a repo and read its name/description. */
 export async function listRepoSkills(owner: string, repo: string): Promise<SkillListing[]> {
-  const branch = await repoDefaultBranch(owner, repo);
-  const tree = await repoTree(owner, repo, branch);
+  const { branch, tree } = await repoFiles(owner, repo);
   const dirs = [...new Set(
     tree
       .filter((p) => p === "SKILL.md" || p.endsWith("/SKILL.md"))
       .map((p) => (p === "SKILL.md" ? "" : p.slice(0, -"/SKILL.md".length))),
   )];
 
-  const listings: SkillListing[] = [];
-  for (const dir of dirs.slice(0, 60)) {
+  return mapLimit(dirs.slice(0, 60), 8, async (dir): Promise<SkillListing> => {
     const path = dir ? `${dir}/SKILL.md` : "SKILL.md";
     try {
       const raw = await fetchText(rawUrl(owner, repo, branch, path));
       const { frontmatter } = parseSkillMarkdown(raw);
-      listings.push({
+      return {
         name: typeof frontmatter.name === "string" ? frontmatter.name : (dir.split("/").pop() ?? repo),
         path: dir,
         description: typeof frontmatter.description === "string" ? frontmatter.description : undefined,
         license: typeof frontmatter.license === "string" ? frontmatter.license : undefined,
-      });
+      };
     } catch {
-      listings.push({ name: dir.split("/").pop() ?? repo, path: dir });
+      return { name: dir.split("/").pop() ?? repo, path: dir };
     }
-  }
-  return listings;
+  });
 }
 
 export type SkillBundleFile = { path: string; content: string };
@@ -101,21 +129,20 @@ export type SkillBundle = {
 
 /** Download a skill's full file tree (without installing) for preview/inspection. */
 export async function fetchGithubSkillFiles(owner: string, repo: string, skillDir: string): Promise<SkillBundle> {
-  const branch = await repoDefaultBranch(owner, repo);
-  const tree = await repoTree(owner, repo, branch);
+  const { branch, tree } = await repoFiles(owner, repo);
   const prefix = skillDir ? `${skillDir}/` : "";
-
-  const files: SkillBundleFile[] = [];
-  for (const path of tree) {
-    if (!path.startsWith(prefix)) continue;
+  const paths = tree.filter((path) => {
     const rel = path.slice(prefix.length);
-    if (!rel || BINARY_EXT.test(rel)) continue;
+    return path.startsWith(prefix) && !!rel && !BINARY_EXT.test(rel);
+  });
+  const fetched = await mapLimit(paths, 8, async (path) => {
     try {
-      files.push({ path: rel, content: await fetchText(rawUrl(owner, repo, branch, path)) });
+      return { path: path.slice(prefix.length), content: await fetchText(rawUrl(owner, repo, branch, path)) };
     } catch {
-      // skip unreadable file
+      return null; // skip unreadable file
     }
-  }
+  });
+  const files = fetched.filter((f): f is SkillBundleFile => f !== null);
 
   const skillMd = files.find((f) => f.path === "SKILL.md");
   let name = skillDir.split("/").pop() ?? repo;
@@ -207,33 +234,64 @@ export async function fetchZipSkill(): Promise<SkillBundle> {
 
 // ─── GitHub repository search (the skills.sh ecosystem is GitHub-backed) ────
 
-export type RepoResult = {
-  full_name: string;
-  description?: string;
-  stars: number;
-  html_url: string;
+export type SkillsShResult = {
+  /** "owner/repo/skill" */
+  id: string;
+  /** GitHub "owner/repo" the skill lives in. */
+  source: string;
+  skillId: string;
+  name: string;
+  installs: number;
 };
 
-/** Search GitHub for repositories (public API, no auth). */
-export async function searchRepos(q: string): Promise<RepoResult[]> {
-  try {
-    const data = await fetchJson(
-      `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&per_page=20`,
-    );
-    const items = data.items;
-    if (!Array.isArray(items)) return [];
-    return items.map((item) => {
-      const repo = item as Record<string, unknown>;
-      return {
-        full_name: String(repo.full_name ?? ""),
-        description: typeof repo.description === "string" ? repo.description : undefined,
-        stars: typeof repo.stargazers_count === "number" ? repo.stargazers_count : 0,
-        html_url: String(repo.html_url ?? ""),
-      };
+/** Search the skills.sh directory (public API). Only GitHub-hosted skills, which we can install. */
+export async function searchSkillsSh(q: string): Promise<SkillsShResult[]> {
+  const data = await fetchJson(`https://skills.sh/api/search?q=${encodeURIComponent(q)}&limit=40`);
+  const skills = Array.isArray(data.skills) ? (data.skills as Record<string, unknown>[]) : [];
+  return skills
+    .map((item) => ({
+      id: String(item.id ?? ""),
+      source: String(item.source ?? ""),
+      skillId: String(item.skillId ?? ""),
+      name: String(item.name ?? item.skillId ?? ""),
+      installs: typeof item.installs === "number" ? item.installs : 0,
+    }))
+    .filter((skill) => skill.skillId && /^[\w.-]+\/[\w.-]+$/.test(skill.source) && !skill.source.split("/")[0]?.includes("."));
+}
+
+/** Folder of a skill in a repo: the SKILL.md folder named after it, else the one whose name matches. */
+export async function findSkillDir(owner: string, repo: string, skillId: string): Promise<string> {
+  const { tree } = await repoFiles(owner, repo);
+  const dirs = tree
+    .filter((p) => p === "SKILL.md" || p.endsWith("/SKILL.md"))
+    .map((p) => (p === "SKILL.md" ? "" : p.slice(0, -"/SKILL.md".length)));
+  const byFolder = dirs.find((dir) => dir.split("/").pop() === skillId);
+  if (byFolder !== undefined) return byFolder;
+  if (dirs.length === 1) return dirs[0] as string;
+
+  // Otherwise read SKILL.md names, closest-looking folders first, and stop at the match.
+  const { branch } = await repoFiles(owner, repo);
+  const words = skillId.toLowerCase().split(/[-_]/);
+  const score = (dir: string) => {
+    const leaf = (dir.split("/").pop() ?? "").toLowerCase();
+    return words.filter((w) => leaf.includes(w)).length;
+  };
+  const ordered = [...dirs].sort((a, b) => score(b) - score(a));
+  for (let i = 0; i < ordered.length; i += 8) {
+    const batch = ordered.slice(i, i + 8);
+    const names = await mapLimit(batch, 8, async (dir) => {
+      try {
+        const raw = await fetchText(rawUrl(owner, repo, branch, dir ? `${dir}/SKILL.md` : "SKILL.md"));
+        const { frontmatter } = parseSkillMarkdown(raw);
+        return typeof frontmatter.name === "string" ? frontmatter.name : null;
+      } catch {
+        return null;
+      }
     });
-  } catch {
-    return [];
+    const hit = names.findIndex((name) => name === skillId);
+    if (hit >= 0) return batch[hit] as string;
   }
+  throw new Error(`Couldn't find the "${skillId}" skill in ${owner}/${repo}.`);
 }
 
 // ─── Source attribution registry ────────────────────────────────────────────

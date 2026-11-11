@@ -31,11 +31,12 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 dotenvy = "0.15"
 tokio = { version = "1", features = ["time", "process", "macros", "rt", "sync", "io-util"] }
 futures-util = "0.3"
-keyring = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 tauri-plugin-deep-link = "2"
 tauri-plugin-oauth = "2"
 portable-pty = "0.9"
 zip = { version = "2", default-features = false, features = ["deflate"] }
+tauri-plugin-notification = "2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
@@ -44,3 +45,7 @@ tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 objc2 = "0.6"
 objc2-app-kit = "0.3"
 objc2-foundation = "0.3"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"

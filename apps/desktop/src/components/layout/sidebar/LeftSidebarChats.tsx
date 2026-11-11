@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useConvexAuth } from "convex/react";
-import { SlidersHorizontal } from "lucide-react";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import SidebarChatRow from "./SidebarChatRow";
 
@@ -26,34 +25,21 @@ export default function LeftSidebarChats() {
   const displayedChats = unfiledChats.slice(0, limit);
 
   const emptyLabel = authLoading
-    ? "Connecting..."
+    ? "Connecting…"
     : !isAuthenticated
-      ? "Sign in to view threads"
+      ? "Sign in to see your chats"
       : chatsLoading
-        ? "Loading recents..."
-        : "No recents yet";
+        ? "Loading…"
+        : "Chats you start show up here";
 
   return (
-    <section className="space-y-1 pt-1.5">
-      <div className="flex items-center justify-between px-1 mb-1">
-        <span className="text-[11.5px] font-medium text-muted-foreground">
-          Recents
-        </span>
-        <button
-          type="button"
-          title="Filter recents"
-          className="text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <SlidersHorizontal size={12} strokeWidth={1.25} />
-        </button>
-      </div>
+    <section aria-label="Recents" className="pt-1.5">
+      <h2 className="mb-1 flex h-6 items-center px-2 text-label font-medium text-muted-foreground">Recents</h2>
 
       {unfiledChats.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border px-2 py-3 text-center text-[11.5px] text-muted-foreground">
-          {emptyLabel}
-        </div>
+        <p className="px-2 py-1.5 text-label text-muted-foreground/80">{emptyLabel}</p>
       ) : (
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-px">
           {displayedChats.map((chat) => (
             <SidebarChatRow key={chat.id} chat={chat} />
           ))}
@@ -61,9 +47,9 @@ export default function LeftSidebarChats() {
             <button
               type="button"
               onClick={() => setLimit((prev) => prev + 20)}
-              className="w-full text-left px-2 py-1 text-[11.5px] font-normal text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="h-7 w-full rounded-full px-2.5 text-left text-label text-muted-foreground transition-colors hover:text-foreground"
             >
-              View more
+              Show more
             </button>
           )}
         </div>

@@ -21,10 +21,8 @@ import {
   CalendarCheck,
   Check,
   ChevronDown,
-  ClipboardList,
   Clock,
   Code2,
-  FileEdit,
   FileText,
   Folder,
   Box,
@@ -32,20 +30,16 @@ import {
   Globe,
   ImageIcon,
   Loader2,
-  Lock,
   Megaphone,
   Mic,
-  Palette,
   Plug2,
   Plus,
   Ratio,
   Search,
-  Sparkles,
   Square,
   Telescope,
   Video,
   X,
-  Zap,
 } from "lucide-react";
 import {
   type ReactNode,
@@ -90,6 +84,8 @@ import { annotationTitle, removeAnnotation, useAnnotations } from "@/lib/kode-an
 import { cn } from "@/lib/utils";
 import { KodeReasoningPopover } from "./KodeReasoningPopover";
 import { type AnyModelOption, ModelPickerPopover } from "./ModelPickerPopover";
+import { KodeModeMenu } from "./KodeModeMenu";
+import { useKeybinding } from "@/lib/kode-keybindings";
 import { SlashPicker } from "./SlashPicker";
 import { HoverInfo, HoverInfoProvider } from "@/components/ui/hover-info";
 
@@ -169,7 +165,7 @@ function ChatContextMenu({
             // Keep the menu's type-to-select from eating keystrokes.
             onKeyDown={(e) => e.stopPropagation()}
             placeholder="Search chats"
-            className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground/60"
+            className="w-full bg-transparent text-body outline-none placeholder:text-muted-foreground/60"
           />
         </div>
         <DropdownMenuSeparator />
@@ -181,19 +177,19 @@ function ChatContextMenu({
               className="flex items-center gap-2 px-2 py-1.5"
             >
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px]">{chat.title}</span>
+                <span className="block truncate text-body">{chat.title}</span>
                 {chat.project ? (
-                  <span className="block truncate text-[10.5px] text-muted-foreground">{chat.project}</span>
+                  <span className="block truncate text-caption text-muted-foreground">{chat.project}</span>
                 ) : null}
               </span>
-              <span className="shrink-0 text-[10.5px] text-muted-foreground">{shortAgo(chat.updatedAt)}</span>
+              <span className="shrink-0 text-caption text-muted-foreground">{shortAgo(chat.updatedAt)}</span>
             </DropdownMenuItem>
           ))}
           {matches.length === 0 ? (
-            <p className="px-2 py-2 text-[12px] text-muted-foreground">No chats match.</p>
+            <p className="px-2 py-2 text-label text-muted-foreground">No chats match.</p>
           ) : null}
         </div>
-        <p className="px-2 pt-1.5 text-[10.5px] text-muted-foreground/80">
+        <p className="px-2 pt-1.5 text-caption text-muted-foreground/80">
           Tip: you can also drag a chat from the sidebar onto the message box.
         </p>
       </DropdownMenuSubContent>
@@ -228,19 +224,6 @@ function readAsText(file: File): Promise<string> {
     reader.readAsText(file);
   });
 }
-
-const MODE_ICON_MAP: Record<
-  string,
-  React.ComponentType<{ className?: string }>
-> = {
-  supervised: Lock,
-  auto_edits: FileEdit,
-  auto: Sparkles,
-  full_access: Zap,
-  design: Palette,
-  ask: Lock,
-  plan: ClipboardList,
-};
 
 type ChatInputProps = {
   // `loading` reflects only THIS chat's in-flight send. The textarea stays
@@ -436,8 +419,9 @@ export function ChatInput({
   canvasControls,
 }: ChatInputProps) {
   const { sendOnEnter } = useAppSettings();
-  const activeMode =
-    KODE_AGENT_MODES.find((m) => m.id === mode) ?? KODE_AGENT_MODES[0];
+  // ⌘⇧M (Settings → Keyboard shortcuts) opens the model picker.
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  useKeybinding("composer.modelPicker", () => setModelPickerOpen(true));
   const [value, setValue] = useState("");
   const [attachments, setAttachments] = useState<StagedAttachment[]>([]);
   const [internalWebSearchEnabled, setInternalWebSearchEnabled] =
@@ -981,7 +965,7 @@ export function ChatInput({
               <span
                 key={token.id}
                 title={token.description}
-                className="flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/[0.1] py-0.5 pr-1 pl-2 text-[12px] text-foreground/90"
+                className="flex items-center gap-1.5 rounded-full border border-purple-500/30 bg-purple-500/[0.1] py-0.5 pr-1 pl-2 text-label text-foreground/90"
               >
                 {token.kind === "connector" ? (
                   <img src={getConnectorLogoUrl(token.name)} alt="" className="size-3.5 shrink-0 object-contain" />
@@ -1009,7 +993,7 @@ export function ChatInput({
               <span
                 key={note.id}
                 title={note.note || "No note"}
-                className="flex max-w-full items-center gap-1.5 rounded-full border border-purple-500/25 bg-purple-500/[0.08] py-0.5 pr-1 pl-2 text-[11.5px]"
+                className="flex max-w-full items-center gap-1.5 rounded-full border border-purple-500/25 bg-purple-500/[0.08] py-0.5 pr-1 pl-2 text-label"
               >
                 <MessageSquarePlus size={11} className="shrink-0 text-purple-500" />
                 <span className="truncate text-foreground/80">{annotationTitle(note)}</span>
@@ -1050,7 +1034,7 @@ export function ChatInput({
           <div className="flex flex-wrap items-center gap-1.5 px-2 pt-1 pb-1">
             {activeAgent && (
               <span
-                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[11px] font-medium"
+                className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-caption font-medium"
                 style={{
                   backgroundColor: `${activeAgent.color}15`,
                   border: `1px solid ${activeAgent.color}30`,
@@ -1065,7 +1049,7 @@ export function ChatInput({
                 <button
                   type="button"
                   onClick={() => setSelectedAgentId(null)}
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-muted transition-colors cursor-pointer"
+                  className="ml-0.5 rounded-full p-0.5 kontinue-hover transition-colors cursor-pointer"
                 >
                   <X size={11} />
                 </button>
@@ -1073,7 +1057,7 @@ export function ChatInput({
             )}
 
             {webSearchEnabled && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 dark:bg-purple-500/15 border border-purple-300 dark:border-purple-500/30 px-2.5 py-0.5 text-[11px] font-medium text-purple-700 dark:text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.1)]">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-100 dark:bg-purple-500/15 border border-purple-300 dark:border-purple-500/30 px-2.5 py-0.5 text-caption font-medium text-purple-700 dark:text-purple-200 shadow-[0_0_10px_rgba(168,85,247,0.1)]">
                 <Globe
                   size={12}
                   className="text-purple-600 dark:text-purple-300"
@@ -1104,7 +1088,7 @@ export function ChatInput({
         {/* File mention menu */}
         {mentionQuery !== null && mentionCandidates.length > 0 && (
           <div className="absolute bottom-full left-4 z-50 mb-2 w-80 rounded-2xl liquid-glass-dropdown p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6),0_0_20px_rgba(168,85,247,0.2)] border border-purple-500/30">
-            <div className="truncate px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
+            <div className="truncate px-2.5 py-1 text-micro font-semibold uppercase tracking-wider text-purple-300/80">
               {mentionFolder ? `Files · ${mentionFolder}/` : "Files"}
             </div>
             <div className="space-y-0.5 max-h-72 overflow-y-auto">
@@ -1135,7 +1119,7 @@ export function ChatInput({
                     <span className="min-w-0 flex-1">
                       <span className="block truncate font-mono">{entry.name}</span>
                       {showParent ? (
-                        <span className="block truncate text-[10px] text-muted-foreground">{entry.parent}</span>
+                        <span className="block truncate text-micro text-muted-foreground">{entry.parent}</span>
                       ) : null}
                     </span>
                     {entry.isDir ? <ChevronRight size={12} className="shrink-0 text-muted-foreground" /> : null}
@@ -1168,7 +1152,7 @@ export function ChatInput({
             className={cn(
               "pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words font-sans",
               compact
-                ? "px-1 py-0 text-[14px] leading-8"
+                ? "px-1 py-0 text-lead leading-8"
                 : "px-2.5 pt-1.5 text-[15px] leading-relaxed",
             )}
           >
@@ -1213,7 +1197,7 @@ export function ChatInput({
             aria-label="Message Kode"
             className={cn(
               compact
-                ? "relative z-10 h-8 min-h-8 max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-1 py-0 text-[14px] leading-8 font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55"
+                ? "relative z-10 h-8 min-h-8 max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-1 py-0 text-lead leading-8 font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55"
                 : "relative z-10 min-h-[64px] max-h-[260px] w-full resize-none bg-transparent px-2.5 pt-1.5 text-[15px] leading-relaxed font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
               value.length > 0
                 ? "text-transparent caret-zinc-900 dark:caret-white"
@@ -1307,7 +1291,7 @@ export function ChatInput({
                   sideOffset={8}
                   className="w-36 p-1 rounded-2xl liquid-glass-dropdown"
                 >
-                  <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
+                  <div className="px-2 py-1 text-micro font-semibold uppercase tracking-wider text-purple-300/80">
                     Aspect Ratio
                   </div>
                   {ASPECT_RATIOS.map((r) => {
@@ -1322,7 +1306,7 @@ export function ChatInput({
                           "justify-between text-xs font-medium cursor-pointer rounded-lg px-2.5 py-1.5 transition-colors",
                           isSelected
                             ? "kontinue-menu-active font-medium"
-                            : "text-foreground hover:bg-accent",
+                            : "text-foreground kontinue-hover",
                         )}
                       >
                         <span>{r.label}</span>
@@ -1340,6 +1324,8 @@ export function ChatInput({
 
               {/* Model Picker Popover */}
               <ModelPickerPopover
+                open={modelPickerOpen}
+                onOpenChange={setModelPickerOpen}
                 models={models}
                 selectedModelId={modelId}
                 onSelectModel={(selected) => {
@@ -1372,7 +1358,7 @@ export function ChatInput({
                     sideOffset={8}
                     className="w-32 p-1 rounded-2xl liquid-glass-dropdown"
                   >
-                    <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
+                    <div className="px-2 py-1 text-micro font-semibold uppercase tracking-wider text-purple-300/80">
                       Duration
                     </div>
                     {[5, 10, 15, 30].map((d) => {
@@ -1385,7 +1371,7 @@ export function ChatInput({
                             "justify-between text-xs font-medium cursor-pointer rounded-lg px-2.5 py-1.5 transition-colors",
                             isSelected
                               ? "kontinue-menu-active font-medium"
-                              : "text-foreground hover:bg-accent",
+                              : "text-foreground kontinue-hover",
                           )}
                         >
                           <span>{formatDuration(d)}</span>
@@ -1530,7 +1516,7 @@ export function ChatInput({
                                 className="size-1.5 shrink-0 rounded-full bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.6)]"
                               />
                             ) : (
-                              <span className="text-[10.5px] text-muted-foreground/0 transition-colors group-data-[highlighted]/conn:text-muted-foreground">
+                              <span className="text-caption text-muted-foreground/0 transition-colors group-data-[highlighted]/conn:text-muted-foreground">
                                 Connect
                               </span>
                             )}
@@ -1540,7 +1526,7 @@ export function ChatInput({
                         return connected.length > 0 ? (
                           <>{connected.map((conn) => row(conn, true))}</>
                         ) : (
-                          <p className="px-2 py-1.5 text-[11.5px] text-muted-foreground">
+                          <p className="px-2 py-1.5 text-label text-muted-foreground">
                             No apps connected yet.
                           </p>
                         );
@@ -1565,7 +1551,7 @@ export function ChatInput({
                           "justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors",
                           webSearchEnabled
                             ? "kontinue-menu-active font-medium"
-                            : "hover:bg-accent",
+                            : "kontinue-hover",
                         )}
                       >
                         <div className="flex items-center gap-2">
@@ -1583,7 +1569,7 @@ export function ChatInput({
                         {webSearchEnabled ? (
                           <Check size={14} className="text-purple-400" />
                         ) : (
-                          <span className="text-[10px] uppercase text-foreground/35 font-mono">
+                          <span className="text-micro uppercase text-foreground/35 font-mono">
                             Off
                           </span>
                         )}
@@ -1594,7 +1580,7 @@ export function ChatInput({
                           "justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors",
                           reasoningEnabled
                             ? "kontinue-menu-active font-medium"
-                            : "hover:bg-accent",
+                            : "kontinue-hover",
                         )}
                       >
                         <div className="flex items-center gap-2">
@@ -1612,7 +1598,7 @@ export function ChatInput({
                         {reasoningEnabled ? (
                           <Check size={14} className="text-purple-400" />
                         ) : (
-                          <span className="text-[10px] uppercase text-foreground/35 font-mono">
+                          <span className="text-micro uppercase text-foreground/35 font-mono">
                             Off
                           </span>
                         )}
@@ -1626,7 +1612,7 @@ export function ChatInput({
                       <Bot size={14} strokeWidth={1.25} />
                       <span>Agents</span>
                       {activeAgent && (
-                        <span className="ml-auto text-[10.5px] font-medium text-purple-400 truncate max-w-[80px]">
+                        <span className="ml-auto text-caption font-medium text-purple-400 truncate max-w-[80px]">
                           {activeAgent.name}
                         </span>
                       )}
@@ -1635,7 +1621,7 @@ export function ChatInput({
                       sideOffset={8}
                       className="w-64 p-1"
                     >
-                      <div className="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-purple-300/80">
+                      <div className="px-2 py-1 text-micro font-semibold uppercase tracking-wider text-purple-300/80">
                         Agents
                       </div>
                       <DropdownMenuSeparator />
@@ -1646,7 +1632,7 @@ export function ChatInput({
                           "justify-between cursor-pointer rounded-lg px-2 py-1.5 transition-colors",
                           selectedAgentId === null
                             ? "kontinue-menu-active font-medium"
-                            : "hover:bg-accent",
+                            : "kontinue-hover",
                         )}
                       >
                         <div className="flex items-center gap-2 min-w-0">
@@ -1685,7 +1671,7 @@ export function ChatInput({
                               "justify-between items-start py-2 cursor-pointer rounded-lg px-2 transition-colors",
                               isSelected
                                 ? "kontinue-menu-active font-medium"
-                                : "hover:bg-accent",
+                                : "kontinue-hover",
                             )}
                           >
                             <div className="flex items-start gap-2.5 min-w-0 pr-2">
@@ -1711,7 +1697,7 @@ export function ChatInput({
                                 </span>
                                 <p
                                   className={cn(
-                                    "text-[10.5px] leading-tight line-clamp-1",
+                                    "text-caption leading-tight line-clamp-1",
                                     isSelected
                                       ? "text-purple-300/80"
                                       : "text-muted-foreground",
@@ -1743,6 +1729,8 @@ export function ChatInput({
                   <>
               {/* Model Picker Popover (supports both Home AVAILABLE_MODELS and Kode KODE_MODELS) */}
               <ModelPickerPopover
+                open={modelPickerOpen}
+                onOpenChange={setModelPickerOpen}
                 models={models}
                 selectedModelId={modelId}
                 onSelectModel={(selected) => {
@@ -1753,120 +1741,8 @@ export function ChatInput({
                 kodePlan={!hideAgentMode ? planTier : undefined}
               />
 
-              {/* Execution Mode Dropdown for Kode (matching Image 2) */}
-              {!hideAgentMode && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label={`Execution mode: ${activeMode?.label ?? "Supervised"}`}
-                      className="flex h-7 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none"
-                    >
-                      {(() => {
-                        const ModeIcon = (mode && MODE_ICON_MAP[mode]) || Lock;
-                        return (
-                          <ModeIcon className="size-3.5 text-purple-700 dark:text-foreground/80" />
-                        );
-                      })()}
-                      <span className="font-semibold text-zinc-900 dark:text-foreground">
-                        {activeMode?.label ?? "Supervised"}
-                      </span>
-                      <ChevronDown
-                        size={11}
-                        className="text-muted-foreground ml-0.5"
-                      />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    align="start"
-                    side="top"
-                    sideOffset={8}
-                    className="w-72 p-1.5 select-none"
-                  >
-                    <HoverInfoProvider>
-                    {[
-                      {
-                        title: "Permissions",
-                        items: KODE_AGENT_MODES.filter(
-                          (m) => m.id !== "design",
-                        ),
-                      },
-                      {
-                        title: "Style",
-                        items: KODE_AGENT_MODES.filter(
-                          (m) => m.id === "design",
-                        ),
-                      },
-                    ].map((group, groupIndex) => (
-                      <div key={group.title}>
-                        {groupIndex > 0 ? (
-                          <div className="my-1.5 h-px bg-black/[0.06] dark:bg-white/[0.06]" />
-                        ) : null}
-                        <p className="px-3 pt-1 pb-1 text-[10.5px] font-medium text-muted-foreground/70">
-                          {group.title}
-                        </p>
-                        {group.items.map((modeOption) => {
-                          const IconComponent =
-                            MODE_ICON_MAP[modeOption.id] || Lock;
-                          const isSelected = modeOption.id === mode;
-                          const risky = modeOption.id === "full_access";
-                          // Design (AI canvas → handoff to the coding agent) is coming later.
-                          const comingSoon = modeOption.id === "design";
-                          return (
-                            <HoverInfo
-                              key={modeOption.id}
-                              title={modeOption.label}
-                              description={modeOption.description}
-                              icon={<IconComponent className={cn("size-3.5 shrink-0", risky ? "text-amber-500" : "text-purple-500")} />}
-                            >
-                            <DropdownMenuItem
-                              disabled={comingSoon}
-                              onSelect={() => onModeChange?.(modeOption.id)}
-                              className="flex w-full items-center gap-2.5 px-2 py-1.5"
-                            >
-                              <span
-                                className={cn(
-                                  "kontinue-3d flex size-7 shrink-0 items-center justify-center rounded-full",
-                                  risky
-                                    ? "text-amber-500"
-                                    : isSelected
-                                      ? "text-purple-500"
-                                      : "text-foreground/70",
-                                )}
-                              >
-                                <IconComponent className="size-3.5" />
-                              </span>
-                              <span className="min-w-0 flex-1">
-                                <span className="block text-[12.5px] font-medium">
-                                  {modeOption.label}
-                                </span>
-                                <span className="block truncate text-[10.5px] text-muted-foreground">
-                                  {modeOption.description}
-                                </span>
-                              </span>
-                              {comingSoon ? (
-                                <span className="shrink-0 rounded-full border border-black/10 px-1.5 text-[9.5px] font-medium text-muted-foreground dark:border-white/10">
-                                  Soon
-                                </span>
-                              ) : isSelected ? (
-                                <Check
-                                  size={13}
-                                  className="shrink-0 text-purple-500"
-                                />
-                              ) : null}
-                            </DropdownMenuItem>
-                            </HoverInfo>
-                          );
-                        })}
-                      </div>
-                    ))}
-                    </HoverInfoProvider>
-                    <p className="px-3 pt-1.5 pb-0.5 text-[10px] text-muted-foreground/60">
-                      ⇧Tab to switch modes
-                    </p>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              )}
+              {/* Execution mode (Kode) */}
+              {!hideAgentMode && <KodeModeMenu mode={mode} onModeChange={onModeChange} />}
 
               {/* Reasoning / Thinking: Popover in Kode (matching Image 1), Toggle in Home */}
               {!hideAgentMode ? (
@@ -1888,7 +1764,7 @@ export function ChatInput({
                   className={cn(
                     "flex h-7 items-center gap-1.5 rounded-full px-3 text-xs transition-all cursor-pointer select-none",
                     reasoningEnabled
-                      ? "bg-purple-500/15 border border-purple-500/50 text-purple-200 font-semibold shadow-[0_0_12px_rgba(168,85,247,0.35)] hover:border-purple-500/70 hover:bg-purple-500/20"
+                      ? "kontinue-capsule font-medium text-purple-900 dark:text-purple-100"
                       : "liquid-glass-pill text-zinc-700 dark:text-foreground/70 hover:text-zinc-950 dark:hover:text-foreground",
                   )}
                 >
@@ -1897,16 +1773,16 @@ export function ChatInput({
                     className={cn(
                       "transition-colors",
                       reasoningEnabled
-                        ? "text-purple-400"
+                        ? "text-purple-600 dark:text-purple-300"
                         : "text-muted-foreground",
                     )}
                   />
                   <span>Thinking</span>
                   <span
                     className={cn(
-                      "text-[9.5px] font-mono uppercase tracking-wider font-bold",
+                      "text-micro font-mono uppercase tracking-wider font-bold",
                       reasoningEnabled
-                        ? "text-purple-300"
+                        ? "text-purple-700 dark:text-purple-300"
                         : "text-muted-foreground",
                     )}
                   >
@@ -1919,7 +1795,10 @@ export function ChatInput({
                 if (compact) {
                   return bannerSlot
                     ? createPortal(
-                        <div className="flex min-w-0 flex-1 items-center gap-1 [&_button]:!h-6 [&_button]:!rounded-md [&_button]:!border-transparent [&_button]:!bg-transparent [&_button]:!px-1 [&_button]:!text-[11px] [&_button]:!font-normal [&_button]:!shadow-none">
+                        // Keyed by mode: when the chips change width the old ones are
+                        // replaced, not moved. macOS WebKit didn't repaint the area a
+                        // moved chip left, which drew a second "High · 256k".
+                        <div key={mode ?? "none"} className="flex min-w-0 flex-1 items-center gap-1 [&_button]:!h-6 [&_button]:!rounded-md [&_button]:!border-transparent [&_button]:!bg-transparent [&_button]:!px-1 [&_button]:!text-caption [&_button]:!font-normal [&_button]:!shadow-none">
                           {controls}
                           <div className="ml-auto shrink-0">{trailing}</div>
                         </div>,
@@ -2017,10 +1896,10 @@ function StashMenu({ onUse }: { onUse: (text: string) => void }) {
       <DropdownMenuSubTrigger>
         <Archive size={14} strokeWidth={1.25} />
         <span>Stashed drafts</span>
-        <span className="ml-auto text-[10.5px] font-medium text-purple-400">{stash.length}</span>
+        <span className="ml-auto text-caption font-medium text-purple-400">{stash.length}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent sideOffset={8} className="max-h-80 w-72 overflow-y-auto p-1.5">
-        <p className="px-2 pt-1 pb-1.5 text-[10.5px] text-muted-foreground">⌘S stashes what you're typing.</p>
+        <p className="px-2 pt-1 pb-1.5 text-caption text-muted-foreground">⌘S stashes what you're typing.</p>
         {stash.map((item) => (
           <DropdownMenuItem
             key={item.id}
@@ -2031,8 +1910,8 @@ function StashMenu({ onUse }: { onUse: (text: string) => void }) {
             className="group flex items-start gap-2 px-2 py-1.5"
           >
             <span className="min-w-0 flex-1">
-              <span className="line-clamp-2 text-[12.5px] whitespace-pre-wrap">{item.text}</span>
-              <span className="block text-[10.5px] text-muted-foreground">
+              <span className="line-clamp-2 text-body whitespace-pre-wrap">{item.text}</span>
+              <span className="block text-caption text-muted-foreground">
                 {new Date(item.createdAt).toLocaleString([], {
                   month: "short",
                   day: "numeric",
@@ -2148,7 +2027,7 @@ function DictateButton({ onText }: { onText: (text: string) => void }) {
       ) : recording ? (
         <>
           <span className="size-2 animate-pulse rounded-full bg-rose-500" />
-          <span className="font-mono text-[11px] tabular-nums">
+          <span className="font-mono text-caption tabular-nums">
             {Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, "0")}
           </span>
         </>

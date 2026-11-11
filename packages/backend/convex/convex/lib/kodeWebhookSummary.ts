@@ -4,11 +4,21 @@
 
 export type WebhookSource = "github" | "gitlab" | "generic";
 
+/** What kind of event this is, for per-webhook filters. */
+export type WebhookKind = "ci" | "pull_request" | "review" | "issue" | "comment" | "push" | "other";
+
+export const WEBHOOK_KINDS: WebhookKind[] = ["ci", "pull_request", "review", "issue", "comment", "push", "other"];
+
 export type WebhookSummary = {
 	source: WebhookSource;
 	event: string;
 	/** null = ignore this delivery (pings, events that need no action). */
 	summary: string | null;
+	kind: WebhookKind;
+	/** Branch the event is about, when it has one. */
+	branch: string | null;
+	/** GitHub / GitLab username that caused it, when known. */
+	author: string | null;
 };
 
 type Json = Record<string, any>;
@@ -68,6 +78,49 @@ function gitlab(event: string, body: Json): string | null {
 	}
 }
 
+const stripRef = (ref: unknown) => (typeof ref === "string" && ref ? ref.replace(/^refs\/heads\//, "") : null);
+const name = (value: unknown) => (typeof value === "string" && value ? value : null);
+
+function githubMeta(event: string, body: Json): Pick<WebhookSummary, "kind" | "branch" | "author"> {
+	switch (event) {
+		case "workflow_run":
+			return { kind: "ci", branch: stripRef(body.workflow_run?.head_branch), author: name(body.workflow_run?.actor?.login ?? body.sender?.login) };
+		case "check_run":
+			return { kind: "ci", branch: stripRef(body.check_run?.check_suite?.head_branch), author: name(body.sender?.login) };
+		case "pull_request":
+			return { kind: "pull_request", branch: stripRef(body.pull_request?.base?.ref), author: name(body.pull_request?.user?.login ?? body.sender?.login) };
+		case "pull_request_review":
+			return { kind: "review", branch: stripRef(body.pull_request?.base?.ref), author: name(body.review?.user?.login ?? body.sender?.login) };
+		case "issues":
+			return { kind: "issue", branch: null, author: name(body.issue?.user?.login ?? body.sender?.login) };
+		case "issue_comment":
+			return { kind: "comment", branch: null, author: name(body.comment?.user?.login ?? body.sender?.login) };
+		case "push":
+			return { kind: "push", branch: stripRef(body.ref), author: name(body.sender?.login ?? body.pusher?.name) };
+		default:
+			return { kind: "other", branch: null, author: name(body.sender?.login) };
+	}
+}
+
+function gitlabMeta(event: string, body: Json): Pick<WebhookSummary, "kind" | "branch" | "author"> {
+	const attrs = body.object_attributes ?? {};
+	const user = name(body.user?.username ?? body.user_username);
+	switch (event) {
+		case "Pipeline Hook":
+			return { kind: "ci", branch: stripRef(attrs.ref), author: user };
+		case "Merge Request Hook":
+			return { kind: "pull_request", branch: stripRef(attrs.target_branch), author: user };
+		case "Issue Hook":
+			return { kind: "issue", branch: null, author: user };
+		case "Note Hook":
+			return { kind: "comment", branch: null, author: user };
+		case "Push Hook":
+			return { kind: "push", branch: stripRef(body.ref), author: user };
+		default:
+			return { kind: "other", branch: null, author: user };
+	}
+}
+
 export function summarizeWebhook(headers: (name: string) => string | null, raw: string): WebhookSummary {
 	let body: Json = {};
 	try {
@@ -75,12 +128,19 @@ export function summarizeWebhook(headers: (name: string) => string | null, raw: 
 	} catch {
 		// Not JSON: the text itself is the message.
 		const text = raw.trim().slice(0, 4000);
-		return { source: "generic", event: "message", summary: text || null };
+		return { source: "generic", event: "message", summary: text || null, kind: "other", branch: null, author: null };
 	}
 	const githubEvent = headers("x-github-event");
-	if (githubEvent) return { source: "github", event: githubEvent, summary: github(githubEvent, body) };
+	if (githubEvent) return { source: "github", event: githubEvent, summary: github(githubEvent, body), ...githubMeta(githubEvent, body) };
 	const gitlabEvent = headers("x-gitlab-event");
-	if (gitlabEvent) return { source: "gitlab", event: gitlabEvent, summary: gitlab(gitlabEvent, body) };
+	if (gitlabEvent) return { source: "gitlab", event: gitlabEvent, summary: gitlab(gitlabEvent, body), ...gitlabMeta(gitlabEvent, body) };
 	const text = s(body.text ?? body.message ?? body.title ?? body.summary ?? body.description, 4000);
-	return { source: "generic", event: s(body.event ?? body.type, 60) || "webhook", summary: text || "A webhook fired (see the payload)." };
+	return {
+		source: "generic",
+		event: s(body.event ?? body.type, 60) || "webhook",
+		summary: text || "A webhook fired (see the payload).",
+		kind: "other",
+		branch: stripRef(body.branch ?? body.ref),
+		author: name(body.author ?? body.user),
+	};
 }

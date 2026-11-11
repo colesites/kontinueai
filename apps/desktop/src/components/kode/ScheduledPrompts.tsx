@@ -45,7 +45,7 @@ export function LimitCard({
   return (
     <div className="kontinue-3d mt-3 flex flex-wrap items-center gap-2 rounded-[18px] px-3.5 py-3">
       <AlarmClock size={15} className="shrink-0 text-purple-500" />
-      <p className="min-w-0 flex-1 text-[12.5px] text-foreground/80">
+      <p className="min-w-0 flex-1 text-body text-foreground/80">
         {known
           ? `Limit resets at ${formatResetTime(resetAt, now)} (${formatCountdown(resetAt, now)}).`
           : "You hit a usage limit."}{" "}
@@ -60,7 +60,7 @@ export function LimitCard({
             type="button"
             onClick={account.onSwitch}
             title={`Switch this chat to ${account.label} and send the prompt again`}
-            className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[12px] font-medium"
+            className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label font-medium"
           >
             <Repeat size={12} />
             Switch to {account.label}
@@ -69,7 +69,7 @@ export function LimitCard({
         <button
           type="button"
           onClick={onUseAnotherModel}
-          className="kontinue-3d flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[12px] text-foreground/85"
+          className="kontinue-3d flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label text-foreground/85"
         >
           <Repeat size={12} />
           Use another model
@@ -80,7 +80,7 @@ export function LimitCard({
               <button
                 type="button"
                 onClick={() => onSchedule(resetAt + RESET_BUFFER_MS)}
-                className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-l-full pr-2.5 pl-3 text-[12px] font-medium"
+                className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-l-full pr-2.5 pl-3 text-label font-medium"
               >
                 <Clock size={12} />
                 Send when it resets
@@ -94,7 +94,7 @@ export function LimitCard({
                   className={
                     known
                       ? "kontinue-3d-primary flex h-8 cursor-pointer items-center rounded-r-full border-l border-white/20 pr-2.5 pl-1.5"
-                      : "kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[12px] font-medium"
+                      : "kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label font-medium"
                   }
                 >
                   {known ? null : (
@@ -111,10 +111,10 @@ export function LimitCard({
                   <DropdownMenuItem
                     key={preset.label}
                     onSelect={() => onSchedule(preset.at)}
-                    className="flex items-center justify-between px-3 py-1.5 text-[12.5px]"
+                    className="flex items-center justify-between px-3 py-1.5 text-body"
                   >
                     {preset.label}
-                    <span className="text-[11px] text-muted-foreground">
+                    <span className="text-caption text-muted-foreground">
                       {formatResetTime(preset.at, now)}
                     </span>
                   </DropdownMenuItem>
@@ -155,7 +155,7 @@ export function ScheduledBar({
       {here.map((item) => (
         <div
           key={item.id}
-          className="flex items-center gap-2 rounded-full bg-purple-500/[0.07] py-1 pr-1 pl-3 text-[12px]"
+          className="flex items-center gap-2 rounded-full bg-purple-500/[0.07] py-1 pr-1 pl-3 text-label"
         >
           <Clock size={12} className="shrink-0 text-purple-500" />
           <span className="min-w-0 flex-1 truncate text-foreground/80">
@@ -170,7 +170,7 @@ export function ScheduledBar({
           <button
             type="button"
             onClick={() => onSendNow(item)}
-            className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-[11.5px] font-medium text-purple-500 hover:bg-purple-500/10"
+            className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2 text-label font-medium text-purple-500 hover:bg-purple-500/10"
           >
             <Send size={11} />
             Send now
@@ -179,7 +179,7 @@ export function ScheduledBar({
             type="button"
             aria-label="Cancel scheduled prompt"
             onClick={() => onCancel(item)}
-            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground kontinue-hover hover:text-foreground"
           >
             <X size={12} />
           </button>
@@ -188,7 +188,7 @@ export function ScheduledBar({
       {readyElsewhere.map((item) => (
         <div
           key={item.id}
-          className="flex items-center gap-2 rounded-full bg-purple-500/[0.07] py-1 pr-1 pl-3 text-[12px]"
+          className="flex items-center gap-2 rounded-full bg-purple-500/[0.07] py-1 pr-1 pl-3 text-label"
         >
           <AlarmClock size={12} className="shrink-0 text-purple-500" />
           <span className="min-w-0 flex-1 truncate text-foreground/80">
@@ -201,7 +201,7 @@ export function ScheduledBar({
           <button
             type="button"
             onClick={() => onOpenChat(item)}
-            className="flex h-6 shrink-0 cursor-pointer items-center rounded-full px-2 text-[11.5px] font-medium text-purple-500 hover:bg-purple-500/10"
+            className="flex h-6 shrink-0 cursor-pointer items-center rounded-full px-2 text-label font-medium text-purple-500 hover:bg-purple-500/10"
           >
             Open and send
           </button>
@@ -209,7 +209,7 @@ export function ScheduledBar({
             type="button"
             aria-label="Cancel scheduled prompt"
             onClick={() => onCancel(item)}
-            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+            className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground kontinue-hover hover:text-foreground"
           >
             <X size={12} />
           </button>

@@ -20,6 +20,8 @@ use tokio::process::{Child, Command};
 // Agents that speak the Agent Client Protocol (Gemini CLI, OpenCode, …).
 #[path = "cli_acp.rs"]
 mod acp;
+#[path = "acp_registry.rs"]
+mod registry;
 
 // ---------------------------------------------------------------------------
 // Locating the CLIs
@@ -27,6 +29,55 @@ mod acp;
 
 /// Apps launched from Finder/Dock get a minimal PATH, so ask the user's login
 /// shell for the PATH they see in a terminal. Cached for the app's lifetime.
+/// Settings that move where the agents keep their data. Apps opened from the
+/// Dock don't see the shell profile, so these are read from the login shell
+/// (like PATH) and passed on to every CLI this app starts.
+const LOGIN_VARS: &[&str] = &["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"];
+
+fn login_vars() -> &'static HashMap<String, String> {
+    static VARS: OnceLock<HashMap<String, String>> = OnceLock::new();
+    VARS.get_or_init(|| {
+        let mut vars = HashMap::new();
+        for name in LOGIN_VARS {
+            if let Ok(value) = std::env::var(name) {
+                if !value.trim().is_empty() {
+                    vars.insert((*name).to_string(), value);
+                }
+            }
+        }
+        if cfg!(windows) {
+            return vars;
+        }
+        let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".to_string());
+        let script = LOGIN_VARS
+            .iter()
+            .map(|name| format!("printf '__KODE_VAR__{name}=%s\\n' \"${name}\""))
+            .collect::<Vec<_>>()
+            .join("; ");
+        let out = std::process::Command::new(&shell)
+            .args(["-lc", &script])
+            .stdin(Stdio::null())
+            .stderr(Stdio::null())
+            .output();
+        if let Ok(out) = out {
+            for line in String::from_utf8_lossy(&out.stdout).lines() {
+                let Some(rest) = line.split("__KODE_VAR__").nth(1) else { continue };
+                if let Some((name, value)) = rest.split_once('=') {
+                    if !value.trim().is_empty() {
+                        vars.entry(name.to_string()).or_insert_with(|| value.trim().to_string());
+                    }
+                }
+            }
+        }
+        vars
+    })
+}
+
+/// A data-folder setting from the app's environment or the login shell.
+pub(crate) fn login_var(name: &str) -> Option<String> {
+    login_vars().get(name).cloned()
+}
+
 pub(crate) fn login_path() -> &'static str {
     static PATH: OnceLock<String> = OnceLock::new();
     PATH.get_or_init(|| {
@@ -68,6 +119,17 @@ pub(crate) fn login_path() -> &'static str {
             .collect::<Vec<_>>()
             .join(":")
     })
+}
+
+/// Full path for a program run with the login PATH. Rust only launches with
+/// the fast posix_spawn when the program needs no PATH lookup under a changed
+/// PATH; otherwise it uses fork(), which on macOS locks the app's memory
+/// allocator while copying the whole app, freezing the window for a second.
+pub(crate) fn program_path(name: &str) -> PathBuf {
+    if name.contains('/') {
+        return PathBuf::from(name);
+    }
+    find_binary(name).unwrap_or_else(|| PathBuf::from(name))
 }
 
 pub(crate) fn find_binary(name: &str) -> Option<PathBuf> {
@@ -178,14 +240,14 @@ fn read_secret(instance: &str, name: &str) -> Option<String> {
     env_entry(instance, name).ok()?.get_password().ok()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_cli_secret_set(instance: String, name: String, value: String) -> Result<(), String> {
     env_entry(&instance, &name)?
         .set_password(&value)
         .map_err(|error| format!("Could not save the secret: {error}"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_cli_secret_remove(instance: String, name: String) -> Result<(), String> {
     match env_entry(&instance, &name)?.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -194,7 +256,7 @@ pub fn kode_cli_secret_remove(instance: String, name: String) -> Result<(), Stri
 }
 
 /// Which of these secrets are saved (never their values).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_cli_secret_status(instance: String, names: Vec<String>) -> Vec<bool> {
     names.iter().map(|name| read_secret(&instance, name).is_some()).collect()
 }
@@ -250,6 +312,11 @@ pub struct CliStatus {
 fn base_command(binary: &Path) -> Command {
     let mut cmd = Command::new(binary);
     cmd.env("PATH", login_path());
+    // Moved data folders (CLAUDE_CONFIG_DIR, CODEX_HOME, …) from the shell profile.
+    // An instance's own config folder still wins (set after this).
+    for (name, value) in login_vars() {
+        cmd.env(name, value);
+    }
     // Make the CLIs use the user's subscription login, not an API key that
     // happens to be in this app's environment.
     cmd.env_remove("ANTHROPIC_API_KEY");
@@ -365,6 +432,8 @@ async fn detect(instance: String, provider: CliProvider, config: &CliConfig) -> 
     let Some(path) = resolve_binary(provider, config) else {
         status.error = Some(if provider == CliProvider::Acp && config.command.is_empty() {
             "Set the command that starts this agent.".to_string()
+        } else if provider == CliProvider::Acp && config.command[0].starts_with("~/.kontinue/acp-agents/") {
+            "Not installed yet. Install downloads it from the ACP Registry.".to_string()
         } else if provider == CliProvider::Acp {
             format!("`{}` was not found on your PATH.", config.command[0])
         } else if config.binary_path.trim().is_empty() {
@@ -375,14 +444,24 @@ async fn detect(instance: String, provider: CliProvider, config: &CliConfig) -> 
         return status;
     };
     status.path = Some(path.to_string_lossy().to_string());
-    let output = tokio::time::timeout(
+    // Managed registry downloads: the recorded version, no need to start them.
+    let managed_version = if provider == CliProvider::Acp { registry::managed_version(&path) } else { None };
+    let output = if managed_version.is_some() {
+        Ok(Ok(std::process::Output {
+            status: std::process::ExitStatus::default(),
+            stdout: managed_version.clone().unwrap_or_default().into_bytes(),
+            stderr: Vec::new(),
+        }))
+    } else {
+        tokio::time::timeout(
         std::time::Duration::from_secs(10),
         cli_command(provider, &path, config)
             .arg("--version")
             .stdin(Stdio::null())
             .output(),
-    )
-    .await;
+        )
+        .await
+    };
     status.version = match output {
         Ok(Ok(out)) if out.status.success() => {
             let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -414,7 +493,11 @@ async fn detect(instance: String, provider: CliProvider, config: &CliConfig) -> 
     status.installed = true;
     status.logged_in = login_status(provider, &path, config).await;
     status.install_method = Some(install_method(&path).to_string());
-    status.update_command = update_command(provider, &path, config).map(|(program, args)| describe(&program, &args));
+    status.update_command = if registry::managed_id(&path).is_some() {
+        Some("Download the latest from the ACP Registry".to_string())
+    } else {
+        update_command(provider, &path, config).map(|(program, args)| describe(&program, &args))
+    };
     status
 }
 
@@ -647,6 +730,9 @@ pub async fn kode_cli_update(
     let config = config.unwrap_or_default();
     let binary = resolve_binary(provider, &config)
         .ok_or_else(|| format!("`{}` is not installed.", provider.binary()))?;
+    if let Some(agent_id) = registry::managed_id(&binary) {
+        return registry::install(&state, run_id, &agent_id, on_line).await;
+    }
     let (program, args) = update_command(provider, &binary, &config)
         .ok_or_else(|| "Update this agent with its own installer.".to_string())?;
     let _ = on_line.send(format!("$ {}", describe(&program, &args)));
@@ -976,6 +1062,12 @@ fn cursor_args(req: &CliRunRequest) -> Vec<String> {
         "stream-json".to_string(),
         "--workspace".to_string(),
         req.root.clone(),
+        // Print mode can't answer Cursor's "Do you trust this directory?"
+        // prompt, so without this every first run in a project ended with
+        // that question as the reply. You already chose this folder as a
+        // Kode project; what Cursor may do in it is still decided by the
+        // permission mode below (--force only in Auto / Full access).
+        "--trust".to_string(),
     ];
     match req.mode.as_str() {
         "plan" => args.extend(["--mode".to_string(), "plan".to_string()]),
@@ -1018,6 +1110,27 @@ fn kill_tree(pid: u32) {
             .args(["/T", "/F", "/PID", &pid.to_string()])
             .status();
     }
+}
+
+/// The ACP Registry index, plus this computer's platform key.
+#[tauri::command]
+pub async fn kode_acp_registry() -> Result<Value, String> {
+    let mut index = registry::fetch_index().await?;
+    if let Some(map) = index.as_object_mut() {
+        map.insert("platform".to_string(), json!(registry::platform()));
+    }
+    Ok(index)
+}
+
+/// Download a registry agent to ~/.kontinue/acp-agents/<id>.
+#[tauri::command]
+pub async fn kode_acp_install(
+    state: tauri::State<'_, CliRunState>,
+    run_id: u32,
+    agent_id: String,
+    on_line: Channel<String>,
+) -> Result<CliTaskResult, String> {
+    registry::install(&state, run_id, &agent_id, on_line).await
 }
 
 /// Stop a running turn (the Stop button).
@@ -1627,6 +1740,24 @@ mod tests {
         let at = codex.iter().position(|a| a == "fork").unwrap();
         assert_eq!(codex[at + 1], "abc");
         assert!(codex_args(&request("codex", false), &[]).contains(&"resume".to_string()));
+    }
+
+    #[test]
+    fn cursor_trusts_the_project_but_keeps_the_permission_mode() {
+        let request = |mode: &str| -> CliRunRequest {
+            serde_json::from_value(serde_json::json!({
+                "provider": "cursor", "root": "/tmp/project", "prompt": "hi",
+                "sessionId": null, "model": null, "mode": mode
+            }))
+            .unwrap()
+        };
+        let supervised = cursor_args(&request("supervised"));
+        assert!(supervised.contains(&"--trust".to_string()));
+        // Trusting the folder is not permission to run everything.
+        assert!(!supervised.contains(&"--force".to_string()));
+        assert!(cursor_args(&request("auto")).contains(&"--force".to_string()));
+        // The prompt stays last, after `--`.
+        assert_eq!(supervised[supervised.len() - 2], "--");
     }
     use super::*;
     use serde_json::json;

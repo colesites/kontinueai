@@ -6,16 +6,17 @@ import { KODE_MODEL_ID } from "@repo/ai/lib/kode";
 import { getPrThreads, listPrComments, listPullRequests, type PullRequest } from "./kode-prs";
 import { diffPr, getChatModel, getPrWatches, prEventPrompt, updatePrWatch } from "./kode-pr-watch";
 import { schedulePrompt } from "./kode-schedule";
+import { getSettings, useAppSettings } from "./app-settings";
 import { useKodeWorkspace } from "./kode-workspace";
 
-const POLL_MS = 60_000;
 
 type Target = { url: string; chatId: string; chatTitle: string };
 
 export function usePrWatcher() {
-  const { kodeChats, folders } = useKodeWorkspace();
-  const latest = useRef({ kodeChats, folders });
-  latest.current = { kodeChats, folders };
+  const { kodeChats, folders, archiveKodeChat, activeChatId } = useKodeWorkspace();
+  const { prPollSeconds } = useAppSettings();
+  const latest = useRef({ kodeChats, folders, archiveKodeChat, activeChatId });
+  latest.current = { kodeChats, folders, archiveKodeChat, activeChatId };
 
   useEffect(() => {
     let running = false;
@@ -51,7 +52,7 @@ export function usePrWatcher() {
           for (const target of targets) {
             const pr = prs.find((p) => p.url.toLowerCase() === target.url);
             if (!pr) continue;
-            const prev = getPrWatches()[target.url] ?? { url: target.url, chatId: target.chatId, autoFix: false };
+            const prev = getPrWatches()[target.url] ?? { url: target.url, chatId: target.chatId, autoFix: getSettings().prAutoFixDefault };
             const comments =
               prev.autoFix && pr.state === "OPEN" ? await listPrComments(root, pr.number).catch(() => null) : null;
             const { events, patch } = diffPr(prev, pr, comments);
@@ -63,6 +64,17 @@ export function usePrWatcher() {
               delete patch.reportedConflict;
             }
             updatePrWatch(target.url, target.chatId, patch);
+
+            // Settings → Source control → Auto-archive merged threads (not the
+            // chat you're looking at).
+            if (
+              patch.state === "MERGED" &&
+              prev.state !== "MERGED" &&
+              getSettings().autoArchiveMerged &&
+              latest.current.activeChatId !== target.chatId
+            ) {
+              void latest.current.archiveKodeChat(target.chatId, true).catch(() => {});
+            }
 
             if (!prev.autoFix) continue;
             const text = prEventPrompt(pr, events);
@@ -84,8 +96,10 @@ export function usePrWatcher() {
       }
     };
 
+    // Settings → Source control: 0 pauses background checks.
+    if (prPollSeconds <= 0) return;
     void tick();
-    const timer = window.setInterval(() => void tick(), POLL_MS);
+    const timer = window.setInterval(() => void tick(), prPollSeconds * 1000);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [prPollSeconds]);
 }

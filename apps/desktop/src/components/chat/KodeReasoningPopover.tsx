@@ -47,9 +47,11 @@ export function KodeReasoningPopover({
   modelId,
   className,
   onReasoningToggle,
+  side = "top",
 }: {
   modelId?: string;
   className?: string;
+  side?: "top" | "bottom";
   /** Kept for callers that track an on/off flag separately. */
   reasoningEnabled?: boolean;
   onReasoningToggle?: (enabled: boolean) => void;
@@ -94,20 +96,20 @@ export function KodeReasoningPopover({
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-60 p-1.5 select-none">
-        <p className="px-3 pt-1 pb-1 text-[10.5px] font-medium text-muted-foreground/70">
+      <DropdownMenuContent align="start" side={side} sideOffset={8} className="w-60 p-1.5 select-none">
+        <p className="px-3 pt-1 pb-1 text-caption font-medium text-muted-foreground/70">
           Reasoning · {model.name}
         </p>
         {efforts.length === 0 ? (
-          <p className="px-3 pb-1.5 text-[11.5px] text-muted-foreground">
+          <p className="px-3 pb-1.5 text-label text-muted-foreground">
             This model decides how much to think on its own.
           </p>
         ) : (
           efforts.map((level) => (
             <DropdownMenuItem key={level} onSelect={() => chooseEffort(level)} className={rowClass}>
               <span className="min-w-0 flex-1">
-                <span className="block text-[12.5px]">{EFFORT_LABEL[level]}</span>
-                <span className="block text-[10.5px] text-muted-foreground">{EFFORT_HINT[level]}</span>
+                <span className="block text-body">{EFFORT_LABEL[level]}</span>
+                <span className="block text-caption text-muted-foreground">{EFFORT_HINT[level]}</span>
               </span>
               {effort === level && !off ? <Check size={13} className="shrink-0 text-purple-500" /> : null}
             </DropdownMenuItem>
@@ -116,8 +118,8 @@ export function KodeReasoningPopover({
         {canDisable ? (
           <DropdownMenuItem onSelect={() => chooseEffort("off")} className={rowClass}>
             <span className="min-w-0 flex-1">
-              <span className="block text-[12.5px]">Off</span>
-              <span className="block text-[10.5px] text-muted-foreground">Answer directly, no thinking</span>
+              <span className="block text-body">Off</span>
+              <span className="block text-caption text-muted-foreground">Answer directly, no thinking</span>
             </span>
             {off ? <Check size={13} className="shrink-0 text-purple-500" /> : null}
           </DropdownMenuItem>
@@ -125,23 +127,23 @@ export function KodeReasoningPopover({
 
         <div className="my-1.5 h-px bg-black/[0.06] dark:bg-white/[0.06]" />
 
-        <p className="px-3 pt-1 pb-1 text-[10.5px] font-medium text-muted-foreground/70">Context window</p>
+        <p className="px-3 pt-1 pb-1 text-caption font-medium text-muted-foreground/70">Context window</p>
         {contextOptions.map((size) => (
           <DropdownMenuItem
             key={size}
             onSelect={() => updateSettings({ kodeContextWindow: size })}
             className={rowClass}
           >
-            <span className="flex-1 text-[12.5px]">{formatContext(size)}</span>
+            <span className="flex-1 text-body">{formatContext(size)}</span>
             {size === Math.min(KODE_DEFAULT_CONTEXT, model.contextWindow) ? (
-              <span className="text-[10px] text-muted-foreground">Default</span>
+              <span className="text-micro text-muted-foreground">Default</span>
             ) : size === model.contextWindow ? (
-              <span className="text-[10px] text-muted-foreground">Full</span>
+              <span className="text-micro text-muted-foreground">Full</span>
             ) : null}
             {size === contextBudget ? <Check size={13} className="shrink-0 text-purple-500" /> : null}
           </DropdownMenuItem>
         ))}
-        <p className="px-3 pt-1 pb-1 text-[10.5px] leading-relaxed text-muted-foreground">
+        <p className="px-3 pt-1 pb-1 text-caption leading-relaxed text-muted-foreground">
           Bigger windows keep more history per request and use more of your plan.
         </p>
       </DropdownMenuContent>

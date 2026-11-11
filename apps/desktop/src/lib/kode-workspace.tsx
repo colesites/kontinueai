@@ -1,6 +1,8 @@
 import { mergeWorkspaces, readSharedWorkspace, writeSharedWorkspace } from "./kode-shared-workspace";
 import { resolveFolderForPath } from "./kode-import-remote";
-import { open } from "@tauri-apps/plugin-dialog";
+import { ask, open } from "@tauri-apps/plugin-dialog";
+import { getSettings } from "./app-settings";
+import { homeDir } from "@tauri-apps/api/path";
 import type { LanguageModelUsage } from "ai";
 import { useMutation, useQuery } from "convex/react";
 import {
@@ -28,7 +30,7 @@ const FOLDERS_KEY = "kontinue:kode-folders:v1";
 const CHAT_FOLDER_KEY = "kontinue:kode-chat-folder:v1";
 const SHARED_MIGRATED_KEY = "kontinue:kode-shared-workspace:v1";
 
-type KodeFolder = { id: string; name: string; path: string };
+export type KodeFolder = { id: string; name: string; path: string };
 
 function loadJSON<T>(key: string, fallback: T): T {
   try {
@@ -71,7 +73,8 @@ export type KodeChat = {
   importSource?: KodeConvexChat["importSource"];
 };
 
-export type KodeTab = "home" | "canvas" | "kode";
+/** Home, Canvas and Tasks share the Home sidebar; Kode has its own. */
+export type KodeTab = "home" | "canvas" | "tasks" | "kode";
 
 export type KodeImportInput = {
   title: string;
@@ -101,6 +104,10 @@ export type SettingsNavTab =
   | "skills"
   | "mcp"
   | "shortcuts"
+  | "snapshots"
+  | "scheduled"
+  | "source-control"
+  | "storage"
   | "webhooks"
   | "account"
   | "data";
@@ -163,10 +170,14 @@ type KodeWorkspaceContextValue = {
     tokens?: number;
     sources?: { title: string; url: string }[];
     todos?: { title: string; description?: string; status: string }[];
-  }) => Promise<void>;
+  }) => Promise<string>;
   togglePinChat: (chatId: string, pinned: boolean) => Promise<void>;
   archiveChat: (chatId: string, archived: boolean) => Promise<void>;
-  deleteChat: (chatId: string) => Promise<void>;
+  archiveKodeChat: (chatId: string, archived: boolean) => Promise<void>;
+  deleteChat: (chatId: string, kind?: "home" | "kode") => Promise<void>;
+  /** Archived chats from both Chat and Kode (Settings → Data). */
+  archivedChats: { id: string; title: string; updatedAt: number; kind: "home" | "kode" }[];
+  setChatArchived: (chatId: string, kind: "home" | "kode", archived: boolean) => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   rewindAfter: (messageId: string) => Promise<void>;
 };
@@ -335,10 +346,15 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   }, [activeTab, convexHomeChats, kodeChats]);
 
   const importFolder = useCallback(async () => {
+    // Settings → General → Add project starts in ("~/" when empty).
+    const startDir = getSettings().addProjectDir.trim();
+    const home = await homeDir().catch(() => "");
+    const defaultPath = startDir ? startDir.replace(/^~(?=\/|$)/, home.replace(/\/$/, "")) : home || undefined;
     const selected = await open({
       directory: true,
       multiple: false,
       title: "Import folder",
+      defaultPath,
     });
 
     if (typeof selected !== "string") return;
@@ -446,7 +462,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   const newChat = useCallback((projectId: string | null = null) => {
     if (activeTab !== "kode") {
       setActiveHomeChatId(null);
-      if (activeTab === "canvas") {
+      if (activeTab === "canvas" || activeTab === "tasks") {
         setActiveTab("home");
       }
     } else {
@@ -458,7 +474,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   const selectChat = useCallback((chatId: string) => {
     if (activeTab !== "kode") {
       setActiveHomeChatId(chatId);
-      if (activeTab === "canvas") {
+      if (activeTab === "canvas" || activeTab === "tasks") {
         setActiveTab("home");
       }
     } else {
@@ -557,7 +573,7 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       todos?: { title: string; description?: string; status: string }[];
     }) => {
       if (activeTab !== "kode") {
-        await addHomeMessage({
+        return await addHomeMessage({
           chatId: input.chatId as any,
           role: input.role,
           content: input.content,
@@ -565,8 +581,8 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
           sources: input.sources,
           todos: input.todos,
         });
-      } else {
-        await addKodeMessage({
+      }
+      return await addKodeMessage({
           chatId: input.chatId as any,
           role: input.role,
           content: input.content,
@@ -575,13 +591,17 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
           sources: input.sources,
           todos: input.todos,
         });
-      }
     },
     [activeTab, addHomeMessage, addKodeMessage],
   );
 
   const togglePinChat = useCallback(
     async (chatId: string, pinned: boolean) => {
+      // Settings → General → Confirmations → Unpin confirmation.
+      if (!pinned && getSettings().confirmUnpin) {
+        const ok = await ask("Unpin this chat?", { title: "Unpin chat", okLabel: "Unpin" }).catch(() => true);
+        if (!ok) return;
+      }
       if (activeTab !== "kode") {
         await toggleHomeChatPin({ chatId: chatId as any, pinned });
       } else {
@@ -589,6 +609,33 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       }
     },
     [activeTab, toggleHomeChatPin, toggleKodeChatPin],
+  );
+
+  const archivedChats = useMemo(() => {
+    type Raw = { _id: string; title?: string; updatedAt?: number; _creationTime?: number; archived?: boolean };
+    const pick = (list: Raw[] | undefined, kind: "home" | "kode") =>
+      (list ?? [])
+        .filter((chat) => chat.archived)
+        .map((chat) => ({ id: chat._id, title: chat.title ?? "Untitled", updatedAt: chat.updatedAt ?? chat._creationTime ?? 0, kind }));
+    return [...pick(convexHomeChats as Raw[] | undefined, "home"), ...pick(convexKodeChats as Raw[] | undefined, "kode")].sort(
+      (a, b) => b.updatedAt - a.updatedAt,
+    );
+  }, [convexHomeChats, convexKodeChats]);
+
+  const setChatArchived = useCallback(
+    async (chatId: string, kind: "home" | "kode", archived: boolean) => {
+      if (kind === "home") await setHomeChatArchived({ chatId: chatId as any, archived });
+      else await setKodeChatArchived({ chatId: chatId as any, archived });
+    },
+    [setHomeChatArchived, setKodeChatArchived],
+  );
+
+  /** Archive a Kode chat whatever tab is open (auto-archive). */
+  const archiveKodeChat = useCallback(
+    async (chatId: string, archived: boolean) => {
+      await setKodeChatArchived({ chatId: chatId as any, archived });
+    },
+    [setKodeChatArchived],
   );
 
   const archiveChat = useCallback(
@@ -603,8 +650,17 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   );
 
   const deleteChat = useCallback(
-    async (chatId: string) => {
-      if (activeTab !== "kode") {
+    async (chatId: string, kind?: "home" | "kode") => {
+      // Settings → General → Confirmations.
+      if (getSettings().confirmDelete) {
+        const ok = await ask("Delete this chat and its history? This can't be undone.", {
+          title: "Delete chat",
+          kind: "warning",
+          okLabel: "Delete",
+        }).catch(() => window.confirm("Delete this chat and its history? This can't be undone."));
+        if (!ok) return;
+      }
+      if ((kind ?? (activeTab === "kode" ? "kode" : "home")) === "home") {
         await deleteHomeChatMutation({ chatId: chatId as any });
         setActiveHomeChatId((current) => (current === chatId ? null : current));
       } else {
@@ -675,6 +731,9 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       addMessageRecord,
       togglePinChat,
       archiveChat,
+      archiveKodeChat,
+      archivedChats,
+      setChatArchived,
       deleteChat,
       renameChat,
       rewindAfter,
@@ -688,6 +747,9 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
       activeChatId,
       addMessageRecord,
       archiveChat,
+      archiveKodeChat,
+      archivedChats,
+      setChatArchived,
       chats,
       convexHomeChats,
       convexKodeChats,

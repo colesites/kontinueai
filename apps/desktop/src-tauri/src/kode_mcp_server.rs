@@ -245,7 +245,7 @@ pub fn run_stdio() {
 // App side: publish state, take inbox requests, show how to connect.
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_orch_write_state(state: Value) -> Result<(), String> {
     let dir = kode_dir().ok_or("No home folder.")?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -255,7 +255,7 @@ pub fn kode_orch_write_state(state: Value) -> Result<(), String> {
 }
 
 /// Read and clear queued requests.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_orch_take_inbox() -> Vec<Value> {
     let Some(dir) = kode_dir() else { return Vec::new() };
     let path = dir.join("inbox.jsonl");
@@ -269,7 +269,7 @@ pub fn kode_orch_take_inbox() -> Vec<Value> {
 }
 
 /// The command other agents use to start this server.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_mcp_server_command() -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
     Ok(json!({ "command": exe.to_string_lossy(), "args": ["--kode-mcp"] }))

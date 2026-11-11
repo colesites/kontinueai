@@ -221,7 +221,7 @@ export function WorkspacePanel({
                 "relative flex size-7 cursor-pointer items-center justify-center rounded-full transition-colors",
                 tab === id
                   ? "kontinue-menu-active"
-                  : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+                  : "text-muted-foreground kontinue-hover hover:text-foreground",
               )}
             >
               <Icon size={14} strokeWidth={1.6} />
@@ -230,7 +230,7 @@ export function WorkspacePanel({
               ) : null}
             </button>
           ))}
-          <span className="ml-2 truncate text-[12px] font-medium text-foreground/70">
+          <span className="ml-2 truncate text-label font-medium text-foreground/70">
             {TABS.find((t) => t.id === tab)?.label}
           </span>
           <button
@@ -238,7 +238,7 @@ export function WorkspacePanel({
             title="Close panel"
             aria-label="Close panel"
             onClick={onClose}
-            className="ml-auto flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+            className="ml-auto flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground"
           >
             <X size={14} />
           </button>
@@ -304,7 +304,7 @@ function TabPane({ active, children }: { active: boolean; children: ReactNode })
 
 export function EmptyState({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-full items-center justify-center px-8 text-center text-[12px] leading-relaxed text-muted-foreground">
+    <div className="flex h-full items-center justify-center px-8 text-center text-label leading-relaxed text-muted-foreground">
       {children}
     </div>
   );

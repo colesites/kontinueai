@@ -51,13 +51,13 @@ function asQuestions(raw: unknown): QuestionItem[] {
 // the app (.kontinue-3d / .kontinue-3d-primary), sized up so these prompts read
 // as clear actions instead of tiny inline labels.
 const primary =
-  "kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-4 text-[13px] font-medium disabled:cursor-default disabled:opacity-50";
+  "kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-4 text-body font-medium disabled:cursor-default disabled:opacity-50";
 const secondary =
-  "kontinue-3d flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-4 text-[13px] text-foreground/85 hover:text-foreground";
+  "kontinue-3d flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-4 text-body text-foreground/85 hover:text-foreground";
 const chip =
-  "kontinue-3d flex h-8 shrink-0 cursor-pointer items-center rounded-full px-3.5 text-[13px] text-foreground/85 hover:text-foreground";
+  "kontinue-3d flex h-8 shrink-0 cursor-pointer items-center rounded-full px-3.5 text-body text-foreground/85 hover:text-foreground";
 const chipPicked =
-  "kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center rounded-full px-3.5 text-[13px] font-medium";
+  "kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center rounded-full px-3.5 text-body font-medium";
 
 function OptionButton({ option, selected, onClick }: { option: OptionItem; selected?: boolean; onClick: () => void }) {
   return (
@@ -143,7 +143,7 @@ function EditPreview({ step }: { step: KodeToolStep }) {
   if (oldText === null && content !== null) for (const line of content.split("\n").slice(0, 200)) lines.push({ kind: "add", text: line });
   if (lines.length === 0) return null;
   return (
-    <pre className="max-h-48 overflow-auto rounded-lg bg-black/[0.04] py-1.5 font-mono text-[11.5px] leading-5 dark:bg-white/[0.05]">
+    <pre className="max-h-48 overflow-auto rounded-lg bg-black/[0.04] py-1.5 font-mono text-label leading-5 dark:bg-white/[0.05]">
       {lines.map((line, index) => (
         <div
           key={index}
@@ -200,8 +200,8 @@ function ApprovalPrompt({
           <Icon className="size-3.5 text-purple-500" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-medium text-foreground">{title}</p>
-          <p className="mt-0.5 truncate text-[12px] text-foreground/60">
+          <p className="text-body font-medium text-foreground">{title}</p>
+          <p className="mt-0.5 truncate text-label text-foreground/60">
             {command ? step.description : path || step.description}
             {hasDetail ? (
               <button
@@ -218,7 +218,7 @@ function ApprovalPrompt({
 
       {showDetail ? (
         command ? (
-          <pre className="max-h-32 overflow-auto rounded-xl bg-black/[0.04] px-3 py-2 font-mono text-[11.5px] leading-5 text-foreground/75 dark:bg-white/[0.05]">
+          <pre className="max-h-32 overflow-auto rounded-xl bg-black/[0.04] px-3 py-2 font-mono text-label leading-5 text-foreground/75 dark:bg-white/[0.05]">
             {command}
           </pre>
         ) : (
@@ -239,7 +239,7 @@ function ApprovalPrompt({
             value={note}
             onChange={(event) => setNote(event.target.value)}
             placeholder="Tell Kode what to do instead (optional)"
-            className="kontinue-3d h-8 min-w-0 flex-1 rounded-full bg-transparent px-3.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/60"
+            className="kontinue-3d h-8 min-w-0 flex-1 rounded-full bg-transparent px-3.5 text-body text-foreground outline-none placeholder:text-muted-foreground/60"
           />
           <button type="submit" className={primary}>
             Deny
@@ -270,7 +270,7 @@ function ApprovalPrompt({
 function QuestionText({ text }: { text: string }) {
   // Questions often name code (`addTodo`): render inline Markdown.
   return (
-    <div className="text-[13px] font-medium leading-snug text-foreground [&_p]:m-0 [&_p]:leading-snug">
+    <div className="text-body font-medium leading-snug text-foreground [&_p]:m-0 [&_p]:leading-snug">
       <MessageResponse>{text}</MessageResponse>
     </div>
   );
@@ -311,7 +311,7 @@ function TextPrompt({
           value={value}
           onChange={(event) => setValue(event.target.value)}
           placeholder={placeholder}
-          className="kontinue-3d h-8 min-w-0 flex-1 rounded-full bg-transparent px-3.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
+          className="kontinue-3d h-8 min-w-0 flex-1 rounded-full bg-transparent px-3.5 text-body text-foreground outline-none placeholder:text-muted-foreground/50"
         />
         <button type="submit" disabled={!value.trim()} className={primary}>
           Send
@@ -370,14 +370,14 @@ function ChoicePrompt({
                 key={option.value}
                 type="button"
                 onClick={() => pick(option)}
-                className={`flex w-full cursor-pointer items-start gap-2.5 rounded-2xl px-3 py-2 text-left transition-colors ${selected ? "bg-purple-500/15 ring-1 ring-purple-500/40" : "bg-black/[0.03] hover:bg-black/[0.06] dark:bg-white/[0.04] dark:hover:bg-white/[0.07]"}`}
+                className={`flex w-full cursor-pointer items-start gap-2.5 rounded-2xl px-3 py-2 text-left transition-colors ${selected ? "bg-purple-500/15 ring-1 ring-purple-500/40" : "bg-black/[0.03] kontinue-hover dark:bg-white/[0.04]"}`}
               >
-                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-[10.5px] font-medium text-foreground/70 dark:bg-white/[0.08]">
+                <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-black/[0.06] text-caption font-medium text-foreground/70 dark:bg-white/[0.08]">
                   {selected ? <Check size={11} /> : index + 1}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[13px] font-medium text-foreground">{option.label}</span>
-                  {option.description ? <span className="mt-0.5 block text-[12px] leading-snug text-foreground/60">{option.description}</span> : null}
+                  <span className="block text-body font-medium text-foreground">{option.label}</span>
+                  {option.description ? <span className="mt-0.5 block text-label leading-snug text-foreground/60">{option.description}</span> : null}
                 </span>
               </button>
             );
@@ -398,7 +398,7 @@ function ChoicePrompt({
           onKeyDown={(event) => {
             if (event.key === "Enter" && other.trim()) submit(picked);
           }}
-          className="kontinue-3d h-8 min-w-[8rem] flex-1 rounded-full bg-transparent px-3.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
+          className="kontinue-3d h-8 min-w-[8rem] flex-1 rounded-full bg-transparent px-3.5 text-body text-foreground outline-none placeholder:text-muted-foreground/50"
         />
       ) : null}
       {multiple || other.trim() ? (
@@ -450,7 +450,7 @@ function FormPrompt({
         }
         return (
           <div key={item.question}>
-            <label htmlFor={inputId} className="text-[13px] font-medium text-foreground">
+            <label htmlFor={inputId} className="text-body font-medium text-foreground">
               {item.question}
             </label>
             <input
@@ -458,7 +458,7 @@ function FormPrompt({
               value={answers[index] ?? ""}
               onChange={(event) => setAnswers((current) => ({ ...current, [index]: event.target.value }))}
               placeholder={item.placeholder ?? "Your answer"}
-              className="kontinue-3d mt-1.5 h-8 w-full rounded-full bg-transparent px-3.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground/50"
+              className="kontinue-3d mt-1.5 h-8 w-full rounded-full bg-transparent px-3.5 text-body text-foreground outline-none placeholder:text-muted-foreground/50"
             />
           </div>
         );

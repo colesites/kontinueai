@@ -1,3 +1,4 @@
+import { emitProjectFileChange } from "./project-file-events";
 import { invoke } from "@tauri-apps/api/core";
 import { envVarsFor } from "@/lib/kode-environments";
 import type { KodeToolDefinition } from "./kode-chat";
@@ -79,6 +80,16 @@ export const KODE_BG_STOP_TOOL = "stop_background_command";
 function isCommandTool(name: string): boolean {
   return name === KODE_SHELL_TOOL || name === KODE_BG_START_TOOL;
 }
+
+/** Tools whose approval depends only on the permission mode (not MCP or
+ *  app tools, which keep their own saved permissions). */
+export const FILE_AND_SHELL_TOOLS: ReadonlySet<string> = new Set([
+  "write_file",
+  "edit_file",
+  "delete_file",
+  KODE_SHELL_TOOL,
+  KODE_BG_START_TOOL,
+]);
 
 /** Extra instructions for Plan mode (read-only investigation → a plan). */
 export const KODE_PLAN_MODE_PROMPT = `PLAN MODE (read-only): Do not create, edit or delete files and do not run commands. Investigate with the read-only tools, ask the user with ask_options when a decision is genuinely theirs, then reply with a concise plan under a "## Plan" heading: numbered steps naming the files you'll change and how you'll verify the result. End by saying the user can approve the plan to start building.`;
@@ -639,6 +650,7 @@ export async function executeFileTool(
         path: str(args, "path"),
         content: str(args, "content"),
       });
+      emitProjectFileChange({ root, path: str(args, "path"), kind: "write" });
       return `Wrote ${str(args, "path")}`;
     case "edit_file":
       await invoke("kode_edit_file", {
@@ -648,12 +660,14 @@ export async function executeFileTool(
         newString: str(args, "new_string"),
         replaceAll: Boolean(args.replace_all),
       });
+      emitProjectFileChange({ root, path: str(args, "path"), kind: "write" });
       return `Edited ${str(args, "path")}`;
     case "delete_file":
       await invoke("kode_delete_file", {
         root,
         path: str(args, "path"),
       });
+      emitProjectFileChange({ root, path: str(args, "path"), kind: "delete" });
       return `Deleted ${str(args, "path")}`;
     case KODE_SHELL_TOOL: {
       const result = await invoke<{

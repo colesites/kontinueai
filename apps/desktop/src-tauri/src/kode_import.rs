@@ -2180,7 +2180,7 @@ fn codex_limit_hit(tail: &str) -> Option<LimitHit> {
 // Commands
 // ---------------------------------------------------------------------------
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_scan_coding_sessions(
     app: tauri::AppHandle,
     project_path: Option<String>,
@@ -2202,7 +2202,7 @@ pub fn kode_scan_coding_sessions(
 }
 
 /// Which coding agents have history on this machine, and whether Kode can read it.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_detect_session_sources(app: tauri::AppHandle) -> Result<Vec<more::SessionSource>, String> {
     Ok(more::detect_sources(&home_dir(&app)?))
 }
@@ -2358,7 +2358,7 @@ fn scan_sessions(
     Ok(sessions)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_read_coding_session(
     app: tauri::AppHandle,
     provider: String,
@@ -2398,7 +2398,7 @@ fn read_session(
     })
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn kode_session_updated_at(
     app: tauri::AppHandle,
     provider: String,

@@ -42,7 +42,7 @@ export function QueuedMessages({
   if (items.length === 0) return null;
   return (
     <div className="flex w-full min-w-0 flex-col gap-1">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1.5 text-caption text-muted-foreground">
         <Clock3 size={12} className="shrink-0" />
         <span className="flex-1">
           {items.length === 1 ? "1 message queued" : `${items.length} messages queued`}, sends when Kode finishes
@@ -51,7 +51,7 @@ export function QueuedMessages({
           type="button"
           onClick={onSendNow}
           title="Stop the current step and send now"
-          className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium text-foreground/80 hover:bg-black/[0.05] hover:text-foreground dark:hover:bg-white/[0.06]"
+          className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-0.5 text-caption font-medium text-foreground/80 kontinue-hover hover:text-foreground"
         >
           <Send size={11} />
           Send now
@@ -59,9 +59,9 @@ export function QueuedMessages({
       </div>
       {items.map((item) => (
         <div key={item.id} className="group flex min-w-0 items-center gap-2 rounded-full bg-black/[0.03] py-1 pr-1 pl-3 dark:bg-white/[0.04]">
-          <p className="min-w-0 flex-1 truncate text-[12px] text-foreground/85">{item.text || "(attachments)"}</p>
+          <p className="min-w-0 flex-1 truncate text-label text-foreground/85">{item.text || "(attachments)"}</p>
           {item.attachments?.length ? (
-            <span className="flex shrink-0 items-center gap-0.5 text-[10.5px] text-muted-foreground">
+            <span className="flex shrink-0 items-center gap-0.5 text-caption text-muted-foreground">
               <Paperclip size={10} />
               {item.attachments.length}
             </span>

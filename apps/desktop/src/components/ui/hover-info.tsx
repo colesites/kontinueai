@@ -41,7 +41,7 @@ export function HoverInfo({
             {icon}
             <p className="truncate text-xs font-semibold">{title}</p>
           </div>
-          <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">{description}</p>
+          <p className="mt-1.5 text-label leading-relaxed text-muted-foreground">{description}</p>
         </TooltipPrimitive.Content>
       </TooltipPrimitive.Portal>
     </TooltipPrimitive.Root>

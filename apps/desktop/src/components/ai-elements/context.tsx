@@ -64,7 +64,8 @@ export const Context = ({
 const ContextIcon = () => {
   const { usedTokens, maxTokens } = useContextValue();
   const circumference = 2 * Math.PI * ICON_RADIUS;
-  const usedPercent = usedTokens / maxTokens;
+  // Guard an unknown window and cap the ring when the chat is over budget.
+  const usedPercent = maxTokens > 0 ? Math.min(usedTokens / maxTokens, 1) : 0;
   const dashOffset = circumference * (1 - usedPercent);
 
   return (
@@ -106,17 +107,21 @@ export type ContextTriggerProps = ComponentProps<typeof Button>;
 
 export const ContextTrigger = ({ children, ...props }: ContextTriggerProps) => {
   const { usedTokens, maxTokens } = useContextValue();
-  const usedPercent = usedTokens / maxTokens;
-  const renderedPercent = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 1,
-    style: "percent",
-  }).format(usedPercent);
+  const usedPercent = maxTokens > 0 ? usedTokens / maxTokens : 0;
+  // Over budget reads as "Full", not "360%": the next turn compacts it.
+  const over = usedPercent > 1;
+  const renderedPercent = over
+    ? "Full"
+    : new Intl.NumberFormat("en-US", {
+        maximumFractionDigits: 1,
+        style: "percent",
+      }).format(usedPercent);
 
   return (
     <HoverCardTrigger asChild>
       {children ?? (
         <Button type="button" variant="ghost" {...props}>
-          <span className="font-medium text-muted-foreground">
+          <span className={cn("font-medium whitespace-nowrap tabular-nums", over ? "text-caution" : "text-muted-foreground")}>
             {renderedPercent}
           </span>
           <ContextIcon />

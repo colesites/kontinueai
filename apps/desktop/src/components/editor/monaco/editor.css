@@ -1,0 +1,34 @@
+/* Editor styling on top of Monaco's own. */
+
+/* From Monaco's codicon-modifiers.css (MIT, Microsoft), which its packaged
+   entry points don't expose: loading spinners in suggest and peek views. */
+@keyframes codicon-spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+.codicon-sync.codicon-modifier-spin,
+.codicon-loading.codicon-modifier-spin,
+.codicon-gear.codicon-modifier-spin,
+.codicon-loading,
+.codicon-tree-item-loading::before {
+  animation: codicon-spin 1.5s steps(30) infinite;
+  transform-origin: center center;
+}
+.codicon-modifier-disabled {
+  opacity: 0.4;
+}
+
+/* Softer corners on the editor's floating widgets, in line with the app. */
+.monaco-editor .find-widget,
+.monaco-editor .suggest-widget,
+.monaco-editor .suggest-details,
+.monaco-editor .parameter-hints-widget,
+.monaco-editor .rename-box,
+.monaco-hover,
+.quick-input-widget {
+  border-radius: 10px !important;
+}
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row {
+  border-radius: 6px;
+}

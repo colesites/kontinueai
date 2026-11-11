@@ -155,7 +155,7 @@ export function ByokSection({
       {hideIntro ? null : (
       <div className="flex items-start gap-2.5 px-1">
         <KeyRound size={14} className="mt-0.5 shrink-0 text-purple-500" />
-        <p className="text-[12px] leading-relaxed text-muted-foreground">
+        <p className="text-label leading-relaxed text-muted-foreground">
           Add keys from Anthropic, OpenAI or Agent Router to use your own quota in
           Kode. Keys are kept in your Mac's keychain and are never sent to Kontinue
           servers.
@@ -184,11 +184,11 @@ export function ByokSection({
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h4 className="text-[13px] font-semibold text-foreground">{provider.name}</h4>
-                  <p className="mt-0.5 text-[11.5px] text-muted-foreground">{provider.hint}</p>
+                  <h4 className="text-body font-semibold text-foreground">{provider.name}</h4>
+                  <p className="mt-0.5 text-label text-muted-foreground">{provider.hint}</p>
                 </div>
                 {isConfigured ? (
-                  <span className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-emerald-500">
+                  <span className="flex shrink-0 items-center gap-1.5 text-label text-emerald-500">
                     <Check size={12} /> Connected
                   </span>
                 ) : null}
@@ -198,30 +198,30 @@ export function ByokSection({
               {provider.id === "agent_router" && (
                 <>
                   <div className="space-y-1">
-                    <label className="flex items-center justify-between text-[11px] font-medium text-foreground/70">
+                    <label className="flex items-center justify-between text-caption font-medium text-foreground/70">
                       <span className="flex items-center gap-1.5"><Globe size={12} className="text-brand" /> API Base URL</span>
-                      <span className="text-[10px] text-foreground/45">Provided by your Agent Router host</span>
+                      <span className="text-micro text-foreground/45">Provided by your Agent Router host</span>
                     </label>
                     <input
                       type="text"
                       value={baseUrl}
                       onChange={(e) => setBaseUrl(e.target.value)}
                       placeholder="https://co.agentrouter.org"
-                      className="kontinue-3d h-8 w-full rounded-full px-3.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
+                      className="kontinue-3d h-8 w-full rounded-full px-3.5 text-label text-foreground outline-none placeholder:text-muted-foreground/60"
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="flex items-center justify-between text-[11px] font-medium text-foreground/70">
+                    <label className="flex items-center justify-between text-caption font-medium text-foreground/70">
                       <span className="flex items-center gap-1.5"><ShieldCheck size={12} className="text-brand" /> System Access Key</span>
-                      <span className="text-[10px] text-foreground/45">Bypasses WAF client security checks</span>
+                      <span className="text-micro text-foreground/45">Bypasses WAF client security checks</span>
                     </label>
                     <input
                       type="text"
                       value={systemKey}
                       onChange={(e) => setSystemKey(e.target.value)}
                       placeholder="e.g. P3euDB1k5areVnMQIg0TXYNoCPuGcCw="
-                      className="kontinue-3d h-8 w-full rounded-full px-3.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
+                      className="kontinue-3d h-8 w-full rounded-full px-3.5 text-label text-foreground outline-none placeholder:text-muted-foreground/60"
                     />
                   </div>
                 </>
@@ -240,7 +240,7 @@ export function ByokSection({
                       }))
                     }
                     placeholder={`Paste ${provider.name} key`}
-                    className="kontinue-3d h-8 w-full rounded-full px-3.5 pr-9 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60"
+                    className="kontinue-3d h-8 w-full rounded-full px-3.5 pr-9 text-label text-foreground outline-none placeholder:text-muted-foreground/60"
                   />
                   {currentVal ? (
                     <button
@@ -258,7 +258,7 @@ export function ByokSection({
                   type="button"
                   disabled={isBusy || !isDirty}
                   onClick={() => void save(provider.id)}
-                  className="kontinue-3d-primary flex h-8 min-w-16 shrink-0 cursor-pointer items-center justify-center rounded-full px-3.5 text-[12px] font-medium disabled:cursor-default disabled:opacity-40"
+                  className="kontinue-3d-primary flex h-8 min-w-16 shrink-0 cursor-pointer items-center justify-center rounded-full px-3.5 text-label font-medium disabled:cursor-default disabled:opacity-40"
                 >
                   {isBusy ? <Loader2 size={14} className="animate-spin" /> : "Save"}
                 </button>
@@ -280,7 +280,7 @@ export function ByokSection({
           );
         })}
       </div>
-      {error ? <p className="px-1 text-[12px] text-rose-400">{error}</p> : null}
+      {error ? <p className="px-1 text-label text-rose-400">{error}</p> : null}
     </div>
   );
 }

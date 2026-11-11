@@ -21,7 +21,7 @@ const EFFORT_OPTIONS = ["off", "low", "medium", "high", "xhigh", "max"] as const
 
 function Select({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: readonly (readonly [string, string])[] }) {
   return (
-    <select value={value} onChange={(event) => onChange(event.target.value)} className="kontinue-3d h-8 max-w-[55%] cursor-pointer rounded-full bg-transparent px-3 text-[12px] text-foreground outline-none">
+    <select value={value} onChange={(event) => onChange(event.target.value)} className="kontinue-3d h-8 max-w-[55%] cursor-pointer rounded-full bg-transparent px-3 text-label text-foreground outline-none">
       <option value="">Use global</option>
       {options.map(([id, label]) => (
         <option key={id} value={id}>
@@ -51,13 +51,13 @@ export function ScopedSettingsPanel({
     else next[key] = parse(raw);
     onChange(next);
   };
-  const row = "flex items-center justify-between gap-3 py-1.5 text-[12.5px]";
+  const row = "flex items-center justify-between gap-3 py-1.5 text-body";
   return (
     <div className="kontinue-3d mt-3 rounded-[16px]">
       <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left">
         <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium">Kode settings for this folder</span>
-          <span className="block text-[11.5px] text-muted-foreground">{count === 0 ? "Same as Settings" : `${count} override${count === 1 ? "" : "s"} · ${target === "project" ? "in .kode/settings.json" : "on this Mac"}`}</span>
+          <span className="block text-body font-medium">Kode settings for this folder</span>
+          <span className="block text-label text-muted-foreground">{count === 0 ? "Same as Settings" : `${count} override${count === 1 ? "" : "s"} · ${target === "project" ? "in .kode/settings.json" : "on this Mac"}`}</span>
         </span>
         <ChevronRight size={14} className={cn("shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
       </button>
@@ -83,14 +83,14 @@ export function ScopedSettingsPanel({
             <span>Enter sends</span>
             <Select value={value.sendOnEnter === undefined ? "" : String(value.sendOnEnter)} onChange={(raw) => set("sendOnEnter", raw, (v) => v === "true")} options={[["true", "Enter"], ["false", "⌘ Enter"]]} />
           </div>
-          <div className="mt-2 flex items-center gap-1 rounded-full bg-black/[0.04] p-0.5 text-[11.5px] dark:bg-white/[0.05]">
+          <div className="mt-2 flex items-center gap-1 rounded-full bg-black/[0.04] p-0.5 text-label dark:bg-white/[0.05]">
             {(["environment", "project"] as const).map((option) => (
               <button key={option} type="button" onClick={() => onTargetChange(option)} className={cn("flex-1 cursor-pointer rounded-full px-3 py-1", target === option ? "kontinue-3d text-foreground" : "text-muted-foreground")}>
                 {option === "environment" ? "Only on this Mac" : "In the project (.kode/settings.json)"}
               </button>
             ))}
           </div>
-          <p className="px-1 pt-1.5 pb-1 text-[10.5px] text-muted-foreground">Project settings can be committed so everyone on the repo gets them. Settings on this Mac win over the project's.</p>
+          <p className="px-1 pt-1.5 pb-1 text-caption text-muted-foreground">Project settings can be committed so everyone on the repo gets them. Settings on this Mac win over the project's.</p>
         </div>
       ) : null}
     </div>

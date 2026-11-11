@@ -40,7 +40,7 @@ export function CollapsibleUserText({ children }: { children: ReactNode }) {
         <button
           type="button"
           onClick={() => setExpanded((value) => !value)}
-          className="mt-1.5 inline-flex cursor-pointer items-center gap-1 text-[11.5px] font-medium text-foreground/60 transition-colors hover:text-foreground"
+          className="mt-1.5 inline-flex cursor-pointer items-center gap-1 text-label font-medium text-foreground/60 transition-colors hover:text-foreground"
         >
           {expanded ? "Show less" : "Show more"}
           <ChevronDown

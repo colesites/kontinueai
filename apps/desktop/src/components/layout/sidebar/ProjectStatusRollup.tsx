@@ -20,7 +20,7 @@ export function ProjectStatusRollup({ chatIds }: { chatIds: string[] }) {
   if (awaiting > 0) {
     return (
       <span
-        className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-[10px] font-bold leading-none text-brand ring-1 ring-brand/40"
+        className="flex size-[15px] shrink-0 items-center justify-center rounded-full bg-brand/15 text-micro font-bold leading-none text-brand ring-1 ring-brand/40"
         title={`${awaiting} chat${awaiting > 1 ? "s" : ""} need your reply`}
         aria-label={`${awaiting} chats need your reply`}
       >

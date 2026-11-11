@@ -5,6 +5,10 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PillButton } from "@/components/settings/settings-ui";
+import { Dialog, DialogBody, DialogContent, DialogFooter, fieldClassName } from "@/components/ui/dialog";
+import { useAppSettings } from "@/lib/app-settings";
+import { orderProjects } from "@/lib/kode-project-order";
 import { useKodeWorkspace, type KodeChat } from "@/lib/kode-workspace";
 import { cn } from "@/lib/utils";
 import {
@@ -12,14 +16,12 @@ import {
   ChevronsDownUp,
   Folder,
   Plus,
-  MoreVertical,
-  Pin,
+  MoreHorizontal,
   Pencil,
   SquarePen,
   Trash2,
-  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ArrowRightLeft } from "lucide-react";
 import { MoveProjectDialog } from "@/components/kode/ProjectMove";
 import SidebarChatRow from "./SidebarChatRow";
@@ -73,92 +75,66 @@ function ProjectModal({ initialProject, onClose }: ProjectModalProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xl p-4"
-      onClick={onClose}
-    >
-      <div
-        className="relative w-full max-w-[400px] rounded-2xl liquid-glass-dropdown p-5 text-popover-foreground"
-        onClick={(e) => e.stopPropagation()}
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent
+        size="sm"
+        eyebrow="Project"
+        title={isEditing ? "Edit project" : "New project"}
+        description="Group related chats together in one workspace."
       >
-        {/* Header */}
-        <div className="flex items-start justify-between mb-3.5">
-          <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1">
-              PROJECT
-            </p>
-            <h2 className="text-base font-semibold text-foreground">
-              {isEditing ? "Edit project" : "New project"}
-            </h2>
-            <p className="text-xs text-muted-foreground leading-relaxed mt-0.5">
-              Group related chats together in one workspace.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex size-7 items-center justify-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
-          >
-            <X size={15} />
-          </button>
-        </div>
-
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="mt-3">
-          <div className="space-y-3.5">
+        <form onSubmit={handleSubmit}>
+          <DialogBody className="space-y-3.5 pb-4">
             <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1">
+              <label htmlFor="project-name" className="mb-1 block text-label font-medium text-foreground/80">
                 Name
               </label>
               <input
+                id="project-name"
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Kontinue AI"
-                className="w-full h-9 rounded-full border border-border bg-secondary/50 px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-purple-500/50 transition-colors"
-                autoFocus
+                className={fieldClassName("h-9")}
               />
             </div>
-
             <div>
-              <label className="block text-xs font-medium text-foreground/80 mb-1">
-                Description <span className="text-muted-foreground font-normal">(optional)</span>
+              <label htmlFor="project-description" className="mb-1 block text-label font-medium text-foreground/80">
+                Description <span className="font-normal text-muted-foreground">(optional)</span>
               </label>
               <textarea
+                id="project-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What is this project about?"
-                className="w-full h-16 rounded-2xl border border-border bg-secondary/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:border-purple-500/50 transition-colors resize-none"
+                className={fieldClassName("h-16 resize-none py-2")}
               />
             </div>
-          </div>
-
-          {/* Actions */}
-          <div className="mt-5 flex items-center justify-end gap-2.5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="kontinue-3d rounded-full px-3 py-1.5 text-xs font-medium text-foreground/80 cursor-pointer"
-            >
-              Cancel
-            </button>
+          </DialogBody>
+          <DialogFooter>
+            <PillButton onClick={onClose}>Cancel</PillButton>
             <button
               type="submit"
               disabled={!name.trim() || submitting}
-              className="kontinue-3d-primary rounded-full font-semibold px-3.5 py-1.5 text-xs disabled:opacity-30 cursor-pointer"
+              className="kontinue-3d-primary flex h-8 items-center rounded-full px-3.5 text-label font-medium disabled:opacity-40"
             >
               {isEditing ? "Save changes" : "Create project"}
             </button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 const LeftSidebarProjects = () => {
-  const { activeTab, projects, chats, draftProjectId, importFolder, removeFolder, newChat } =
+  const { activeTab, projects: unorderedProjects, chats, draftProjectId, importFolder, removeFolder, newChat } =
     useKodeWorkspace();
+  // Settings → General → Project order.
+  const { projectOrder } = useAppSettings();
+  const projects = useMemo(
+    () => orderProjects(unorderedProjects, chats, projectOrder),
+    [unorderedProjects, chats, projectOrder],
+  );
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [moving, setMoving] = useState<{ name: string; path: string; chatIds: string[] } | null>(null);
   const [visible, setVisible] = useState<Record<string, number>>({});
@@ -171,7 +147,7 @@ const LeftSidebarProjects = () => {
     setCollapsed(Object.fromEntries(projects.map((p) => [p.id, true])));
 
   const handleAddProject = () => {
-    if (activeTab === "home") {
+    if (activeTab !== "kode") {
       setProjectModalState({ open: true, project: null });
     } else {
       void importFolder();
@@ -180,10 +156,8 @@ const LeftSidebarProjects = () => {
 
   return (
     <section className="relative">
-      <div className="mb-1 flex items-center justify-between px-1">
-        <span className="text-[11.5px] font-medium text-muted-foreground">
-          Projects
-        </span>
+      <div className="mb-1 flex h-6 items-center justify-between pr-1 pl-2">
+        <h2 className="text-label font-medium text-muted-foreground">Projects</h2>
         <div className="flex items-center gap-0.5">
           {/* 1. Collapse All */}
           <button
@@ -191,9 +165,9 @@ const LeftSidebarProjects = () => {
             onClick={collapseAll}
             title="Collapse all"
             aria-label="Collapse all"
-            className="size-5 flex items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+            className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground"
           >
-            <ChevronsDownUp size={13} strokeWidth={1.25} />
+            <ChevronsDownUp size={14} strokeWidth={1.5} />
           </button>
 
           {/* 2. Options Dropdown */}
@@ -202,15 +176,15 @@ const LeftSidebarProjects = () => {
               <button
                 type="button"
                 aria-label="Project options"
-                className="size-5 flex items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:text-foreground transition-colors cursor-pointer"
+                className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground data-[state=open]:text-foreground"
               >
-                <MoreVertical size={13} strokeWidth={1.25} />
+                <MoreHorizontal size={14} strokeWidth={1.5} />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" sideOffset={4} className="w-48">
               <DropdownMenuItem onClick={handleAddProject}>
                 <Plus size={13.5} strokeWidth={1.25} />
-                <span>{activeTab === "home" ? "New project" : "Import folder"}</span>
+                <span>{activeTab !== "kode" ? "New project" : "Import folder"}</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={collapseAll}>
                 <ChevronsDownUp size={13.5} strokeWidth={1.25} />
@@ -223,28 +197,28 @@ const LeftSidebarProjects = () => {
           <button
             type="button"
             onClick={handleAddProject}
-            title={activeTab === "home" ? "New project" : "Import project folder"}
-            aria-label={activeTab === "home" ? "New project" : "Import project folder"}
-            className="size-5 flex items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors cursor-pointer"
+            title={activeTab !== "kode" ? "New project" : "Import project folder"}
+            aria-label={activeTab !== "kode" ? "New project" : "Import project folder"}
+            className="flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground"
           >
-            <Plus size={13} strokeWidth={1.25} />
+            <Plus size={14} strokeWidth={1.5} />
           </button>
         </div>
       </div>
 
       {projects.length === 0 ? (
-        <div className="flex items-center gap-2 px-1 py-1 text-[11.5px] text-muted-foreground">
-          <Pin size={12} strokeWidth={1.25} className="shrink-0 text-muted-foreground" />
-          {activeTab === "kode" ? (
-            <button type="button" onClick={handleAddProject} className="cursor-pointer text-left hover:text-foreground">
-              Add a project folder so Kode can read and change its files
-            </button>
-          ) : (
-            <span>Pin projects to keep them here</span>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={handleAddProject}
+          className="flex w-full items-start gap-2 rounded-[14px] px-2 py-1.5 text-left text-label leading-relaxed text-muted-foreground/80 transition-colors kontinue-hover hover:text-foreground"
+        >
+          <Plus size={14} strokeWidth={1.5} className="mt-px shrink-0" />
+          {activeTab === "kode"
+            ? "Add a project folder so Kode can read and change its files"
+            : "Create a project to group related chats"}
+        </button>
       ) : (
-        <div className="flex flex-col gap-0.5">
+        <div className="flex flex-col gap-px">
           {projects.map((project) => {
             const isCollapsed = collapsed[project.id] ?? false;
             const projectChats = chats
@@ -258,7 +232,7 @@ const LeftSidebarProjects = () => {
               <div key={project.id}>
                 <div
                   className={cn(
-                    "group/project flex items-center gap-1.5 rounded-full pr-1 text-[13px] text-foreground/80 transition-colors hover:bg-accent hover:text-foreground",
+                    "group/project flex h-[30px] items-center gap-1.5 rounded-full pr-1 text-body text-foreground/80 transition-colors kontinue-hover hover:text-foreground",
                     isDraftTarget && "bg-accent text-foreground",
                   )}
                 >
@@ -271,7 +245,7 @@ const LeftSidebarProjects = () => {
                         [project.id]: !isCollapsed,
                       }))
                     }
-                    className="flex shrink-0 cursor-pointer items-center py-1.5 pl-1.5"
+                    className="flex h-full shrink-0 items-center pl-2"
                   >
                     <ChevronRight
                       size={13}
@@ -286,10 +260,11 @@ const LeftSidebarProjects = () => {
                     // Clicking a project starts a new chat in it (like Claude Code / Codex).
                     onClick={() => newChat(project.id)}
                     title={`New chat in ${project.name}`}
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 py-1.5 text-left"
+                    className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
                   >
                     <Folder
-                      size={13}
+                      size={14}
+                      strokeWidth={1.5}
                       className="shrink-0"
                       style={{ color: project.hue }}
                     />
@@ -307,9 +282,9 @@ const LeftSidebarProjects = () => {
                     onClick={() => newChat(project.id)}
                     title="New chat"
                     aria-label="New chat in project"
-                    className="hidden shrink-0 size-5 flex items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground group-hover/project:flex transition-colors cursor-pointer"
+                    className="hidden size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground group-hover/project:flex"
                   >
-                    <SquarePen size={13} strokeWidth={1.25} />
+                    <SquarePen size={14} strokeWidth={1.5} />
                   </button>
 
                   {/* 3-Dot Dropdown Menu for Project Row */}
@@ -318,9 +293,9 @@ const LeftSidebarProjects = () => {
                       <button
                         type="button"
                         aria-label="Project actions"
-                        className="hidden shrink-0 size-5 flex items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground group-hover/project:flex data-[state=open]:flex data-[state=open]:bg-accent data-[state=open]:text-foreground transition-colors cursor-pointer"
+                        className="hidden size-6 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground group-hover/project:flex data-[state=open]:flex data-[state=open]:text-foreground"
                       >
-                        <MoreVertical size={13} strokeWidth={1.25} />
+                        <MoreHorizontal size={14} strokeWidth={1.5} />
                       </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" sideOffset={4} className="w-48">
@@ -353,16 +328,16 @@ const LeftSidebarProjects = () => {
                         onClick={() => removeFolder(project.id)}
                       >
                         <Trash2 size={13.5} strokeWidth={1.25} />
-                        <span>{activeTab === "home" ? "Remove project" : "Remove folder"}</span>
+                        <span>{activeTab !== "kode" ? "Remove project" : "Remove folder"}</span>
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
 
                 {!isCollapsed && (
-                  <div className="ml-[1.45rem] flex flex-col gap-0.5 border-l border-border pl-1.5">
+                  <div className="ml-[15px] flex flex-col gap-px border-l border-border pl-1.5">
                     {projectChats.length === 0 ? (
-                      <p className="px-2 py-1.5 text-[11.5px] text-foreground/30">
+                      <p className="px-2.5 py-1.5 text-label text-muted-foreground/70">
                         No chats yet
                       </p>
                     ) : (
@@ -379,7 +354,7 @@ const LeftSidebarProjects = () => {
                                 [project.id]: limit + PAGE_SIZE,
                               }))
                             }
-                            className="px-2 py-1 text-left text-[12px] text-foreground/35 hover:text-foreground/70"
+                            className="h-7 rounded-full px-2.5 text-left text-label text-muted-foreground transition-colors hover:text-foreground"
                           >
                             Show more
                           </button>

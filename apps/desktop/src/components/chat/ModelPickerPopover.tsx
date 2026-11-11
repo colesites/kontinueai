@@ -26,6 +26,8 @@ interface ModelPickerProps {
   onOpenSettings?: () => void;
   /** Kode surface: show plan locks, usage multipliers and Fast mode. */
   kodePlan?: KodePlan;
+  side?: "top" | "bottom";
+  align?: "start" | "end";
 }
 
 export function ModelPickerPopover({
@@ -38,6 +40,8 @@ export function ModelPickerPopover({
   onOpenChange: setControlledOpen,
   onOpenSettings,
   kodePlan,
+  side = "top",
+  align = "start",
 }: ModelPickerProps) {
   const { kodeFastMode } = useAppSettings();
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
@@ -47,7 +51,7 @@ export function ModelPickerPopover({
 
   const modelList = useMemo(() => {
     const base = models ?? KODE_MODELS;
-    return base.filter((m) => {
+    return sortByProvider(base).filter((m) => {
       // Filter out realtime / live voice models in desktop app
       if ("modality" in m && m.modality === "realtime") return false;
       const lower = m.id.toLowerCase();
@@ -82,7 +86,9 @@ export function ModelPickerPopover({
   };
 
   const providers = useMemo(() => {
-    return Array.from(new Set(modelList.map((m) => m.provider)));
+    // Ranked on their own: your agents' models list last, but their icons
+    // (Claude Code shares Anthropic's, Cursor gets its own) take their lab's place.
+    return Array.from(new Set(modelList.map((m) => m.provider))).sort((a, b) => labRank(a) - labRank(b));
   }, [modelList]);
 
   const filteredModels = useMemo(() => {
@@ -147,7 +153,10 @@ export function ModelPickerPopover({
                               : "Other Providers";
       pushGroup(map, groupName, m);
     }
-    return Array.from(map.entries());
+    const entries = Array.from(map.entries());
+    // Kode groups are tiers: always lightest to heaviest, whichever provider comes first.
+    if (kodePlan) entries.sort(([a], [b]) => tierRank(a) - tierRank(b));
+    return entries;
   }, [filteredModels, kodePlan]);
 
   const selectedModel = useMemo(() => modelList.find((m) => m.id === selectedModelId) ?? modelList[0], [modelList, selectedModelId]);
@@ -181,7 +190,7 @@ export function ModelPickerPopover({
         )}
       </PopoverTrigger>
 
-      <PopoverContent align="start" side="top" sideOffset={8} className="w-[380px] p-0 liquid-glass-dropdown text-foreground overflow-hidden select-none">
+      <PopoverContent align={align} side={side} sideOffset={8} className="w-[380px] p-0 liquid-glass-dropdown text-foreground overflow-hidden select-none">
         <div className="flex h-[420px] w-full flex-col">
           {/* Search */}
           <div className="px-2.5 pt-2.5">
@@ -233,7 +242,7 @@ export function ModelPickerPopover({
               ) : (
                 groups.map(([groupName, groupModels]) => (
                   <div key={groupName}>
-                    <p className="px-3 pt-1.5 pb-1 text-[10.5px] font-medium text-muted-foreground/70">{groupName}</p>
+                    <p className="px-3 pt-1.5 pb-1 text-caption font-medium text-muted-foreground/70">{groupName}</p>
                     {groupModels.map((model) => {
                       const isSelected = selectedModelId === model.id;
                       const isFav = favorites.includes(model.id);
@@ -266,7 +275,7 @@ export function ModelPickerPopover({
                               }}
                               className={cn(
                                 "group flex cursor-pointer items-center gap-2.5 rounded-full px-3 py-1.5 transition-colors",
-                                isSelected ? "kontinue-menu-active" : "hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+                                isSelected ? "kontinue-menu-active" : "kontinue-hover",
                                 locked && "opacity-55",
                               )}
                             >
@@ -278,13 +287,13 @@ export function ModelPickerPopover({
                                 <div className="flex items-center gap-1.5">
                                   <span className="truncate text-xs font-medium text-foreground">{model.name}</span>
                                   {cliProvider && versionIssue ? (
-                                    <span title={versionIssue} className="rounded-full bg-amber-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-amber-600 dark:text-amber-400">
+                                    <span title={versionIssue} className="rounded-full bg-amber-500/15 px-1.5 text-micro font-semibold uppercase text-amber-600 dark:text-amber-400">
                                       Update CLI
                                     </span>
                                   ) : cliProvider && cliNeedsLogin(cliStatuses, cliProvider.id) ? (
                                     <span
                                       title={loginCommand ? `Sign in from Settings → Providers, or run "${loginCommand}" in a terminal.` : "Sign in from Settings → Providers."}
-                                      className="rounded-full bg-amber-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-amber-600 dark:text-amber-400"
+                                      className="rounded-full bg-amber-500/15 px-1.5 text-micro font-semibold uppercase text-amber-600 dark:text-amber-400"
                                     >
                                       Sign in
                                     </span>
@@ -292,22 +301,22 @@ export function ModelPickerPopover({
                                     cliProvider && (
                                       <span
                                         title={`Runs through ${cliProvider.label} on this computer. ${cliPlanLabel(cliProvider)}, not counted in Kode usage.`}
-                                        className="rounded-full bg-emerald-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-emerald-600 dark:text-emerald-400"
+                                        className="rounded-full bg-emerald-500/15 px-1.5 text-micro font-semibold uppercase text-emerald-600 dark:text-emerald-400"
                                       >
                                         Your plan
                                       </span>
                                     )
                                   )}
-                                  {isByok && <span className="rounded-full bg-emerald-500/15 px-1.5 text-[8.5px] font-semibold uppercase text-emerald-600 dark:text-emerald-400">BYOK</span>}
+                                  {isByok && <span className="rounded-full bg-emerald-500/15 px-1.5 text-micro font-semibold uppercase text-emerald-600 dark:text-emerald-400">BYOK</span>}
                                   {locked && kodeModel ? (
-                                    <span className="flex items-center gap-0.5 rounded-full border border-purple-500/30 px-1.5 text-[9px] font-semibold text-purple-500 dark:text-purple-300">
+                                    <span className="flex items-center gap-0.5 rounded-full border border-purple-500/30 px-1.5 text-micro font-semibold text-purple-500 dark:text-purple-300">
                                       <Lock size={8} />
                                       {PLAN_LABEL[minimumKodePlan(kodeModel)]}
                                     </span>
                                   ) : null}
-                                  {access === "credits" && !isByok ? <span className="rounded-full border border-amber-500/30 px-1.5 text-[9px] font-semibold text-amber-500">Extra usage</span> : null}
+                                  {access === "credits" && !isByok ? <span className="rounded-full border border-amber-500/30 px-1.5 text-micro font-semibold text-amber-500">Extra usage</span> : null}
                                 </div>
-                                <p className="truncate text-[10.5px] leading-tight text-muted-foreground">{model.description || `${model.provider} model`}</p>
+                                <p className="truncate text-caption leading-tight text-muted-foreground">{model.description || `${model.provider} model`}</p>
                               </div>
                               <button
                                 type="button"
@@ -321,7 +330,7 @@ export function ModelPickerPopover({
                                 <Star size={11} className={isFav ? "fill-purple-500" : ""} />
                               </button>
                               {multiplier !== null ? (
-                                <span title="Usage per request compared with Kode 1.0" className="shrink-0 font-mono text-[10px] text-muted-foreground/70">
+                                <span title="Usage per request compared with Kode 1.0" className="shrink-0 font-mono text-micro text-muted-foreground/70">
                                   {formatMultiplier(multiplier)}
                                 </span>
                               ) : null}
@@ -340,7 +349,7 @@ export function ModelPickerPopover({
                                 <ProviderIcon provider={model.provider} className="size-3.5 shrink-0" />
                                 <p className="truncate text-xs font-semibold">{model.name}</p>
                               </div>
-                              <p className="mt-1.5 text-[11.5px] leading-relaxed text-muted-foreground">{model.description || `${model.provider} model`}</p>
+                              <p className="mt-1.5 text-label leading-relaxed text-muted-foreground">{model.description || `${model.provider} model`}</p>
                             </TooltipPrimitive.Content>
                           </TooltipPrimitive.Portal>
                         </TooltipPrimitive.Root>
@@ -356,8 +365,8 @@ export function ModelPickerPopover({
             <div className="flex shrink-0 items-center gap-3 border-t border-border px-4 py-2.5">
               <Zap size={13} className={cn("shrink-0", fastAvailable && kodeFastMode ? "text-amber-400" : "text-muted-foreground")} />
               <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-medium text-foreground">Fast mode</p>
-                <p className="truncate text-[10.5px] text-muted-foreground">
+                <p className="text-label font-medium text-foreground">Fast mode</p>
+                <p className="truncate text-caption text-muted-foreground">
                   {kodePlan !== "pro" && kodePlan !== "max"
                     ? "Available on Pro and Max."
                     : selectedKode?.fast
@@ -376,7 +385,7 @@ export function ModelPickerPopover({
                 setOpen(false);
                 onOpenSettings();
               }}
-              className="flex shrink-0 cursor-pointer items-center justify-between border-t border-border px-4 py-2.5 text-[11px] text-muted-foreground transition-colors hover:text-foreground"
+              className="flex shrink-0 cursor-pointer items-center justify-between border-t border-border px-4 py-2.5 text-caption text-muted-foreground transition-colors hover:text-foreground"
             >
               <span>Use your own API keys</span>
               <ExternalLink size={11} />
@@ -391,14 +400,31 @@ export function ModelPickerPopover({
 export function ModelSelectorLogo({ provider, className }: { provider?: string; className?: string }) {
   const p = (provider || "kontinue").toLowerCase();
   const [imgFailed, setImgFailed] = useState(false);
-  const src = p === "kontinue" ? "/kontinueai-icon.png" : `https://models.dev/logos/${p}.svg`;
+  // A full URL is an icon from elsewhere (ACP Registry agents).
+  const isUrl = /^https?:\/\//.test(provider ?? "");
+  const src = isUrl ? (provider as string) : p === "kontinue" ? "/kontinueai-icon.png" : `https://models.dev/logos/${p}.svg`;
+
+  // Claude models show the Claude mark rather than Anthropic's wordmark.
+  if (p === "anthropic") {
+    return <img src="/claude-ai.svg" alt="Claude logo" className={cn("size-3.5 object-contain", className)} />;
+  }
+
+  // Logos we ship ourselves, with a light and a dark version.
+  if (p === "cursor") {
+    return (
+      <>
+        <img src="/logos/cursor-light.svg" alt="Cursor logo" className={cn("size-3.5 object-contain dark:hidden", className)} />
+        <img src="/logos/cursor-dark.svg" alt="" aria-hidden className={cn("hidden size-3.5 object-contain dark:block", className)} />
+      </>
+    );
+  }
 
   if (!imgFailed) {
     return <img src={src} alt={`${p} logo`} onError={() => setImgFailed(true)} className={cn("size-3.5 object-contain", p === "kontinue" ? "brightness-0 dark:invert" : "dark:invert", className)} />;
   }
 
   return (
-    <span className={cn("grid size-3.5 place-items-center rounded bg-purple-500/20 font-semibold text-[8px] text-purple-300 ring-1 ring-purple-500/30", className)}>{p.slice(0, 2).toUpperCase()}</span>
+    <span className={cn("grid size-3.5 place-items-center rounded bg-purple-500/20 font-semibold text-micro text-purple-300 ring-1 ring-purple-500/30", className)}>{isUrl ? "AI" : p.slice(0, 2).toUpperCase()}</span>
   );
 }
 
@@ -410,6 +436,52 @@ const TIER_LABEL: Record<KodeModelOption["tier"], string> = {
   frontier: "Frontier",
   ultra: "Ultra",
 };
+
+/** Group order for Kode tiers; groups that aren't tiers (your own agents) come after. */
+function tierRank(label: string) {
+  const i = Object.values(TIER_LABEL).indexOf(label);
+  return i === -1 ? 100 : i;
+}
+
+/**
+ * Leading labs first: our own models, then Anthropic, OpenAI, Google, xAI,
+ * then the open-weight labs. Sets the order of the filter chips, the provider
+ * groups (Kontinue) and the models inside each tier (Kode).
+ */
+const PROVIDER_RANK = [
+  "kontinue",
+  "anthropic",
+  "openai",
+  "google",
+  "cursor",
+  "xai",
+  "deepseek",
+  "moonshotai",
+  "zai",
+  "alibaba",
+  "minimax",
+  "mistral",
+  "perplexity",
+];
+
+function labRank(provider: string) {
+  const i = PROVIDER_RANK.indexOf(provider.toLowerCase());
+  return i === -1 ? PROVIDER_RANK.length : i;
+}
+
+function providerRank(model: AnyModelOption) {
+  // Models from the user's own agents stay after ours, in the order they were added.
+  if (parseCliModelId(model.id)) return 1000;
+  return labRank(model.provider);
+}
+
+/** Stable: models keep their own order within a provider. */
+function sortByProvider<T extends AnyModelOption>(list: readonly T[]): T[] {
+  return list
+    .map((model, index) => ({ model, index, rank: providerRank(model) }))
+    .sort((a, b) => a.rank - b.rank || a.index - b.index)
+    .map((item) => item.model);
+}
 
 const PLAN_LABEL: Record<KodePlan, string> = {
   free: "Free",
@@ -443,7 +515,7 @@ function FilterChip({ active, onClick, title, icon, children }: { active: boolea
       className={cn(
         "flex h-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-xs transition-colors",
         icon ? "w-7" : "px-3",
-        active ? "kontinue-menu-active font-medium" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+        active ? "kontinue-menu-active font-medium" : "text-muted-foreground kontinue-hover hover:text-foreground",
         icon && !active && "opacity-60 hover:opacity-100",
       )}
     >

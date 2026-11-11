@@ -9,6 +9,7 @@ import {
   FolderOpen,
   Loader2,
   Package,
+  X,
   Plus,
   PlugZap,
   RefreshCw,
@@ -44,6 +45,10 @@ import {
   updatePlugin,
   setPluginServerEnabled,
   usePlugins,
+  useMarketplaces,
+  isKnownMarketplace,
+  removeMarketplace,
+  saveMarketplace,
   type InstalledPlugin,
   type SourceListing,
   type SourcePlugin,
@@ -57,7 +62,6 @@ import { SkillsSection } from "./SkillsSection";
 // Customize page. Plugins use the Claude Code plugin format.
 
 const WEB_APP = "https://chat.kontinueai.com";
-const OFFICIAL_MARKETPLACE = "anthropics/claude-plugins-official";
 
 export type CustomizeTab = "connectors" | "skills" | "plugins";
 
@@ -97,8 +101,8 @@ export function CustomizeSection({ initialTab = "connectors" }: { initialTab?: C
             type="button"
             onClick={() => setTab(id)}
             className={cn(
-              "h-8 cursor-pointer rounded-full px-3.5 text-[12.5px] capitalize transition-colors",
-              tab === id ? "kontinue-menu-active font-medium" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+              "h-8 cursor-pointer rounded-full px-3.5 text-body capitalize transition-colors",
+              tab === id ? "kontinue-menu-active font-medium" : "text-muted-foreground kontinue-hover hover:text-foreground",
             )}
           >
             {id}
@@ -118,10 +122,10 @@ export function CustomizeSection({ initialTab = "connectors" }: { initialTab?: C
 
 function TypeLabel({ children, badge }: { children: ReactNode; badge?: string }) {
   return (
-    <span className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+    <span className="flex items-center gap-1.5 text-label text-muted-foreground">
       {children}
       {badge ? (
-        <span className="rounded-full border border-black/10 px-1.5 text-[9.5px] dark:border-white/15">{badge}</span>
+        <span className="rounded-full border border-black/10 px-1.5 text-micro dark:border-white/15">{badge}</span>
       ) : null}
     </span>
   );
@@ -145,8 +149,8 @@ function ConnectorRow({
       <div className="flex min-w-0 items-center gap-3">
         <div className="kontinue-3d flex size-8 shrink-0 items-center justify-center rounded-full">{icon}</div>
         <div className="min-w-0">
-          <p className="truncate text-[12.5px] font-medium text-foreground/90">{name}</p>
-          {detail ? <p className="truncate text-[11px] text-muted-foreground">{detail}</p> : null}
+          <p className="truncate text-body font-medium text-foreground/90">{name}</p>
+          {detail ? <p className="truncate text-caption text-muted-foreground">{detail}</p> : null}
         </div>
       </div>
       <div>{type}</div>
@@ -210,12 +214,12 @@ function ServerStatus({
           type="button"
           disabled={busy}
           onClick={() => void signIn()}
-          className="kontinue-3d flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-[11.5px] disabled:opacity-60"
+          className="kontinue-3d flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-label disabled:opacity-60"
         >
           {busy ? <Loader2 size={11} className="animate-spin" /> : null}
           {busy ? "Waiting…" : "Sign in"}
         </button>
-        {error ? <span className="max-w-40 text-right text-[10px] text-rose-400">{error}</span> : null}
+        {error ? <span className="max-w-40 text-right text-micro text-rose-400">{error}</span> : null}
       </span>
     );
   }
@@ -225,7 +229,7 @@ function ServerStatus({
         <button
           type="button"
           onClick={() => void mcpSignOut(config.url!).then(() => setState("needs-sign-in"))}
-          className="cursor-pointer text-[10.5px] text-muted-foreground hover:text-foreground"
+          className="cursor-pointer text-caption text-muted-foreground hover:text-foreground"
         >
           Sign out
         </button>
@@ -253,26 +257,26 @@ function ConnectorsTab({ onOpenPlugins }: { onOpenPlugins: () => void }) {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between px-1">
-        <p className="text-[11.5px] text-muted-foreground">
+        <p className="text-label text-muted-foreground">
           Apps and servers Kontinue and Kode can read from and act on.
         </p>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1 rounded-full px-3 text-[12px] font-medium"
+              className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1 rounded-full px-3 text-label font-medium"
             >
               <Plus size={13} /> Add <ChevronDown size={12} />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" sideOffset={6} className="w-56 p-1.5">
-            <DropdownMenuItem onClick={() => openExternal(`${WEB_APP}/settings/connectors`)} className="gap-2 px-3 py-1.5 text-[12.5px]">
+            <DropdownMenuItem onClick={() => openExternal(`${WEB_APP}/settings/connectors`)} className="gap-2 px-3 py-1.5 text-body">
               <ExternalLink size={13} /> Connect an app
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setManageMcp(true)} className="gap-2 px-3 py-1.5 text-[12.5px]">
+            <DropdownMenuItem onClick={() => setManageMcp(true)} className="gap-2 px-3 py-1.5 text-body">
               <PlugZap size={13} /> Custom MCP server
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onOpenPlugins} className="gap-2 px-3 py-1.5 text-[12.5px]">
+            <DropdownMenuItem onClick={onOpenPlugins} className="gap-2 px-3 py-1.5 text-body">
               <Package size={13} /> From a plugin
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -280,7 +284,7 @@ function ConnectorsTab({ onOpenPlugins }: { onOpenPlugins: () => void }) {
       </div>
 
       <div className="liquid-glass-dropdown mb-6 divide-y divide-black/[0.05] !rounded-[20px] dark:divide-white/[0.05]">
-        <div className="grid grid-cols-[minmax(0,1fr)_130px_110px] gap-3 px-4 py-2 text-[11px] text-muted-foreground">
+        <div className="grid grid-cols-[minmax(0,1fr)_130px_110px] gap-3 px-4 py-2 text-caption text-muted-foreground">
           <span>Connector</span>
           <span>Type</span>
           <span className="text-right">Status</span>
@@ -305,7 +309,7 @@ function ConnectorsTab({ onOpenPlugins }: { onOpenPlugins: () => void }) {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-[11.5px] text-emerald-500 hover:bg-black/[0.04] dark:hover:bg-white/[0.05]"
+                      className="flex cursor-pointer items-center gap-1 rounded-full px-2 py-1 text-label text-emerald-500 kontinue-hover"
                     >
                       <Check size={13} /> Connected <ChevronDown size={11} className="text-muted-foreground" />
                     </button>
@@ -313,7 +317,7 @@ function ConnectorsTab({ onOpenPlugins }: { onOpenPlugins: () => void }) {
                   <DropdownMenuContent align="end" sideOffset={6} className="w-48 p-1.5">
                     <DropdownMenuItem
                       onClick={() => void disconnect({ provider: conn.provider })}
-                      className="px-3 py-1.5 text-[12px] text-rose-400"
+                      className="px-3 py-1.5 text-label text-rose-400"
                     >
                       Disconnect {conn.name}
                     </DropdownMenuItem>
@@ -323,7 +327,7 @@ function ConnectorsTab({ onOpenPlugins }: { onOpenPlugins: () => void }) {
                 <button
                   type="button"
                   onClick={() => openExternal(`${WEB_APP}/api/connectors/${conn.provider}/start`)}
-                  className="kontinue-3d h-7 cursor-pointer rounded-full px-3 text-[11.5px]"
+                  className="kontinue-3d h-7 cursor-pointer rounded-full px-3 text-label"
                 >
                   Connect
                 </button>
@@ -355,7 +359,7 @@ function ConnectorsTab({ onOpenPlugins }: { onOpenPlugins: () => void }) {
         ))}
       </div>
 
-      <p className="mb-3 px-1 text-[11px] leading-relaxed text-muted-foreground">
+      <p className="mb-3 px-1 text-caption leading-relaxed text-muted-foreground">
         Web apps are signed in on chat.kontinueai.com and work in the Kontinue chat and Kode. Desktop and remote
         servers run from this Mac and give Kode extra tools.
       </p>
@@ -363,7 +367,7 @@ function ConnectorsTab({ onOpenPlugins }: { onOpenPlugins: () => void }) {
       <button
         type="button"
         onClick={() => setManageMcp((v) => !v)}
-        className="mb-3 flex cursor-pointer items-center gap-1.5 px-1 text-[12px] font-medium text-purple-500 hover:underline"
+        className="mb-3 flex cursor-pointer items-center gap-1.5 px-1 text-label font-medium text-purple-500 hover:underline"
       >
         <ChevronDown size={13} className={cn("transition-transform", !manageMcp && "-rotate-90")} />
         Add or edit MCP servers
@@ -405,7 +409,10 @@ function hookCommands(plugin: InstalledPlugin): { event: string; command: string
 
 function PluginsTab() {
   const plugins = usePlugins();
+  const marketplaces = useMarketplaces();
   const [source, setSource] = useState("");
+  /** Source being opened, for its spinner. */
+  const [opening, setOpening] = useState<string | null>(null);
   const [listing, setListing] = useState<{ listing: SourceListing; source: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -421,6 +428,7 @@ function PluginsTab() {
     const value = from.trim();
     if (!value) return;
     setBusy("inspect");
+    setOpening(value);
     setError(null);
     closeListing();
     try {
@@ -436,6 +444,7 @@ function PluginsTab() {
       setError(errorText(err));
     } finally {
       setBusy(null);
+      setOpening(null);
     }
   };
 
@@ -474,7 +483,7 @@ function PluginsTab() {
 
   return (
     <div>
-      <p className="mb-3 px-1 text-[11.5px] leading-relaxed text-muted-foreground">
+      <p className="mb-3 px-1 text-label leading-relaxed text-muted-foreground">
         Plugins bundle commands, skills and connectors. They use the Claude Code plugin format, so plugins made for
         Claude Code install here as they are.
       </p>
@@ -491,7 +500,7 @@ function PluginsTab() {
           onChange={(e) => setSource(e.target.value)}
           placeholder="GitHub owner/repo, git URL or folder"
           spellCheck={false}
-          className="kontinue-3d h-9 min-w-0 flex-1 rounded-full px-4 text-[12.5px] outline-none placeholder:text-muted-foreground/60"
+          className="kontinue-3d h-9 min-w-0 flex-1 rounded-full px-4 text-body outline-none placeholder:text-muted-foreground/60"
         />
         <button
           type="button"
@@ -511,31 +520,72 @@ function PluginsTab() {
         <button
           type="submit"
           disabled={!source.trim() || busy !== null}
-          className="kontinue-3d-primary flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-4 text-[12.5px] font-medium disabled:opacity-50"
+          className="kontinue-3d-primary flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-4 text-body font-medium disabled:opacity-50"
         >
           {busy === "inspect" ? <Loader2 size={13} className="animate-spin" /> : null}
           Install
         </button>
       </form>
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() => void look(OFFICIAL_MARKETPLACE)}
-        className="mb-5 cursor-pointer px-1 text-[12px] font-medium text-purple-500 hover:underline disabled:opacity-50"
-      >
-        Browse the official Claude plugin marketplace
-      </button>
-      {error ? <p className="mb-4 px-1 text-[12px] text-rose-400">{error}</p> : null}
+      <div className="mt-4 mb-5">
+        <p className="mb-2 px-1 text-caption font-medium uppercase tracking-wide text-muted-foreground">Marketplaces</p>
+        <div className="flex flex-wrap gap-1.5">
+          {marketplaces.map((market) => {
+            const loading = opening !== null && opening.toLowerCase() === market.source.toLowerCase();
+            const open = listing?.source.toLowerCase() === market.source.toLowerCase();
+            return (
+              <span key={market.source} className="group/market relative">
+                <button
+                  type="button"
+                  title={market.source}
+                  disabled={busy !== null}
+                  onClick={() => void look(market.source)}
+                  className={cn(
+                    "flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label disabled:cursor-default",
+                    open ? "kontinue-capsule text-foreground" : "kontinue-3d text-foreground/80 hover:text-foreground",
+                    busy !== null && !loading && "opacity-50",
+                    !market.builtIn && "pr-7",
+                  )}
+                >
+                  {loading ? <Loader2 size={11} className="animate-spin" /> : <Package size={11} className="text-purple-400" />}
+                  {market.label}
+                </button>
+                {!market.builtIn ? (
+                  <button
+                    type="button"
+                    title="Remove from the list"
+                    onClick={() => removeMarketplace(market.source)}
+                    className="kontinue-hover absolute top-1/2 right-1 flex size-5 -translate-y-1/2 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+                  >
+                    <X size={10} />
+                  </button>
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      {error ? <p className="mb-4 px-1 text-label text-rose-400">{error}</p> : null}
 
       {listing ? (
         <section className="mb-6">
           <div className="mb-2 flex items-center justify-between px-1">
-            <h2 className="text-[11.5px] font-medium text-muted-foreground">
+            <h2 className="text-label font-medium text-muted-foreground">
               {listing.listing.marketplace ?? listing.source} · {listing.listing.plugins.length} plugins
             </h2>
-            <button type="button" onClick={closeListing} className="cursor-pointer text-[11.5px] text-muted-foreground hover:text-foreground">
-              Close
-            </button>
+            <span className="flex items-center gap-3">
+              {listing.listing.marketplace && !isKnownMarketplace(listing.source) ? (
+                <button
+                  type="button"
+                  onClick={() => saveMarketplace(listing.source, listing.listing.marketplace ?? listing.source)}
+                  className="cursor-pointer text-label font-medium text-purple-500 hover:underline"
+                >
+                  Save marketplace
+                </button>
+              ) : null}
+              <button type="button" onClick={closeListing} className="cursor-pointer text-label text-muted-foreground hover:text-foreground">
+                Close
+              </button>
+            </span>
           </div>
           <div className="mb-2 flex items-center gap-2 px-1">
             <Search size={13} className="text-muted-foreground" />
@@ -543,7 +593,7 @@ function PluginsTab() {
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Search plugins"
-              className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground/60"
+              className="w-full bg-transparent text-body outline-none placeholder:text-muted-foreground/60"
             />
           </div>
           <div className="liquid-glass-dropdown max-h-96 divide-y divide-black/[0.05] overflow-y-auto !rounded-[20px] dark:divide-white/[0.05]">
@@ -551,13 +601,13 @@ function PluginsTab() {
               <div key={plugin.name} className="flex items-center gap-3 px-4 py-2.5">
                 <Package size={14} className="shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12.5px] font-medium">{plugin.name}</p>
+                  <p className="truncate text-body font-medium">{plugin.name}</p>
                   {plugin.description ? (
-                    <p className="line-clamp-2 text-[11px] text-muted-foreground">{plugin.description}</p>
+                    <p className="line-clamp-2 text-caption text-muted-foreground">{plugin.description}</p>
                   ) : null}
                 </div>
                 {installedNames.has(plugin.name) ? (
-                  <span className="flex items-center gap-1 text-[11.5px] text-emerald-500">
+                  <span className="flex items-center gap-1 text-label text-emerald-500">
                     <Check size={12} /> Installed
                   </span>
                 ) : (
@@ -565,7 +615,7 @@ function PluginsTab() {
                     type="button"
                     disabled={busy !== null}
                     onClick={() => void installFromListing(plugin)}
-                    className="kontinue-3d flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-full px-3 text-[11.5px] disabled:opacity-50"
+                    className="kontinue-3d flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-full px-3 text-label disabled:opacity-50"
                   >
                     {busy === plugin.name ? <Loader2 size={11} className="animate-spin" /> : null}
                     Install
@@ -573,14 +623,14 @@ function PluginsTab() {
                 )}
               </div>
             ))}
-            {shown.length === 0 ? <p className="px-4 py-3 text-[12px] text-muted-foreground">No plugins match.</p> : null}
+            {shown.length === 0 ? <p className="px-4 py-3 text-label text-muted-foreground">No plugins match.</p> : null}
           </div>
         </section>
       ) : null}
 
-      <h2 className="mb-2 px-1 text-[11.5px] font-medium text-muted-foreground">Installed</h2>
+      <h2 className="mb-2 px-1 text-label font-medium text-muted-foreground">Installed</h2>
       {plugins.length === 0 ? (
-        <p className="px-1 text-[12px] text-muted-foreground">No plugins yet.</p>
+        <p className="px-1 text-label text-muted-foreground">No plugins yet.</p>
       ) : (
         <div className="liquid-glass-dropdown divide-y divide-black/[0.05] !rounded-[20px] dark:divide-white/[0.05]">
           {plugins.map((plugin) => (
@@ -633,24 +683,24 @@ function PluginCard({ plugin }: { plugin: InstalledPlugin }) {
           <Package size={14} className="text-purple-500" />
         </div>
         <div className="min-w-0 flex-1">
-          <p className="text-[12.5px] font-medium">
+          <p className="text-body font-medium">
             {plugin.name}
-            {plugin.version ? <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">v{plugin.version}</span> : null}
+            {plugin.version ? <span className="ml-1.5 text-caption font-normal text-muted-foreground">v{plugin.version}</span> : null}
           </p>
-          {plugin.description ? <p className="text-[11.5px] text-muted-foreground">{plugin.description}</p> : null}
-          <p className="mt-1 text-[11px] text-foreground/70">{pluginSummary(plugin)}</p>
+          {plugin.description ? <p className="text-label text-muted-foreground">{plugin.description}</p> : null}
+          <p className="mt-1 text-caption text-foreground/70">{pluginSummary(plugin)}</p>
           {plugin.agents.length ? (
-            <p className="mt-0.5 truncate text-[10.5px] text-muted-foreground">
+            <p className="mt-0.5 truncate text-caption text-muted-foreground">
               Agents Kode can hand work to: {plugin.agents.map((a) => a.name).join(", ")}
             </p>
           ) : null}
-          {error ? <p className="mt-1 text-[11px] text-rose-400">{error}</p> : null}
+          {error ? <p className="mt-1 text-caption text-rose-400">{error}</p> : null}
         </div>
         <button
           type="button"
           disabled={busy !== null}
           onClick={() => void update()}
-          className="kontinue-3d flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2.5 text-[11px] disabled:opacity-50"
+          className="kontinue-3d flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-full px-2.5 text-caption disabled:opacity-50"
         >
           {busy ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
           Update
@@ -670,8 +720,8 @@ function PluginCard({ plugin }: { plugin: InstalledPlugin }) {
         <div className="mt-2.5 ml-11 rounded-[14px] bg-black/[0.03] px-3 py-2.5 dark:bg-white/[0.03]">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
-              <p className="text-[11.5px] font-medium">Allow hooks</p>
-              <p className="text-[10.5px] text-muted-foreground">
+              <p className="text-label font-medium">Allow hooks</p>
+              <p className="text-caption text-muted-foreground">
                 Hooks run commands on this Mac while Kode works. Only allow plugins you trust.
               </p>
             </div>
@@ -682,11 +732,11 @@ function PluginCard({ plugin }: { plugin: InstalledPlugin }) {
               onCheckedChange={(on) => void toggleHooks(on)}
             />
           </div>
-          {hookStatus ? <p className="mt-1 text-[10.5px] text-muted-foreground">{hookStatus}</p> : null}
+          {hookStatus ? <p className="mt-1 text-caption text-muted-foreground">{hookStatus}</p> : null}
           <button
             type="button"
             onClick={() => setShowHooks((v) => !v)}
-            className="mt-1.5 flex cursor-pointer items-center gap-1 text-[10.5px] text-purple-500 hover:underline"
+            className="mt-1.5 flex cursor-pointer items-center gap-1 text-caption text-purple-500 hover:underline"
           >
             <ChevronDown size={11} className={cn("transition-transform", !showHooks && "-rotate-90")} />
             {showHooks ? "Hide" : "Show"} the {hooks.length} command{hooks.length === 1 ? "" : "s"}
@@ -694,7 +744,7 @@ function PluginCard({ plugin }: { plugin: InstalledPlugin }) {
           {showHooks ? (
             <ul className="mt-1.5 space-y-1">
               {hooks.map((hook, i) => (
-                <li key={i} className="font-mono text-[10.5px] break-all text-muted-foreground">
+                <li key={i} className="font-mono text-caption break-all text-muted-foreground">
                   <span className="text-foreground/70">{hook.event}</span> · {hook.command}
                 </li>
               ))}

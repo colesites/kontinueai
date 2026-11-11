@@ -1,3 +1,4 @@
+import { DismissOnEscape } from "@/components/ui/dismiss-on-escape";
 // Moving a project to another machine: the sender dialog (project menu →
 // "Move to another machine") and the receiving card on the Kode home screen.
 
@@ -56,23 +57,24 @@ export function MoveProjectDialog({ project, chatIds, onClose }: { project: { na
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-md dark:bg-black/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center kontinue-scrim p-4" role="dialog" aria-modal="true">
+      <DismissOnEscape onClose={onClose} />
       <button type="button" aria-label="Close" className="absolute inset-0 cursor-default" onClick={onClose} />
       <div className="liquid-glass-dropdown relative z-10 w-full max-w-[440px] space-y-3 p-5 text-foreground">
         <div className="flex items-center justify-between">
-          <h2 className="text-[14px] font-semibold">Move {project.name} to another machine</h2>
+          <h2 className="text-lead font-semibold">Move {project.name} to another machine</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="flex size-7 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
             <X size={14} />
           </button>
         </div>
         {sent ? (
-          <p className="text-[12.5px] text-foreground/80">Sent. Open Kode on the other machine: the Kode home screen offers to set {project.name} up there, with its {chatIds.length} chat{chatIds.length === 1 ? "" : "s"}.</p>
+          <p className="text-body text-foreground/80">Sent. Open Kode on the other machine: the Kode home screen offers to set {project.name} up there, with its {chatIds.length} chat{chatIds.length === 1 ? "" : "s"}.</p>
         ) : !bundle && !error ? (
-          <p className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <p className="flex items-center gap-2 text-label text-muted-foreground">
             <Loader2 size={13} className="animate-spin" /> Checking the project…
           </p>
         ) : bundle ? (
-          <ul className="space-y-1 text-[12px] text-foreground/80">
+          <ul className="space-y-1 text-label text-foreground/80">
             <li>Branch: {bundle.branch ?? "detached"}{bundle.remoteUrl ? "" : " · no git remote"}</li>
             <li>Uncommitted changes: {bundle.changedFiles.length === 0 ? "none" : `${bundle.changedFiles.length} file${bundle.changedFiles.length === 1 ? "" : "s"} (sent as a patch; ignored files stay here)`}</li>
             <li>Chats: {chatIds.length}</li>
@@ -80,13 +82,13 @@ export function MoveProjectDialog({ project, chatIds, onClose }: { project: { na
             {bundle.remoteUrl && !bundle.headPushed ? <li className="text-amber-600 dark:text-amber-400">Your latest commits aren't pushed. Push them first, or the other machine gets the branch as it is on the remote.</li> : null}
           </ul>
         ) : null}
-        {error ? <p className="text-[11.5px] text-rose-400">{error}</p> : null}
+        {error ? <p className="text-label text-rose-400">{error}</p> : null}
         <div className="flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="kontinue-3d h-8 cursor-pointer rounded-full px-3.5 text-[12px]">
+          <button type="button" onClick={onClose} className="kontinue-3d h-8 cursor-pointer rounded-full px-3.5 text-label">
             {sent ? "Done" : "Cancel"}
           </button>
           {!sent ? (
-            <button type="button" onClick={() => void send()} disabled={!bundle || sending} className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium disabled:cursor-default disabled:opacity-60">
+            <button type="button" onClick={() => void send()} disabled={!bundle || sending} className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-label font-medium disabled:cursor-default disabled:opacity-60">
               {sending ? <Loader2 size={12} className="animate-spin" /> : <ArrowRightLeft size={12} />}
               Send
             </button>
@@ -158,12 +160,12 @@ export function IncomingProjectMoves() {
         <div key={move.id} className="kontinue-3d flex items-center gap-3 rounded-[18px] px-3.5 py-2.5">
           <FolderInput size={15} className="shrink-0 text-purple-500" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[12.5px] font-medium">{move.name} from {move.fromDevice}</p>
-            <p className="truncate text-[11px] text-muted-foreground">
+            <p className="truncate text-body font-medium">{move.name} from {move.fromDevice}</p>
+            <p className="truncate text-caption text-muted-foreground">
               {move.branch ?? "no branch"} · {move.changedFiles} uncommitted · {move.chats} chat{move.chats === 1 ? "" : "s"} · {formatActivity(move.createdAt)}
             </p>
           </div>
-          <button type="button" onClick={() => void setUp(move)} disabled={busy !== null} className="kontinue-3d-primary flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11.5px] font-medium disabled:opacity-60">
+          <button type="button" onClick={() => void setUp(move)} disabled={busy !== null} className="kontinue-3d-primary flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label font-medium disabled:opacity-60">
             {busy === move.id ? <Loader2 size={11} className="animate-spin" /> : null}
             Set up here
           </button>
@@ -172,7 +174,7 @@ export function IncomingProjectMoves() {
           </button>
         </div>
       ))}
-      {message ? <p className="px-2 text-[11.5px] text-muted-foreground">{message}</p> : null}
+      {message ? <p className="px-2 text-label text-muted-foreground">{message}</p> : null}
     </div>
   );
 }

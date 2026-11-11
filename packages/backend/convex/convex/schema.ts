@@ -171,6 +171,18 @@ export default defineSchema({
 		enabled: v.boolean(),
 		createdAt: v.number(),
 		lastEventAt: v.optional(v.number()),
+		// GitHub/GitLab webhook secret; deliveries that carry a signature must match.
+		signingSecret: v.optional(v.string()),
+		// Reject deliveries without a signature (on for webhooks created since signing).
+		requireSignature: v.optional(v.boolean()),
+		// Which events start a thread (lib/kodeWebhookGuard.ts).
+		filters: v.optional(
+			v.object({
+				kinds: v.optional(v.array(v.string())),
+				branches: v.optional(v.array(v.string())),
+				authors: v.optional(v.array(v.string())),
+			}),
+		),
 	})
 		.index("by_owner", ["ownerId"])
 		.index("by_token", ["token"]),

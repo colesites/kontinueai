@@ -55,7 +55,7 @@ function IconButton({ title, onClick, disabled, children }: { title: string; onC
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="flex size-5 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.05] hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-white/[0.06]"
+      className="flex size-5 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
     >
       {children}
     </button>
@@ -201,11 +201,11 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
                     }
                   }}
                   rows={1}
-                  className="w-full resize-none bg-transparent text-[13.5px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
+                  className="w-full resize-none bg-transparent text-lead leading-relaxed text-foreground outline-none placeholder:text-muted-foreground"
                   placeholder="Edit your message..."
                 />
                 <div className="flex items-center justify-end gap-2 pt-2 border-t border-purple-500/20">
-                  <span className="mr-auto text-[10px] text-muted-foreground font-mono">⌘↵ to save · esc to cancel</span>
+                  <span className="mr-auto text-micro text-muted-foreground font-mono">⌘↵ to save · esc to cancel</span>
                   <button type="button" onClick={cancelEdit} className="kontinue-3d rounded-full px-3 py-1 text-xs text-foreground/80 cursor-pointer">
                     Cancel
                   </button>
@@ -215,7 +215,7 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
                 </div>
               </div>
             ) : (
-              <div className="kontinue-user-bubble px-4 py-2.5 text-[13.5px] leading-relaxed">
+              <div className="kontinue-user-bubble px-4 py-2.5 text-lead leading-relaxed">
                 <CollapsibleUserText>
                   <div className="whitespace-pre-wrap">{content}</div>
                 </CollapsibleUserText>
@@ -224,7 +224,7 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
 
             {/* Subtle Time & Actions beneath user bubble */}
             {!isEditing && (
-              <div className="msg-actions flex items-center gap-1.5 pr-1 text-[11px] text-muted-foreground/70 transition-opacity">
+              <div className="msg-actions flex items-center gap-1.5 pr-1 text-caption text-muted-foreground/70 transition-opacity">
                 {timeStr ? <span>{timeStr}</span> : null}
                 <IconButton title="Copy" onClick={handleCopy}>
                   {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -263,7 +263,7 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
               </div>
             )}
 
-            <div className="prose max-w-none break-words text-foreground dark:prose-invert text-[14.5px] leading-relaxed">
+            <div className="prose max-w-none break-words text-foreground dark:prose-invert text-[15px] leading-relaxed">
               <MessageResponse>{content}</MessageResponse>
             </div>
 
@@ -281,7 +281,7 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
                 <IconButton title={isSpeaking ? "Stop reading" : "Read aloud"} onClick={handleSpeak} disabled={!speechText}>
                   <HiSpeakerWave size={14} />
                 </IconButton>
-                {timeStr ? <span className="px-1 text-[11px]">{timeStr}</span> : null}
+                {timeStr ? <span className="px-1 text-caption">{timeStr}</span> : null}
               </div>
             )}
           </div>

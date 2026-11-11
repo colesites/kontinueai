@@ -3,6 +3,7 @@ import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { getScheduledPrompts, idleFor, useScheduledPrompts } from "@/lib/kode-schedule";
 import HomeView from "@/components/view/HomeView";
 import CanvasView from "@/components/view/CanvasView";
+import TasksView from "@/components/view/TasksView";
 import KodeView from "@/components/view/KodeView";
 import { useImportSyncDeps } from "@/components/kode/ImportedChatBar";
 import { useImportBackgroundSync } from "@/lib/kode-import-sync";
@@ -10,6 +11,14 @@ import { useOrchestrationBridge } from "@/lib/kode-orchestration";
 import { useImportContextUpload } from "@/lib/kode-import-cloud";
 import { useWebhookThreads } from "@/lib/kode-webhooks";
 import { usePrWatcher } from "@/lib/kode-pr-watcher";
+import { RunNotifications } from "./RunNotifications";
+import { GlobalShortcuts } from "./GlobalShortcuts";
+import { MenuBridge } from "./MenuBridge";
+import { UpdateDialog } from "./UpdateDialog";
+import { CommandPalette } from "./CommandPalette";
+import { useAutoArchive } from "@/lib/kode-auto-archive";
+import { useAutoCleanup } from "@/lib/kode-cleanup";
+import { useTaskReminders } from "@/lib/task-reminders";
 
 type ViewLayoutProps = {
   panelOpen: boolean;
@@ -28,6 +37,10 @@ const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
   // Webhook events (GitHub, CI, …) start threads.
   useWebhookThreads();
   usePrWatcher();
+  useAutoArchive();
+  useAutoCleanup();
+  // Task reminders show as macOS notifications from any screen.
+  useTaskReminders();
 
   // Scheduled Kode prompts send from the Kode view. If one is due while you're
   // on Home or Canvas and you've stepped away, open Kode so it can go out.
@@ -43,16 +56,23 @@ const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
     return () => window.clearInterval(id);
   }, [activeTab, scheduled.length, setActiveTab]);
 
-  if (activeTab === "home") {
-    return <HomeView />;
-  }
-
-  if (activeTab === "canvas") {
-    return <CanvasView />;
-  }
-
   return (
-    <KodeView panelOpen={panelOpen} onPanelChange={onPanelChange} />
+    <>
+      {activeTab === "home" ? (
+        <HomeView />
+      ) : activeTab === "canvas" ? (
+        <CanvasView />
+      ) : activeTab === "tasks" ? (
+        <TasksView />
+      ) : (
+        <KodeView panelOpen={panelOpen} onPanelChange={onPanelChange} />
+      )}
+      <RunNotifications />
+      <GlobalShortcuts />
+      <MenuBridge />
+      <UpdateDialog />
+      <CommandPalette />
+    </>
   );
 };
 

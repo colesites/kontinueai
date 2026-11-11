@@ -11,6 +11,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   AlertTriangle,
+  Check,
   Download,
   ExternalLink,
   Loader2,
@@ -43,6 +44,7 @@ import {
   getProvider,
   installUrl,
   kindName,
+  managedAgentId,
   loadInstanceModels,
   providerLogo,
   refreshCliProviders,
@@ -60,6 +62,7 @@ import {
 } from "@/lib/kode-cli";
 import { AddProviderDialog } from "./AddProviderDialog";
 import { AccountSwitcher } from "./AccountSwitcher";
+import { Select } from "./settings-ui";
 
 type TaskState = {
   label: string;
@@ -121,10 +124,20 @@ export function ProvidersSection() {
         text: result.stopped ? "Stopped." : result.success ? "Done." : "Did not finish. See the output above.",
       }))
       .catch((error: unknown) => ({ ok: false, text: error instanceof Error ? error.message : String(error) }))
-      .then((result) =>
-        setTasks((all) => ({ ...all, [id]: { ...(all[id] as TaskState), running: false, result, cancel: undefined } })),
-      );
+      .then((result) => {
+        setTasks((all) => ({ ...all, [id]: { ...(all[id] as TaskState), running: false, result, cancel: undefined } }));
+        // A finished run tidies itself away; failures stay until closed.
+        if (result.ok) window.setTimeout(() => dismissTask(id, true), 4000);
+      });
   };
+
+  const dismissTask = (id: string, onlyIfDone = false) =>
+    setTasks((all) => {
+      const task = all[id];
+      if (!task || task.running || (onlyIfDone && !task.result?.ok)) return all;
+      const { [id]: _gone, ...rest } = all;
+      return rest;
+    });
 
   const updateAll = async () => {
     // One update per CLI binary is enough (several accounts can share one).
@@ -145,11 +158,11 @@ export function ProvidersSection() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4 px-1">
-        <p className="text-[11.5px] text-muted-foreground">
+        <p className="text-label text-muted-foreground">
           Turn on a provider to add its models to Kode's model picker. They run on this computer
           with your own plan and are not counted in Kode usage.
         </p>
-        <div className="flex shrink-0 items-center gap-3 text-[11.5px]">
+        <div className="flex shrink-0 items-center gap-3 text-label">
           <button
             type="button"
             disabled={!anyUpdatable || anyRunning}
@@ -186,7 +199,6 @@ export function ProvidersSection() {
                 logo={providerLogo(instance)}
                 accent={instance.accent}
                 title={instance.label}
-                version={status?.version}
                 line={line.text}
                 tone={line.tone}
                 trailing={
@@ -210,7 +222,7 @@ export function ProvidersSection() {
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="flex cursor-pointer items-center gap-2.5 px-3.5 py-3 text-[12.5px] text-muted-foreground transition-colors hover:bg-black/[0.02] hover:text-foreground dark:hover:bg-white/[0.03]"
+            className="flex cursor-pointer items-center gap-2.5 px-3.5 py-3 text-body text-muted-foreground transition-colors kontinue-hover hover:text-foreground"
           >
             <span className="flex size-7 items-center justify-center">
               <Plus size={14} />
@@ -229,6 +241,7 @@ export function ProvidersSection() {
               store={store}
               task={tasks[current.id]}
               onTask={(task, label) => void runTask(current, task, label)}
+              onDismissTask={() => dismissTask(current.id)}
               onRemoved={() => setSelected(providers[0]?.id ?? "claude")}
             />
           ) : null}
@@ -239,8 +252,8 @@ export function ProvidersSection() {
         <SubHeading>Advanced</SubHeading>
         <div className="liquid-glass-dropdown mt-2 flex items-center justify-between gap-6 !rounded-[20px] px-4 py-3">
           <div className="min-w-0">
-            <p className="text-[12.5px] font-medium text-foreground/90">Health check interval</p>
-            <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+            <p className="text-body font-medium text-foreground/90">Health check interval</p>
+            <p className="mt-0.5 text-label text-muted-foreground">
               Re-check install, version, sign-in and models in the background. Set to 0 to turn off.
             </p>
           </div>
@@ -254,7 +267,18 @@ export function ProvidersSection() {
         </div>
       </section>
 
-      <AddProviderDialog open={adding} onOpenChange={setAdding} onAdded={setSelected} />
+      <AddProviderDialog
+        open={adding}
+        onOpenChange={setAdding}
+        onAdded={(id, installAgentId) => {
+          setSelected(id);
+          // Registry downloads start installing straight away.
+          const added = getProvider(id);
+          if (installAgentId && added) {
+            void runTask(added, { kind: "install", agentId: installAgentId }, `Installing ${kindName(added)}`);
+          }
+        }}
+      />
     </div>
   );
 }
@@ -283,7 +307,6 @@ function ListItem({
   logo,
   accent,
   title,
-  version,
   line,
   tone,
   trailing,
@@ -293,7 +316,6 @@ function ListItem({
   logo: string;
   accent?: string | null;
   title: string;
-  version?: string | null;
   line: string;
   tone: DotTone;
   trailing?: ReactNode;
@@ -306,18 +328,13 @@ function ListItem({
       onKeyDown={(e) => e.key === "Enter" && onSelect()}
       className={cn(
         "flex cursor-pointer items-start gap-2.5 border-b border-black/[0.04] px-3.5 py-3 transition-colors dark:border-white/[0.04]",
-        active ? "bg-black/[0.04] dark:bg-white/[0.05]" : "hover:bg-black/[0.02] dark:hover:bg-white/[0.03]",
+        active ? "bg-black/[0.04] dark:bg-white/[0.05]" : "kontinue-hover",
       )}
     >
       <ProviderLogo logo={logo} accent={accent} className="mt-0.5" />
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-1.5 text-[12.5px] font-medium text-foreground/90">
-          <span className="truncate">{title}</span>
-          {version ? (
-            <span className="truncate font-mono text-[10px] font-normal text-muted-foreground">v{version}</span>
-          ) : null}
-        </p>
-        <p className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-snug text-muted-foreground">
+        <p className="truncate text-body font-medium text-foreground/90">{title}</p>
+        <p className="mt-0.5 flex items-center gap-1.5 text-caption leading-snug text-muted-foreground">
           <Dot tone={tone} />
           <span className="line-clamp-2">{line}</span>
         </p>
@@ -337,6 +354,7 @@ function InstanceDetail({
   store,
   task,
   onTask,
+  onDismissTask,
   onRemoved,
 }: {
   instance: ProviderInstance;
@@ -344,6 +362,7 @@ function InstanceDetail({
   store: CliStore;
   task: TaskState | undefined;
   onTask: (task: CliTask, label: string) => void;
+  onDismissTask: () => void;
   onRemoved: () => void;
 }) {
   const line = statusLine(status, store.checking && !store.statuses);
@@ -351,6 +370,7 @@ function InstanceDetail({
   const installed = !!status?.installed;
   const loginCommand = cliLoginCommand(instance);
   const isAcp = instance.kind === "acp";
+  const managedId = managedAgentId(instance);
   const [confirmRemove, setConfirmRemove] = useState(false);
 
   return (
@@ -358,30 +378,40 @@ function InstanceDetail({
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 space-y-1">
-          <h3 className="flex items-center gap-2 text-[14px] font-semibold">
+          <h3 className="flex items-center gap-2 text-lead font-semibold">
             <ProviderLogo logo={providerLogo(instance)} accent={instance.accent} className="size-6" />
             <span className="truncate">{instance.label}</span>
             {status?.version ? (
-              <span className="font-mono text-[11px] font-normal text-muted-foreground">v{status.version}</span>
+              <span className="font-mono text-caption font-normal text-muted-foreground">v{status.version}</span>
             ) : null}
           </h3>
-          <p className="flex items-center gap-1.5 text-[11.5px] text-muted-foreground">
+          <p className="flex items-center gap-1.5 text-label text-muted-foreground">
             <Dot tone={line.tone} />
             {line.text}
             {instance.label !== kindName(instance) ? ` · ${kindName(instance)}` : ""}
             {status?.installMethod && status.installMethod !== "unknown" ? ` · ${status.installMethod}` : ""}
           </p>
           {status?.path ? (
-            <p className="truncate font-mono text-[10.5px] text-muted-foreground/80" title={status.path}>
+            <p className="truncate font-mono text-caption text-muted-foreground/80" title={status.path}>
               {status.path}
             </p>
           ) : null}
         </div>
         <div className="flex shrink-0 flex-wrap justify-end gap-1.5">
           {!installed && !(store.checking && !store.statuses) ? (
-            <SmallButton onClick={() => void openUrl(installUrl(instance))}>
-              Install <ExternalLink size={10} className="opacity-60" />
-            </SmallButton>
+            managedId ? (
+              <SmallButton
+                tone="primary"
+                disabled={busy}
+                onClick={() => onTask({ kind: "install", agentId: managedId }, `Installing ${kindName(instance)}`)}
+              >
+                <Download size={11} /> Install
+              </SmallButton>
+            ) : (
+              <SmallButton onClick={() => void openUrl(installUrl(instance))}>
+                Install <ExternalLink size={10} className="opacity-60" />
+              </SmallButton>
+            )
           ) : null}
           {installed && status?.loggedIn !== true ? (
             <SmallButton
@@ -410,7 +440,7 @@ function InstanceDetail({
       </div>
 
       {installed && status?.loggedIn === false && !task ? (
-        <p className="text-[11.5px] text-muted-foreground">
+        <p className="text-label text-muted-foreground">
           Sign in opens your browser.
           {loginCommand ? (
             <>
@@ -420,7 +450,7 @@ function InstanceDetail({
         </p>
       ) : null}
 
-      {task ? <TaskLog task={task} /> : null}
+      {task ? <TaskLog task={task} onDismiss={onDismissTask} /> : null}
 
       {/* Models */}
       <div className="space-y-2">
@@ -430,7 +460,7 @@ function InstanceDetail({
             <button
               type="button"
               onClick={() => void loadInstanceModels(instance)}
-              className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+              className="flex cursor-pointer items-center gap-1 text-caption text-muted-foreground hover:text-foreground"
             >
               <RefreshCw size={10} /> Load models
             </button>
@@ -439,7 +469,7 @@ function InstanceDetail({
         {instance.enabled && installed ? (
           <ModelList instance={instance} store={store} signedOut={status?.loggedIn === false} />
         ) : (
-          <p className="liquid-glass-dropdown !rounded-[16px] px-4 py-3 text-[11.5px] text-muted-foreground">
+          <p className="liquid-glass-dropdown !rounded-[16px] px-4 py-3 text-label text-muted-foreground">
             {installed
               ? `Turn ${instance.label} on in the list to choose which of its models show in Kode's model picker. ${cliPlanLabel(instance)}.`
               : `Install ${kindName(instance)} to use it in Kode.`}
@@ -460,15 +490,15 @@ function InstanceDetail({
           />
           <div className="flex items-center justify-between gap-4 px-4 py-3">
             <div>
-              <p className="text-[12px] font-medium text-foreground/90">Accent color</p>
-              <p className="text-[11px] text-muted-foreground">Optional marker shown in the picker.</p>
+              <p className="text-label font-medium text-foreground/90">Accent color</p>
+              <p className="text-caption text-muted-foreground">Optional marker shown in the picker.</p>
             </div>
             <div className="flex items-center gap-2">
               {instance.accent ? (
                 <button
                   type="button"
                   onClick={() => updateProvider(instance.id, { accent: null })}
-                  className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground"
+                  className="cursor-pointer text-caption text-muted-foreground hover:text-foreground"
                 >
                   Clear
                 </button>
@@ -510,22 +540,19 @@ function InstanceDetail({
           {isAcp && ACP_PRESETS[instance.preset ?? "custom"].authMethods ? (
             <div className="flex items-center justify-between gap-4 px-4 py-3">
               <div>
-                <p className="text-[12px] font-medium text-foreground/90">Sign-in method</p>
-                <p className="text-[11px] text-muted-foreground">Used by Sign in.</p>
+                <p className="text-label font-medium text-foreground/90">Sign-in method</p>
+                <p className="text-caption text-muted-foreground">Used by Sign in.</p>
               </div>
-              <select
-                value={instance.config.authMethod}
-                onChange={(e) =>
-                  updateProvider(instance.id, { config: { ...instance.config, authMethod: e.target.value } })
-                }
-                className="kontinue-3d h-8 w-48 cursor-pointer rounded-full bg-transparent px-3 text-[12px] outline-none"
-              >
-                {ACP_PRESETS[instance.preset ?? "custom"].authMethods?.map((m) => (
-                  <option key={m.id} value={m.id}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
+              <Select
+                value={instance.config.authMethod || (ACP_PRESETS[instance.preset ?? "custom"].authMethods?.[0]?.id ?? "")}
+                onChange={(authMethod) => updateProvider(instance.id, { config: { ...instance.config, authMethod } })}
+                minWidth={200}
+                options={(ACP_PRESETS[instance.preset ?? "custom"].authMethods ?? []).map((m) => ({
+                  value: m.id,
+                  label: m.label,
+                  description: m.description,
+                }))}
+              />
             </div>
           ) : null}
           <ConfigField
@@ -560,7 +587,7 @@ function InstanceDetail({
 
       {!instance.builtIn ? (
         <div className="flex items-center justify-between gap-4 px-1">
-          <p className="text-[11.5px] text-muted-foreground">
+          <p className="text-label text-muted-foreground">
             Removes this provider and its saved secrets. The CLI and its own sign-in stay on this computer.
           </p>
           {confirmRemove ? (
@@ -652,23 +679,23 @@ function ModelList({
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter models"
-          className="kontinue-3d h-7 min-w-0 flex-1 rounded-full px-3 text-[11.5px] outline-none placeholder:text-muted-foreground/60"
+          className="kontinue-3d h-7 min-w-0 flex-1 rounded-full px-3 text-label outline-none placeholder:text-muted-foreground/60"
         />
         <button
           type="button"
           disabled={catalog.length === 0}
           onClick={() => saveModels({ disabled: allOn ? catalog.map((m) => m.id) : [] })}
-          className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground disabled:opacity-40"
+          className="cursor-pointer text-caption text-muted-foreground hover:text-foreground disabled:opacity-40"
         >
           {allOn ? "Disable all" : "Enable all"}
         </button>
-        <span className="text-[11px] text-muted-foreground/70">
+        <span className="text-caption text-muted-foreground/70">
           {enabledCount}/{catalog.length} on
         </span>
         <button
           type="button"
           onClick={() => setAdding((v) => !v)}
-          className="flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
+          className="flex cursor-pointer items-center gap-1 text-caption text-muted-foreground hover:text-foreground"
         >
           <Plus size={11} /> Custom
         </button>
@@ -681,14 +708,14 @@ function ModelList({
             onChange={(e) => setNewId(e.target.value)}
             placeholder={instance.kind === "claude" ? "Model id, e.g. claude-opus-5-5" : "Model id"}
             spellCheck={false}
-            className="kontinue-3d h-7 min-w-0 flex-1 rounded-full px-3 font-mono text-[11px] outline-none placeholder:text-muted-foreground/60"
+            className="kontinue-3d h-7 min-w-0 flex-1 rounded-full px-3 font-mono text-caption outline-none placeholder:text-muted-foreground/60"
             onKeyDown={(e) => e.key === "Enter" && addCustom()}
           />
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Name (optional)"
-            className="kontinue-3d h-7 w-36 rounded-full px-3 text-[11px] outline-none placeholder:text-muted-foreground/60"
+            className="kontinue-3d h-7 w-36 rounded-full px-3 text-caption outline-none placeholder:text-muted-foreground/60"
             onKeyDown={(e) => e.key === "Enter" && addCustom()}
           />
           <SmallButton tone="primary" disabled={!newId.trim()} onClick={addCustom}>
@@ -698,14 +725,14 @@ function ModelList({
       ) : null}
 
       {loadError ? (
-        <p className="flex items-start gap-1.5 text-[11px] text-amber-600 dark:text-amber-400">
+        <p className="flex items-start gap-1.5 text-caption text-amber-600 dark:text-amber-400">
           <AlertTriangle size={11} className="mt-0.5 shrink-0" />
           Could not load models: {loadError}
         </p>
       ) : null}
 
       {catalog.length === 0 ? (
-        <p className="py-3 text-[11.5px] text-muted-foreground">
+        <p className="py-3 text-label text-muted-foreground">
           {instance.kind === "cursor" && signedOut
             ? "Sign in to load the models on your Cursor account."
             : "No models found. Add one by id with Custom."}
@@ -718,18 +745,18 @@ function ModelList({
             return (
               <div key={model.id} className="flex items-center gap-2 py-1.5">
                 <div className="min-w-0 flex-1">
-                  <p className="flex items-baseline gap-2 text-[12px]">
+                  <p className="flex items-baseline gap-2 text-label">
                     <span className="truncate text-foreground/90">{model.name}</span>
-                    <span className="truncate font-mono text-[10.5px] text-muted-foreground/70">{model.id}</span>
+                    <span className="truncate font-mono text-caption text-muted-foreground/70">{model.id}</span>
                   </p>
                   {issue ? (
-                    <p className="flex items-center gap-1 text-[10.5px] text-amber-600 dark:text-amber-400">
+                    <p className="flex items-center gap-1 text-caption text-amber-600 dark:text-amber-400">
                       <AlertTriangle size={10} /> {issue}
                     </p>
                   ) : null}
                 </div>
                 {model.tags?.length ? (
-                  <span className="hidden shrink-0 text-[10.5px] text-muted-foreground/70 md:inline">
+                  <span className="hidden shrink-0 text-caption text-muted-foreground/70 md:inline">
                     {model.tags.join(" · ")}
                   </span>
                 ) : null}
@@ -748,7 +775,7 @@ function ModelList({
             );
           })}
           {shown.length === 0 ? (
-            <p className="py-3 text-[11.5px] text-muted-foreground">No models match “{filter}”.</p>
+            <p className="py-3 text-label text-muted-foreground">No models match “{filter}”.</p>
           ) : null}
         </div>
       )}
@@ -851,8 +878,8 @@ function VariablesEditor({ instance }: { instance: ProviderInstance }) {
       <SubHeading>Environment</SubHeading>
       <div className="liquid-glass-dropdown space-y-3 !rounded-[16px] px-4 py-3.5">
         <div>
-          <p className="text-[12.5px] font-medium text-foreground/90">Variables</p>
-          <p className="mt-0.5 text-[11.5px] text-muted-foreground">
+          <p className="text-body font-medium text-foreground/90">Variables</p>
+          <p className="mt-0.5 text-label text-muted-foreground">
             API keys, base URLs, and other settings for this CLI. Applied each time it starts.
           </p>
         </div>
@@ -860,7 +887,7 @@ function VariablesEditor({ instance }: { instance: ProviderInstance }) {
         <button
           type="button"
           onClick={addDraft}
-          className="kontinue-3d flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium text-foreground/85 hover:text-foreground"
+          className="kontinue-3d flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-label font-medium text-foreground/85 hover:text-foreground"
         >
           <Plus size={12} /> Add variable
         </button>
@@ -903,13 +930,13 @@ function VariablesEditor({ instance }: { instance: ProviderInstance }) {
                   onToggleLock={() => patchDraft(row.key, { secret: !row.secret })}
                   onRemove={() => dropDraft(row.key)}
                 />
-                {row.error ? <p className="px-1 text-[11px] text-rose-400">{row.error}</p> : null}
+                {row.error ? <p className="px-1 text-caption text-rose-400">{row.error}</p> : null}
               </div>
             ))}
           </div>
         ) : null}
 
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           Locked values are stored in your keychain and never returned to the app.
         </p>
       </div>
@@ -957,11 +984,11 @@ function VariableRow({
         placeholder="VARIABLE_NAME"
         spellCheck={false}
         className={cn(
-          "kontinue-3d h-8 w-[38%] min-w-0 rounded-full px-3.5 font-mono text-[11.5px] outline-none placeholder:text-muted-foreground/50",
+          "kontinue-3d h-8 w-[38%] min-w-0 rounded-full px-3.5 font-mono text-label outline-none placeholder:text-muted-foreground/50",
           nameLocked && "text-foreground/80",
         )}
       />
-      <span className="text-[12px] text-muted-foreground">=</span>
+      <span className="text-label text-muted-foreground">=</span>
       <input
         value={current}
         type={secret ? "password" : "text"}
@@ -973,7 +1000,7 @@ function VariableRow({
           if (e.key === "Enter") (e.target as HTMLInputElement).blur();
         }}
         placeholder={placeholder}
-        className="kontinue-3d h-8 min-w-0 flex-1 rounded-full px-3.5 font-mono text-[11.5px] outline-none placeholder:text-muted-foreground/50"
+        className="kontinue-3d h-8 min-w-0 flex-1 rounded-full px-3.5 font-mono text-label outline-none placeholder:text-muted-foreground/50"
       />
       <button
         type="button"
@@ -999,11 +1026,16 @@ function VariableRow({
   );
 }
 
-function TaskLog({ task }: { task: TaskState }) {
+function TaskLog({ task, onDismiss }: { task: TaskState; onDismiss: () => void }) {
   const ref = useRef<HTMLPreElement>(null);
+  // Output stays open while running or after a failure; a success folds it away.
+  const [showOutput, setShowOutput] = useState(true);
+  useEffect(() => {
+    if (task.result) setShowOutput(!task.result.ok);
+  }, [task.result]);
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });
-  }, [task.lines.length]);
+  }, [task.lines.length, showOutput]);
   const link = useMemo(() => {
     for (let i = task.lines.length - 1; i >= 0; i--) {
       const match = task.lines[i].match(URL_PATTERN);
@@ -1012,17 +1044,34 @@ function TaskLog({ task }: { task: TaskState }) {
     return null;
   }, [task.lines]);
 
+  const state = task.running ? "running" : task.result?.ok ? "ok" : "failed";
+
   return (
-    <div className="liquid-glass-dropdown space-y-2 !rounded-[16px] px-4 py-3">
-      <div className="flex items-center justify-between gap-2 text-[11.5px]">
-        <span className="flex items-center gap-1.5 text-foreground/80">
-          {task.running ? <Loader2 size={11} className="animate-spin" /> : null}
-          {task.label}
-          {task.result ? (
-            <span className={task.result.ok ? "text-emerald-500" : "text-rose-400"}>· {task.result.text}</span>
-          ) : null}
+    <div className="liquid-glass-card overflow-hidden rounded-[20px] animate-in fade-in-0 slide-in-from-top-1 duration-200">
+      <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+        <span
+          className={cn(
+            "flex size-6 shrink-0 items-center justify-center rounded-full border",
+            state === "running" && "border-purple-500/25 bg-purple-500/10 text-purple-500 dark:text-purple-300",
+            state === "ok" && "border-emerald-500/25 bg-emerald-500/10 text-emerald-500",
+            state === "failed" && "border-rose-500/25 bg-rose-500/10 text-rose-400",
+          )}
+        >
+          {state === "running" ? (
+            <Loader2 size={11} className="animate-spin" />
+          ) : state === "ok" ? (
+            <Check size={11} strokeWidth={2.5} />
+          ) : (
+            <X size={11} strokeWidth={2.5} />
+          )}
         </span>
-        <span className="flex items-center gap-1.5">
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-label font-medium text-foreground/90">{task.label}</span>
+          <span className="block truncate text-caption text-muted-foreground">
+            {task.result ? task.result.text : "Working…"}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-1.5">
           {link && task.running ? (
             <SmallButton onClick={() => void openUrl(link)}>
               Open link <ExternalLink size={10} className="opacity-60" />
@@ -1033,12 +1082,25 @@ function TaskLog({ task }: { task: TaskState }) {
               <Square size={9} /> Stop
             </SmallButton>
           ) : null}
+          {!task.running && task.lines.length > 0 ? (
+            <SmallButton onClick={() => setShowOutput((v) => !v)}>{showOutput ? "Hide output" : "Show output"}</SmallButton>
+          ) : null}
+          {!task.running ? (
+            <button
+              type="button"
+              title="Close"
+              onClick={onDismiss}
+              className="kontinue-hover flex size-6 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
+            >
+              <X size={12} />
+            </button>
+          ) : null}
         </span>
       </div>
-      {task.lines.length > 0 ? (
+      {showOutput && task.lines.length > 0 ? (
         <pre
           ref={ref}
-          className="max-h-40 overflow-auto whitespace-pre-wrap rounded-xl bg-black/[0.04] px-3 py-2 font-mono text-[10.5px] leading-relaxed text-foreground/70 dark:bg-white/[0.04]"
+          className="mx-2 mb-2 max-h-44 overflow-auto whitespace-pre-wrap rounded-[14px] border border-black/[0.05] bg-zinc-950/[0.035] px-3 py-2.5 font-mono text-caption leading-relaxed text-foreground/70 shadow-[inset_0_1px_2px_rgba(0,0,0,0.06)] dark:border-white/[0.05] dark:bg-black/40 dark:text-zinc-300/80 dark:shadow-[inset_0_1px_3px_rgba(0,0,0,0.5)]"
         >
           {task.lines.join("\n")}
         </pre>
@@ -1066,8 +1128,8 @@ function DraftField({
   useEffect(() => setDraft(value), [value]);
   return (
     <div className="space-y-1.5 px-4 py-3">
-      <p className="text-[12px] font-medium text-foreground/90">{label}</p>
-      <p className="text-[11px] text-muted-foreground">{description}</p>
+      <p className="text-label font-medium text-foreground/90">{label}</p>
+      <p className="text-caption text-muted-foreground">{description}</p>
       <input
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
@@ -1080,8 +1142,8 @@ function DraftField({
         placeholder={placeholder}
         spellCheck={false}
         className={cn(
-          "kontinue-3d h-8 w-full rounded-full px-3.5 text-[12px] text-foreground outline-none placeholder:text-muted-foreground/50",
-          mono && "font-mono text-[11.5px]",
+          "kontinue-3d h-8 w-full rounded-full px-3.5 text-label text-foreground outline-none placeholder:text-muted-foreground/50",
+          mono && "font-mono text-label",
         )}
       />
     </div>
@@ -1142,7 +1204,7 @@ function IntervalStepper({ value, onChange }: { value: number; onChange: (value:
           onKeyDown={(e) => {
             if (e.key === "Enter") (e.target as HTMLInputElement).blur();
           }}
-          className="w-14 bg-transparent text-center font-mono text-[12px] outline-none"
+          className="w-14 bg-transparent text-center font-mono text-label outline-none"
         />
         <button
           type="button"
@@ -1153,7 +1215,7 @@ function IntervalStepper({ value, onChange }: { value: number; onChange: (value:
           <Plus size={12} />
         </button>
       </div>
-      <span className="text-[11px] text-muted-foreground">seconds</span>
+      <span className="text-caption text-muted-foreground">seconds</span>
     </div>
   );
 }
@@ -1175,7 +1237,7 @@ function Dot({ tone }: { tone: DotTone }) {
 }
 
 function SubHeading({ children }: { children: ReactNode }) {
-  return <h4 className="px-1 text-[11.5px] font-medium text-muted-foreground">{children}</h4>;
+  return <h4 className="px-1 text-label font-medium text-muted-foreground">{children}</h4>;
 }
 
 function SmallButton({
@@ -1198,7 +1260,7 @@ function SmallButton({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-[11.5px] font-medium transition-colors disabled:cursor-default disabled:opacity-40",
+        "flex h-7 cursor-pointer items-center gap-1 rounded-full px-3 text-label font-medium transition-colors disabled:cursor-default disabled:opacity-40",
         tone === "primary" && "kontinue-3d-primary",
         tone === "neutral" && "kontinue-3d text-foreground/85 hover:text-foreground",
         tone === "danger" && "kontinue-3d text-rose-500 hover:text-rose-400",

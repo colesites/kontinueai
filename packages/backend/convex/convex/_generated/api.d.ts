@@ -32,6 +32,7 @@ import type * as kodeWebWorker from "../kodeWebWorker.js";
 import type * as kodeWebhooks from "../kodeWebhooks.js";
 import type * as lib_aiUsageCredits from "../lib/aiUsageCredits.js";
 import type * as lib_encryption from "../lib/encryption.js";
+import type * as lib_kodeWebhookGuard from "../lib/kodeWebhookGuard.js";
 import type * as lib_kodeWebhookSummary from "../lib/kodeWebhookSummary.js";
 import type * as lib_videoCredits from "../lib/videoCredits.js";
 import type * as memories from "../memories.js";
@@ -82,6 +83,7 @@ declare const fullApi: ApiFromModules<{
   kodeWebhooks: typeof kodeWebhooks;
   "lib/aiUsageCredits": typeof lib_aiUsageCredits;
   "lib/encryption": typeof lib_encryption;
+  "lib/kodeWebhookGuard": typeof lib_kodeWebhookGuard;
   "lib/kodeWebhookSummary": typeof lib_kodeWebhookSummary;
   "lib/videoCredits": typeof lib_videoCredits;
   memories: typeof memories;

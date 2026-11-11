@@ -11,6 +11,7 @@ import { KodeWorkspaceProvider, useKodeWorkspace } from "@/lib/kode-workspace";
 import { useKeybinding } from "@/lib/kode-keybindings";
 import { KodeAgentRuntimeProvider } from "@/lib/kode-agent-runtime";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { TitleTooltips } from "@/components/ui/title-tooltips";
 
 function removeSplash() {
   const splash = document.getElementById("splash");
@@ -119,6 +120,7 @@ function MainApp() {
         <KodeWorkspaceProvider>
           <KodeAgentRuntimeProvider>
             <WorkspaceContent />
+            <TitleTooltips />
           </KodeAgentRuntimeProvider>
         </KodeWorkspaceProvider>
       </AuthProviders>

@@ -73,6 +73,16 @@
 
   --color-background: var(--background);
 
+  --color-brand: var(--brand);
+
+  --color-danger: var(--status-danger);
+
+  --color-warning: var(--status-warning);
+
+  --color-caution: var(--status-caution);
+
+  --color-success: var(--status-success);
+
   --radius-sm: calc(var(--radius) * 0.6);
 
   --radius-md: calc(var(--radius) * 0.8);
@@ -86,6 +96,16 @@
   --radius-3xl: calc(var(--radius) * 2.2);
 
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Type scale. Whole pixels only: micro for badges and counters, caption
+     for metadata, label for controls and secondary text, body for rows and
+     reading text in chrome, lead for inputs and emphasised text. Sizes are
+     font-size only so line-height stays with the element. */
+  --text-micro: 0.625rem;
+  --text-caption: 0.6875rem;
+  --text-label: 0.75rem;
+  --text-body: 0.8125rem;
+  --text-lead: 0.875rem;
 }
 
 :root {
@@ -108,6 +128,18 @@
   --input: rgba(210, 204, 226, 0.7);
   --ring: #9333ea;
   --radius: 0.875rem;
+  /* Overlay surfaces (menus, dialogs, cards) share one radius. */
+  --radius-overlay: 20px;
+  /* Motion: fast for hover and press, base for surfaces, slow for layout. */
+  --motion-fast: 120ms;
+  --motion-base: 200ms;
+  --motion-slow: 320ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* Semantic status colours (priority flags, due states, badges). */
+  --status-danger: #dc2626;
+  --status-warning: #d97706;
+  --status-caution: #b45309;
+  --status-success: #059669;
   --sidebar: rgba(255, 255, 255, 0.62);
   --sidebar-foreground: #241f35;
   --sidebar-primary: #7c3aed;
@@ -148,6 +180,10 @@
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.1);
   --ring: #a855f7;
+  --status-danger: #f87171;
+  --status-warning: #fb923c;
+  --status-caution: #fbbf24;
+  --status-success: #34d399;
   /* Sidebar is darker than the main canvas (which is #0a0a0a). */
   --sidebar: #050506;
   --sidebar-foreground: #d1d1db;
@@ -222,12 +258,6 @@
       inset 0 1px 0 oklch(1 0 0 / 0.08),
       0 0 0 1px oklch(0.63 0.239 349 / 0.48),
       0 0 26px -8px oklch(0.63 0.239 349 / 0.48);
-  }
-  .text-brand {
-    color: var(--brand);
-  }
-  .bg-brand {
-    background-color: var(--brand);
   }
 }
 
@@ -375,36 +405,57 @@ code:not(pre code) {
   font-size: 0.86em !important;
 }
 
-/* Unlayered on purpose so glass wins over utility backgrounds (bg-sidebar etc.) */
-/* ── Liquid Glass Material System (White Theme Redesign) ───────────── */
+/* ── Surfaces ──────────────────────────────────────────────────────────
+   Unlayered on purpose so these win over utility backgrounds (bg-sidebar…).
+   One definition per surface: light is a flat translucent white over the
+   lavender backdrop, dark is the #0a0a0a canvas with a top-lit sheen. */
+
+/* App backdrop */
+.liquid-backdrop {
+  background-color: #f6f3fd;
+  background-image: none;
+}
+.dark .liquid-backdrop {
+  background-color: var(--background);
+}
+/* Light mode: let the backdrop through the shell surfaces */
+:root:not(.dark) [data-slot="sidebar-inner"],
+:root:not(.dark) [data-slot="sidebar-wrapper"] {
+  background-color: transparent;
+}
+
+/* Sidebar */
 .liquid-glass-sidebar {
-  background: rgba(255, 255, 255, 0.62);
-  backdrop-filter: blur(28px) saturate(180%);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  border-right: 1px solid rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.36);
+  backdrop-filter: blur(40px) saturate(200%);
+  -webkit-backdrop-filter: blur(40px) saturate(200%);
+  border-right: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow:
     4px 0 28px 0 rgba(140, 120, 180, 0.04),
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
 }
 .dark .liquid-glass-sidebar {
-  background: #050506;
-  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-border);
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
+/* Composer */
 .liquid-glass-composer {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.68) 100%);
-  backdrop-filter: blur(32px) saturate(190%);
-  -webkit-backdrop-filter: blur(32px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(36px) saturate(210%);
+  -webkit-backdrop-filter: blur(36px) saturate(210%);
+  border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow:
     0 18px 46px -10px rgba(120, 100, 180, 0.12),
     0 1px 2px 0 rgba(0, 0, 0, 0.02),
     inset 0 1.5px 1px 0 rgba(255, 255, 255, 1),
     inset 0 -1px 1px 0 rgba(210, 200, 235, 0.25);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    border-color var(--motion-base) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out);
 }
 .liquid-glass-composer:focus-within {
   border-color: rgba(168, 85, 247, 0.45);
@@ -415,72 +466,88 @@ code:not(pre code) {
 }
 .dark .liquid-glass-composer {
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--edge);
   box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .dark .liquid-glass-composer:focus-within {
   border-color: rgba(168, 85, 247, 0.4);
   box-shadow: 0 0 20px rgba(168, 85, 247, 0.12);
 }
 
+/* Card */
 .liquid-glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.78) 0%, rgba(255, 255, 255, 0.58) 100%);
-  backdrop-filter: blur(24px) saturate(170%);
-  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  background: rgba(255, 255, 255, 0.42);
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
   border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow:
     0 6px 20px -4px rgba(130, 110, 180, 0.07),
     0 1px 2px 0 rgba(0, 0, 0, 0.02),
     inset 0 1px 1px 0 rgba(255, 255, 255, 0.95),
     inset 0 -1px 1px 0 rgba(220, 210, 240, 0.25);
-  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    background-color var(--motion-base) var(--ease-out),
+    border-color var(--motion-base) var(--ease-out),
+    box-shadow var(--motion-base) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 .liquid-glass-card:hover {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.82) 100%);
+  background: rgba(255, 255, 255, 0.62);
   border-color: rgba(168, 85, 247, 0.4);
   box-shadow:
     0 14px 34px -6px rgba(147, 51, 234, 0.14),
     0 2px 6px 0 rgba(0, 0, 0, 0.02),
     inset 0 1px 1px 0 #ffffff;
-  transform: translateY(-2px);
 }
 .dark .liquid-glass-card {
-  background-color: #0a0a0a;
+  background-color: var(--surface-1);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.055) 0%, rgba(255, 255, 255, 0.015) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--edge);
   box-shadow:
     0 1px 0 rgba(0, 0, 0, 0.5),
     0 10px 24px -12px rgba(0, 0, 0, 0.6),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 .dark .liquid-glass-card:hover {
+  background-color: var(--surface-1);
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
   border-color: rgba(255, 255, 255, 0.14);
   box-shadow:
     0 1px 0 rgba(0, 0, 0, 0.5),
     0 12px 28px -12px rgba(0, 0, 0, 0.7),
     inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  transform: none;
 }
 
+/* Pill (always fully round) */
 .liquid-glass-pill {
-  background: rgba(255, 255, 255, 0.65);
-  backdrop-filter: blur(16px) saturate(160%);
-  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.45);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid rgba(255, 255, 255, 0.85);
   box-shadow:
     0 2px 8px 0 rgba(140, 120, 180, 0.05),
     inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.95);
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out),
+    transform var(--motion-fast) var(--ease-out);
 }
 .liquid-glass-pill:hover {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.62);
   border-color: rgba(168, 85, 247, 0.35);
   box-shadow:
     0 4px 14px 0 rgba(147, 51, 234, 0.1),
     inset 0 1px 1px 0 #ffffff;
 }
-.dark .liquid-glass-pill {
+.dark .liquid-glass-pill,
+.dark .liquid-glass-pill:hover {
   background-color: transparent;
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0.03) 100%);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -492,117 +559,45 @@ code:not(pre code) {
   -webkit-backdrop-filter: none;
 }
 .dark .liquid-glass-pill:hover {
-  background-color: transparent;
   background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
   border-color: rgba(255, 255, 255, 0.16);
 }
 
+/* Overlay surface: menus, dropdowns, popovers, dialogs and settings cards.
+   Opaque so text under the overlay never bleeds through. The 20px radius
+   keeps pill rows concentric with the 6px menu padding. */
 .liquid-glass-dropdown {
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(36px) saturate(190%);
-  -webkit-backdrop-filter: blur(36px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-  box-shadow:
-    0 24px 60px -12px rgba(80, 60, 140, 0.16),
-    0 4px 14px 0 rgba(0, 0, 0, 0.03),
-    inset 0 1px 1px 0 rgba(255, 255, 255, 0.95);
-}
-.dark .liquid-glass-dropdown {
-  background: rgba(16, 16, 16, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
-}
-
-/* ── Liquid backdrop: soft pearl + lavender light field (light mode only) ── */
-.liquid-backdrop {
-  background-color: #f6f3fd;
-  background-image: radial-gradient(60vw 50vw at 10% 6%, rgba(167, 139, 250, 0.42) 0%, transparent 62%), radial-gradient(55vw 45vw at 95% 100%, rgba(192, 160, 255, 0.28) 0%, transparent 62%);
-}
-.dark .liquid-backdrop {
-  background-color: var(--background);
+  border-radius: var(--radius-overlay);
+  background-color: #ffffff;
   background-image: none;
-}
-
-/* Glass tuning: more transparent so the backdrop actually shows through */
-.liquid-glass-sidebar {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.28) 100%);
-  backdrop-filter: blur(40px) saturate(200%);
-  -webkit-backdrop-filter: blur(40px) saturate(200%);
-  border-right: 1px solid rgba(255, 255, 255, 0.7);
-}
-.liquid-glass-composer {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.32) 100%);
-  backdrop-filter: blur(36px) saturate(210%);
-  -webkit-backdrop-filter: blur(36px) saturate(210%);
-  border: 1px solid rgba(255, 255, 255, 0.85);
-}
-.liquid-glass-card {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.28) 100%);
-  backdrop-filter: blur(28px) saturate(190%);
-  -webkit-backdrop-filter: blur(28px) saturate(190%);
-}
-.liquid-glass-pill {
-  background: rgba(255, 255, 255, 0.45);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-}
-.liquid-glass-dropdown {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.68) 0%, rgba(255, 255, 255, 0.52) 100%);
-  backdrop-filter: blur(40px) saturate(210%);
-  -webkit-backdrop-filter: blur(40px) saturate(210%);
-}
-.dark .liquid-glass-sidebar {
-  background: #050506;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.04),
+    0 18px 44px -14px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 #ffffff;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-.dark .liquid-glass-composer {
-  background: transparent;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.dark .liquid-glass-card {
-  background-color: #0a0a0a;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.dark .liquid-glass-pill {
-  background-color: transparent;
 }
 .dark .liquid-glass-dropdown {
-  background: #0a0a0a;
+  background-color: #0c0c0d;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.025) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.5),
+    0 22px 48px -16px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* Light mode: let the backdrop through the shell surfaces */
-:root:not(.dark) [data-slot="sidebar-inner"],
-:root:not(.dark) [data-slot="sidebar-wrapper"] {
-  background-color: transparent;
+/* Scrim behind every dialog. */
+.kontinue-scrim {
+  background-color: rgba(24, 21, 36, 0.32);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.dark .kontinue-scrim {
+  background-color: rgba(0, 0, 0, 0.6);
 }
 
-/* Pills are always fully round */
-.liquid-glass-pill {
-  border-radius: 9999px;
-}
-
-/* Hover keeps the glass translucent (no flat white flash) */
-.liquid-glass-pill:hover {
-  background: rgba(255, 255, 255, 0.62);
-  border-color: rgba(168, 85, 247, 0.35);
-}
-.liquid-glass-card:hover {
-  background: linear-gradient(135deg, rgba(255, 255, 255, 0.62) 0%, rgba(240, 232, 255, 0.5) 100%);
-  border-color: rgba(168, 85, 247, 0.4);
-  transform: none;
-}
-.dark .liquid-glass-pill:hover {
-  background-color: transparent;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.05) 100%);
-  border-color: rgba(255, 255, 255, 0.16);
-}
-.dark .liquid-glass-card:hover {
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.09) 0%, rgba(255, 255, 255, 0.03) 100%);
-  border-color: rgba(255, 255, 255, 0.14);
-}
 
 /* Purple capsule: identical material to the sidebar "New" / "Home" buttons */
 .kontinue-capsule {
@@ -715,36 +710,7 @@ code:not(pre code) {
   animation-duration: 0s !important;
 }
 
-/* ── Sleek overlay surface ─────────────────────────────────────────────
-   Menus, dropdowns, popovers and modals share the .kontinue-3d button
-   material: soft top-lit gradient, hairline border, inset highlight.
-   Opaque base so text under the overlay never bleeds through. */
-.liquid-glass-dropdown {
-  border-radius: 14px;
-  background-color: #ffffff;
-  background-image: linear-gradient(180deg, #ffffff 0%, #f4f4f6 100%);
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  box-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.04),
-    0 18px 44px -14px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 #ffffff;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-.dark .liquid-glass-dropdown {
-  background-color: #0c0c0d;
-  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.025) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow:
-    0 1px 0 rgba(0, 0, 0, 0.5),
-    0 22px 48px -16px rgba(0, 0, 0, 0.85),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-}
-/* Fully rounded language: every menu row and active state is a pill. The
-   20px surface radius keeps pills concentric with the 6px menu padding. */
-.liquid-glass-dropdown {
-  border-radius: 20px;
-}
+/* Fully rounded language: every menu row and active state is a pill. */
 .liquid-glass-dropdown [role="menuitem"],
 .liquid-glass-dropdown [role="menuitemcheckbox"],
 .liquid-glass-dropdown [role="menuitemradio"],
@@ -777,6 +743,29 @@ code:not(pre code) {
     inset 0 1px 0 #ffffff,
     0 1px 0 rgba(0, 0, 0, 0.05),
     0 3px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* Hover for rows and icon buttons: the menu-row material above, a touch
+   softer. Inset shadows instead of a border, so nothing shifts. Also lit
+   while the control's own menu is open. */
+.kontinue-hover:hover:not(:disabled, [aria-disabled="true"]),
+.kontinue-hover[aria-haspopup][data-state="open"] {
+  background-color: transparent;
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.075) 0%, rgba(255, 255, 255, 0.025) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 1px 0 rgba(0, 0, 0, 0.35),
+    0 2px 6px rgba(0, 0, 0, 0.16);
+}
+:root:not(.dark) .kontinue-hover:hover:not(:disabled, [aria-disabled="true"]),
+:root:not(.dark) .kontinue-hover[aria-haspopup][data-state="open"] {
+  background-color: rgba(255, 255, 255, 0.7);
+  background-image: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 #ffffff,
+    0 1px 2px rgba(60, 40, 110, 0.06);
 }
 
 /* Horizontal scrollers (filter chips) without a visible scrollbar. */
@@ -819,6 +808,12 @@ code:not(pre code) {
 }
 
 /* Settings → Appearance → Reduce motion. */
+/* Settings → Appearance → Interface font */
+html.font-figtree body,
+html.font-figtree .font-sans {
+  font-family: "Figtree Variable", system-ui, -apple-system, sans-serif;
+}
+
 .reduce-motion *,
 .reduce-motion *::before,
 .reduce-motion *::after {
@@ -877,27 +872,8 @@ html.custom-selection :is(input, textarea, [contenteditable="true"])::selection 
   color: var(--shiki-dark);
 }
 
-/* Light mode is flat: no gradients on surfaces, buttons, pills or menus.
+/* Light mode is flat: no gradients on buttons, pills or menus.
    Dark mode keeps its top-lit sheen. */
-:root:not(.dark) .liquid-backdrop {
-  background-image: none;
-}
-:root:not(.dark) .liquid-glass-sidebar {
-  background: rgba(255, 255, 255, 0.36);
-}
-:root:not(.dark) .liquid-glass-composer {
-  background: rgba(255, 255, 255, 0.5);
-}
-:root:not(.dark) .liquid-glass-card {
-  background: rgba(255, 255, 255, 0.42);
-}
-:root:not(.dark) .liquid-glass-card:hover {
-  background: rgba(255, 255, 255, 0.62);
-}
-:root:not(.dark) .liquid-glass-dropdown {
-  background-color: #ffffff;
-  background-image: none;
-}
 :root:not(.dark) .kontinue-3d {
   background-color: #ffffff;
   background-image: none;

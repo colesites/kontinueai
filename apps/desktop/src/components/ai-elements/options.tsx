@@ -114,7 +114,7 @@ export const Options = ({
               }
             }}
             placeholder="Other — type your own…"
-            className="h-6 w-full bg-transparent text-[11px] text-foreground outline-none placeholder:text-muted-foreground/60"
+            className="h-6 w-full bg-transparent text-caption text-foreground outline-none placeholder:text-muted-foreground/60"
           />
         ) : null}
 
@@ -123,7 +123,7 @@ export const Options = ({
             type="button"
             disabled={selected.length === 0 && custom.trim().length === 0}
             onClick={submitMulti}
-            className="flex h-6 cursor-pointer items-center self-start rounded-md px-1.5 text-[11px] font-medium text-foreground hover:bg-black/[0.05] disabled:opacity-40 dark:hover:bg-white/[0.08]"
+            className="flex h-6 cursor-pointer items-center self-start rounded-md px-1.5 text-caption font-medium text-foreground kontinue-hover disabled:opacity-40"
           >
             Continue
           </button>
@@ -137,7 +137,7 @@ export const OptionsPrompt = ({
   className,
   ...props
 }: ComponentProps<"p">) => (
-  <p className={cn("text-[11px] text-foreground/80", className)} {...props} />
+  <p className={cn("text-caption text-foreground/80", className)} {...props} />
 );
 
 export const OptionsList = ({ className, ...props }: ComponentProps<"div">) => (
@@ -174,7 +174,7 @@ export const Option = ({
       aria-pressed={isSelected}
       title={description}
       className={cn(
-        "flex h-6 w-fit cursor-pointer items-center rounded-md px-1.5 text-[11px] text-foreground/70 transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.06]",
+        "flex h-6 w-fit cursor-pointer items-center rounded-md px-1.5 text-caption text-foreground/70 transition-colors kontinue-hover hover:text-foreground",
         isSelected && "bg-black/[0.06] text-foreground dark:bg-white/[0.08]",
         submitted && !isSelected && "opacity-40",
         className,

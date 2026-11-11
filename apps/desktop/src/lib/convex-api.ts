@@ -145,6 +145,17 @@ type KodeConvexApi = {
     setChatArchived: FunctionReference<"mutation", "public", { chatId: string; archived: boolean }, { archived: boolean }>;
     deleteChat: FunctionReference<"mutation", "public", { chatId: string }, unknown>;
     updateChatTitle: FunctionReference<"mutation", "public", { chatId: string; title: string }, unknown>;
+    appendImportedMessagesToChat: FunctionReference<
+      "mutation",
+      "public",
+      { chatId: string; title: string; messages: { role: "system" | "user" | "assistant"; content: string }[] },
+      unknown
+    >;
+    appendImportFailureMessageToChat: FunctionReference<"mutation", "public", { chatId: string; errorMessage: string }, unknown>;
+  };
+  firecrawl: {
+    /** Scrape a shared chat link into an existing (empty) chat. */
+    importIntoChat: FunctionReference<"action", "public", { chatId: string; url: string }, { success: boolean; error?: string }>;
   };
   projects: {
     listProjects: FunctionReference<"query", "public", { includeArchived?: boolean }, HomeConvexProject[]>;
@@ -243,6 +254,8 @@ type KodeConvexApi = {
       { contextPrompt: string; summary: string | null; projectName: string | null; updatedAt: number } | null
     >;
     getMessages: FunctionReference<"query", "public", { chatId: string }, KodeConvexMessage[]>;
+    /** Newest `limit` messages (oldest first) and whether older ones exist. */
+    getRecentMessages: FunctionReference<"query", "public", { chatId: string; limit: number }, { messages: KodeConvexMessage[]; hasMore: boolean }>;
     addMessage: FunctionReference<
       "mutation",
       "public",
@@ -334,7 +347,16 @@ export type KodeWebhook = {
   instructions: string | null;
   enabled: boolean;
   lastEventAt: number | null;
+  /** GitHub/GitLab webhook secret (null on webhooks made before signing). */
+  signingSecret: string | null;
+  requireSignature: boolean;
+  filters: KodeWebhookFilters;
 };
+
+/** Event kinds a webhook can react to (backend lib/kodeWebhookSummary.ts). */
+export type KodeWebhookKind = "ci" | "pull_request" | "review" | "issue" | "comment" | "push" | "other";
+
+export type KodeWebhookFilters = { kinds: KodeWebhookKind[]; branches: string[]; authors: string[] };
 
 export type KodeWebhookEvent = {
   id: string;
@@ -351,12 +373,87 @@ export type KodeWebhookEvent = {
 
 export type KodeWebhooksApi = {
   kodeWebhooks: {
-    createWebhook: FunctionReference<"mutation", "public", { name: string; projectPath?: string; projectName?: string; instructions?: string }, { id: string; token: string }>;
+    createWebhook: FunctionReference<
+      "mutation",
+      "public",
+      { name: string; projectPath?: string; projectName?: string; instructions?: string; requireSignature?: boolean; filters?: Partial<KodeWebhookFilters> },
+      { id: string; token: string }
+    >;
     listWebhooks: FunctionReference<"query", "public", Record<string, never>, KodeWebhook[]>;
-    updateWebhook: FunctionReference<"mutation", "public", { id: string; enabled?: boolean; instructions?: string; rotateToken?: boolean }, null>;
+    updateWebhook: FunctionReference<
+      "mutation",
+      "public",
+      {
+        id: string;
+        enabled?: boolean;
+        instructions?: string;
+        rotateToken?: boolean;
+        rotateSecret?: boolean;
+        requireSignature?: boolean;
+        filters?: Partial<KodeWebhookFilters>;
+      },
+      null
+    >;
     deleteWebhook: FunctionReference<"mutation", "public", { id: string }, null>;
     pendingWebhookEvents: FunctionReference<"query", "public", Record<string, never>, KodeWebhookEvent[]>;
     claimWebhookEvent: FunctionReference<"mutation", "public", { eventId: string; deviceId: string }, boolean>;
+  };
+};
+
+/** Kontinue tasks (packages/backend/convex/convex/tasks.ts). */
+export type KontinueTask = {
+  _id: string;
+  title: string;
+  description?: string;
+  dueDate?: number;
+  priority: "low" | "medium" | "high" | "urgent";
+  status: "todo" | "in_progress" | "done";
+  recurring: boolean;
+  /** RRULE-ish ("FREQ=DAILY"); unset for a one-off task. */
+  recurrenceRule?: string;
+  isAgentTask?: boolean;
+  aiInstruction?: string;
+  reminderMinutesBefore?: number;
+  completedAt?: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
+type TaskFields = {
+  title: string;
+  description?: string;
+  dueDate?: number;
+  priority?: KontinueTask["priority"];
+  status?: KontinueTask["status"];
+  recurring?: boolean;
+  recurrenceRule?: string;
+  isAgentTask?: boolean;
+  aiInstruction?: string;
+  reminderMinutesBefore?: number;
+};
+
+/** updateTask clears a field when it is passed as null. */
+type TaskPatch = {
+  taskId: string;
+  title?: string;
+  description?: string;
+  dueDate?: number | null;
+  priority?: KontinueTask["priority"];
+  status?: KontinueTask["status"];
+  recurring?: boolean;
+  recurrenceRule?: string | null;
+  isAgentTask?: boolean;
+  aiInstruction?: string | null;
+  reminderMinutesBefore?: number | null;
+};
+
+export type KontinueTasksApi = {
+  tasks: {
+    listTasks: FunctionReference<"query", "public", { status?: KontinueTask["status"] }, KontinueTask[]>;
+    createTask: FunctionReference<"mutation", "public", TaskFields, string>;
+    updateTask: FunctionReference<"mutation", "public", TaskPatch, null>;
+    toggleTaskComplete: FunctionReference<"mutation", "public", { taskId: string }, { done: boolean }>;
+    deleteTask: FunctionReference<"mutation", "public", { taskId: string }, null>;
   };
 };
 
@@ -382,3 +479,24 @@ export type KodeProjectMovesApi = {
 export const api = anyApi as unknown as KodeConvexApi;
 export const projectMovesApi = anyApi as unknown as KodeProjectMovesApi;
 export const webhooksApi = anyApi as unknown as KodeWebhooksApi;
+export const tasksApi = anyApi as unknown as KontinueTasksApi;
+
+/** Kontinue chat (web and mobile) monthly usage: messages.getMonthlyUsage. */
+export type KontinueChatUsage = {
+  planTier: string;
+  isPaid: boolean;
+  kaiUsed: number;
+  kaiLimit: number;
+  paidPremiumUsed: number;
+  paidPremiumLimit: number;
+  paidStandardUsed: number;
+  paidStandardLimit: number;
+  frontierUsed: number;
+  frontierLimit: number;
+  monthlyImportUsed: number;
+  monthlyImportLimit: number;
+};
+
+export const chatUsageApi = anyApi as unknown as {
+  messages: { getMonthlyUsage: FunctionReference<"query", "public", Record<string, never>, KontinueChatUsage | null> };
+};

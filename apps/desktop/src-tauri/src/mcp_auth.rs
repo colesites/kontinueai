@@ -344,12 +344,12 @@ pub async fn mcp_oauth_login(app: tauri::AppHandle, url: String) -> Result<(), S
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mcp_oauth_status(url: String) -> bool {
     load(&url).is_some()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn mcp_oauth_logout(url: String) -> Result<(), String> {
     if let Some(entry) = entry(&url) {
         let _ = entry.delete_credential();

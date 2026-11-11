@@ -168,14 +168,14 @@ export function McpSection() {
       <KodeMcpServerCard />
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <p className="px-1 text-[11.5px] text-muted-foreground">
+          <p className="px-1 text-label text-muted-foreground">
             {configs.length} server{configs.length === 1 ? "" : "s"} · external tools exposed to Kode
           </p>
           <button
             type="button"
             onClick={() => clearMcpPermissions()}
             title="Forget saved allow/deny decisions for all MCP tools"
-            className="cursor-pointer px-1 text-[11px] text-muted-foreground/70 underline-offset-2 hover:text-foreground hover:underline"
+            className="cursor-pointer px-1 text-caption text-muted-foreground/70 underline-offset-2 hover:text-foreground hover:underline"
           >
             Reset permissions
           </button>
@@ -186,7 +186,7 @@ export function McpSection() {
             onClick={() => (found ? setFound(null) : void scan())}
             disabled={scanning}
             title="Bring in servers you set up in Claude Code, Claude Desktop, Cursor, Codex or a project's .mcp.json"
-            className="kontinue-3d flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] text-foreground/85 hover:text-foreground disabled:opacity-60"
+            className="kontinue-3d flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-label text-foreground/85 hover:text-foreground disabled:opacity-60"
           >
             {scanning ? <Loader2 size={13} className="animate-spin" /> : found ? <X size={13} /> : <Download size={13} />}
             {found ? "Close" : "Import"}
@@ -203,7 +203,7 @@ export function McpSection() {
                 setFound(null);
               }
             }}
-            className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium"
+            className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-label font-medium"
           >
             {adding ? <X size={13} /> : <Plus size={13} />}
             {adding ? "Cancel" : "Add server"}
@@ -214,9 +214,9 @@ export function McpSection() {
       {found ? (
         <section className="mb-6">
           <div className="liquid-glass-dropdown space-y-2 !rounded-[20px] p-4">
-            <p className="text-[13px] font-medium">Servers found on this Mac</p>
+            <p className="text-body font-medium">Servers found on this Mac</p>
             {found.length === 0 ? (
-              <p className="text-[12px] text-muted-foreground">None found in Claude Code, Claude Desktop, Cursor, Codex or your projects' .mcp.json.</p>
+              <p className="text-label text-muted-foreground">None found in Claude Code, Claude Desktop, Cursor, Codex or your projects' .mcp.json.</p>
             ) : (
               <div className="space-y-0.5">
                 {found.map((server) => {
@@ -236,18 +236,18 @@ export function McpSection() {
                           return next;
                         })
                       }
-                      className="flex w-full cursor-pointer items-start gap-2.5 rounded-xl px-2 py-1.5 text-left hover:bg-black/[0.04] disabled:cursor-default disabled:opacity-55 dark:hover:bg-white/[0.05]"
+                      className="flex w-full cursor-pointer items-start gap-2.5 rounded-xl px-2 py-1.5 text-left kontinue-hover disabled:cursor-default disabled:opacity-55"
                     >
                       <span className={cn("mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[5px] border", on && !already ? "border-purple-500 bg-purple-500 text-white" : "border-black/20 dark:border-white/25")}>
                         {on && !already ? <Check size={11} strokeWidth={3} /> : null}
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-2">
-                          <span className="truncate text-[12.5px] font-medium">{server.name}</span>
-                          <span className="shrink-0 text-[10.5px] text-muted-foreground">{already ? "already added" : server.source}</span>
+                          <span className="truncate text-body font-medium">{server.name}</span>
+                          <span className="shrink-0 text-caption text-muted-foreground">{already ? "already added" : server.source}</span>
                         </span>
-                        <span className="block truncate font-mono text-[10.5px] text-muted-foreground/80">{server.url ?? `${server.command} ${server.args.join(" ")}`}</span>
-                        {server.hasHeaders ? <span className="block text-[10.5px] text-amber-600 dark:text-amber-400">Its custom headers are not carried over, so it may ask you to sign in.</span> : null}
+                        <span className="block truncate font-mono text-caption text-muted-foreground/80">{server.url ?? `${server.command} ${server.args.join(" ")}`}</span>
+                        {server.hasHeaders ? <span className="block text-caption text-amber-600 dark:text-amber-400">Its custom headers are not carried over, so it may ask you to sign in.</span> : null}
                       </span>
                     </button>
                   );
@@ -255,7 +255,7 @@ export function McpSection() {
               </div>
             )}
             {found.some((s) => picked.has(foundKey(s)) && !configs.some((c) => sameServer(c, s))) ? (
-              <button type="button" onClick={importPicked} className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-4 text-[12px] font-medium">
+              <button type="button" onClick={importPicked} className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-4 text-label font-medium">
                 Import selected
               </button>
             ) : null}
@@ -268,59 +268,59 @@ export function McpSection() {
           <div className="liquid-glass-dropdown !rounded-[20px] p-4">
             <div className="space-y-3">
               <div>
-                <label htmlFor="mcp-name" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">Name</label>
+                <label htmlFor="mcp-name" className="mb-1 block text-label font-medium text-muted-foreground">Name</label>
                 <input
                   id="mcp-name"
                   value={draft.name}
                   onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
                   placeholder="GitHub"
-                  className="kontinue-3d h-8 w-full rounded-full px-3.5 text-[12.5px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d h-8 w-full rounded-full px-3.5 text-body outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
               <div>
-                <label htmlFor="mcp-command" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">Command (stdio)</label>
+                <label htmlFor="mcp-command" className="mb-1 block text-label font-medium text-muted-foreground">Command (stdio)</label>
                 <input
                   id="mcp-command"
                   value={draft.command}
                   onChange={(e) => setDraft((d) => ({ ...d, command: e.target.value }))}
                   placeholder="npx"
-                  className="kontinue-3d h-8 w-full rounded-full px-3.5 font-mono text-[12.5px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d h-8 w-full rounded-full px-3.5 font-mono text-body outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
               <div>
-                <label htmlFor="mcp-url" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">…or URL (HTTP)</label>
+                <label htmlFor="mcp-url" className="mb-1 block text-label font-medium text-muted-foreground">…or URL (HTTP)</label>
                 <input
                   id="mcp-url"
                   value={draft.url}
                   onChange={(e) => setDraft((d) => ({ ...d, url: e.target.value }))}
                   placeholder="https://mcp.example.com/mcp"
-                  className="kontinue-3d h-8 w-full rounded-full px-3.5 font-mono text-[12.5px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d h-8 w-full rounded-full px-3.5 font-mono text-body outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
               <div>
-                <label htmlFor="mcp-args" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">Arguments (one per line)</label>
+                <label htmlFor="mcp-args" className="mb-1 block text-label font-medium text-muted-foreground">Arguments (one per line)</label>
                 <textarea
                   id="mcp-args"
                   value={draft.args}
                   onChange={(e) => setDraft((d) => ({ ...d, args: e.target.value }))}
                   rows={2}
                   placeholder={"-y\n@modelcontextprotocol/server-github"}
-                  className="kontinue-3d w-full rounded-[16px] px-3.5 py-2.5 font-mono text-[12px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d w-full rounded-[16px] px-3.5 py-2.5 font-mono text-label outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
               <div>
-                <label htmlFor="mcp-env" className="mb-1 block text-[11.5px] font-medium text-muted-foreground">Environment (KEY=VALUE per line)</label>
+                <label htmlFor="mcp-env" className="mb-1 block text-label font-medium text-muted-foreground">Environment (KEY=VALUE per line)</label>
                 <textarea
                   id="mcp-env"
                   value={draft.env}
                   onChange={(e) => setDraft((d) => ({ ...d, env: e.target.value }))}
                   rows={2}
                   placeholder={"GITHUB_PERSONAL_ACCESS_TOKEN=ghp_…"}
-                  className="kontinue-3d w-full rounded-[16px] px-3.5 py-2.5 font-mono text-[12px] outline-none placeholder:text-muted-foreground/50"
+                  className="kontinue-3d w-full rounded-[16px] px-3.5 py-2.5 font-mono text-label outline-none placeholder:text-muted-foreground/50"
                 />
               </div>
-              {error ? <p className="text-[11.5px] text-rose-400">{error}</p> : null}
-              <button type="button" onClick={addServer} className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-4 text-[12px] font-medium">
+              {error ? <p className="text-label text-rose-400">{error}</p> : null}
+              <button type="button" onClick={addServer} className="kontinue-3d-primary h-8 cursor-pointer rounded-full px-4 text-label font-medium">
                 {editingId ? "Save changes" : "Add server"}
               </button>
             </div>
@@ -329,7 +329,7 @@ export function McpSection() {
       ) : null}
 
       {configs.length === 0 && !adding && !found ? (
-        <p className="px-1 py-6 text-[12.5px] text-muted-foreground">
+        <p className="px-1 py-6 text-body text-muted-foreground">
           No MCP servers configured. Import the ones you use in Claude Code, Cursor or Codex, or add one, e.g.{" "}
           <code className="font-mono">npx -y @modelcontextprotocol/server-filesystem</code>.
         </p>
@@ -350,13 +350,13 @@ export function McpSection() {
                   <PlugZap size={13} className="mt-0.5 shrink-0 text-purple-400" />
                   <span className="min-w-0">
                     <span className="flex items-center gap-2">
-                      <span className="truncate text-[13px] font-medium text-foreground/90">{config.name}</span>
-                      <span className="truncate font-mono text-[10.5px] text-muted-foreground/70">
+                      <span className="truncate text-body font-medium text-foreground/90">{config.name}</span>
+                      <span className="truncate font-mono text-caption text-muted-foreground/70">
                         {config.url ?? `${config.command} ${(config.args ?? []).join(" ")}`}
                       </span>
                     </span>
                     {toolList.length > 0 ? (
-                      <span className="mt-0.5 block text-[11px] text-muted-foreground">{toolList.length} tool{toolList.length === 1 ? "" : "s"}</span>
+                      <span className="mt-0.5 block text-caption text-muted-foreground">{toolList.length} tool{toolList.length === 1 ? "" : "s"}</span>
                     ) : null}
                   </span>
                 </button>
@@ -365,7 +365,7 @@ export function McpSection() {
                     type="button"
                     onClick={() => void test(config)}
                     disabled={busy === config.id}
-                    className="kontinue-3d flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11.5px] text-foreground/85 hover:text-foreground disabled:opacity-50"
+                    className="kontinue-3d flex h-7 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label text-foreground/85 hover:text-foreground disabled:opacity-50"
                   >
                     {busy === config.id ? <Loader2 size={12} className="animate-spin" /> : null}
                     Test
@@ -384,8 +384,8 @@ export function McpSection() {
                 <div className="mt-2.5 space-y-0.5 border-l border-black/[0.06] pl-4 dark:border-white/[0.08]">
                   {toolList.map((tool) => (
                     <div key={tool.name} className="py-0.5">
-                      <p className="font-mono text-[11.5px] text-foreground/80">{tool.name}</p>
-                      {tool.description ? <p className="text-[10.5px] leading-snug text-muted-foreground">{tool.description}</p> : null}
+                      <p className="font-mono text-label text-foreground/80">{tool.name}</p>
+                      {tool.description ? <p className="text-caption leading-snug text-muted-foreground">{tool.description}</p> : null}
                     </div>
                   ))}
                 </div>

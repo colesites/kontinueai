@@ -311,7 +311,7 @@ export function BrowserTab({
   };
 
   const navButton =
-    "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent dark:hover:bg-white/[0.05]";
+    "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground disabled:cursor-default disabled:opacity-30 disabled:hover:bg-transparent";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -330,9 +330,9 @@ export function BrowserTab({
             onChange={(e) => setPickNote(e.target.value)}
             onKeyDown={(e) => e.key === "Escape" && setPicked(null)}
             placeholder={`Note on ${picked.label.slice(0, 40)}`}
-            className="kontinue-3d h-8 min-w-0 flex-1 rounded-full px-3.5 text-[12px] outline-none placeholder:text-muted-foreground/60"
+            className="kontinue-3d h-8 min-w-0 flex-1 rounded-full px-3.5 text-label outline-none placeholder:text-muted-foreground/60"
           />
-          <button type="submit" className="kontinue-3d-primary h-8 shrink-0 cursor-pointer rounded-full px-3 text-[12px] font-medium">
+          <button type="submit" className="kontinue-3d-primary h-8 shrink-0 cursor-pointer rounded-full px-3 text-label font-medium">
             Add note
           </button>
           <button type="button" aria-label="Cancel" onClick={() => setPicked(null)} className={navButton}>
@@ -371,7 +371,7 @@ export function BrowserTab({
           placeholder="Search or enter a URL"
           spellCheck={false}
           className={cn(
-            "kontinue-3d mx-1 h-8 min-w-0 flex-1 rounded-full px-3.5 text-[12px] outline-none placeholder:text-muted-foreground/60",
+            "kontinue-3d mx-1 h-8 min-w-0 flex-1 rounded-full px-3.5 text-label outline-none placeholder:text-muted-foreground/60",
             invalid && "ring-1 ring-rose-500/50",
           )}
         />
@@ -429,7 +429,7 @@ export function BrowserTab({
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
               <Globe size={22} strokeWidth={1.4} className="text-muted-foreground/60" />
-              <p className="text-[12px] leading-relaxed text-muted-foreground">
+              <p className="text-label leading-relaxed text-muted-foreground">
                 Search the web, open a URL, or preview a local server.
               </p>
               <div className="flex flex-wrap justify-center gap-1.5">
@@ -438,7 +438,7 @@ export function BrowserTab({
                     key={port}
                     type="button"
                     onClick={() => navigate(String(port))}
-                    className="kontinue-3d cursor-pointer rounded-full px-3 py-1 font-mono text-[11px] text-foreground/75 hover:text-foreground"
+                    className="kontinue-3d cursor-pointer rounded-full px-3 py-1 font-mono text-caption text-foreground/75 hover:text-foreground"
                   >
                     :{port}
                   </button>
@@ -447,7 +447,7 @@ export function BrowserTab({
             </div>
           )}
           {nativeError ? (
-            <p className="pointer-events-none absolute inset-x-4 bottom-3 text-center text-[11px] text-rose-500/80">
+            <p className="pointer-events-none absolute inset-x-4 bottom-3 text-center text-caption text-rose-500/80">
               {nativeError}
             </p>
           ) : null}

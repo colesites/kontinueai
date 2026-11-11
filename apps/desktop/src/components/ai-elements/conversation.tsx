@@ -171,7 +171,7 @@ export const ConversationDownload = ({
   return (
     <Button
       className={cn(
-        "absolute top-4 right-4 rounded-full dark:bg-background dark:hover:bg-muted",
+        "absolute top-4 right-4 rounded-full dark:bg-background kontinue-hover",
         className
       )}
       onClick={handleDownload}

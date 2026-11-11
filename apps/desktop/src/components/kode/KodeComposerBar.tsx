@@ -1,4 +1,3 @@
-import { invoke } from "@tauri-apps/api/core";
 import {
   Check,
   ChevronDown,
@@ -22,6 +21,8 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import { BranchPicker, useBranches } from "./BranchPicker";
+import { updateSettings, useAppSettings } from "../../lib/app-settings";
+import { addWorktree, branchPrefix, isWorktreePath } from "../../lib/kode-branches";
 
 const errorText = (error: unknown) =>
   typeof error === "string"
@@ -40,7 +41,7 @@ function BarButton({
     <button
       type="button"
       {...props}
-      className="flex h-6 max-w-[160px] cursor-pointer items-center gap-1 rounded-md px-1 text-[11px] text-foreground/70 transition-colors hover:bg-black/[0.04] hover:text-foreground disabled:cursor-default disabled:opacity-45 data-[state=open]:bg-black/[0.05] dark:hover:bg-white/[0.06] dark:data-[state=open]:bg-white/[0.07]"
+      className="flex h-6 max-w-[160px] cursor-pointer items-center gap-1 rounded-md px-1 text-caption text-foreground/70 transition-colors kontinue-hover hover:text-foreground disabled:cursor-default disabled:opacity-45 data-[state=open]:bg-black/[0.05] dark:data-[state=open]:bg-white/[0.07]"
     >
       <span className="shrink-0">{icon}</span>
       <span className="truncate">{label}</span>
@@ -69,7 +70,7 @@ function MenuSearch({
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => e.stopPropagation()}
         placeholder={placeholder}
-        className="w-full bg-transparent text-[12.5px] outline-none placeholder:text-muted-foreground/60"
+        className="w-full bg-transparent text-body outline-none placeholder:text-muted-foreground/60"
       />
     </div>
   );
@@ -81,13 +82,15 @@ function NameField({
   busy,
   onSubmit,
   onCancel,
+  initial = "",
 }: {
   placeholder: string;
   busy: boolean;
   onSubmit: (name: string) => void;
   onCancel: () => void;
+  initial?: string;
 }) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(initial);
   return (
     <form
       className="flex items-center gap-1.5 px-2 py-1.5"
@@ -107,12 +110,12 @@ function NameField({
           if (e.key === "Escape") onCancel();
         }}
         placeholder={placeholder}
-        className="kontinue-3d h-8 min-w-0 flex-1 rounded-full px-3 text-[12px] outline-none placeholder:text-muted-foreground/60"
+        className="kontinue-3d h-8 min-w-0 flex-1 rounded-full px-3 text-label outline-none placeholder:text-muted-foreground/60"
       />
       <button
         type="submit"
         disabled={busy || !name.trim()}
-        className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center rounded-full px-3 text-[12px] font-medium disabled:opacity-50"
+        className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center rounded-full px-3 text-label font-medium disabled:opacity-50"
       >
         {busy ? <Loader2 size={12} className="animate-spin" /> : "Create"}
       </button>
@@ -134,8 +137,10 @@ export function KodeComposerBar({
   end?: ReactNode;
 }) {
   const { projects, newChat, importFolder, ensureFolder } = useKodeWorkspace();
+  const { newThreadWorkspace } = useAppSettings();
+  const autoWorktree = newThreadWorkspace === "worktree";
   const projectPath = project?.path ?? null;
-  const inWorktree = !!projectPath && projectPath.includes("/.kontinue/worktrees/");
+  const inWorktree = isWorktreePath(projectPath);
 
   // Project picker
   const [projectQuery, setProjectQuery] = useState("");
@@ -155,10 +160,7 @@ export function KodeComposerBar({
     setWorktreeBusy(true);
     setWorktreeError(null);
     try {
-      const path = await invoke<string>("panel_git_worktree_add", {
-        root: projectPath,
-        branch,
-      });
+      const path = await addWorktree(projectPath, branch);
       newChat(ensureFolder(path));
       setWorktreeOpen(false);
     } catch (error) {
@@ -197,14 +199,14 @@ export function KodeComposerBar({
                   className="flex items-center gap-2.5 px-3 py-1.5"
                 >
                   <Folder size={12} className="shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 flex-1 truncate text-[12.5px]">{p.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-body">{p.name}</span>
                   {p.id === project?.id ? (
                     <Check size={12} className="shrink-0 text-purple-500" />
                   ) : null}
                 </DropdownMenuItem>
               ))}
               {visibleProjects.length === 0 ? (
-                <p className="px-3 py-2 text-[12px] text-muted-foreground">No matching projects.</p>
+                <p className="px-3 py-2 text-label text-muted-foreground">No matching projects.</p>
               ) : null}
             </div>
             <DropdownMenuSeparator />
@@ -213,14 +215,14 @@ export function KodeComposerBar({
               className="flex items-center gap-2.5 px-3 py-1.5"
             >
               <FolderPlus size={12} className="shrink-0" />
-              <span className="text-[12.5px]">Add project folder…</span>
+              <span className="text-body">Add project folder…</span>
             </DropdownMenuItem>
             <DropdownMenuItem
               onSelect={() => newChat(null)}
               className="flex items-center gap-2.5 px-3 py-1.5"
             >
               <X size={12} className="shrink-0" />
-              <span className="text-[12.5px]">Don't work in a project</span>
+              <span className="text-body">Don't work in a project</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -237,28 +239,47 @@ export function KodeComposerBar({
           <DropdownMenuTrigger asChild>
             <BarButton
               icon={inWorktree ? <GitFork size={12} /> : <Laptop size={12} />}
-              label={inWorktree ? "Worktree" : "Local"}
+              label={inWorktree ? "Worktree" : autoWorktree ? "New worktree" : "Local"}
             />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top" sideOffset={8} className="w-72 p-1.5">
-            <p className="px-3 pt-1 pb-1 text-[10.5px] font-medium text-muted-foreground/70">
+            <p className="px-3 pt-1 pb-1 text-caption font-medium text-muted-foreground/70">
               Work in
             </p>
-            <DropdownMenuItem className="flex items-center gap-2.5 px-3 py-1.5">
+            <DropdownMenuItem
+              onSelect={() => updateSettings({ newThreadWorkspace: "local" })}
+              className="flex items-center gap-2.5 px-3 py-1.5"
+            >
               <Laptop size={12} className="shrink-0" />
-              <span className="flex-1 text-[12.5px]">{inWorktree ? "This worktree" : "Local"}</span>
-              <Check size={12} className="shrink-0 text-purple-500" />
+              <span className="flex-1 text-body">{inWorktree ? "This worktree" : "Local"}</span>
+              {inWorktree || !autoWorktree ? <Check size={12} className="shrink-0 text-purple-500" /> : null}
             </DropdownMenuItem>
+            {!inWorktree ? (
+              <DropdownMenuItem
+                onSelect={() => updateSettings({ newThreadWorkspace: "worktree" })}
+                className="flex items-center gap-2.5 px-3 py-1.5"
+              >
+                <GitFork size={12} className="shrink-0" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-body">New worktree, named from your message</span>
+                  <span className="block text-caption text-muted-foreground">
+                    Branch {branchPrefix()}… · default for new threads
+                  </span>
+                </span>
+                {autoWorktree ? <Check size={12} className="shrink-0 text-purple-500" /> : null}
+              </DropdownMenuItem>
+            ) : null}
             {worktreeOpen ? (
               <>
                 <NameField
+                  initial={branchPrefix()}
                   placeholder="Branch for the new worktree"
                   busy={worktreeBusy}
                   onSubmit={(name) => void createWorktree(name)}
                   onCancel={() => setWorktreeOpen(false)}
                 />
                 {worktreeError ? (
-                  <p className="px-3 pb-1.5 text-[11px] text-rose-400">{worktreeError}</p>
+                  <p className="px-3 pb-1.5 text-caption text-rose-400">{worktreeError}</p>
                 ) : null}
               </>
             ) : (
@@ -271,8 +292,8 @@ export function KodeComposerBar({
               >
                 <GitFork size={12} className="shrink-0" />
                 <span className="min-w-0 flex-1">
-                  <span className="block text-[12.5px]">New worktree</span>
-                  <span className="block text-[10.5px] text-muted-foreground">
+                  <span className="block text-body">New worktree with a branch name…</span>
+                  <span className="block text-caption text-muted-foreground">
                     Separate folder on its own branch
                   </span>
                 </span>
@@ -280,8 +301,8 @@ export function KodeComposerBar({
             )}
             <DropdownMenuItem disabled className="flex items-center gap-2.5 px-3 py-1.5">
               <Cloud size={12} className="shrink-0" />
-              <span className="flex-1 text-[12.5px]">Cloud</span>
-              <span className="rounded-full border border-black/10 px-1.5 text-[9.5px] text-muted-foreground dark:border-white/10">
+              <span className="flex-1 text-body">Cloud</span>
+              <span className="rounded-full border border-black/10 px-1.5 text-micro text-muted-foreground dark:border-white/10">
                 Soon
               </span>
             </DropdownMenuItem>

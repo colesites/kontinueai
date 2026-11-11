@@ -89,10 +89,10 @@ export function TerminalTab({ projectPath, visible }: { projectPath: string; vis
           <div
             key={session.key}
             className={cn(
-              "group flex h-7 shrink-0 items-center gap-1 rounded-full pr-1 pl-3 text-[11.5px] transition-colors",
+              "group flex h-7 shrink-0 items-center gap-1 rounded-full pr-1 pl-3 text-label transition-colors",
               session.key === activeKey
                 ? "kontinue-menu-active"
-                : "text-muted-foreground hover:bg-black/[0.04] dark:hover:bg-white/[0.05]",
+                : "text-muted-foreground kontinue-hover",
             )}
           >
             <button type="button" className="cursor-pointer" onClick={() => setActiveKey(session.key)}>
@@ -113,7 +113,7 @@ export function TerminalTab({ projectPath, visible }: { projectPath: string; vis
           title="New terminal"
           aria-label="New terminal"
           onClick={addSession}
-          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+          className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground kontinue-hover hover:text-foreground"
         >
           <Plus size={14} />
         </button>
@@ -261,7 +261,7 @@ function TerminalView({
 
   return (
     <div className={cn("absolute inset-0 px-3 pt-1 pb-2", !visible && "invisible")}>
-      {error ? <p className="py-2 text-[11.5px] text-rose-400">{error}</p> : null}
+      {error ? <p className="py-2 text-label text-rose-400">{error}</p> : null}
       <div ref={hostRef} className="h-full w-full" />
     </div>
   );

@@ -62,7 +62,7 @@ const LeftSidebarFooter = () => {
           <button
             type="button"
             onClick={() => setMenuOpen((v) => !v)}
-            className="flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-full py-1 pr-2.5 pl-1 text-left transition-colors duration-150 hover:bg-black/[0.04] data-[state=open]:bg-black/[0.04] dark:hover:bg-white/[0.05] dark:data-[state=open]:bg-white/[0.05]"
+            className="flex h-10 min-w-0 flex-1 cursor-pointer items-center gap-2.5 rounded-full py-1 pr-2.5 pl-1 text-left transition-colors duration-150 kontinue-hover data-[state=open]:bg-black/[0.04] dark:data-[state=open]:bg-white/[0.05]"
           >
             {user?.imageUrl ? (
               <img
@@ -71,11 +71,11 @@ const LeftSidebarFooter = () => {
                 className="size-7 shrink-0 rounded-full object-cover"
               />
             ) : (
-              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-[11px] font-medium text-zinc-700 dark:bg-white/[0.12] dark:text-foreground/85">
+              <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-black/[0.08] text-caption font-medium text-zinc-700 dark:bg-white/[0.12] dark:text-foreground/85">
                 {initials.slice(0, 1).toUpperCase()}
               </span>
             )}
-            <span className="flex min-w-0 items-center gap-1 text-[13px]">
+            <span className="flex min-w-0 items-center gap-1 text-body">
               <span className="truncate font-medium text-zinc-800 dark:text-foreground">{shortName}</span>
               <span className="shrink-0 text-muted-foreground">· {planName}</span>
             </span>
@@ -188,7 +188,7 @@ const LeftSidebarFooter = () => {
         aria-label="Settings"
         title="Settings (⌘,)"
         onClick={() => openSettings("general")}
-        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]"
+        className="flex size-9 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground"
       >
         <Settings size={17} strokeWidth={1.5} />
       </button>

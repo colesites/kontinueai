@@ -45,7 +45,8 @@ fn block_re() -> &'static Regex {
     static R: OnceLock<Regex> = OnceLock::new();
     R.get_or_init(|| {
         re(&format!(
-            r#"(?s)<{BAR}DSML{BAR}function_calls\s*>.*?(?:<\s*/{BAR}DSML{BAR}function_calls\s*>|$)"#
+            // `function_calls`, `tool_calls`, `tool▁calls`…: the wrapper name varies.
+            r#"(?s)<{BAR}DSML{BAR}[\w▁]*calls\s*>.*?(?:<\s*/{BAR}DSML{BAR}[\w▁]*calls\s*>|$)"#
         ))
     })
 }
@@ -105,6 +106,15 @@ pub fn extract(content: &str) -> Option<(String, Vec<Value>)> {
     Some((clean.trim().to_string(), calls))
 }
 
+/// When `content` has the start of tool-call markup that `extract` could not
+/// turn into calls (the reply was cut off mid-call, or the format is off),
+/// the text before the markup. The markup must never reach the chat, and the
+/// caller should treat the reply as cut short.
+pub fn unfinished_markup_prefix(content: &str) -> Option<String> {
+    let found = start_re().find(content)?;
+    Some(content[..found.start()].trim_end().to_string())
+}
+
 /// Bytes of `content` that can be shown while streaming: everything before
 /// any markup, holding back a trailing `<…` that might still become markup.
 pub fn safe_prefix_len(content: &str) -> usize {
@@ -145,6 +155,23 @@ mod tests {
         assert_eq!(clean, "ok");
         assert_eq!(calls[0]["function"]["name"], "list_dir");
         assert!(extract("plain answer with a < b comparison").is_none());
+    }
+
+    #[test]
+    fn accepts_other_wrapper_names() {
+        let text = "Next.\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name=\"list_dir\">\n<｜DSML｜parameter name=\"path\" string=\"true\">.</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>";
+        let (clean, calls) = extract(text).unwrap();
+        assert_eq!(clean, "Next.");
+        assert_eq!(calls[0]["function"]["name"], "list_dir");
+    }
+
+    #[test]
+    fn cut_off_markup_is_detected_not_shown() {
+        // The reply ended inside a call: nothing to run, and the markup must go.
+        let text = "Writing the store now.\n<｜DSML｜function_calls>\n<｜DSML｜invoke name=\"write_file\">\n<｜DSML｜parameter name=\"content\" string=\"true\">export const";
+        assert!(extract(text).is_none());
+        assert_eq!(unfinished_markup_prefix(text).as_deref(), Some("Writing the store now."));
+        assert!(unfinished_markup_prefix("no markup here").is_none());
     }
 
     #[test]

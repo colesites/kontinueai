@@ -33,7 +33,7 @@ export function TodoList({ todos, hideCount, running = false }: { todos: KodeTod
   return (
     <div className="mb-3">
       {hideCount ? null : (
-        <p className="mb-1.5 text-[12px] text-foreground/40">
+        <p className="mb-1.5 text-label text-foreground/40">
           {done} of {todos.length}
         </p>
       )}
@@ -44,10 +44,10 @@ export function TodoList({ todos, hideCount, running = false }: { todos: KodeTod
             <span
               className={
                 todo.status === "completed" || todo.status === "cancelled"
-                  ? "text-[13.5px] leading-5 text-foreground/40 line-through decoration-foreground/25"
+                  ? "text-lead leading-5 text-foreground/40 line-through decoration-foreground/25"
                   : todo.status === "in_progress"
-                    ? "text-[13.5px] leading-5 text-foreground"
-                    : "text-[13.5px] leading-5 text-foreground/75"
+                    ? "text-lead leading-5 text-foreground"
+                    : "text-lead leading-5 text-foreground/75"
               }
             >
               {todo.title}
@@ -64,7 +64,7 @@ export function TodoSummary({ todos }: { todos: KodeTodo[] }) {
   if (todos.length === 0) return null;
   const done = todos.filter((todo) => todo.status === "completed").length;
   return (
-    <p className="mb-2 flex items-center gap-1.5 text-[12px] text-foreground/45">
+    <p className="mb-2 flex items-center gap-1.5 text-label text-foreground/45">
       <StatusMark status={done === todos.length ? "completed" : "in_progress"} />
       Plan · {done} of {todos.length} done
     </p>

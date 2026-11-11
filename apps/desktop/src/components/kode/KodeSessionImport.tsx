@@ -12,6 +12,7 @@ import { generateImportSummary } from "@/lib/kode-import-summary";
 import { useImportSyncDeps } from "@/components/kode/ImportedChatBar";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { SnapshotDialog } from "@/components/kode/SnapshotDialog";
+import { useAppSettings } from "@/lib/app-settings";
 import { cn } from "@/lib/utils";
 
 type KodeSessionImportProps = {
@@ -84,13 +85,16 @@ export default function KodeSessionImport({ projectPath, projectName }: KodeSess
   const [open, setOpen] = useState(false);
   const [snapshot, setSnapshot] = useState(false);
   const { projects } = useKodeWorkspace();
+  const { snapshotsEnabled } = useAppSettings();
 
   return (
     <div className="flex items-center gap-2">
+      {snapshotsEnabled ? (
       <button type="button" onClick={() => setSnapshot(true)} title="Capture the screen and its accessibility tree into a new thread" className="liquid-glass-pill inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs text-zinc-700 hover:text-purple-700 dark:text-zinc-200 dark:hover:text-white">
         <Camera size={13} className="shrink-0 text-purple-500" />
         <span>Snapshot</span>
       </button>
+      ) : null}
       {snapshot ? <SnapshotDialog projectId={projects.find((p) => p.path === projectPath)?.id ?? null} projectPath={projectPath} onClose={() => setSnapshot(false)} /> : null}
       <button type="button" onClick={() => setOpen(true)} className="liquid-glass-pill inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs text-zinc-700 hover:text-purple-700 dark:text-zinc-200 dark:hover:text-white">
         <ArrowDownToLine size={13} className="shrink-0 text-purple-500" />
@@ -339,7 +343,7 @@ export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSe
 
   return (
     // text-left: rendered inside the home hero, which centers its text.
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 text-left backdrop-blur-md animate-in fade-in duration-200 dark:bg-black/70">
+    <div className="fixed inset-0 z-50 flex items-center justify-center kontinue-scrim p-4 text-left animate-in fade-in duration-200">
       <button
         type="button"
         aria-label="Close"
@@ -355,8 +359,8 @@ export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSe
           <>
             <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3">
               <div>
-                <h2 className="text-[14px] font-semibold text-foreground">Import a session</h2>
-                <p className="mt-0.5 text-[11.5px] text-muted-foreground">Continue work from Claude Code, Codex, Cursor, Gemini CLI, OpenCode or Aider.</p>
+                <h2 className="text-lead font-semibold text-foreground">Import a session</h2>
+                <p className="mt-0.5 text-label text-muted-foreground">Continue work from Claude Code, Codex, Cursor, Gemini CLI, OpenCode or Aider.</p>
               </div>
               <IconButton label="Close" onClick={onClose}>
                 <X size={14} />
@@ -366,14 +370,14 @@ export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSe
             <div className="flex items-center gap-2 px-4 pb-3">
               <div className="kontinue-3d flex h-8 min-w-0 flex-1 items-center gap-2 rounded-full px-3">
                 <Search size={13} className="shrink-0 text-muted-foreground" />
-                <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions" className="w-full bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted-foreground/60" />
+                <input ref={searchRef} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search sessions" className="w-full bg-transparent text-label text-foreground outline-none placeholder:text-muted-foreground/60" />
               </div>
               {projectPath ? (
                 <button
                   type="button"
                   onClick={() => setScanAll((current) => !current)}
                   title={scanAll ? `Only show ${projectName ?? "this project"}` : "Show sessions from every project"}
-                  className="kontinue-3d flex h-8 max-w-[150px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[11.5px] text-foreground/75 hover:text-foreground"
+                  className="kontinue-3d flex h-8 max-w-[150px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label text-foreground/75 hover:text-foreground"
                 >
                   <Folder size={12} className="shrink-0 text-purple-500" />
                   <span className="truncate">{scanAll ? "All projects" : (projectName ?? "This project")}</span>
@@ -415,17 +419,17 @@ export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSe
                       type="button"
                       onClick={() => void openPreview(session)}
                       disabled={Boolean(readingPath) && !isReading}
-                      className="group grid w-full cursor-pointer grid-cols-[16px_minmax(0,1fr)_14px] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors hover:bg-black/[0.04] disabled:cursor-wait disabled:opacity-50 dark:hover:bg-white/[0.05]"
+                      className="group grid w-full cursor-pointer grid-cols-[16px_minmax(0,1fr)_14px] items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-colors kontinue-hover disabled:cursor-wait disabled:opacity-50"
                     >
                       <img src={providerIcon(session.provider)} alt="" className="size-4 object-contain invert dark:invert-0" />
                       <div className="min-w-0">
-                        <p className="truncate text-[12.5px] font-medium leading-4 text-foreground/90">{displayTitle(session.title)}</p>
-                        <p className="truncate text-[11px] leading-4 text-muted-foreground/70">
+                        <p className="truncate text-body font-medium leading-4 text-foreground/90">{displayTitle(session.title)}</p>
+                        <p className="truncate text-caption leading-4 text-muted-foreground/70">
                           {project} · {formatActivity(session.lastActivity)}
                           {!session.projectExists ? <span className="text-amber-500/80"> · folder missing</span> : null}
                         </p>
                         {limit ? (
-                          <p className="mt-0.5 flex min-w-0 items-center gap-1 text-[10.5px] leading-4 text-amber-600 dark:text-amber-400">
+                          <p className="mt-0.5 flex min-w-0 items-center gap-1 text-caption leading-4 text-amber-600 dark:text-amber-400">
                             <Gauge className="size-3 shrink-0" />
                             <span className="truncate">{limit}</span>
                           </p>
@@ -438,20 +442,20 @@ export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSe
               )}
             </div>
 
-            {actionError ? <p className="border-t border-black/[0.06] px-4 py-2 text-[11px] text-red-400 dark:border-white/[0.06]">{actionError}</p> : null}
+            {actionError ? <p className="border-t border-black/[0.06] px-4 py-2 text-caption text-red-400 dark:border-white/[0.06]">{actionError}</p> : null}
 
             <div className="flex items-center gap-2 border-t border-black/[0.06] px-4 py-2.5 dark:border-white/[0.06]">
               <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                 {sources
                   .filter((source) => source.detected && source.provider !== "aider")
                   .map((source) => (
-                    <span key={source.provider} title={source.note ?? (source.readable ? "Found on this device" : "Not readable")} className={cn("rounded-full px-2 py-0.5 text-[10px]", source.readable ? "bg-black/[0.04] text-foreground/60 dark:bg-white/[0.06]" : "bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
+                    <span key={source.provider} title={source.note ?? (source.readable ? "Found on this device" : "Not readable")} className={cn("rounded-full px-2 py-0.5 text-micro", source.readable ? "bg-black/[0.04] text-foreground/60 dark:bg-white/[0.06]" : "bg-amber-500/10 text-amber-600 dark:text-amber-400")}>
                       {source.label}
                     </span>
                   ))}
               </div>
               {hooks ? (
-                <button type="button" onClick={() => void toggleHooks()} title="Adds Claude Code hooks and a Codex notify command that tell Kontinue when a session changes, so imported chats sync within seconds." className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-[10.5px] text-foreground/55 hover:text-foreground">
+                <button type="button" onClick={() => void toggleHooks()} title="Adds Claude Code hooks and a Codex notify command that tell Kontinue when a session changes, so imported chats sync within seconds." className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-caption text-foreground/55 hover:text-foreground">
                   <span className={cn("size-1.5 rounded-full", hooks.claude || hooks.codex ? "bg-emerald-500" : "bg-foreground/25")} />
                   Live sync hooks {hooks.claude || hooks.codex ? "on" : "off"}
                 </button>
@@ -514,7 +518,7 @@ function ConfirmStep({
         <IconButton label="Back" onClick={onBack} disabled={importing}>
           <ArrowLeft size={14} />
         </IconButton>
-        <h2 className="text-[14px] font-semibold text-foreground">Import session</h2>
+        <h2 className="text-lead font-semibold text-foreground">Import session</h2>
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 pb-4">
@@ -523,18 +527,18 @@ function ConfirmStep({
             <img src={providerIcon(session.provider)} alt="" className="size-4 object-contain invert dark:invert-0" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="line-clamp-2 text-[13.5px] font-semibold leading-snug text-foreground">{displayTitle(session.title)}</p>
-            <p className="mt-0.5 truncate text-[11.5px] text-muted-foreground">{meta.join(" · ")}</p>
+            <p className="line-clamp-2 text-lead font-semibold leading-snug text-foreground">{displayTitle(session.title)}</p>
+            <p className="mt-0.5 truncate text-label text-muted-foreground">{meta.join(" · ")}</p>
           </div>
         </div>
 
         <div>
-          <p className="mb-1.5 text-[11.5px] font-medium text-foreground/70">Continue in</p>
+          <p className="mb-1.5 text-label font-medium text-foreground/70">Continue in</p>
           <DropdownMenu>
             <DropdownMenuTrigger asChild disabled={importing || switchingProject}>
               <button type="button" className="kontinue-3d flex h-9 w-full cursor-pointer items-center gap-2 rounded-full px-3 text-left disabled:cursor-default disabled:opacity-60">
                 <Folder size={13} className="shrink-0 text-purple-500" />
-                <span className="min-w-0 flex-1 truncate text-[12.5px] text-foreground">
+                <span className="min-w-0 flex-1 truncate text-body text-foreground">
                   {selected ? selected.name : "Conversation only"}
                   {selected ? <span className="ml-1.5 text-muted-foreground/70">{projectRoleLabel(selected)}</span> : null}
                 </span>
@@ -546,7 +550,7 @@ function ConfirmStep({
                 <DropdownMenuItem key={option.path} onClick={() => onTargetChange(option.path)}>
                   <div className="min-w-0 flex-1">
                     <p className="truncate">{option.name}</p>
-                    <p className="truncate text-[10.5px] text-muted-foreground/70">{option.path}</p>
+                    <p className="truncate text-caption text-muted-foreground/70">{option.path}</p>
                   </div>
                   {selectedTarget && samePath(option.path, selectedTarget) ? <Check size={13} className="shrink-0" /> : null}
                 </DropdownMenuItem>
@@ -557,19 +561,19 @@ function ConfirmStep({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          {selectedTarget && !preview.project && !switchingProject ? <p className="mt-1.5 text-[11px] text-amber-500/80">Folder not found. Only the conversation will be imported.</p> : null}
+          {selectedTarget && !preview.project && !switchingProject ? <p className="mt-1.5 text-caption text-amber-500/80">Folder not found. Only the conversation will be imported.</p> : null}
         </div>
 
         {duplicate ? (
           <div className="kontinue-3d space-y-2 rounded-2xl px-3 py-2.5">
-            <p className="text-[11.5px] text-foreground/80">
+            <p className="text-label text-foreground/80">
               <span className="font-medium text-foreground">Already imported.</span> Open the existing chat to keep one copy; it syncs new turns.
             </p>
             <div className="flex gap-2">
-              <button type="button" onClick={() => onOpenDuplicate("sourcePath" in duplicate)} disabled={importing} className="kontinue-3d-primary h-7 cursor-pointer rounded-full px-3 text-[11px] font-medium disabled:opacity-60">
+              <button type="button" onClick={() => onOpenDuplicate("sourcePath" in duplicate)} disabled={importing} className="kontinue-3d-primary h-7 cursor-pointer rounded-full px-3 text-caption font-medium disabled:opacity-60">
                 {"sourcePath" in duplicate ? "Sync and open" : "Open existing"}
               </button>
-              <span className="self-center text-[10.5px] text-muted-foreground">or import again below as a separate chat.</span>
+              <span className="self-center text-caption text-muted-foreground">or import again below as a separate chat.</span>
             </div>
           </div>
         ) : null}
@@ -582,22 +586,22 @@ function ConfirmStep({
           <NativeChoice provider={session.provider} value={native} onChange={onNativeChange} disabled={importing} />
         ) : null}
 
-        <label className="flex cursor-pointer items-center gap-2 text-[11.5px] text-foreground/75">
+        <label className="flex cursor-pointer items-center gap-2 text-label text-foreground/75">
           <input type="checkbox" checked={withSummary} onChange={(event) => onSummaryChange(event.target.checked)} disabled={importing} className="cursor-pointer accent-purple-500" />
           Add an AI architecture and decisions summary to the context
         </label>
 
-        {session.messagesDropped > 0 ? <p className="text-[11px] text-muted-foreground">{session.messagesDropped} older messages are left out to fit. Recent work is kept.</p> : null}
+        {session.messagesDropped > 0 ? <p className="text-caption text-muted-foreground">{session.messagesDropped} older messages are left out to fit. Recent work is kept.</p> : null}
 
-        {error ? <p className="text-[11px] text-red-400">{error}</p> : null}
+        {error ? <p className="text-caption text-red-400">{error}</p> : null}
       </div>
 
       <div className="flex items-center gap-3 border-t border-black/[0.06] px-4 py-3 dark:border-white/[0.06]">
-        <p className="min-w-0 flex-1 text-[10.5px] leading-snug text-muted-foreground/70">Secrets are removed on this device before upload.</p>
-        <button type="button" onClick={onBack} disabled={importing} className="kontinue-3d h-8 shrink-0 cursor-pointer rounded-full px-3.5 text-[12px] text-foreground/80 disabled:opacity-50">
+        <p className="min-w-0 flex-1 text-caption leading-snug text-muted-foreground/70">Secrets are removed on this device before upload.</p>
+        <button type="button" onClick={onBack} disabled={importing} className="kontinue-3d h-8 shrink-0 cursor-pointer rounded-full px-3.5 text-label text-foreground/80 disabled:opacity-50">
           Back
         </button>
-        <button type="button" onClick={onConfirm} disabled={importing || !preview.conversationFound} className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-[12px] font-medium disabled:cursor-default disabled:opacity-60">
+        <button type="button" onClick={onConfirm} disabled={importing || !preview.conversationFound} className="kontinue-3d-primary flex h-8 shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-3.5 text-label font-medium disabled:cursor-default disabled:opacity-60">
           {importing ? (
             <>
               <Loader2 className="size-3.5 animate-spin" /> Importing…
@@ -622,7 +626,7 @@ function NativeChoice({ provider, value, onChange, disabled }: { provider: strin
   const selected = NATIVE_OPTIONS.find((option) => option.value === value) ?? NATIVE_OPTIONS[0];
   return (
     <div className="space-y-1.5">
-      <p className="text-[11.5px] font-medium text-foreground/80">When you continue with {agent}</p>
+      <p className="text-label font-medium text-foreground/80">When you continue with {agent}</p>
       <div className="flex flex-wrap gap-1">
         {NATIVE_OPTIONS.map((option) => (
           <button
@@ -631,15 +635,15 @@ function NativeChoice({ provider, value, onChange, disabled }: { provider: strin
             disabled={disabled}
             onClick={() => onChange(option.value)}
             className={cn(
-              "h-7 cursor-pointer rounded-full px-3 text-[11.5px] transition-colors disabled:cursor-default",
-              option.value === value ? "kontinue-menu-active font-medium" : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+              "h-7 cursor-pointer rounded-full px-3 text-label transition-colors disabled:cursor-default",
+              option.value === value ? "kontinue-menu-active font-medium" : "text-muted-foreground kontinue-hover hover:text-foreground",
             )}
           >
             {option.label}
           </button>
         ))}
       </div>
-      <p className="text-[11px] leading-snug text-muted-foreground">{selected.hint(agent)}</p>
+      <p className="text-caption leading-snug text-muted-foreground">{selected.hint(agent)}</p>
     </div>
   );
 }
@@ -660,7 +664,7 @@ function RedactionReview({ session, review, onChange, disabled }: { session: Cod
   };
   return (
     <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.07]">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-[11.5px] text-foreground/75">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-label text-foreground/75">
         <ShieldCheck size={13} className="shrink-0 text-emerald-500" />
         <span className="flex-1">
           Review redactions
@@ -677,36 +681,36 @@ function RedactionReview({ session, review, onChange, disabled }: { session: Cod
             onChange={(event) => onChange({ ...review, terms: event.target.value })}
             disabled={disabled}
             placeholder="Also hide these words (comma separated): client name, internal URL…"
-            className="kontinue-3d h-8 w-full rounded-full bg-transparent px-3 text-[11.5px] text-foreground outline-none placeholder:text-muted-foreground/60"
+            className="kontinue-3d h-8 w-full rounded-full bg-transparent px-3 text-label text-foreground outline-none placeholder:text-muted-foreground/60"
           />
           <div className="max-h-48 space-y-1 overflow-y-auto">
-            {turns.length === 0 && elsewhere.length === 0 ? <p className="text-[11px] text-muted-foreground">No redactions in what gets imported.</p> : null}
+            {turns.length === 0 && elsewhere.length === 0 ? <p className="text-caption text-muted-foreground">No redactions in what gets imported.</p> : null}
             {turns.map((index) => {
               const turnHits = hits.filter((hit) => hit.messageIndex === index);
               const out = review.excluded.has(index);
               return (
-                <div key={index} className={cn("flex items-start gap-2 rounded-xl px-2 py-1.5 text-[11px]", out ? "opacity-50" : "bg-black/[0.03] dark:bg-white/[0.04]")}>
+                <div key={index} className={cn("flex items-start gap-2 rounded-xl px-2 py-1.5 text-caption", out ? "opacity-50" : "bg-black/[0.03] dark:bg-white/[0.04]")}>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{turnHits[0].role} turn {index + 1}</p>
+                    <p className="text-micro uppercase tracking-wide text-muted-foreground">{turnHits[0].role} turn {index + 1}</p>
                     {turnHits.slice(0, 2).map((hit, i) => (
-                      <p key={i} className="truncate font-mono text-[10.5px] text-foreground/70">{hit.snippet}</p>
+                      <p key={i} className="truncate font-mono text-caption text-foreground/70">{hit.snippet}</p>
                     ))}
                   </div>
-                  <button type="button" onClick={() => toggle(index)} disabled={disabled} className="shrink-0 cursor-pointer rounded-full px-2 py-0.5 text-[10.5px] text-purple-600 hover:underline dark:text-purple-400">
+                  <button type="button" onClick={() => toggle(index)} disabled={disabled} className="shrink-0 cursor-pointer rounded-full px-2 py-0.5 text-caption text-purple-600 hover:underline dark:text-purple-400">
                     {out ? "Include" : "Leave out"}
                   </button>
                 </div>
               );
             })}
             {elsewhere.slice(0, 30).map((hit, i) => (
-              <div key={`x-${i}`} className="rounded-xl bg-black/[0.03] px-2 py-1.5 text-[11px] dark:bg-white/[0.04]">
-                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{hit.role}</p>
-                <p className="truncate font-mono text-[10.5px] text-foreground/70">{hit.snippet}</p>
+              <div key={`x-${i}`} className="rounded-xl bg-black/[0.03] px-2 py-1.5 text-caption dark:bg-white/[0.04]">
+                <p className="text-micro uppercase tracking-wide text-muted-foreground">{hit.role}</p>
+                <p className="truncate font-mono text-caption text-foreground/70">{hit.snippet}</p>
               </div>
             ))}
           </div>
           {notShown > 0 ? (
-            <p className="text-[10.5px] text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {notShown} more {notShown === 1 ? "was" : "were"} in older turns or tool output that {notShown === 1 ? "isn't" : "aren't"} part of this import.
             </p>
           ) : null}
@@ -730,7 +734,7 @@ function UploadPreview({ session, contextPrompt }: { session: CodingSession; con
     );
   return (
     <div className="rounded-2xl border border-black/[0.06] dark:border-white/[0.07]">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-[11.5px] text-foreground/75">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left text-label text-foreground/75">
         <Eye size={13} className="shrink-0 text-purple-500" />
         <span className="flex-1">
           Preview what gets uploaded
@@ -744,7 +748,7 @@ function UploadPreview({ session, contextPrompt }: { session: CodingSession; con
         <div className="border-t border-black/[0.06] dark:border-white/[0.07]">
           <div className="flex gap-1 px-3 pt-2">
             {(["turns", "context"] as const).map((value) => (
-              <button key={value} type="button" onClick={() => setTab(value)} className={cn("h-6 cursor-pointer rounded-full px-2.5 text-[10.5px]", tab === value ? "kontinue-menu-active" : "text-muted-foreground hover:text-foreground")}>
+              <button key={value} type="button" onClick={() => setTab(value)} className={cn("h-6 cursor-pointer rounded-full px-2.5 text-caption", tab === value ? "kontinue-menu-active" : "text-muted-foreground hover:text-foreground")}>
                 {value === "turns" ? "Conversation" : "Context for the next agent"}
               </button>
             ))}
@@ -754,13 +758,13 @@ function UploadPreview({ session, contextPrompt }: { session: CodingSession; con
               <div className="space-y-1.5">
                 {session.messages.map((message, index) => (
                   <div key={index} className="rounded-xl bg-black/[0.03] px-2 py-1.5 dark:bg-white/[0.04]">
-                    <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{message.role}{message.images?.length ? ` · ${message.images.length} image${message.images.length === 1 ? "" : "s"}` : ""}</p>
-                    <p className="line-clamp-4 font-mono text-[10.5px] whitespace-pre-wrap text-foreground/75">{mark(message.content.slice(0, 1200))}</p>
+                    <p className="text-micro uppercase tracking-wide text-muted-foreground">{message.role}{message.images?.length ? ` · ${message.images.length} image${message.images.length === 1 ? "" : "s"}` : ""}</p>
+                    <p className="line-clamp-4 font-mono text-caption whitespace-pre-wrap text-foreground/75">{mark(message.content.slice(0, 1200))}</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <pre className="font-mono text-[10.5px] whitespace-pre-wrap text-foreground/75">{mark(contextPrompt)}</pre>
+              <pre className="font-mono text-caption whitespace-pre-wrap text-foreground/75">{mark(contextPrompt)}</pre>
             )}
           </div>
         </div>
@@ -777,7 +781,7 @@ function IconButton({ label, onClick, disabled, bordered, children }: { label: s
       title={label}
       onClick={onClick}
       disabled={disabled}
-      className={cn("flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-50", bordered ? "kontinue-3d" : "hover:bg-black/[0.05] dark:hover:bg-white/[0.06]")}
+      className={cn("flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground disabled:cursor-default disabled:opacity-50", bordered ? "kontinue-3d" : "kontinue-hover")}
     >
       {children}
     </button>
@@ -785,7 +789,7 @@ function IconButton({ label, onClick, disabled, bordered, children }: { label: s
 }
 
 function EmptyState({ tone, children }: { tone?: "error"; children: React.ReactNode }) {
-  return <div className={cn("px-6 py-14 text-center text-[12px] leading-relaxed", tone === "error" ? "text-red-400" : "text-muted-foreground")}>{children}</div>;
+  return <div className={cn("px-6 py-14 text-center text-label leading-relaxed", tone === "error" ? "text-red-400" : "text-muted-foreground")}>{children}</div>;
 }
 
 function baseName(path: string): string {

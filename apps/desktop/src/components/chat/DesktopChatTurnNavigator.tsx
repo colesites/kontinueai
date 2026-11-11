@@ -76,7 +76,7 @@ export function DesktopChatTurnNavigator({
       {/* Hover menu, opens to the left of the rail */}
       <div className="pointer-events-none absolute top-1/2 right-full -translate-y-1/2 pr-2 opacity-0 transition-opacity duration-150 group-hover/nav:pointer-events-auto group-hover/nav:opacity-100 group-focus-within/nav:pointer-events-auto group-focus-within/nav:opacity-100">
         <div className="liquid-glass-dropdown w-72 p-1.5">
-          <p className="px-3 pt-1 pb-1.5 text-[10.5px] font-medium text-muted-foreground/70">
+          <p className="px-3 pt-1 pb-1.5 text-caption font-medium text-muted-foreground/70">
             Your messages
           </p>
           <div className="max-h-[50vh] space-y-0.5 overflow-y-auto">
@@ -91,10 +91,10 @@ export function DesktopChatTurnNavigator({
                     "flex w-full cursor-pointer items-center gap-2.5 rounded-full px-3 py-1.5 text-left text-xs transition-colors",
                     isActive
                       ? "kontinue-menu-active"
-                      : "text-muted-foreground hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/[0.05]",
+                      : "text-muted-foreground kontinue-hover hover:text-foreground",
                   )}
                 >
-                  <span className="w-4 shrink-0 text-[10px] tabular-nums text-muted-foreground/60">
+                  <span className="w-4 shrink-0 text-micro tabular-nums text-muted-foreground/60">
                     {index + 1}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{turn.preview}</span>

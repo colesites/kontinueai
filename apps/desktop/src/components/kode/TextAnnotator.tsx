@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MessageSquarePlus } from "lucide-react";
 import { addAnnotation } from "@/lib/kode-annotations";
+import { externalAnnotationTarget } from "@/lib/annotation-sources";
 
 // Select text inside any element marked `data-annotate-source="<where>"` (a
 // chat reply, the file editor) and an "Annotate" button appears; the note is
@@ -45,7 +46,7 @@ export function TextAnnotator() {
       requestAnimationFrame(() => {
         setWriting(false);
         setNote("");
-        setPending(selectionTarget());
+        setPending(selectionTarget() ?? externalAnnotationTarget());
       });
     };
     const onScroll = () => {
@@ -83,7 +84,7 @@ export function TextAnnotator() {
     >
       {writing ? (
         <div className="liquid-glass-dropdown w-72 p-2.5">
-          <p className="mb-1.5 line-clamp-2 text-[11px] text-muted-foreground">“{pending.quote}”</p>
+          <p className="mb-1.5 line-clamp-2 text-caption text-muted-foreground">“{pending.quote}”</p>
           <textarea
             autoFocus
             rows={3}
@@ -97,14 +98,14 @@ export function TextAnnotator() {
               }
             }}
             placeholder="What should change here?"
-            className="w-full resize-none rounded-[10px] bg-black/[0.04] px-2.5 py-2 text-[12.5px] outline-none placeholder:text-muted-foreground/60 dark:bg-white/[0.05]"
+            className="w-full resize-none rounded-[10px] bg-black/[0.04] px-2.5 py-2 text-body outline-none placeholder:text-muted-foreground/60 dark:bg-white/[0.05]"
           />
           <div className="mt-1.5 flex items-center justify-between">
-            <span className="text-[10.5px] text-muted-foreground">Sent with your next message</span>
+            <span className="text-caption text-muted-foreground">Sent with your next message</span>
             <button
               type="button"
               onClick={save}
-              className="kontinue-3d-primary h-7 cursor-pointer rounded-full px-3 text-[11.5px] font-medium"
+              className="kontinue-3d-primary h-7 cursor-pointer rounded-full px-3 text-label font-medium"
             >
               Add note
             </button>
@@ -114,7 +115,7 @@ export function TextAnnotator() {
         <button
           type="button"
           onClick={() => setWriting(true)}
-          className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[12px] font-medium shadow-lg"
+          className="kontinue-3d-primary flex h-8 cursor-pointer items-center gap-1.5 rounded-full px-3 text-label font-medium shadow-lg"
         >
           <MessageSquarePlus size={13} />
           Annotate

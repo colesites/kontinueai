@@ -7,19 +7,44 @@
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
 
+export type KeybindingGroup = "App" | "Navigation" | "Threads" | "Kode" | "Composer" | "Usage" | "Appearance";
+export const KEYBINDING_GROUPS: KeybindingGroup[] = ["App", "Navigation", "Threads", "Kode", "Composer", "Usage", "Appearance"];
+
 export type KeybindingCommand = {
   id: string;
   label: string;
-  group: "App" | "Kode";
+  group: KeybindingGroup;
   defaultKeys: string;
+  /** Where it works, shown in Settings. */
+  when: string;
+  /** Leave the keys to the code editor and terminal when they have focus. */
+  notInEditor?: boolean;
 };
 
 export const KEYBINDING_COMMANDS: KeybindingCommand[] = [
-  { id: "app.settings", label: "Open or close settings", group: "App", defaultKeys: "mod+," },
-  { id: "app.panel", label: "Toggle the workspace panel (Kode)", group: "App", defaultKeys: "mod+j" },
-  { id: "kode.newChat", label: "New chat", group: "Kode", defaultKeys: "mod+shift+o" },
-  { id: "kode.importSession", label: "Import a coding session", group: "Kode", defaultKeys: "mod+shift+i" },
-  { id: "kode.snapshot", label: "Snapshot the screen into a new thread", group: "Kode", defaultKeys: "mod+shift+2" },
+  { id: "app.commandPalette", label: "Command palette", group: "App", defaultKeys: "mod+k", when: "Always" },
+  { id: "app.settings", label: "Open or close settings", group: "App", defaultKeys: "mod+,", when: "Always" },
+  { id: "app.sidebar", label: "Toggle the sidebar", group: "App", defaultKeys: "mod+b", when: "Always" },
+  { id: "app.panel", label: "Toggle the workspace panel", group: "App", defaultKeys: "mod+j", when: "In Kode" },
+  { id: "kode.newChat", label: "New chat", group: "Kode", defaultKeys: "mod+shift+o", when: "In Kode" },
+  { id: "kode.importSession", label: "Import a coding session", group: "Kode", defaultKeys: "mod+shift+i", when: "In Kode" },
+  { id: "kode.snapshot", label: "Snapshot the screen into a new thread", group: "Kode", defaultKeys: "mod+shift+2", when: "In Kode, with Snapshots on" },
+  { id: "kode.reopenTab", label: "Reopen closed tab", group: "Kode", defaultKeys: "mod+shift+t", when: "In Kode" },
+  { id: "nav.back", label: "Back", group: "Navigation", defaultKeys: "mod+[", when: "Not in the editor or terminal", notInEditor: true },
+  { id: "nav.forward", label: "Forward", group: "Navigation", defaultKeys: "mod+]", when: "Not in the editor or terminal", notInEditor: true },
+  { id: "thread.next", label: "Next thread", group: "Threads", defaultKeys: "mod+shift+]", when: "Always" },
+  { id: "thread.previous", label: "Previous thread", group: "Threads", defaultKeys: "mod+shift+[", when: "Always" },
+  { id: "thread.pin", label: "Pin or unpin thread", group: "Threads", defaultKeys: "mod+shift+p", when: "A thread is open" },
+  ...Array.from({ length: 9 }, (_, i) => ({
+    id: `thread.jump${i + 1}`,
+    label: `Jump to thread ${i + 1}`,
+    group: "Threads" as const,
+    defaultKeys: `mod+${i + 1}`,
+    when: "Always",
+  })),
+  { id: "composer.modelPicker", label: "Open the model picker", group: "Composer", defaultKeys: "mod+shift+m", when: "Composer visible" },
+  { id: "usage.open", label: "Open usage", group: "Usage", defaultKeys: "mod+u", when: "Always" },
+  { id: "appearance.cycle", label: "Cycle theme (System, Light, Dark)", group: "Appearance", defaultKeys: "mod+alt+shift+a", when: "Always" },
 ];
 
 const STORAGE_KEY = "kode.keybindings";
@@ -41,6 +66,21 @@ export function normalizeKeys(input: string): string | null {
   return [...mods, key[0]].join("+");
 }
 
+// Punctuation keys by physical key, so Shift doesn't change them ("}" → "]").
+const CODE_KEYS: Record<string, string> = {
+  BracketLeft: "[",
+  BracketRight: "]",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Minus: "-",
+  Equal: "=",
+  Semicolon: ";",
+  Quote: "'",
+  Backquote: "`",
+  Backslash: "\\",
+};
+
 /** The binding string for a keyboard event (null for a lone modifier). */
 export function eventToKeys(event: Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">, mac = isMac): string | null {
   const key = event.key.toLowerCase();
@@ -49,6 +89,7 @@ export function eventToKeys(event: Pick<KeyboardEvent, "key" | "code" | "metaKey
   let name = key;
   if (event.code?.startsWith("Digit")) name = event.code.slice(5);
   else if (event.code?.startsWith("Key")) name = event.code.slice(3).toLowerCase();
+  else if (event.code && CODE_KEYS[event.code]) name = CODE_KEYS[event.code];
   else if (key === " ") name = "space";
   const parts: string[] = [];
   if (mac ? event.metaKey : event.ctrlKey) parts.push("mod");
@@ -137,9 +178,31 @@ export function useBindings(): Record<string, string> {
 const handlers = new Map<string, Set<() => void>>();
 let paused = 0;
 
+/** When each command last ran from the keyboard (see `ranFromKeyboard`). */
+const lastKeyRun = new Map<string, number>();
+const pauseListeners = new Set<(paused: boolean) => void>();
+
 /** While recording a new binding, shortcuts shouldn't fire. */
 export function pauseKeybindings(pause: boolean) {
+  const was = paused > 0;
   paused = Math.max(0, paused + (pause ? 1 : -1));
+  if (was !== paused > 0) for (const listener of pauseListeners) listener(paused > 0);
+}
+
+/** The native menu drops its shortcuts while one is being recorded. */
+export function onKeybindingsPaused(listener: (paused: boolean) => void) {
+  pauseListeners.add(listener);
+  return () => pauseListeners.delete(listener);
+}
+
+/** True when a shortcut just ran this command, so the matching menu event is the same key press. */
+export function ranFromKeyboard(commandId: string) {
+  return Date.now() - (lastKeyRun.get(commandId) ?? 0) < 400;
+}
+
+export function subscribeBindings(listener: () => void) {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
 }
 
 if (typeof window !== "undefined") {
@@ -154,7 +217,10 @@ if (typeof window !== "undefined") {
         if (bound !== keys) continue;
         const set = handlers.get(id);
         if (!set?.size) continue;
+        const command = KEYBINDING_COMMANDS.find((c) => c.id === id);
+        if (command?.notInEditor && event.target instanceof Element && event.target.closest(".monaco-editor, .xterm")) return;
         event.preventDefault();
+        lastKeyRun.set(id, Date.now());
         for (const handler of set) handler();
         return;
       }
@@ -175,4 +241,14 @@ export function useKeybinding(commandId: string, handler: () => void) {
       set.delete(run);
     };
   }, [commandId]);
+}
+
+/** Is anything listening for this command right now? (command palette) */
+export function hasCommandHandler(commandId: string): boolean {
+  return (handlers.get(commandId)?.size ?? 0) > 0;
+}
+
+/** Run a command as if its shortcut was pressed (command palette). */
+export function runCommand(commandId: string) {
+  for (const handler of handlers.get(commandId) ?? []) handler();
 }

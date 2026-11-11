@@ -1,103 +1,121 @@
-import { useState, useEffect } from "react";
-import { createPortal } from "react-dom";
-import { Search, X, MessageSquare } from "lucide-react";
-import { useKodeWorkspace } from "@/lib/kode-workspace";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MessageSquare, Pin, Search } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { formatWhen } from "@/components/layout/sidebar/SidebarChatRow";
+import { useKodeWorkspace } from "@/lib/kode-workspace";
+import { cn } from "@/lib/utils";
 
 type SearchModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 };
 
+const MAX_RESULTS = 50;
+
+/** Find a chat by title. ↑/↓ move, Enter opens, Esc closes. */
 export function SearchModal({ open, onOpenChange }: SearchModalProps) {
-  const { chats, selectChat } = useKodeWorkspace();
-  const [searchQuery, setSearchQuery] = useState("");
+  const { activeTab, setActiveTab, chats, projects, selectChat } = useKodeWorkspace();
+  const [query, setQuery] = useState("");
+  const [index, setIndex] = useState(0);
+  const listRef = useRef<HTMLDivElement>(null);
+  const inKode = activeTab === "kode";
 
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onOpenChange(false);
-      }
-    };
     if (open) {
-      window.addEventListener("keydown", handleKeyDown);
+      setQuery("");
+      setIndex(0);
     }
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onOpenChange]);
+  }, [open]);
 
-  if (!open) return null;
+  const results = useMemo(() => {
+    const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+    const projectName = (id: string | null) => projects.find((p) => p.id === id)?.name ?? "";
+    return chats
+      .filter((chat) => !chat.archived)
+      .map((chat) => ({ chat, project: projectName(chat.projectId) }))
+      .filter(({ chat, project }) => {
+        const hay = `${chat.title} ${project}`.toLowerCase();
+        return words.every((word) => hay.includes(word));
+      })
+      .sort((a, b) => b.chat.updatedAt - a.chat.updatedAt)
+      .slice(0, MAX_RESULTS);
+  }, [chats, projects, query]);
 
-  const filteredChats = chats.filter((c) =>
-    c.title.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restart at the top for each query
+  useEffect(() => setIndex(0), [query]);
+  useEffect(() => {
+    listRef.current?.querySelector(`[data-index="${index}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [index]);
 
-  // Portal to <body>: the sidebar is its own stacking context, so rendering
-  // the modal inside it let the main view (composer) paint on top.
-  return createPortal(
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 backdrop-blur-md p-4 animate-in fade-in duration-200"
-      onClick={() => onOpenChange(false)}
-    >
-      <div
-        className="w-full max-w-2xl liquid-glass-dropdown overflow-hidden flex flex-col text-white"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header Search Bar */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.08]">
-          <Search size={15} strokeWidth={1.5} className="text-[#8e8e93] shrink-0" />
+  const choose = (chatId: string | undefined) => {
+    if (!chatId) return;
+    if (activeTab !== "home" && !inKode) setActiveTab("home");
+    selectChat(chatId);
+    onOpenChange(false);
+  };
+
+  const noun = inKode ? "threads" : "chats";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent title={`Search ${noun}`} size="lg" position="top" hideHeader className="max-h-[60vh]">
+        <div className="flex shrink-0 items-center gap-2.5 border-b border-black/[0.06] px-4 py-3 dark:border-white/[0.06]">
+          <Search size={15} className="shrink-0 text-muted-foreground" />
           <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search chats and projects"
-            className="flex-1 bg-transparent text-[13px] text-white outline-none placeholder:text-[#8e8e93]"
-            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setIndex((i) => Math.min(i + 1, results.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setIndex((i) => Math.max(i - 1, 0));
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                choose(results[index]?.chat.id);
+              }
+            }}
+            placeholder={`Search ${noun} by title or project`}
+            aria-label={`Search ${noun}`}
+            className="w-full bg-transparent text-lead outline-none placeholder:text-muted-foreground/60"
           />
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="p-1 rounded-lg text-[#8e8e93] hover:text-white hover:bg-white/[0.08] transition-colors"
-          >
-            <X size={15} strokeWidth={1.5} />
-          </button>
+          <kbd className="kontinue-3d rounded-md px-1.5 text-caption text-muted-foreground">esc</kbd>
         </div>
 
-        {/* Results List Area */}
-        <div className="p-2 max-h-[60vh] overflow-y-auto space-y-0.5">
-          {filteredChats.length === 0 ? (
-            <div className="py-8 text-center text-xs text-[#8e8e93]">
-              No matching chats or projects found
-            </div>
+        <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto p-1.5">
+          {results.length === 0 ? (
+            <p className="px-3 py-8 text-center text-body text-muted-foreground">
+              {query.trim() ? `No ${noun} match "${query.trim()}".` : `No ${noun} yet.`}
+            </p>
           ) : (
-            filteredChats.map((c) => (
+            results.map(({ chat, project }, i) => (
               <button
-                key={c.id}
+                key={chat.id}
                 type="button"
-                onClick={() => {
-                  selectChat(c.id);
-                  onOpenChange(false);
-                }}
-                className="flex w-full items-center justify-between gap-3 rounded-full px-3 py-1.5 h-[26px] text-left transition-colors hover:bg-white/[0.06] group"
+                data-index={i}
+                onMouseMove={() => setIndex(i)}
+                onClick={() => choose(chat.id)}
+                className={cn(
+                  "flex h-9 w-full items-center gap-2.5 rounded-xl px-3 text-left",
+                  i === index && "bg-black/[0.05] dark:bg-white/[0.07]",
+                )}
               >
-                <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                  <MessageSquare
-                    size={13.5}
-                    strokeWidth={1.25}
-                    className="shrink-0 text-[#8e8e93] group-hover:text-white"
-                  />
-                  <span className="truncate text-[12px] font-normal text-[#d1d1d6] group-hover:text-white">
-                    {c.title}
-                  </span>
-                </div>
-                <span className="shrink-0 text-[11px] text-[#7c7c82]">
-                  {formatWhen(c.updatedAt)}
+                {chat.pinnedAt ? (
+                  <Pin size={14} className="shrink-0 text-muted-foreground" fill="currentColor" />
+                ) : (
+                  <MessageSquare size={14} className="shrink-0 text-muted-foreground" />
+                )}
+                <span className="min-w-0 flex-1 truncate text-body">{chat.title || "Untitled"}</span>
+                {project ? <span className="max-w-[35%] truncate text-caption text-muted-foreground">{project}</span> : null}
+                <span className="w-8 shrink-0 text-right text-caption tabular-nums text-muted-foreground/80">
+                  {formatWhen(chat.updatedAt)}
                 </span>
               </button>
             ))
           )}
         </div>
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 }

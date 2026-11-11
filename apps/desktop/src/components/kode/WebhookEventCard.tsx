@@ -21,23 +21,23 @@ export function WebhookEventCard({ content }: { content: string }) {
   const [summary, ...rest] = body.split(/\n{2,}/);
   return (
     <div className="kontinue-3d w-full rounded-[18px] px-4 py-3">
-      <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-label text-muted-foreground">
         <Webhook size={13} className="shrink-0 text-purple-500" />
         <span className="font-medium text-foreground/80">{name}</span>
         {source ? <span>· {source}</span> : null}
         <span className="ml-auto">Incoming event</span>
       </div>
-      <div className="mt-1.5 text-[13px] text-foreground/90">
+      <div className="mt-1.5 text-body text-foreground/90">
         <MessageResponse>{summary ?? ""}</MessageResponse>
       </div>
       {rest.length ? (
         <>
-          <button type="button" onClick={() => setOpen((v) => !v)} className="mt-1.5 flex cursor-pointer items-center gap-1 text-[11.5px] text-muted-foreground hover:text-foreground">
+          <button type="button" onClick={() => setOpen((v) => !v)} className="mt-1.5 flex cursor-pointer items-center gap-1 text-label text-muted-foreground hover:text-foreground">
             <ChevronRight size={12} className={cn("transition-transform", open && "rotate-90")} />
             {open ? "Hide instructions and payload" : "Show instructions and payload"}
           </button>
           {open ? (
-            <div className="mt-1.5 text-[12.5px] text-foreground/75">
+            <div className="mt-1.5 text-body text-foreground/75">
               <MessageResponse>{rest.join("\n\n")}</MessageResponse>
             </div>
           ) : null}
