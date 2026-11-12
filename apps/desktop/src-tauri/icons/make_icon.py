@@ -111,9 +111,9 @@ def tile(size, box, shadow):
     rim.putalpha(rim_alpha)
     canvas = Image.alpha_composite(canvas, rim)
 
-    # Logo: about half the tile's width, purple gradient, small shadow.
+    # Logo: about two thirds of the tile, like Claude's mark, purple gradient, small shadow.
     logo = Image.open(LOGO).convert("RGBA").getchannel("A")
-    target_w = int(w * 0.5)
+    target_w = int(w * 0.68)
     target_h = round(logo.height * target_w / logo.width)
     logo = logo.resize((target_w, target_h), Image.LANCZOS)
     lx = x0 + (w - target_w) // 2

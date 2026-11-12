@@ -54,6 +54,7 @@ import {
 import { AGENTS, type AgentDefinition } from "@repo/ai/lib/agents";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { cn } from "@/lib/utils";
+import { AlphaBadge } from "@/components/ui/alpha-badge";
 
 const WEB_APP = "https://chat.kontinueai.com";
 
@@ -610,8 +611,9 @@ function AppVersion() {
       .catch(() => setVersion(null));
   }, []);
   return (
-    <p className="px-5 py-3 text-caption text-muted-foreground/60">
+    <p className="flex items-center gap-1.5 px-5 py-3 text-caption text-muted-foreground/60">
       Kontinue AI{version ? ` · v${version}` : ""}
+      <AlphaBadge />
     </p>
   );
 }

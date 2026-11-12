@@ -9,6 +9,7 @@ import { tasksApi } from "@/lib/convex-api";
 import { bucketFor } from "@/lib/tasks";
 import { cn } from "@/lib/utils";
 import { SidebarNavItem } from "./SidebarNavItem";
+import { AlphaBadge } from "@/components/ui/alpha-badge";
 
 const iconButton =
   "flex size-6 items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground";
@@ -99,6 +100,7 @@ export default function LeftSidebarHeader() {
         >
           <Search size={15} strokeWidth={1.5} />
         </button>
+        <AlphaBadge className="ml-auto mr-1" />
       </div>
 
       <ModeSwitch kode={inKode} onChange={(kode) => setActiveTab(kode ? "kode" : "home")} />
