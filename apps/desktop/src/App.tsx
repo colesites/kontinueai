@@ -55,15 +55,16 @@ function WorkspaceContent() {
     return (
       <main className="grid min-h-screen place-items-center bg-background p-6 text-foreground">
         <section className="max-w-lg rounded-xl border border-border bg-card p-6 shadow-xl">
-          <h1 className="text-lg font-semibold">Sign-in could not initialize</h1>
+          <h1 className="text-lg font-semibold">Couldn&apos;t connect to sign-in</h1>
           <p className="mt-2 text-sm text-muted-foreground">
-            Clerk did not initialize in the desktop webview. Add{" "}
-            <code>tauri://localhost</code> to the production Clerk instance&apos;s{" "}
-            <code>allowed_origins</code> using the Clerk Backend API; there is no
-            dashboard field for this. Preserve any existing origins when updating
-            the list, then retry. Desktop development uses{" "}
-            <code>http://localhost:1420</code>.
+            Kontinue AI couldn&apos;t reach its sign-in service. Check your internet
+            connection and try again. If it keeps happening, tell us at
+            support@kontinueai.com and include the line below.
           </p>
+          {/* Clerk only loads for app addresses in the production instance's
+              allowed_origins (Backend API): tauri://localhost on macOS/Linux,
+              http://tauri.localhost on Windows, http://localhost:1420 in dev. */}
+          <p className="mt-3 font-mono text-xs text-muted-foreground/60">{window.location.origin}</p>
           <button
             className="mt-5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
             onClick={() => window.location.reload()}
