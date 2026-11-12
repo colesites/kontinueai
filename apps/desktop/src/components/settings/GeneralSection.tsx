@@ -15,6 +15,7 @@ import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { Card, openExternal, PillButton, Row, Segmented, Select, Tag, TextField } from "./settings-ui";
 import { NOTIFICATION_SOUNDS, playSound } from "@/lib/kode-notify";
+import { ALPHA_NOTE } from "@/components/ui/alpha-badge";
 
 const WEBSITE = "https://kontinueai.com";
 
@@ -294,7 +295,7 @@ function AboutCard() {
       <Row
         label="Version"
         badge={version ? <span className="font-mono text-caption font-normal text-muted-foreground">{version}</span> : null}
-        description="Kontinue AI for macOS."
+        description={ALPHA_NOTE}
       >
         {link("Website", WEBSITE)}
       </Row>

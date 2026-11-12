@@ -16,6 +16,7 @@ import {
 	releaseAuthTicket,
 	startBrowserSignIn,
 } from "@/lib/desktop-auth";
+import { AlphaBadge } from "@/components/ui/alpha-badge";
 
 type AuthMode = "sign-in" | "sign-up";
 type AuthStep = "welcome" | "browser";
@@ -245,8 +246,9 @@ export function AuthScreen() {
 
 	return (
 		<AuthShell>
-			<h1 className="text-xl font-semibold tracking-tight text-white">
+			<h1 className="flex items-center gap-2 text-xl font-semibold tracking-tight text-white">
 				Welcome to Kontinue AI
+				<AlphaBadge className="text-purple-200" />
 			</h1>
 			<p className="mt-1.5 text-xs leading-relaxed text-white/55">
 				Sign in to access your projects, context, and multi-model workspaces.
