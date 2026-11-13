@@ -11,6 +11,7 @@ import { KodeWorkspaceProvider, useKodeWorkspace } from "@/lib/kode-workspace";
 import { useKeybinding } from "@/lib/kode-keybindings";
 import { KodeAgentRuntimeProvider } from "@/lib/kode-agent-runtime";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { ViewErrorBoundary } from "@/components/layout/ViewErrorBoundary";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 
 function removeSplash() {
@@ -80,7 +81,9 @@ function WorkspaceContent() {
   return (
     <>
       {isSettingsOpen && (
-        <SettingsView onBack={closeSettings} initialTab={settingsTab} />
+        <ViewErrorBoundary name="settings" resetKey={String(settingsTab ?? "")}>
+          <SettingsView onBack={closeSettings} initialTab={settingsTab} />
+        </ViewErrorBoundary>
       )}
       <SignedOut>
         <div className="relative flex h-screen w-full flex-col liquid-backdrop text-foreground overflow-hidden">

@@ -1,12 +1,13 @@
 {
   "name": "kontinue-ai",
   "private": true,
-  "version": "0.1.1-alpha.2",
+  "version": "0.1.1-alpha.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "check:convex": "node scripts/check-convex-functions.mjs",
     "tauri": "tauri",
     "test": "bun test src",
     "typecheck": "tsc --noEmit"

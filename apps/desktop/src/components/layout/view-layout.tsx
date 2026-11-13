@@ -12,6 +12,7 @@ import { useImportContextUpload } from "@/lib/kode-import-cloud";
 import { useWebhookThreads } from "@/lib/kode-webhooks";
 import { usePrWatcher } from "@/lib/kode-pr-watcher";
 import { RunNotifications } from "./RunNotifications";
+import { ViewErrorBoundary } from "./ViewErrorBoundary";
 import { GlobalShortcuts } from "./GlobalShortcuts";
 import { MenuBridge } from "./MenuBridge";
 import { UpdateDialog } from "./UpdateDialog";
@@ -26,7 +27,7 @@ type ViewLayoutProps = {
 };
 
 const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
-  const { activeTab, setActiveTab, kodeChats } = useKodeWorkspace();
+  const { activeTab, setActiveTab, kodeChats, activeChatId } = useKodeWorkspace();
   const scheduled = useScheduledPrompts();
   // Imported chats stay in sync even when they aren't open (or Kode isn't
   // the active tab), and other agents can reach Kode through its MCP server.
@@ -58,15 +59,19 @@ const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
 
   return (
     <>
-      {activeTab === "home" ? (
-        <HomeView />
-      ) : activeTab === "canvas" ? (
-        <CanvasView />
-      ) : activeTab === "tasks" ? (
-        <TasksView />
-      ) : (
-        <KodeView panelOpen={panelOpen} onPanelChange={onPanelChange} />
-      )}
+      {/* A crash in one view (say, a chat whose history fails to load) stays in
+          that view; another chat or tab clears it. */}
+      <ViewErrorBoundary name={activeTab} resetKey={`${activeTab}:${activeChatId ?? ""}`}>
+        {activeTab === "home" ? (
+          <HomeView />
+        ) : activeTab === "canvas" ? (
+          <CanvasView />
+        ) : activeTab === "tasks" ? (
+          <TasksView />
+        ) : (
+          <KodeView panelOpen={panelOpen} onPanelChange={onPanelChange} />
+        )}
+      </ViewErrorBoundary>
       <RunNotifications />
       <GlobalShortcuts />
       <MenuBridge />

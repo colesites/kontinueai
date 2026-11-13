@@ -60,9 +60,12 @@ export function AddProviderDialog({
   open,
   onOpenChange,
   onAdded,
+  like = null,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Another account of this provider: skip the provider step. */
+  like?: ProviderInstance | null;
   /** `installAgentId`: a registry download to start installing right away. */
   onAdded: (id: string, installAgentId?: string) => void;
 }) {
@@ -114,6 +117,18 @@ export function AddProviderDialog({
   useEffect(() => {
     if (open && !registry) fetchRegistry();
   }, [open]);
+  // Opened from Accounts → Add account: same provider, straight to its name.
+  useEffect(() => {
+    if (!open || !like) return;
+    pick({
+      kind: like.kind,
+      preset: like.preset,
+      registry: like.registry,
+      command: like.kind === "acp" ? like.config.command || undefined : undefined,
+    });
+    setStep(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, like]);
 
   const registryAgents = useMemo(() => {
     const q = query.trim().toLowerCase();

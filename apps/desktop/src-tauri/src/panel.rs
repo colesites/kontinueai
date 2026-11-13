@@ -335,6 +335,52 @@ pub struct GitBranches {
     branches: Vec<String>,
     /// Uncommitted files in the whole repository.
     uncommitted: u32,
+    /// Branches open in another worktree: switching here would fail, so the
+    /// picker opens that folder instead.
+    worktrees: Vec<WorktreeRef>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WorktreeRef {
+    branch: String,
+    /// The worktree's folder (the same project subfolder as `root`, when it exists there).
+    path: String,
+}
+
+/// `git worktree list --porcelain` → (folder, branch) for each checkout on a branch.
+fn parse_worktrees(out: &str) -> Vec<(String, String)> {
+    let mut list = Vec::new();
+    let mut path: Option<String> = None;
+    for line in out.lines() {
+        if let Some(p) = line.strip_prefix("worktree ") {
+            path = Some(p.to_string());
+        } else if let Some(b) = line.strip_prefix("branch refs/heads/") {
+            if let Some(p) = path.take() {
+                list.push((p, b.to_string()));
+            }
+        } else if line.is_empty() {
+            path = None;
+        }
+    }
+    list
+}
+
+/// Branches checked out in worktrees other than the one `root` is in.
+fn other_worktrees(root: &str) -> Vec<WorktreeRef> {
+    let top = git_ok(root, &["rev-parse", "--show-toplevel"]).map(|t| t.trim().to_string()).unwrap_or_default();
+    let prefix = git_ok(root, &["rev-parse", "--show-prefix"]).map(|p| p.trim().trim_end_matches('/').to_string()).unwrap_or_default();
+    let canonical = |p: &str| std::fs::canonicalize(p).map(|c| c.to_string_lossy().to_string()).unwrap_or_else(|_| p.to_string());
+    let here = canonical(&top);
+    parse_worktrees(&git_ok(root, &["worktree", "list", "--porcelain"]).unwrap_or_default())
+        .into_iter()
+        .filter(|(path, _)| canonical(path) != here)
+        .map(|(path, branch)| {
+            let sub = Path::new(&path).join(&prefix);
+            let path = if !prefix.is_empty() && sub.is_dir() { sub.to_string_lossy().to_string() } else { path };
+            WorktreeRef { branch, path }
+        })
+        .collect()
 }
 
 fn git_ok(root: &str, args: &[&str]) -> Result<String, String> {
@@ -360,7 +406,7 @@ fn valid_branch(root: &str, branch: &str) -> Result<(), String> {
 pub fn panel_git_branches(root: String) -> Result<GitBranches, String> {
     let inside = git(&root, &["rev-parse", "--is-inside-work-tree"])?;
     if !inside.status.success() {
-        return Ok(GitBranches { is_repo: false, current: None, branches: Vec::new(), uncommitted: 0 });
+        return Ok(GitBranches { is_repo: false, current: None, branches: Vec::new(), uncommitted: 0, worktrees: Vec::new() });
     }
     let current = git_ok(&root, &["branch", "--show-current"])
         .ok()
@@ -374,7 +420,8 @@ pub fn panel_git_branches(root: String) -> Result<GitBranches, String> {
     let uncommitted = git_ok(&root, &["status", "--porcelain=v1", "-uall"])
         .map(|out| out.lines().filter(|l| !l.trim().is_empty()).count() as u32)
         .unwrap_or(0);
-    Ok(GitBranches { is_repo: true, current, branches, uncommitted })
+    let worktrees = other_worktrees(&root);
+    Ok(GitBranches { is_repo: true, current, branches, uncommitted, worktrees })
 }
 
 /// Push the current branch to origin. Sets the upstream when the branch has none.
@@ -391,10 +438,134 @@ pub fn panel_git_push(root: String) -> Result<(), String> {
     git_ok(&root, &["push", "-u", "origin", "HEAD"]).map(|_| ())
 }
 
+/// What the commit / pull request dialog needs to draft its messages.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitShipInfo {
+    branch: Option<String>,
+    /// origin's default branch ("main"), or null when unknown.
+    default_branch: Option<String>,
+    /// `git status --short` of everything uncommitted.
+    status: String,
+    /// The uncommitted diff (untracked files listed by name), cut to `limit`.
+    diff: String,
+    /// One line per commit this branch has that the default branch doesn't.
+    commits: String,
+    /// Commits not pushed yet (null when there is no upstream).
+    unpushed: Option<u32>,
+}
+
+fn default_branch(root: &str) -> Option<String> {
+    git_ok(root, &["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"])
+        .ok()
+        .map(|r| r.trim().trim_start_matches("origin/").to_string())
+        .filter(|b| !b.is_empty())
+        .or_else(|| {
+            ["main", "master"]
+                .into_iter()
+                .find(|b| git_ok(root, &["rev-parse", "--verify", "--quiet", &format!("refs/remotes/origin/{b}")]).is_ok())
+                .map(str::to_string)
+        })
+}
+
+fn clip_chars(text: String, limit: usize) -> String {
+    if text.len() <= limit {
+        return text;
+    }
+    let mut end = limit;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\n… (cut)", &text[..end])
+}
+
+#[tauri::command(async)]
+pub fn panel_git_ship_info(root: String, limit: Option<usize>) -> Result<GitShipInfo, String> {
+    let inside = git(&root, &["rev-parse", "--is-inside-work-tree"])?;
+    if !inside.status.success() {
+        return Err("Not a git repository.".to_string());
+    }
+    let limit = limit.unwrap_or(16_000);
+    let branch = git_ok(&root, &["branch", "--show-current"]).ok().map(|b| b.trim().to_string()).filter(|b| !b.is_empty());
+    let base = default_branch(&root);
+    let status = git_ok(&root, &["status", "--short", "-uall"]).unwrap_or_default();
+    let has_head = git_ok(&root, &["rev-parse", "--verify", "--quiet", "HEAD"]).is_ok();
+    let diff = if has_head { git_ok(&root, &["diff", "HEAD", "--stat=120"]).unwrap_or_default() + "\n" + &git_ok(&root, &["diff", "HEAD"]).unwrap_or_default() } else { String::new() };
+    let commits = match (&base, &branch) {
+        (Some(base), Some(branch)) if base != branch => {
+            git_ok(&root, &["log", "--oneline", "--no-decorate", "-n", "30", &format!("origin/{base}..HEAD")]).unwrap_or_default()
+        }
+        _ => String::new(),
+    };
+    let unpushed = git_ok(&root, &["rev-list", "--count", "@{upstream}..HEAD"]).ok().and_then(|n| n.trim().parse().ok());
+    Ok(GitShipInfo { branch, default_branch: base, status, diff: clip_chars(diff, limit), commits, unpushed })
+}
+
+/// Stage everything and commit it. Returns the new commit's short hash.
+#[tauri::command(async)]
+pub fn panel_git_commit(root: String, message: String) -> Result<String, String> {
+    let message = message.trim();
+    if message.is_empty() {
+        return Err("Write a commit message.".to_string());
+    }
+    git_ok(&root, &["add", "-A"])?;
+    let staged = git(&root, &["diff", "--cached", "--quiet"])?;
+    if staged.status.success() {
+        return Err("Nothing to commit.".to_string());
+    }
+    git_ok(&root, &["commit", "-m", message])?;
+    git_ok(&root, &["rev-parse", "--short", "HEAD"]).map(|h| h.trim().to_string())
+}
+
+/// Open a pull request for the current branch with the GitHub CLI. Returns its
+/// URL; if the branch already has one, returns that one.
+#[tauri::command]
+pub async fn panel_pr_create(
+    root: String,
+    title: String,
+    body: String,
+    base: Option<String>,
+    draft: bool,
+) -> Result<String, String> {
+    if other_host(&root).is_some() {
+        return Err("Opening merge requests from Kode works with GitHub for now. Push, then open it on your Git host.".into());
+    }
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("Write a title for the pull request.".to_string());
+    }
+    let mut args = vec!["pr", "create", "--title", title.as_str(), "--body", body.as_str()];
+    if let Some(base) = base.as_deref().filter(|b| !b.trim().is_empty()) {
+        args.push("--base");
+        args.push(base);
+    }
+    if draft {
+        args.push("--draft");
+    }
+    match gh(&root, &args).await {
+        Ok(out) => pr_url(&out).ok_or_else(|| "GitHub didn't return the pull request's address.".to_string()),
+        Err(error) if error.contains("already exists") => {
+            pr_url(&error).ok_or(error)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn pr_url(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .find(|w| w.starts_with("https://") && w.contains("/pull"))
+        .map(|w| w.trim_end_matches(['.', ',']).to_string())
+}
+
 /// Switch to a branch, or create it from the current HEAD when `create` is set.
 #[tauri::command(async)]
 pub fn panel_git_switch(root: String, branch: String, create: bool) -> Result<(), String> {
     valid_branch(&root, &branch)?;
+    if !create {
+        if let Some(tree) = other_worktrees(&root).into_iter().find(|t| t.branch == branch) {
+            return Err(format!("{branch} is open in another worktree ({}). Open that worktree instead.", tree.path));
+        }
+    }
     let args: Vec<&str> = if create { vec!["switch", "-c", &branch] } else { vec!["switch", &branch] };
     git_ok(&root, &args).map(|_| ())
 }
@@ -407,8 +578,18 @@ pub fn panel_git_worktree_add(
     branch: String,
     from_origin: Option<bool>,
     base_dir: Option<String>,
+    // Branch the new branch starts from (default: the current one).
+    base: Option<String>,
 ) -> Result<String, String> {
     valid_branch(&root, &branch)?;
+    // Already open in a worktree: that's the folder for this branch.
+    if let Some(tree) = other_worktrees(&root).into_iter().find(|t| t.branch == branch) {
+        return Ok(tree.path);
+    }
+    let base_branch = base.map(|b| b.trim().to_string()).filter(|b| !b.is_empty());
+    if let Some(b) = &base_branch {
+        valid_branch(&root, b)?;
+    }
     let top = git_ok(&root, &["rev-parse", "--show-toplevel"])?.trim().to_string();
     let prefix = git_ok(&root, &["rev-parse", "--show-prefix"])?.trim().to_string();
     let repo = Path::new(&top)
@@ -436,11 +617,15 @@ pub fn panel_git_worktree_add(
     } else {
         // Settings → Source control → Start from origin: base the new branch
         // on the latest origin/<current branch>; fall back to local HEAD.
-        let base = if from_origin.unwrap_or(false) {
+        let start = base_branch.clone().or_else(|| {
             git_ok(&top, &["rev-parse", "--abbrev-ref", "HEAD"])
                 .ok()
                 .map(|b| b.trim().to_string())
                 .filter(|b| !b.is_empty() && b != "HEAD")
+        });
+        let base = if from_origin.unwrap_or(false) {
+            start
+                .clone()
                 .and_then(|current| {
                     git_ok(&top, &["fetch", "--quiet", "origin", &current]).ok()?;
                     Some(format!("origin/{current}"))
@@ -452,9 +637,14 @@ pub fn panel_git_worktree_add(
             Some(base) => {
                 git_ok(&top, &["worktree", "add", "--no-track", "-b", &branch, &target_str, &base])?;
             }
-            None => {
-                git_ok(&top, &["worktree", "add", "-b", &branch, &target_str])?;
-            }
+            None => match &base_branch {
+                Some(start) => {
+                    git_ok(&top, &["worktree", "add", "-b", &branch, &target_str, start])?;
+                }
+                None => {
+                    git_ok(&top, &["worktree", "add", "-b", &branch, &target_str])?;
+                }
+            },
         }
     }
     Ok(target.join(prefix.trim_end_matches('/')).to_string_lossy().trim_end_matches('/').to_string())
@@ -836,6 +1026,79 @@ mod tests {
         assert_eq!(comments[0].path.as_deref(), Some("src/a.ts"));
         assert_eq!(comments[0].line, Some(7));
         assert_eq!(comments[0].author, "cy");
+    }
+
+    #[test]
+    fn commit_stages_everything_and_reports_the_hash() {
+        let dir = std::env::temp_dir().join(format!("kontinue-commit-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let root = dir.to_string_lossy().to_string();
+        git_ok(&root, &["init", "-q", "-b", "main"]).unwrap();
+        git_ok(&root, &["config", "user.email", "t@example.com"]).unwrap();
+        git_ok(&root, &["config", "user.name", "Test"]).unwrap();
+        std::fs::write(dir.join("a.txt"), "one\n").unwrap();
+        git_ok(&root, &["add", "-A"]).unwrap();
+        git_ok(&root, &["commit", "-q", "-m", "first"]).unwrap();
+
+        std::fs::write(dir.join("a.txt"), "one\ntwo\n").unwrap();
+        std::fs::write(dir.join("new.txt"), "hi\n").unwrap();
+        let info = panel_git_ship_info(root.clone(), None).unwrap();
+        assert_eq!(info.branch.as_deref(), Some("main"));
+        assert!(info.status.contains("new.txt"));
+        assert!(info.diff.contains("+two"));
+
+        let hash = panel_git_commit(root.clone(), "Add two".into()).unwrap();
+        assert!(!hash.is_empty());
+        assert!(git_ok(&root, &["status", "--porcelain"]).unwrap().trim().is_empty());
+        assert_eq!(panel_git_commit(root.clone(), "Again".into()).unwrap_err(), "Nothing to commit.");
+        assert!(panel_git_commit(root, "  ".into()).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn worktrees_and_branches_stay_separate() {
+        let dir = std::env::temp_dir().join(format!("kontinue-wt-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let repo = dir.join("repo");
+        std::fs::create_dir_all(&repo).unwrap();
+        let root = repo.to_string_lossy().to_string();
+        git_ok(&root, &["init", "-q", "-b", "main"]).unwrap();
+        git_ok(&root, &["config", "user.email", "t@example.com"]).unwrap();
+        git_ok(&root, &["config", "user.name", "Test"]).unwrap();
+        std::fs::write(repo.join("a.txt"), "one\n").unwrap();
+        git_ok(&root, &["add", "-A"]).unwrap();
+        git_ok(&root, &["commit", "-q", "-m", "first"]).unwrap();
+        git_ok(&root, &["branch", "develop"]).unwrap();
+        git_ok(&root, &["switch", "-q", "develop"]).unwrap();
+        std::fs::write(repo.join("dev.txt"), "dev\n").unwrap();
+        git_ok(&root, &["add", "-A"]).unwrap();
+        git_ok(&root, &["commit", "-q", "-m", "dev"]).unwrap();
+        git_ok(&root, &["switch", "-q", "main"]).unwrap();
+
+        let base_dir = dir.join("trees").to_string_lossy().to_string();
+        // A new worktree starts from the chosen base, not the current branch.
+        let tree = panel_git_worktree_add(root.clone(), "feature".into(), Some(false), Some(base_dir.clone()), Some("develop".into())).unwrap();
+        assert!(Path::new(&tree).join("dev.txt").exists());
+        assert_eq!(git_ok(&root, &["branch", "--show-current"]).unwrap().trim(), "main");
+
+        // The repo knows "feature" is open elsewhere; switching to it explains instead of failing.
+        let branches = panel_git_branches(root.clone()).unwrap();
+        assert!(branches.worktrees.iter().any(|t| t.branch == "feature"));
+        assert!(panel_git_switch(root.clone(), "feature".into(), false).unwrap_err().contains("another worktree"));
+
+        // Asking for that branch's worktree again reuses it.
+        let again = panel_git_worktree_add(root.clone(), "feature".into(), Some(false), Some(base_dir), None).unwrap();
+        assert_eq!(std::fs::canonicalize(&again).unwrap(), std::fs::canonicalize(&tree).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn finds_the_pull_request_address() {
+        assert_eq!(pr_url("https://github.com/o/r/pull/12\n").as_deref(), Some("https://github.com/o/r/pull/12"));
+        let exists = "a pull request for branch \"x\" into branch \"main\" already exists:\nhttps://github.com/o/r/pull/9";
+        assert_eq!(pr_url(exists).as_deref(), Some("https://github.com/o/r/pull/9"));
+        assert_eq!(pr_url("no link here"), None);
     }
 
     // Runs against this repository's own working tree.

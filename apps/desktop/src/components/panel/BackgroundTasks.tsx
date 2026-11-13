@@ -1,6 +1,8 @@
 // Right panel: the dev servers and background commands the agent started in
 // this chat (src-tauri/src/bg_tasks.rs), like Claude Code's Servers /
-// Background tasks. Click one to see its latest output; ■ stops it.
+// Background tasks. Click one to see its latest output; ■ stops it. Servers
+// that Claude Code, Codex or an ACP agent started themselves are found by port
+// (any process listening from inside the project folder) and listed too.
 
 import { CheckCircle2, ChevronRight, Server, Square, SquareTerminal, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -27,6 +29,48 @@ export function elapsed(from: number, to: number = Date.now()): string {
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   return `${hours}h ${minutes % 60}m`;
+}
+
+/** A server some other agent (or you) started in this project, found by its port. */
+export type DetectedServer = { pid: number; port: number; command: string };
+
+/** Detected servers Kode isn't already tracking (same port = same server). */
+export function untrackedServers(detected: DetectedServer[], tracked: BackgroundTask[]): DetectedServer[] {
+  const ports = new Set(tracked.filter((t) => t.status === "running" && t.port).map((t) => t.port));
+  return detected.filter((server) => !ports.has(server.port));
+}
+
+/** "node /…/node_modules/.bin/vite --port 3210" → "vite --port 3210". */
+export function shortCommand(command: string): string {
+  const parts = command.trim().split(/\s+/);
+  const skip = /(^|\/)(node|bun|deno|python3?|ruby|sh|bash|zsh)$/;
+  // Drop the runtime only in front of a script path ("node /…/vite"), not "bun run dev".
+  const start = parts.length > 1 && skip.test(parts[0]) && parts[1].includes("/") && !parts[1].startsWith("-") ? 1 : 0;
+  return parts
+    .slice(start)
+    .map((part, i) => (i === 0 ? part.replace(/^.*\//, "") : part))
+    .join(" ")
+    .slice(0, 80);
+}
+
+export function useDetectedServers(root: string | null) {
+  const [servers, setServers] = useState<DetectedServer[]>([]);
+  const refresh = useCallback(async () => {
+    if (!root) return setServers([]);
+    try {
+      const next = await invoke<DetectedServer[]>("kode_detect_servers", { root });
+      setServers((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+    } catch {
+      setServers((current) => (current.length ? [] : current));
+    }
+  }, [root]);
+  useEffect(() => {
+    void refresh();
+    // Scanning ports costs more than reading Kode's own list: every 5s.
+    const timer = window.setInterval(() => void refresh(), 5_000);
+    return () => window.clearInterval(timer);
+  }, [refresh]);
+  return { servers, refresh };
 }
 
 export function splitTasks(tasks: BackgroundTask[]) {
@@ -108,20 +152,58 @@ function TaskRow({ task, onStop, icon }: { task: BackgroundTask; onStop?: () => 
   );
 }
 
-export function BackgroundTasksSections({ chatId, Section, Divider }: { chatId: string | null; Section: (props: { title: string; children: React.ReactNode }) => React.ReactElement; Divider: () => React.ReactElement }) {
+function DetectedServerRow({ server, onStop }: { server: DetectedServer; onStop: () => void }) {
+  const label = shortCommand(server.command) || `Process ${server.pid}`;
+  return (
+    <div className="flex items-center gap-2.5 py-1">
+      <span className="shrink-0 text-muted-foreground">
+        <Server size={14} />
+      </span>
+      <span title={server.command} className="min-w-0 flex-1 truncate text-body text-foreground/90">
+        {label}
+      </span>
+      <button type="button" onClick={() => void openUrl(`http://localhost:${server.port}`)} title="Open in your browser" className="shrink-0 cursor-pointer text-label text-muted-foreground hover:text-foreground hover:underline">
+        localhost:{server.port}
+      </button>
+      <button type="button" onClick={onStop} aria-label={`Stop ${label}`} title="Stop" className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-foreground/70 hover:text-foreground">
+        <Square size={11} className="fill-current" />
+      </button>
+    </div>
+  );
+}
+
+export function BackgroundTasksSections({
+  chatId,
+  root = null,
+  Section,
+  Divider,
+}: {
+  chatId: string | null;
+  /** Project folder: also lists servers other agents started there. */
+  root?: string | null;
+  Section: (props: { title: string; children: React.ReactNode }) => React.ReactElement;
+  Divider: () => React.ReactElement;
+}) {
   const { tasks, refresh } = useBackgroundTasks(chatId);
+  const detected = useDetectedServers(root);
   const [showFinished, setShowFinished] = useState(false);
   const { servers, jobs, finished } = splitTasks(tasks);
+  const others = untrackedServers(detected.servers, tasks);
   const stop = (id: string) => void invoke("kode_bg_stop", { id }).then(refresh, refresh);
-  if (tasks.length === 0) return null;
+  const stopDetected = (pid: number) =>
+    void invoke("kode_stop_detected_server", { root, pid }).then(detected.refresh, detected.refresh);
+  if (tasks.length === 0 && others.length === 0) return null;
   return (
     <>
-      {servers.length ? (
+      {servers.length || others.length ? (
         <>
           <Divider />
           <Section title="Servers">
             {servers.map((task) => (
               <TaskRow key={task.id} task={task} icon={<Server size={14} />} onStop={() => stop(task.id)} />
+            ))}
+            {others.map((server) => (
+              <DetectedServerRow key={server.pid} server={server} onStop={() => stopDetected(server.pid)} />
             ))}
           </Section>
         </>

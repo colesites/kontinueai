@@ -3,6 +3,12 @@
 <plist version="1.0">
 <dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Kontinue AI uses the microphone for voice dictation in the chat box.</string>
+	<string>Kontinue AI uses the microphone for voice dictation in the chat box, and for apps you build and open in its browser.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Apps you build and open in Kontinue AI's browser can use the camera.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Apps you build and open in Kontinue AI's browser can use your location, for example to show a map.</string>
+	<key>NSLocationUsageDescription</key>
+	<string>Apps you build and open in Kontinue AI's browser can use your location, for example to show a map.</string>
 </dict>
 </plist>

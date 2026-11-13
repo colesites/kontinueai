@@ -97,6 +97,8 @@ export function ProvidersSection() {
   const providers = settings.kodeProviders;
   const [selected, setSelected] = useState<string>(() => providers[0]?.id ?? "claude");
   const [adding, setAdding] = useState(false);
+  // "Add account" in Accounts: open the form already set to that provider.
+  const [addLike, setAddLike] = useState<ProviderInstance | null>(null);
   const [tasks, setTasks] = useState<Record<string, TaskState>>({});
   const [now, setNow] = useState(() => Date.now());
 
@@ -183,7 +185,10 @@ export function ProvidersSection() {
         </div>
       </div>
 
-      <AccountSwitcher providers={providers} active={settings.kodeActiveAccounts ?? {}} statuses={store.statuses} onAdd={() => setAdding(true)} />
+      <AccountSwitcher providers={providers} active={settings.kodeActiveAccounts ?? {}} statuses={store.statuses} onAdd={(like) => {
+          setAddLike(like);
+          setAdding(true);
+        }} />
 
       <section className="liquid-glass-dropdown flex min-h-[540px] overflow-hidden !rounded-[20px]">
         {/* Instance list */}
@@ -269,7 +274,11 @@ export function ProvidersSection() {
 
       <AddProviderDialog
         open={adding}
-        onOpenChange={setAdding}
+        onOpenChange={(next) => {
+          setAdding(next);
+          if (!next) setAddLike(null);
+        }}
+        like={addLike}
         onAdded={(id, installAgentId) => {
           setSelected(id);
           // Registry downloads start installing straight away.
