@@ -8,8 +8,11 @@
 # its latest.json. Publishing the draft (Releases → Edit → Publish release) is
 # what ships it; installed apps check .../releases/latest/download/latest.json.
 #
-# Secrets: TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD, empty), CONVEX_DEPLOY_KEY
-# (production deploy key, for the backend check on releases). Optional macOS
+# Deploy the Convex backend (packages/backend/convex: npx convex deploy) before
+# releasing; `bun run check:convex` in apps/desktop confirms production has
+# every function the app calls.
+#
+# Secrets: TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD, empty). Optional macOS
 # signing: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
 # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID.
 # Variables: VITE_CLERK_PUBLISHABLE_KEY, VITE_CONVEX_URL, VITE_WEB_APP_URL.
@@ -78,20 +81,6 @@ jobs:
             if [ -z "${!name}" ]; then echo "::error::Set the $name repository variable"; exit 1; fi
             echo "$name=${!name}" >> apps/desktop/.env.production
           done
-
-      # A release must not call Convex functions production doesn't have yet
-      # (it shows "[CONVEX Q(...)] Server Error"). Deploy the backend first.
-      - name: Production backend has every function the app calls
-        if: inputs.release
-        shell: bash
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: |
-          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
-            echo "::error::Add a CONVEX_DEPLOY_KEY secret (Convex dashboard → production → Settings → Deploy key) so releases can check the backend."
-            exit 1
-          fi
-          node apps/desktop/scripts/check-convex-functions.mjs
 
       - name: Build check
         if: ${{ !inputs.release }}

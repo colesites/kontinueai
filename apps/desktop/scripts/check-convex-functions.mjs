@@ -5,9 +5,9 @@
 //   node apps/desktop/scripts/check-convex-functions.mjs           # production
 //   node apps/desktop/scripts/check-convex-functions.mjs --dev     # your dev deployment
 //
-// Production needs `npx convex login` locally, or CONVEX_DEPLOY_KEY (a
-// production deploy key) in CI. The function list comes from the typed API map
-// in apps/desktop/src/lib/convex-api.ts.
+// Run it before a release, after deploying the backend. It uses your
+// `npx convex login` (or a CONVEX_DEPLOY_KEY with deployment:data:view). The
+// function list comes from the typed API map in apps/desktop/src/lib/convex-api.ts.
 
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -57,7 +57,13 @@ function declaredFunctions() {
 function deployedFunctions(dev) {
   const args = ["convex", "function-spec"];
   if (!dev && !process.env.CONVEX_DEPLOY_KEY) args.push("--prod");
-  const out = execFileSync("npx", args, { cwd: backend, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+  // Windows runs npx through npx.cmd, which needs a shell.
+  const out = execFileSync(process.platform === "win32" ? "npx.cmd" : "npx", args, {
+    cwd: backend,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "inherit"],
+    shell: process.platform === "win32",
+  });
   const spec = JSON.parse(out.slice(out.indexOf("{")));
   return new Set(spec.functions.filter((fn) => fn.identifier).map((fn) => fn.identifier.replace(/\.js:/, ":")));
 }
