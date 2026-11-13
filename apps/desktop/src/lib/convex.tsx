@@ -2,6 +2,7 @@ import { useAuth } from "@clerk/clerk-react";
 import { ConvexReactClient } from "convex/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
 import React from "react";
+import { ErrorPanel } from "@/components/layout/ViewErrorBoundary";
 
 // Strip trailing slashes — a trailing "/" produces a malformed WebSocket URL
 // and the client never connects (queries hang in "loading" forever).
@@ -39,15 +40,11 @@ class AuthTransitionBoundary extends React.Component<
 
   render() {
     if (this.state.hasError) {
-      const message =
-        this.state.error instanceof Error
-          ? `${this.state.error.message}\n\n${this.state.error.stack ?? ""}`
-          : String(this.state.error);
+      // Last resort: views have their own boundaries, so this only shows when
+      // something outside them fails.
       return (
-        <div className="grid min-h-screen place-items-center bg-background p-8 text-foreground">
-          <pre className="max-w-2xl overflow-auto whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-300">
-            {message}
-          </pre>
+        <div className="grid min-h-screen place-items-center bg-background text-foreground">
+          <ErrorPanel error={this.state.error} onRetry={() => window.location.reload()} />
         </div>
       );
     }

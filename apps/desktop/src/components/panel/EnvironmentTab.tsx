@@ -4,6 +4,7 @@ import { useState, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "convex/react";
 import { openUrl, revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
+  ChevronDown,
   ChevronRight,
   FileDiff,
   Folder,
@@ -28,7 +29,9 @@ import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { useChatContext } from "@/lib/kode-chat-context";
 import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
 import { cn } from "@/lib/utils";
-import { gitPush, githubWebUrl, type GitStatus } from "./panel-api";
+import { githubWebUrl, type GitStatus } from "./panel-api";
+import { ShipDialog } from "./ShipDialog";
+import type { ShipAction } from "@/lib/kode-ship";
 import type { PanelTab } from "./WorkspacePanel";
 
 type GitState = {
@@ -53,15 +56,16 @@ export function EnvironmentTab({
   git: GitState;
   onOpenTab: (tab: PanelTab) => void;
 }) {
-  const { openSettings, activeChatId } = useKodeWorkspace();
+  const { openSettings, activeChatId, chats } = useKodeWorkspace();
   const context = useChatContext();
   const connectors = useQuery(api.connectors.listConnectors, {});
   const [contextOpen, setContextOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const environment = useEnvironment(projectPath);
   const [connectorsOpen, setConnectorsOpen] = useState(false);
-  const [prBusy, setPrBusy] = useState(false);
-  const [prNote, setPrNote] = useState<string | null>(null);
+  // Commit / push / PR dialog (null = closed).
+  const [ship, setShip] = useState<ShipAction | null>(null);
+  const chatTitle = chats.find((chat) => chat.id === activeChatId)?.title ?? null;
 
   const status = git.status;
   const inWorktree = isWorktreePath(projectPath);
@@ -78,35 +82,11 @@ export function EnvironmentTab({
 
   const repoUrl = githubWebUrl(status?.remoteUrl ?? null);
   const branch = status?.branch ?? null;
-  const onDefault = branch === "main" || branch === "master";
-  const canOpenPr = !!repoUrl && !!branch && !onDefault;
+  const hasChanges = (status?.files.length ?? 0) > 0;
+  const canShip = !!status?.isRepo && (hasChanges || (status?.ahead ?? 0) > 0 || !!status?.branch);
   const prHint = !repoUrl
-    ? "No GitHub remote"
-    : onDefault
-      ? "Switch to a branch to open a PR"
-      : prBusy
-        ? "Pushing this branch"
-        : "Push this branch and open a pull request";
-
-  const createPr = async () => {
-    if (!repoUrl || !branch || onDefault || prBusy) return;
-    setPrBusy(true);
-    setPrNote(null);
-    const uncommitted = (status?.files.length ?? 0) > 0;
-    try {
-      await gitPush(projectPath);
-      await git.refresh();
-      if (uncommitted) {
-        setPrNote("Uncommitted changes stay on this computer. Commit them if they belong in the pull request.");
-      }
-      open(`${repoUrl}/compare/${encodeURIComponent(branch)}?expand=1`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : typeof error === "string" ? error : "Couldn't push this branch.";
-      setPrNote(message);
-    } finally {
-      setPrBusy(false);
-    }
-  };
+    ? "Commit your changes (this project has no GitHub remote for a pull request)"
+    : "Commit, push and open a pull request, all from here";
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-3">
@@ -271,17 +251,44 @@ export function EnvironmentTab({
                 </span>
               )}
             </button>
-            <button
-              type="button"
-              disabled={!canOpenPr || prBusy}
-              title={prHint}
-              onClick={() => void createPr()}
-              className="kontinue-3d h-7 shrink-0 cursor-pointer rounded-full px-3 text-label text-foreground/85 disabled:cursor-default disabled:opacity-45"
-            >
-              {prBusy ? "Pushing…" : "Create PR"}
-            </button>
+            <div className="flex shrink-0 items-center">
+              <button
+                type="button"
+                disabled={!canShip}
+                title={prHint}
+                onClick={() => setShip(repoUrl ? "pr" : "commit")}
+                className="kontinue-3d h-7 cursor-pointer rounded-l-full pr-2.5 pl-3 text-label text-foreground/85 disabled:cursor-default disabled:opacity-45"
+              >
+                {repoUrl ? "Create PR" : "Commit"}
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    disabled={!canShip}
+                    aria-label="More git actions"
+                    className="kontinue-3d ml-px flex h-7 w-6 cursor-pointer items-center justify-center rounded-r-full text-foreground/70 disabled:cursor-default disabled:opacity-45"
+                  >
+                    <ChevronDown size={12} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuItem onSelect={() => setShip("commit")}>Commit…</DropdownMenuItem>
+                  <DropdownMenuItem disabled={!repoUrl} onSelect={() => setShip("push")}>Commit and push…</DropdownMenuItem>
+                  <DropdownMenuItem disabled={!repoUrl} onSelect={() => setShip("pr")}>Create PR…</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
-          {prNote ? <p className="pt-1 text-caption leading-relaxed text-muted-foreground">{prNote}</p> : null}
+          <ShipDialog
+            open={ship !== null}
+            onOpenChange={(next) => !next && setShip(null)}
+            root={projectPath}
+            chatTitle={chatTitle}
+            initialAction={ship ?? "pr"}
+            onDone={() => void git.refresh()}
+            onViewPullRequests={() => onOpenTab("prs")}
+          />
           </>
         ) : (
           <p className="py-1 text-label text-muted-foreground">{git.error ?? "Not a git repository."}</p>
@@ -289,7 +296,7 @@ export function EnvironmentTab({
       </Section>
 
       {/* Servers / background commands the agent started in this chat. */}
-      <BackgroundTasksSections chatId={activeChatId} Section={Section} Divider={Divider} />
+      <BackgroundTasksSections chatId={activeChatId} root={projectPath} Section={Section} Divider={Divider} />
     </div>
   );
 }

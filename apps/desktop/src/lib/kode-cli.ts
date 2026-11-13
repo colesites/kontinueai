@@ -58,7 +58,9 @@ export type CliEvent =
   | { type: "toolStart"; id: string; name: string; input: unknown }
   | { type: "toolEnd"; id: string; output: string; isError: boolean }
   | { type: "todos"; items: { title: string; status: string }[] }
-  | { type: "notice"; message: string };
+  | { type: "notice"; message: string }
+  /** Context the agent reported: tokens in its window now, and the window size. */
+  | { type: "usage"; used: number | null; window: number | null };
 
 type CliRunResult = {
   sessionId: string | null;
@@ -738,6 +740,8 @@ export type RunCliTurnParams = {
   /** Model for the agent; null (or "default") keeps its default. */
   model: string | null;
   mode: string;
+  /** Reasoning effort for agents that take one (Claude Code, Codex). */
+  effort?: string | null;
   signal?: AbortSignal;
   onEvent: (event: CliEvent) => void;
 };
@@ -771,6 +775,7 @@ export async function runCliTurn({
   fork = false,
   model,
   mode,
+  effort = null,
   signal,
   onEvent,
 }: RunCliTurnParams): Promise<CliRunResult> {
@@ -792,6 +797,7 @@ export async function runCliTurn({
         fork: fork && !!sessionId,
         model: model && model !== DEFAULT_MODEL.id ? model : null,
         mode,
+        effort,
         config: rustConfig(instance),
         ...cliExtensions(instance.kind),
       },

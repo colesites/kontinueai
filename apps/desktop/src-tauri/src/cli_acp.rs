@@ -356,6 +356,14 @@ pub(super) fn map_update(parser: &mut Parser, params: &Value) -> Vec<CliEvent> {
                 _ => {}
             }
         }
+        // { used, size }: tokens in context and the window size.
+        Some("usage_update") => {
+            let used = update.get("used").and_then(Value::as_u64);
+            let window = update.get("size").and_then(Value::as_u64);
+            if used.is_some() || window.is_some() {
+                out.push(CliEvent::Usage { used, window });
+            }
+        }
         Some("plan") => {
             let items = update
                 .get("entries")
@@ -573,7 +581,9 @@ pub(super) async fn probe_models(config: &CliConfig) -> Result<Vec<CliModel>, St
     match result {
         Ok(Ok(setup)) => Ok(models_from(&setup)),
         Ok(Err(error)) => Err(error.into_message()),
-        Err(_) => Err("Timed out waiting for the agent.".to_string()),
+        Err(_) => Err(
+            "The agent didn't answer within 45 seconds, so its models couldn't load. Press Update to get its newest version. If it still doesn't answer, the agent itself isn't starting on this computer.".to_string(),
+        ),
     }
 }
 

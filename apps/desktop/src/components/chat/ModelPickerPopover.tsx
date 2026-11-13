@@ -274,7 +274,7 @@ export function ModelPickerPopover({
                                 chooseModel(model, locked);
                               }}
                               className={cn(
-                                "group flex cursor-pointer items-center gap-2.5 rounded-full px-3 py-1.5 transition-colors",
+                                "group flex h-11 cursor-pointer items-center gap-2.5 rounded-full px-3 transition-colors",
                                 isSelected ? "kontinue-menu-active" : "kontinue-hover",
                                 locked && "opacity-55",
                               )}
@@ -284,16 +284,16 @@ export function ModelPickerPopover({
                                 {accent ? <span className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full ring-1 ring-background" style={{ backgroundColor: accent }} /> : null}
                               </span>
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="truncate text-xs font-medium text-foreground">{model.name}</span>
+                                <div className="flex min-w-0 items-center gap-1.5">
+                                  <span className="min-w-0 truncate text-xs font-medium text-foreground">{model.name}</span>
                                   {cliProvider && versionIssue ? (
-                                    <span title={versionIssue} className="rounded-full bg-amber-500/15 px-1.5 text-micro font-semibold uppercase text-amber-600 dark:text-amber-400">
+                                    <span title={versionIssue} className="shrink-0 whitespace-nowrap rounded-full bg-amber-500/15 px-1.5 text-micro font-semibold uppercase text-amber-600 dark:text-amber-400">
                                       Update CLI
                                     </span>
                                   ) : cliProvider && cliNeedsLogin(cliStatuses, cliProvider.id) ? (
                                     <span
                                       title={loginCommand ? `Sign in from Settings → Providers, or run "${loginCommand}" in a terminal.` : "Sign in from Settings → Providers."}
-                                      className="rounded-full bg-amber-500/15 px-1.5 text-micro font-semibold uppercase text-amber-600 dark:text-amber-400"
+                                      className="shrink-0 whitespace-nowrap rounded-full bg-amber-500/15 px-1.5 text-micro font-semibold uppercase text-amber-600 dark:text-amber-400"
                                     >
                                       Sign in
                                     </span>
@@ -301,20 +301,20 @@ export function ModelPickerPopover({
                                     cliProvider && (
                                       <span
                                         title={`Runs through ${cliProvider.label} on this computer. ${cliPlanLabel(cliProvider)}, not counted in Kode usage.`}
-                                        className="rounded-full bg-emerald-500/15 px-1.5 text-micro font-semibold uppercase text-emerald-600 dark:text-emerald-400"
+                                        className="shrink-0 whitespace-nowrap rounded-full bg-emerald-500/15 px-1.5 text-micro font-semibold uppercase text-emerald-600 dark:text-emerald-400"
                                       >
                                         Your plan
                                       </span>
                                     )
                                   )}
-                                  {isByok && <span className="rounded-full bg-emerald-500/15 px-1.5 text-micro font-semibold uppercase text-emerald-600 dark:text-emerald-400">BYOK</span>}
+                                  {isByok && <span className="shrink-0 whitespace-nowrap rounded-full bg-emerald-500/15 px-1.5 text-micro font-semibold uppercase text-emerald-600 dark:text-emerald-400">BYOK</span>}
                                   {locked && kodeModel ? (
-                                    <span className="flex items-center gap-0.5 rounded-full border border-purple-500/30 px-1.5 text-micro font-semibold text-purple-500 dark:text-purple-300">
+                                    <span className="flex shrink-0 items-center gap-0.5 whitespace-nowrap rounded-full border border-purple-500/30 px-1.5 text-micro font-semibold text-purple-500 dark:text-purple-300">
                                       <Lock size={8} />
                                       {PLAN_LABEL[minimumKodePlan(kodeModel)]}
                                     </span>
                                   ) : null}
-                                  {access === "credits" && !isByok ? <span className="rounded-full border border-amber-500/30 px-1.5 text-micro font-semibold text-amber-500">Extra usage</span> : null}
+                                  {access === "credits" && !isByok ? <span className="shrink-0 whitespace-nowrap rounded-full border border-amber-500/30 px-1.5 text-micro font-semibold text-amber-500">Extra usage</span> : null}
                                 </div>
                                 <p className="truncate text-caption leading-tight text-muted-foreground">{model.description || `${model.provider} model`}</p>
                               </div>

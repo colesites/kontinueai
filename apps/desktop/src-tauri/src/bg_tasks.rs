@@ -269,9 +269,175 @@ pub fn stop_all() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Servers started outside Kode's own tool (Claude Code, Codex, OpenCode… run
+// `bun dev` themselves): any process listening on a TCP port whose working
+// folder is inside the project. macOS and Linux (lsof); none on Windows.
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectedServer {
+    pid: u32,
+    port: u16,
+    command: String,
+}
+
+/// `lsof -Fpn` output → (pid, port) for each listening socket.
+fn parse_listeners(out: &str) -> Vec<(u32, u16)> {
+    let mut pid = 0u32;
+    let mut found = Vec::new();
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix('p') {
+            pid = rest.trim().parse().unwrap_or(0);
+        } else if let Some(name) = line.strip_prefix('n') {
+            if let Some(port) = name.rsplit(':').next().and_then(|p| p.trim().parse::<u16>().ok()) {
+                if pid > 0 && !found.contains(&(pid, port)) {
+                    found.push((pid, port));
+                }
+            }
+        }
+    }
+    found
+}
+
+/// `lsof -Fpn -d cwd` output → pid → working folder.
+fn parse_cwds(out: &str) -> HashMap<u32, String> {
+    let mut pid = 0u32;
+    let mut cwds = HashMap::new();
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix('p') {
+            pid = rest.trim().parse().unwrap_or(0);
+        } else if let Some(path) = line.strip_prefix('n') {
+            if pid > 0 {
+                cwds.insert(pid, path.to_string());
+            }
+        }
+    }
+    cwds
+}
+
+fn inside(path: &str, root: &str) -> bool {
+    let root = root.trim_end_matches('/');
+    !root.is_empty() && (path == root || path.starts_with(&format!("{root}/")))
+}
+
+#[cfg(unix)]
+fn detect(root: &str) -> Vec<DetectedServer> {
+    let run = |program: &str, args: &[&str]| {
+        std::process::Command::new(program)
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+            .unwrap_or_default()
+    };
+    let lsof = if std::path::Path::new("/usr/sbin/lsof").exists() { "/usr/sbin/lsof" } else { "/usr/bin/lsof" };
+    let root = std::fs::canonicalize(root).map(|p| p.to_string_lossy().to_string()).unwrap_or_else(|_| root.to_string());
+    let me = std::process::id();
+    let listeners: Vec<(u32, u16)> = parse_listeners(&run(lsof, &["-nP", "-iTCP", "-sTCP:LISTEN", "-Fpn"]))
+        .into_iter()
+        .filter(|(pid, _)| *pid != me)
+        .collect();
+    if listeners.is_empty() {
+        return Vec::new();
+    }
+    let mut pids: Vec<String> = listeners.iter().map(|(pid, _)| pid.to_string()).collect();
+    pids.dedup();
+    let list = pids.join(",");
+    let cwds = parse_cwds(&run(lsof, &["-a", "-p", &list, "-d", "cwd", "-Fpn"]));
+    let commands: HashMap<u32, String> = run("/bin/ps", &["-o", "pid=,command=", "-p", &list])
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let (pid, command) = line.split_once(char::is_whitespace)?;
+            Some((pid.parse().ok()?, command.trim().chars().take(200).collect()))
+        })
+        .collect();
+    let mut servers: Vec<DetectedServer> = Vec::new();
+    for (pid, port) in listeners {
+        if !cwds.get(&pid).is_some_and(|cwd| inside(cwd, &root)) {
+            continue;
+        }
+        // One row per process: its lowest port (dev servers often open a second one for reload).
+        if servers.iter().any(|s| s.pid == pid) {
+            continue;
+        }
+        servers.push(DetectedServer { pid, port, command: commands.get(&pid).cloned().unwrap_or_default() });
+    }
+    servers.sort_by_key(|s| s.port);
+    servers
+}
+
+#[cfg(not(unix))]
+fn detect(_root: &str) -> Vec<DetectedServer> {
+    Vec::new()
+}
+
+#[tauri::command(async)]
+pub fn kode_detect_servers(root: String) -> Vec<DetectedServer> {
+    detect(&root)
+}
+
+/// Stop a detected server. Checked again first: only a process that is still
+/// listening inside this project can be stopped this way.
+#[tauri::command(async)]
+pub fn kode_stop_detected_server(root: String, pid: u32) -> Result<(), String> {
+    if !detect(&root).iter().any(|s| s.pid == pid) {
+        return Err("That server isn't running in this project anymore.".into());
+    }
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("/bin/kill").arg("-TERM").arg(pid.to_string()).status();
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_lsof_listeners_and_folders() {
+        let listen = "p101\nnode\nn*:3210\nn[::1]:3210\nn127.0.0.1:24678\np202\nn*:5432\n";
+        assert_eq!(parse_listeners(listen), vec![(101, 3210), (101, 24678), (202, 5432)]);
+        let cwds = parse_cwds("p101\nfcwd\nn/Users/me/app\np202\nfcwd\nn/opt/postgres\n");
+        assert_eq!(cwds.get(&101).map(String::as_str), Some("/Users/me/app"));
+        assert!(inside("/Users/me/app/web", "/Users/me/app"));
+        assert!(inside("/Users/me/app", "/Users/me/app/"));
+        assert!(!inside("/Users/me/app-old", "/Users/me/app"));
+        assert!(!inside("/anything", ""));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn finds_a_server_started_in_the_project() {
+        let dir = std::env::temp_dir().join(format!("kontinue-detect-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let mut child = std::process::Command::new("python3")
+            .args(["-m", "http.server", &port.to_string(), "--bind", "127.0.0.1"])
+            .current_dir(&dir)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let mut found = Vec::new();
+        for _ in 0..40 {
+            tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            found = detect(&dir.to_string_lossy());
+            if !found.is_empty() {
+                break;
+            }
+        }
+        let _ = child.kill();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(found.iter().any(|s| s.port == port && s.command.contains("http.server")), "{found:?}");
+        assert!(detect("/nonexistent-kontinue").is_empty());
+    }
 
     #[test]
     fn detects_ports_and_strips_colours() {

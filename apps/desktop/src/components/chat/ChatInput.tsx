@@ -83,6 +83,7 @@ import { removeStashed, stashDraft, useStash } from "@/lib/kode-stash";
 import { annotationTitle, removeAnnotation, useAnnotations } from "@/lib/kode-annotations";
 import { cn } from "@/lib/utils";
 import { KodeReasoningPopover } from "./KodeReasoningPopover";
+import type { KodeEffort } from "@repo/ai/lib/kode";
 import { type AnyModelOption, ModelPickerPopover } from "./ModelPickerPopover";
 import { KodeModeMenu } from "./KodeModeMenu";
 import { useKeybinding } from "@/lib/kode-keybindings";
@@ -276,6 +277,13 @@ type ChatInputProps = {
   onWebSearchToggle?: (enabled: boolean) => void;
   reasoningEnabled?: boolean;
   onReasoningToggle?: (enabled: boolean) => void;
+  /** Kode: this chat's reasoning and context window (see KodeReasoningPopover). */
+  chatReasoning?: KodeEffort | "off";
+  chatContextWindow?: number | null;
+  /** Kode: the selected model's window when it isn't adjustable. */
+  resolvedContextWindow?: number | null;
+  onChatReasoningChange?: (next: KodeEffort | "off") => void;
+  onChatContextWindowChange?: (next: number) => void;
   onOpenConnectors?: () => void;
   onOpenAgents?: () => void;
   selectedAgentId?: string | null;
@@ -412,6 +420,11 @@ export function ChatInput({
   onWebSearchToggle,
   reasoningEnabled: controlledReasoningEnabled,
   onReasoningToggle,
+  chatReasoning,
+  chatContextWindow,
+  resolvedContextWindow,
+  onChatReasoningChange,
+  onChatContextWindowChange,
   onOpenConnectors,
   onOpenAgents: _onOpenAgents,
   selectedAgentId: controlledAgentId,
@@ -1748,6 +1761,12 @@ export function ChatInput({
               {!hideAgentMode ? (
                 <KodeReasoningPopover
                   modelId={modelId}
+                  modelName={models?.find((m) => m.id === modelId)?.name}
+                  reasoning={chatReasoning}
+                  contextWindow={chatContextWindow}
+                  resolvedWindow={resolvedContextWindow}
+                  onReasoningChange={onChatReasoningChange}
+                  onContextWindowChange={onChatContextWindowChange}
                   reasoningEnabled={reasoningEnabled}
                   onReasoningToggle={onReasoningToggle}
                 />
