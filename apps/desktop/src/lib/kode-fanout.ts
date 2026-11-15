@@ -146,7 +146,8 @@ async function runOne(
   let todos: KodeTodo[] = [];
   const declined: string[] = [];
   try {
-    const worktree = await addWorktree(root, run.branch);
+    // Sub-agents branch from where their parent is, not the new-thread base.
+    const worktree = await addWorktree(root, run.branch, null);
     const projectId = deps.ensureFolder(worktree);
     const title = `${prompt.replace(/\s+/g, " ").trim().slice(0, 48)} · ${run.modelName}`;
     const chatId = await deps.createChatRecord({ title, projectId });

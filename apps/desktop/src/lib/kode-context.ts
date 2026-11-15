@@ -3,7 +3,7 @@
 // to the live gateway catalog fetched once via Rust.
 
 import { invoke } from "@tauri-apps/api/core";
-import { getKodeModelById, kodeContextBudget } from "@repo/ai/lib/kode";
+import { resolveContextWindow } from "@/lib/model-controls";
 
 const DEFAULT_WINDOW = 128_000;
 
@@ -24,14 +24,14 @@ export async function loadContextWindows(): Promise<ContextWindows> {
 
 /**
  * Context budget for the meter and auto-compaction: for Kode models, the size
- * chosen in the reasoning/context picker (capped to the model's window).
+ * chosen in the reasoning/context picker (capped to the model's window); for
+ * agents' models, what the agent reported or the best catalog match.
  */
 export function getContextWindow(
   modelId: string,
   windows: ContextWindows,
   chosen: number | null = null,
+  modelName?: string,
 ): number {
-  const kodeModel = getKodeModelById(modelId);
-  if (kodeModel) return kodeContextBudget(kodeModel, chosen);
-  return windows[modelId] ?? DEFAULT_WINDOW;
+  return resolveContextWindow(modelId, { chosen, gateway: windows, modelName }) ?? DEFAULT_WINDOW;
 }

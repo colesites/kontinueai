@@ -16,6 +16,7 @@ import { KodeWorkspaceProvider, useKodeWorkspace } from "@/lib/kode-workspace";
 import { useKeybinding } from "@/lib/kode-keybindings";
 import { KodeAgentRuntimeProvider } from "@/lib/kode-agent-runtime";
 import { SettingsView } from "@/components/settings/SettingsView";
+import { ViewErrorBoundary } from "@/components/layout/ViewErrorBoundary";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 
 const STARTUP_TIMEOUT_MS = 15_000;
@@ -110,7 +111,11 @@ function WorkspaceContent({ signedIn }: { signedIn: boolean }) {
 
   return (
     <>
-      {isSettingsOpen && <SettingsView onBack={closeSettings} initialTab={settingsTab} />}
+      {isSettingsOpen && (
+        <ViewErrorBoundary name="settings" resetKey={String(settingsTab ?? "")}>
+          <SettingsView onBack={closeSettings} initialTab={settingsTab} />
+        </ViewErrorBoundary>
+      )}
       <SidebarProvider>
         <div className="relative flex h-screen w-full flex-col liquid-backdrop text-foreground overflow-hidden">
           <div className="relative flex flex-1 w-full overflow-hidden z-10">

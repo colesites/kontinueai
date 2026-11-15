@@ -13,8 +13,11 @@ export type AccountGroup = {
   activeId: string;
 };
 
-export function accountKey(instance: Pick<ProviderInstance, "kind" | "preset">): string {
-  return instance.kind === "acp" ? `acp:${instance.preset ?? "custom"}` : instance.kind;
+export function accountKey(instance: Pick<ProviderInstance, "kind" | "preset"> & { registry?: { id: string } }): string {
+  if (instance.kind !== "acp") return instance.kind;
+  // An agent from the ACP Registry is one provider, however many accounts.
+  if ((instance.preset ?? "custom") === "custom" && instance.registry) return `acp:registry:${instance.registry.id}`;
+  return `acp:${instance.preset ?? "custom"}`;
 }
 
 /** The active account of a group: the saved choice if still enabled, else the first enabled. */

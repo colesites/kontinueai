@@ -7,8 +7,6 @@ import { accountKey, activeAccountId, setActiveAccount } from "@/lib/kode-accoun
 import { kindName, type CliStatus, type ProviderInstance } from "@/lib/kode-cli";
 import { cn } from "@/lib/utils";
 
-const ALWAYS = ["claude", "codex", "cursor"];
-
 export function AccountSwitcher({
   providers,
   active,
@@ -18,17 +16,17 @@ export function AccountSwitcher({
   providers: ProviderInstance[];
   active: Record<string, string>;
   statuses: CliStatus[] | null;
-  onAdd: () => void;
+  /** Add another account of the same provider as `like`. */
+  onAdd: (like: ProviderInstance) => void;
 }) {
-  const keys = [...new Set(providers.map(accountKey))].filter(
-    (key) => key !== "acp:custom" && (ALWAYS.includes(key) || providers.filter((p) => accountKey(p) === key).length > 1),
-  );
+  // Every provider you've added (custom commands are separate tools, not accounts).
+  const keys = [...new Set(providers.map(accountKey))].filter((key) => key !== "acp:custom");
   if (keys.length === 0) return null;
   return (
     <section className="liquid-glass-dropdown !rounded-[20px] px-4 py-3.5">
       <p className="text-body font-medium text-foreground">Accounts</p>
       <p className="mt-0.5 text-label text-muted-foreground">
-        Add a second account of a provider with its own config folder, then pick which one Kode uses. Turn a provider on in the list below first. In a chat, type <code>/switch</code>.
+        Add another account of any provider (its own sign-in and config folder), then pick which one Kode uses. In a chat, type <code>/switch</code>.
       </p>
       <div className="mt-3 space-y-2.5">
         {keys.map((key) => {
@@ -58,7 +56,7 @@ export function AccountSwitcher({
                   </button>
                 );
               })}
-              <button type="button" onClick={onAdd} className="flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-label text-muted-foreground hover:text-foreground">
+              <button type="button" onClick={() => onAdd(accounts[0])} className="flex h-7 cursor-pointer items-center gap-1 rounded-full px-2.5 text-label text-muted-foreground hover:text-foreground">
                 <Plus size={11} /> Add account
               </button>
             </div>

@@ -22,7 +22,7 @@ import {
 } from "../ui/dropdown-menu";
 import { BranchPicker, useBranches } from "./BranchPicker";
 import { updateSettings, useAppSettings } from "../../lib/app-settings";
-import { addWorktree, branchPrefix, isWorktreePath } from "../../lib/kode-branches";
+import { addWorktree, branchPrefix, isWorktreePath, setWorktreeBase, useWorktreeBase } from "../../lib/kode-branches";
 
 const errorText = (error: unknown) =>
   typeof error === "string"
@@ -154,13 +154,17 @@ export function KodeComposerBar({
   const [worktreeError, setWorktreeError] = useState<string | null>(null);
 
   const { branches, reload: reloadBranches } = useBranches(projectPath);
+  // In "New worktree" mode the branch chip picks where the worktree starts;
+  // it doesn't switch this folder's branch.
+  const worktreeBase = useWorktreeBase(projectPath);
+  const choosingBase = autoWorktree && !inWorktree;
 
   const createWorktree = async (branch: string) => {
     if (!projectPath) return;
     setWorktreeBusy(true);
     setWorktreeError(null);
     try {
-      const path = await addWorktree(projectPath, branch);
+      const path = await addWorktree(projectPath, branch, worktreeBase);
       newChat(ensureFolder(path));
       setWorktreeOpen(false);
     } catch (error) {
@@ -317,8 +321,17 @@ export function KodeComposerBar({
           repoName={project.name}
           align="end"
           onChanged={() => void reloadBranches()}
+          onPickBase={choosingBase ? (branch) => setWorktreeBase(projectPath, branch) : undefined}
+          base={worktreeBase}
         >
-          <BarButton icon={<GitBranch size={12} />} label={branches?.current ?? "Branch"} />
+          <BarButton
+            icon={<GitBranch size={12} />}
+            label={
+              choosingBase
+                ? `from ${worktreeBase ?? branches?.current ?? "current branch"}`
+                : (branches?.current ?? "Branch")
+            }
+          />
         </BranchPicker>
       </div>
     </>

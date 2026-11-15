@@ -22,6 +22,18 @@ export const GOOGLE_MODELS: ModelOption[] = [
     description: "Next-gen flagship model",
   },
   {
+    id: "google/gemini-4-carbon",
+    name: "Gemini 4 Carbon",
+    provider: "google",
+    description: "Built for complex coding and long agentic work",
+  },
+  {
+    id: "google/gemini-4-hydrogen",
+    name: "Gemini 4 Hydrogen",
+    provider: "google",
+    description: "Fast Gemini 4 for reasoning and coding",
+  },
+  {
     id: "google/gemini-3.8-flash",
     name: "Gemini 3.8 Flash",
     provider: "google",

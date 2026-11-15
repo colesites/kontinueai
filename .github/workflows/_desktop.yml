@@ -8,6 +8,10 @@
 # its latest.json. Publishing the draft (Releases → Edit → Publish release) is
 # what ships it; installed apps check .../releases/latest/download/latest.json.
 #
+# Deploy the Convex backend (packages/backend/convex: npx convex deploy) before
+# releasing; `bun run check:convex` in apps/desktop confirms production has
+# every function the app calls.
+#
 # Secrets: TAURI_SIGNING_PRIVATE_KEY (+ _PASSWORD, empty). Optional macOS
 # signing: APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY,
 # APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID.

@@ -85,7 +85,11 @@ export function GeneralSection() {
             side="bottom"
             align="end"
           />
-          {kodeModel ? <KodeReasoningPopover modelId={modelId} side="bottom" /> : null}
+          <KodeReasoningPopover
+            modelId={modelId}
+            modelName={models.find((m) => m.id === modelId)?.name}
+            side="bottom"
+          />
         </Row>
         <Row label="Permissions" description="How much the agent may do without asking. ⇧Tab switches it in the composer.">
           <KodeModeMenu

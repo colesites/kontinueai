@@ -145,7 +145,12 @@ export function SettingsView({ onBack, initialTab }: SettingsViewProps) {
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => setActive(normalizeTab(initialTab)), [initialTab]);
-  useEffect(() => mainRef.current?.scrollTo({ top: 0 }), [active]);
+  // Block body on purpose: Chromium (WebView2 on Windows) returns a Promise from
+  // scrollTo, and an arrow that returns it would hand React a Promise as the
+  // effect's cleanup, which crashes ("m is not a function") on the next change.
+  useEffect(() => {
+    mainRef.current?.scrollTo({ top: 0 });
+  }, [active]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

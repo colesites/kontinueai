@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ArrowLeft, ArrowRight, ExternalLink, Globe, MousePointerClick, RotateCw, X } from "lucide-react";
 import { addAnnotation } from "@/lib/kode-annotations";
+import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { cn } from "@/lib/utils";
 
 /** What the in-page picker reports (src-tauri/src/browser_view.rs). */
@@ -87,7 +88,7 @@ export function BrowserTab({
   onOpenInTab,
   onUrlChange,
   label = "browser-panel",
-  active = true,
+  active: activeProp = true,
   systemBrowser = true,
 }: {
   initialUrl?: string | null;
@@ -98,6 +99,10 @@ export function BrowserTab({
   /** System-browser button. The sidebar uses the web icon for a full tab instead. */
   systemBrowser?: boolean;
 }) {
+  // The page is a native view drawn above the app's HTML, so anything that
+  // covers it (Settings) has to hide it rather than paint over it.
+  const { isSettingsOpen } = useKodeWorkspace();
+  const active = activeProp && !isSettingsOpen;
   const [history, setHistory] = useState<string[]>(() => (initialUrl ? [initialUrl] : []));
   const [index, setIndex] = useState(() => (initialUrl ? 0 : -1));
   const [draft, setDraft] = useState(initialUrl ?? "");

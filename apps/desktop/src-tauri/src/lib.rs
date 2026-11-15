@@ -22,6 +22,7 @@ mod desktop_auth;
 mod panel;
 mod settings_info;
 mod menu;
+mod permissions;
 mod agent_usage;
 mod editor;
 mod plugins;
@@ -2086,6 +2087,8 @@ pub fn run() {
         .manage(menu::MenuState::default())
         .menu(|app| menu::build(app))
         .on_menu_event(|app, event| menu::handle_event(app, event.id().as_ref()))
+        // Microphone, camera, location: ask once (the OS prompt), not per use.
+        .on_permission_request(permissions::decide)
         .manage(panel::PtyState::default())
         .manage(cli_agents::CliRunState::default())
         .manage(mcp::McpManager::default())
@@ -2181,6 +2184,8 @@ pub fn run() {
             ,kode_hooks::kode_shared_workspace_read
             ,kode_hooks::kode_shared_workspace_write
             ,bg_tasks::kode_bg_start
+            ,bg_tasks::kode_detect_servers
+            ,bg_tasks::kode_stop_detected_server
             ,bg_tasks::kode_bg_list
             ,bg_tasks::kode_bg_output
             ,bg_tasks::kode_bg_stop
@@ -2211,6 +2216,9 @@ pub fn run() {
             ,panel::panel_git_branches
             ,panel::panel_git_switch
             ,panel::panel_git_push
+            ,panel::panel_git_ship_info
+            ,panel::panel_git_commit
+            ,panel::panel_pr_create
             ,panel::panel_git_worktree_add
             ,settings_info::settings_tool_status
             ,settings_info::settings_list_worktrees

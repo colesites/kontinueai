@@ -68,12 +68,15 @@ import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { getSettings, useAppSettings, type ProviderInstance } from "@/lib/app-settings";
 import { getScopedSettings, loadProjectSettings, useScopedSettings } from "@/lib/kode-scoped-settings";
+import { getChatPrefs, moveChatPrefs, setChatPrefs, useChatPrefs } from "@/lib/kode-chat-prefs";
+import { getModelControls, rememberModelWindow } from "@/lib/model-controls";
+import { effortFor } from "@/components/chat/KodeReasoningPopover";
 import { api, type KodeConvexMessage } from "@/lib/convex-api";
 import { type KodeToolStep, runKodeAgent } from "@/lib/kode-agent";
 import { useKodeAgentRuntime } from "@/lib/kode-agent-runtime";
 import { expandSlashPrompt, resolveSlash } from "@/lib/kode-commands";
 import { pickTriageModel, triagePrompt, triageReport } from "@/lib/kode-triage";
-import { accountGroups, accountKey, modelOnAccount, nativeSessionBelongsTo, resolveSwitchTarget, setActiveAccount } from "@/lib/kode-accounts";
+import { accountGroups, accountKey, activeAccountId, modelOnAccount, nativeSessionBelongsTo, resolveSwitchTarget, setActiveAccount } from "@/lib/kode-accounts";
 import { homeDir } from "@tauri-apps/api/path";
 import { useSkills } from "@/hooks/use-skills";
 import { getActiveSkills, setActiveSkills } from "@/lib/kode-skills";
@@ -143,7 +146,6 @@ import {
   useKodeWorkspace,
 } from "@/lib/kode-workspace";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
-import { readOfflineValue, writeOfflineValue } from "@/lib/offline-state";
 import { LimitCard, ScheduledBar } from "@/components/kode/ScheduledPrompts";
 import { notifyRunEvent } from "@/lib/kode-notify";
 import { addWorktree, isWorktreePath, threadBranch } from "@/lib/kode-branches";
@@ -530,19 +532,25 @@ const PlanView = () => {
   const planTier = normalizePlanTier(usePlanTier());
   const { reasoningEnabled: legacyReasoningEnabled, setReasoningEnabled } =
     useReasoningPreference();
-  const { kodeReasoning } = useAppSettings();
-  // Reasoning comes from the picker (Settings store); "off" only where allowed.
-  const reasoningEnabled = kodeReasoning !== "off";
   void legacyReasoningEnabled;
-  // New sessions start from Settings → General defaults.
-  const [selectedModelId, setSelectedModelId] = useState(() => {
-    const preferred = readOfflineValue(user?.id, "kode-model") ?? getSettings().defaultKodeModel;
-    // CLI models (Settings → Providers) are allowed too; the effect below
-    // falls back to Kode if that provider isn't available.
-    return preferred && (KODE_MODELS.some((m) => m.id === preferred) || parseCliModelId(preferred))
-      ? preferred
+  // Each chat keeps its own model, mode, reasoning and context window
+  // (kode-chat-prefs), so leaving and coming back shows it as you left it.
+  // Settings → General only sets where a new chat starts.
+  const { activeChatId: prefsChatId } = useKodeWorkspace();
+  const prefsKey = prefsChatId ?? DRAFT_KEY;
+  const prefsKeyRef = useRef(prefsKey);
+  prefsKeyRef.current = prefsKey;
+  const chatPrefs = useChatPrefs(prefsKey);
+  const appDefaults = useAppSettings();
+  const preferredModel = appDefaults.defaultKodeModel;
+  // CLI models (Settings → Providers) are allowed too; the effect below
+  // falls back to Kode if that provider isn't available.
+  const defaultModelId =
+    preferredModel && (KODE_MODELS.some((m) => m.id === preferredModel) || parseCliModelId(preferredModel))
+      ? preferredModel
       : KODE_DEFAULT_MODEL_ID;
-  });
+  const selectedModelId = chatPrefs.modelId ?? defaultModelId;
+  const setSelectedModelId = useCallback((modelId: string) => setChatPrefs(prefsKeyRef.current, { modelId }), []);
   // Settings → Providers: Claude / GPT models can run through the user's own
   // Claude Code / Codex CLI (their subscription) instead of Kode.
   // Settings → Providers: enabled models from the user's own Claude Code /
@@ -554,11 +562,18 @@ const PlanView = () => {
     () => [...KODE_MODELS, ...cliPickerModels(appSettings, cliStore)],
     [appSettings, cliStore],
   );
-  // Discovery can fail temporarily (especially offline). Never replace the user's
-  // selection just because a health check or remote catalog is unavailable.
+  // A CLI model that was turned off (or whose CLI went away) falls back to Kode.
+  // An empty or failed discovery must not clear the chat's saved model.
   useEffect(() => {
-    writeOfflineValue(user?.id, "kode-model", selectedModelId);
-  }, [user?.id, selectedModelId]);
+    const current = parseCliModelId(selectedModelId);
+    if (!cliStatuses?.length || cliStore.checking || !current) return;
+    if (cliStore.modelErrors[current.instanceId]) return;
+    if (kodeModels.some((m) => m.id === selectedModelId)) return;
+    const instance = getProvider(current.instanceId, appSettings);
+    const activeId = instance ? activeAccountId(accountKey(instance), appSettings.kodeProviders, appSettings.kodeActiveAccounts) : null;
+    const moved = activeId ? modelOnAccount(selectedModelId, activeId) : null;
+    setSelectedModelId(moved && kodeModels.some((m) => m.id === moved) ? moved : KODE_DEFAULT_MODEL_ID);
+  }, [cliStatuses, cliStore.checking, cliStore.modelErrors, kodeModels, selectedModelId, appSettings, setSelectedModelId]);
 
   const homeDirRef = useRef("");
   useEffect(() => {
@@ -618,11 +633,10 @@ const PlanView = () => {
     text: "",
     nonce: 0,
   });
-  const [mode, setMode] = useState<KodeAgentMode>(() => {
-    // Design mode isn't available yet; fall back to Supervised.
-    const preferred = getSettings().defaultKodeMode;
-    return preferred === "design" ? "supervised" : preferred;
-  });
+  // Design mode isn't available yet; fall back to Supervised.
+  const defaultMode: KodeAgentMode = appDefaults.defaultKodeMode === "design" ? "supervised" : appDefaults.defaultKodeMode;
+  const mode = chatPrefs.mode ?? defaultMode;
+  const setMode = useCallback((next: KodeAgentMode) => setChatPrefs(prefsKeyRef.current, { mode: next }), []);
   // Per-model context windows (OpenRouter + Vercel gateway), loaded once.
   const [contextWindows, setContextWindows] = useState<ContextWindows>({});
   useEffect(() => {
@@ -777,17 +791,29 @@ const PlanView = () => {
 
   // Settings → project (.kode/settings.json) → environment overrides.
   const scopedSettings = useScopedSettings(projectRoot);
-  // A new session in a project starts from that project's defaults.
+  // A new session in a project starts from that project's defaults: once, when
+  // the draft moves to that project. Coming back to the draft keeps your picks.
   useEffect(() => {
     if (activeChatId || !projectRoot) return;
+    if (getChatPrefs(DRAFT_KEY).root === projectRoot) return;
     void loadProjectSettings(projectRoot).then(() => {
       const scoped = getScopedSettings(projectRoot);
-      if (scoped.defaultKodeModel && KODE_MODELS.some((m) => m.id === scoped.defaultKodeModel)) {
-        setSelectedModelId(scoped.defaultKodeModel);
-      }
-      if (scoped.defaultKodeMode && scoped.defaultKodeMode !== "design") setMode(scoped.defaultKodeMode);
+      setChatPrefs(DRAFT_KEY, {
+        root: projectRoot,
+        modelId:
+          scoped.defaultKodeModel && KODE_MODELS.some((m) => m.id === scoped.defaultKodeModel)
+            ? scoped.defaultKodeModel
+            : undefined,
+        mode: scoped.defaultKodeMode && scoped.defaultKodeMode !== "design" ? scoped.defaultKodeMode : undefined,
+      });
     });
   }, [projectRoot, activeChatId]);
+  // This chat's reasoning and window: its own choice, else the project's or
+  // Settings' default.
+  const chatReasoning = chatPrefs.reasoning ?? scopedSettings.kodeReasoning;
+  const chatContextChoice =
+    chatPrefs.contextWindow !== undefined ? chatPrefs.contextWindow : scopedSettings.kodeContextWindow;
+  const reasoningEnabled = chatReasoning !== "off";
 
   // Installed skills, for the slash picker and explicit `/skill` invocation.
   // Kept fresh (focus + interval) so new skills appear without a restart.
@@ -858,6 +884,7 @@ const PlanView = () => {
       title: `${title} fork`,
       projectId: activeProjectId,
     });
+    if (activeChatId) setChatPrefs(chatId, getChatPrefs(activeChatId));
     for (const message of slice) {
       await addMessageRecord({
         chatId,
@@ -929,6 +956,13 @@ const PlanView = () => {
   // General token budget for the signed-in user (daily + weekly). Used to block a
   // turn before it runs when the budget is exhausted.
 
+  // Chats from before each chat remembered its settings: carry on with the
+  // model that answered last instead of the default.
+  useEffect(() => {
+    if (!activeChatId || !convexMessages || getChatPrefs(activeChatId).modelId) return;
+    const last = [...convexMessages].reverse().find((m) => m.role === "assistant" && m.metadata?.model)?.metadata?.model;
+    if (last && kodeModels.some((m) => m.id === last)) setChatPrefs(activeChatId, { modelId: last });
+  }, [activeChatId, convexMessages, kodeModels]);
   const persistedMessages = useMemo<ChatMessage[]>(
     () => (convexMessages ?? []).map((message) => toChatMessage(message, selectedModelId)),
     [convexMessages, selectedModelId],
@@ -1370,6 +1404,10 @@ const PlanView = () => {
         // its id in the same render so the view never drops back to home.
         selectChat(chatId);
         const newId = chatId;
+        // The new chat keeps what the draft was set to; the next new chat
+        // starts from the defaults again.
+        moveChatPrefs(DRAFT_KEY, newId);
+        setChatPrefs(newId, { modelId, mode: activeMode });
         setPendingByChat((current) => {
           const next = { ...current };
           next[newId] = next[DRAFT_KEY] ?? [userMessage, thinkingMessage];
@@ -1526,9 +1564,26 @@ const PlanView = () => {
           fork: forkSession,
           model: cliTarget.model,
           mode: activeMode,
+          // Claude Code and Codex take an effort level; agents that pick it
+          // themselves (Cursor, ACP, or a level in the model's name) get none.
+          effort: (() => {
+            if (chatReasoning === "off") return null;
+            const { efforts } = getModelControls(modelId, getSettings(), getModelName(modelId));
+            return effortFor(efforts, chatReasoning);
+          })(),
           signal: abortController.signal,
           onEvent: (event) => {
             switch (event.type) {
+              case "usage":
+                if (event.window) rememberModelWindow(modelId, event.window);
+                if (event.used) {
+                  recordChatContextUsage(cliChatId, {
+                    inputTokens: event.used,
+                    outputTokens: 0,
+                    totalTokens: event.used,
+                  } as Parameters<typeof recordChatContextUsage>[1]);
+                }
+                break;
               case "session":
                 saveCliSession(cliChatId, cliProvider.id, event.sessionId);
                 break;
@@ -1622,7 +1677,10 @@ const PlanView = () => {
       const window = getContextWindow(
         modelId,
         contextWindows,
-        getScopedSettings(projectRoot).kodeContextWindow,
+        chatPrefs.contextWindow !== undefined
+          ? chatPrefs.contextWindow
+          : getScopedSettings(projectRoot).kodeContextWindow,
+        getModelName(modelId),
       );
       // Switching to this model mid-chat is a hand-off: the history may hold
       // secrets (say, a token in a pasted terminal log) the new model never
@@ -1743,7 +1801,7 @@ const PlanView = () => {
             ]
           : [],
         reasoningEnabled: sendReasoningEnabled ?? reasoningEnabled,
-        reasoningEffort: scopedSettings.kodeReasoning === "off" ? undefined : scopedSettings.kodeReasoning,
+        reasoningEffort: chatReasoning === "off" ? undefined : chatReasoning,
         onText: (delta) => applyDelta("content", delta),
         onReasoning: (delta) => applyDelta("reasoning", delta),
         onToolStep: upsertToolStep,
@@ -2154,7 +2212,8 @@ const PlanView = () => {
   const contextWindow = getContextWindow(
     selectedModelId,
     contextWindows,
-    scopedSettings.kodeContextWindow,
+    chatContextChoice,
+    getModelName(selectedModelId),
   );
   useEffect(() => {
     publishChatContext({
@@ -2699,6 +2758,11 @@ const PlanView = () => {
             planTier={planTier}
             reasoningEnabled={reasoningEnabled}
             onReasoningToggle={setReasoningEnabled}
+            chatReasoning={chatReasoning}
+            chatContextWindow={chatContextChoice}
+            resolvedContextWindow={contextWindow}
+            onChatReasoningChange={(next) => setChatPrefs(prefsKeyRef.current, { reasoning: next })}
+            onChatContextWindowChange={(next) => setChatPrefs(prefsKeyRef.current, { contextWindow: next })}
           />
 
           {showSummary && compactionByChat.current.get(currentKey) ? (

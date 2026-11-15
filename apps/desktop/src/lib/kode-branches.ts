@@ -2,6 +2,7 @@
 // Prefix from Settings → Source control → Branch prefix ("" = none).
 
 import { invoke } from "@tauri-apps/api/core";
+import { useSyncExternalStore } from "react";
 import { getSettings } from "./app-settings";
 
 export function slugify(text: string, max: number): string {
@@ -33,14 +34,43 @@ export function threadBranch(firstMessage: string, prefix = branchPrefix()): str
 
 /** Create a git worktree (~/.kontinue/worktrees/<repo>/<branch>); returns its
  *  project folder. Honours Settings → Source control → Start from origin. */
-export function addWorktree(root: string, branch: string): Promise<string> {
+export function addWorktree(root: string, branch: string, base: string | null = getWorktreeBase(root)): Promise<string> {
   const settings = getSettings();
   return invoke<string>("panel_git_worktree_add", {
     root,
     branch,
     fromOrigin: settings.worktreeFromOrigin,
     baseDir: settings.worktreeLocation.trim() || null,
+    base,
   });
+}
+
+// Which branch a project's next new worktree starts from (null = the branch the
+// project folder is on). Picking it never switches the project folder itself:
+// a worktree is a separate folder, a branch is just where its history starts.
+const worktreeBases = new Map<string, string>();
+const baseListeners = new Set<() => void>();
+
+export function getWorktreeBase(root: string | null): string | null {
+  return root ? (worktreeBases.get(root) ?? null) : null;
+}
+
+export function setWorktreeBase(root: string, branch: string | null) {
+  if (branch) worktreeBases.set(root, branch);
+  else worktreeBases.delete(root);
+  for (const listener of baseListeners) listener();
+}
+
+export function useWorktreeBase(root: string | null): string | null {
+  return useSyncExternalStore(
+    (listener) => {
+      baseListeners.add(listener);
+      return () => {
+        baseListeners.delete(listener);
+      };
+    },
+    () => getWorktreeBase(root),
+  );
 }
 
 /** Is this folder inside a Kode worktree (default or custom location)? */

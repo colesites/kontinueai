@@ -794,6 +794,8 @@ pub enum CliEvent {
     ToolEnd { id: String, output: String, is_error: bool },
     Todos { items: Vec<CliTodo> },
     Notice { message: String },
+    /// Context the agent reported: tokens in its window now, and the window size.
+    Usage { used: Option<u64>, window: Option<u64> },
 }
 
 #[derive(Clone, Serialize)]
@@ -829,6 +831,33 @@ pub struct CliRunRequest {
     /// of continuing it (Claude Code `--fork-session`, `codex exec fork`).
     #[serde(default)]
     fork: bool,
+    /// Reasoning effort ("low" … "max") for CLIs that take one (Claude Code,
+    /// Codex). `None` keeps the CLI's own default.
+    #[serde(default)]
+    effort: Option<String>,
+}
+
+/// Codex's names for effort levels (it has no "max").
+fn codex_effort(effort: &str) -> Option<&'static str> {
+    match effort {
+        "minimal" => Some("minimal"),
+        "low" => Some("low"),
+        "medium" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" | "max" => Some("xhigh"),
+        _ => None,
+    }
+}
+
+fn claude_effort(effort: &str) -> Option<&'static str> {
+    match effort {
+        "low" => Some("low"),
+        "medium" => Some("medium"),
+        "high" => Some("high"),
+        "xhigh" => Some("xhigh"),
+        "max" => Some("max"),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1000,6 +1029,10 @@ fn claude_args(req: &CliRunRequest, mcp: &[ResolvedMcp], plugin_dirs: &[String])
         args.push("--model".to_string());
         args.push(model.to_string());
     }
+    if let Some(effort) = req.effort.as_deref().and_then(claude_effort) {
+        args.push("--effort".to_string());
+        args.push(effort.to_string());
+    }
     if let Some(id) = req.session_id.as_deref().filter(|id| !id.is_empty()) {
         args.push("--resume".to_string());
         args.push(id.to_string());
@@ -1031,6 +1064,10 @@ fn codex_args(req: &CliRunRequest, mcp_overrides: &[String]) -> Vec<String> {
     if let Some(model) = req.model.as_deref().filter(|m| !m.is_empty()) {
         args.push("-m".to_string());
         args.push(model.to_string());
+    }
+    if let Some(effort) = req.effort.as_deref().and_then(codex_effort) {
+        args.push("-c".to_string());
+        args.push(format!("model_reasoning_effort=\"{effort}\""));
     }
     match req.mode.as_str() {
         "full_access" => args.push("--dangerously-bypass-approvals-and-sandbox".to_string()),
@@ -1317,6 +1354,8 @@ struct Parser {
     tool_since_text: bool,
     /// Epoch ms when a rejected usage limit resets.
     limit_resets_at: Option<i64>,
+    /// Claude: tokens in context after the latest model call of this turn.
+    context_used: Option<u64>,
 }
 
 impl Parser {
@@ -1330,6 +1369,7 @@ impl Parser {
             streamed_thinking: false,
             tool_since_text: false,
             limit_resets_at: None,
+            context_used: None,
         }
     }
 
@@ -1400,6 +1440,17 @@ impl Parser {
                 }
             }
             Some("assistant") => {
+                // Each model call's usage: what was in context for that call.
+                if let Some(usage) = event.pointer("/message/usage") {
+                    let n = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+                    let total = n("input_tokens")
+                        + n("cache_read_input_tokens")
+                        + n("cache_creation_input_tokens")
+                        + n("output_tokens");
+                    if total > 0 {
+                        self.context_used = Some(total);
+                    }
+                }
                 let blocks = event
                     .pointer("/message/content")
                     .and_then(Value::as_array)
@@ -1475,6 +1526,17 @@ impl Parser {
             Some("result") => {
                 let id = str_at(event, "session_id");
                 self.set_session(id.as_deref(), None, &mut out);
+                // modelUsage: { "<model>": { contextWindow, ... } }, the main
+                // model having the biggest window.
+                let window = event
+                    .get("modelUsage")
+                    .and_then(Value::as_object)
+                    .and_then(|models| {
+                        models.values().filter_map(|m| m.get("contextWindow").and_then(Value::as_u64)).max()
+                    });
+                if window.is_some() || self.context_used.is_some() {
+                    out.push(CliEvent::Usage { used: self.context_used, window });
+                }
                 let is_error = event.get("is_error").and_then(Value::as_bool).unwrap_or(false)
                     || event
                         .get("subtype")
@@ -1740,6 +1802,42 @@ mod tests {
         let at = codex.iter().position(|a| a == "fork").unwrap();
         assert_eq!(codex[at + 1], "abc");
         assert!(codex_args(&request("codex", false), &[]).contains(&"resume".to_string()));
+    }
+
+    #[test]
+    fn effort_reaches_claude_code_and_codex() {
+        let request = |provider: &str, effort: Option<&str>| -> CliRunRequest {
+            serde_json::from_value(serde_json::json!({
+                "provider": provider, "root": "/tmp/project", "prompt": "hi",
+                "sessionId": null, "model": "m", "mode": "supervised", "effort": effort
+            }))
+            .unwrap()
+        };
+        let claude = claude_args(&request("claude", Some("xhigh")), &[], &[]);
+        let at = claude.iter().position(|a| a == "--effort").unwrap();
+        assert_eq!(claude[at + 1], "xhigh");
+        assert!(!claude_args(&request("claude", None), &[], &[]).contains(&"--effort".to_string()));
+        // Codex has no "max": it gets its highest level.
+        let codex = codex_args(&request("codex", Some("max")), &[]);
+        assert!(codex.contains(&"model_reasoning_effort=\"xhigh\"".to_string()));
+        assert!(!codex_args(&request("codex", None), &[]).contains(&"-c".to_string()));
+        // Unknown values are dropped, not passed through.
+        assert!(!claude_args(&request("claude", Some("--evil")), &[], &[]).contains(&"--effort".to_string()));
+    }
+
+    #[test]
+    fn claude_reports_context_window_and_usage() {
+        let mut parser = Parser::new(CliProvider::Claude, None);
+        parser.handle(&json!({"type":"assistant","message":{"content":[],"usage":{"input_tokens":10,"cache_read_input_tokens":9000,"cache_creation_input_tokens":500,"output_tokens":490}}}));
+        let out = parser.handle(&json!({"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s1","modelUsage":{"claude-opus-5-5":{"contextWindow":1000000},"claude-haiku-4-5":{"contextWindow":200000}}}));
+        assert!(out.iter().any(|e| matches!(e, CliEvent::Usage { used: Some(10000), window: Some(1000000) })));
+    }
+
+    #[test]
+    fn acp_usage_update_is_forwarded() {
+        let mut parser = Parser::new(CliProvider::Acp, None);
+        let out = acp::map_update(&mut parser, &json!({"update":{"sessionUpdate":"usage_update","used":5300,"size":256000}}));
+        assert!(out.iter().any(|e| matches!(e, CliEvent::Usage { used: Some(5300), window: Some(256000) })));
     }
 
     #[test]
