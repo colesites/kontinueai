@@ -5,7 +5,7 @@ import {
   KODE_MODELS,
   type KodePlan,
 } from "@repo/ai/lib/kode";
-import { useConvex, useQuery } from "convex/react";
+import { useConvex, useConvexAuth, useConvexConnectionState, useQuery } from "convex/react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -73,7 +73,7 @@ import { type KodeToolStep, runKodeAgent } from "@/lib/kode-agent";
 import { useKodeAgentRuntime } from "@/lib/kode-agent-runtime";
 import { expandSlashPrompt, resolveSlash } from "@/lib/kode-commands";
 import { pickTriageModel, triagePrompt, triageReport } from "@/lib/kode-triage";
-import { accountGroups, accountKey, activeAccountId, modelOnAccount, nativeSessionBelongsTo, resolveSwitchTarget, setActiveAccount } from "@/lib/kode-accounts";
+import { accountGroups, accountKey, modelOnAccount, nativeSessionBelongsTo, resolveSwitchTarget, setActiveAccount } from "@/lib/kode-accounts";
 import { homeDir } from "@tauri-apps/api/path";
 import { useSkills } from "@/hooks/use-skills";
 import { getActiveSkills, setActiveSkills } from "@/lib/kode-skills";
@@ -143,6 +143,7 @@ import {
   useKodeWorkspace,
 } from "@/lib/kode-workspace";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
+import { readOfflineValue, writeOfflineValue } from "@/lib/offline-state";
 import { LimitCard, ScheduledBar } from "@/components/kode/ScheduledPrompts";
 import { notifyRunEvent } from "@/lib/kode-notify";
 import { addWorktree, isWorktreePath, threadBranch } from "@/lib/kode-branches";
@@ -535,7 +536,7 @@ const PlanView = () => {
   void legacyReasoningEnabled;
   // New sessions start from Settings → General defaults.
   const [selectedModelId, setSelectedModelId] = useState(() => {
-    const preferred = getSettings().defaultKodeModel;
+    const preferred = readOfflineValue(user?.id, "kode-model") ?? getSettings().defaultKodeModel;
     // CLI models (Settings → Providers) are allowed too; the effect below
     // falls back to Kode if that provider isn't available.
     return preferred && (KODE_MODELS.some((m) => m.id === preferred) || parseCliModelId(preferred))
@@ -553,18 +554,11 @@ const PlanView = () => {
     () => [...KODE_MODELS, ...cliPickerModels(appSettings, cliStore)],
     [appSettings, cliStore],
   );
-  // A CLI model that was turned off (or whose CLI went away) falls back to Kode.
+  // Discovery can fail temporarily (especially offline). Never replace the user's
+  // selection just because a health check or remote catalog is unavailable.
   useEffect(() => {
-    if (!cliStatuses || !parseCliModelId(selectedModelId)) return;
-    if (!kodeModels.some((m) => m.id === selectedModelId)) {
-      // Another account of the same provider became active: keep the model.
-      const current = parseCliModelId(selectedModelId);
-      const instance = current ? getProvider(current.instanceId, appSettings) : undefined;
-      const activeId = instance ? activeAccountId(accountKey(instance), appSettings.kodeProviders, appSettings.kodeActiveAccounts) : null;
-      const moved = activeId ? modelOnAccount(selectedModelId, activeId) : null;
-      setSelectedModelId(moved && kodeModels.some((m) => m.id === moved) ? moved : KODE_DEFAULT_MODEL_ID);
-    }
-  }, [cliStatuses, kodeModels, selectedModelId, appSettings]);
+    writeOfflineValue(user?.id, "kode-model", selectedModelId);
+  }, [user?.id, selectedModelId]);
 
   const homeDirRef = useRef("");
   useEffect(() => {
@@ -920,10 +914,15 @@ const PlanView = () => {
     isKodeChat && activeChatId ? { chatId: activeChatId, limit: historyLimit } : "skip",
   );
   // Keep showing the current page while a bigger one loads (no flash).
-  const lastPage = useRef<{ chatId: string; page: NonNullable<typeof recentPage> } | null>(null);
-  if (recentPage && activeChatId) lastPage.current = { chatId: activeChatId, page: recentPage };
+  const { isAuthenticated } = useConvexAuth();
+  const { isWebSocketConnected } = useConvexConnectionState();
+  const liveHistory = isAuthenticated && isWebSocketConnected;
+  const [lastPage, setLastPage] = useState<{ chatId: string; page: NonNullable<typeof recentPage> } | null>(null);
+  useEffect(() => {
+    if (recentPage && activeChatId && liveHistory) setLastPage({ chatId: activeChatId, page: recentPage });
+  }, [recentPage, activeChatId, liveHistory]);
   const shownPage =
-    recentPage ?? (lastPage.current && lastPage.current.chatId === activeChatId ? lastPage.current.page : undefined);
+    (liveHistory ? recentPage : undefined) ?? (lastPage?.chatId === activeChatId ? lastPage.page : undefined);
   const convexMessages = shownPage?.messages;
   const hasEarlierMessages = shownPage?.hasMore ?? false;
 

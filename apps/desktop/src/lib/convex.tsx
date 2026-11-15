@@ -45,9 +45,15 @@ class AuthTransitionBoundary extends React.Component<
           : String(this.state.error);
       return (
         <div className="grid min-h-screen place-items-center bg-background p-8 text-foreground">
-          <pre className="max-w-2xl overflow-auto whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-300">
-            {message}
-          </pre>
+          <div className="max-w-2xl">
+            <h1 className="mb-3 text-lg font-semibold">Couldn&apos;t load the app</h1>
+            <pre className="overflow-auto whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/5 p-4 text-xs text-red-300">
+              {message}
+            </pre>
+            <button type="button" className="mt-5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => window.location.reload()}>
+              Retry startup
+            </button>
+          </div>
         </div>
       );
     }

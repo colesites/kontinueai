@@ -1,6 +1,9 @@
 import { SignIn } from "@clerk/nextjs";
-import { clerkPostAuthRedirect } from "../../../../lib/auth-routing";
 import { AuthScaffold } from "../../../../components/AuthScaffold";
+import {
+	clerkPostAuthRedirect,
+	desktopSignInRedirects,
+} from "../../../../lib/auth-routing";
 
 export default async function SignInPage({
 	searchParams,
@@ -17,7 +20,7 @@ export default async function SignInPage({
 		<AuthScaffold subtitle="Sign in to continue your AI conversations">
 			<SignIn
 				fallbackRedirectUrl="/"
-				{...(desktopReturn ? { forceRedirectUrl: desktopReturn } : {})}
+				{...desktopSignInRedirects(desktopReturn)}
 				appearance={{
 					elements: {
 						rootBox: "mx-auto",

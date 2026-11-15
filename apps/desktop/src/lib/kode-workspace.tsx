@@ -4,7 +4,8 @@ import { ask, open } from "@tauri-apps/plugin-dialog";
 import { getSettings } from "./app-settings";
 import { homeDir } from "@tauri-apps/api/path";
 import type { LanguageModelUsage } from "ai";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useConvexConnectionState, useMutation, useQuery } from "convex/react";
+import { useStableUserId } from "@/hooks/use-stable-user-id";
 import {
   createContext,
   useCallback,
@@ -227,9 +228,33 @@ export function KodeWorkspaceProvider({ children }: { children: ReactNode }) {
   chatFolderRef.current = chatFolder;
 
   // Queries: Home tab uses `chats` table + `projects` table; Kode tab uses `kodeChats` table + local folders
-  const convexHomeChats = useQuery(api.chats.getUserChats, {});
-  const convexKodeChats = useQuery(api.kode.getUserChats, {});
-  const convexHomeProjects = useQuery(api.projects.listProjects, {});
+  const homeChatsQuery = useQuery(api.chats.getUserChats, {});
+  const kodeChatsQuery = useQuery(api.kode.getUserChats, {});
+  const homeProjectsQuery = useQuery(api.projects.listProjects, {});
+  const userId = useStableUserId();
+  const { isAuthenticated } = useConvexAuth();
+  const { isWebSocketConnected } = useConvexConnectionState();
+  const [lastLists, setLastLists] = useState<{ userId: string; home?: typeof homeChatsQuery; kode?: typeof kodeChatsQuery; projects?: typeof homeProjectsQuery } | null>(null);
+  const live = isAuthenticated && isWebSocketConnected;
+  useEffect(() => {
+    if (!userId) {
+      setLastLists(null);
+      return;
+    }
+    if (!live) return;
+    setLastLists((previous) => {
+      const last = previous?.userId === userId ? previous : { userId };
+      const home = homeChatsQuery ?? last.home;
+      const kode = kodeChatsQuery ?? last.kode;
+      const projects = homeProjectsQuery ?? last.projects;
+      if (last === previous && home === last.home && kode === last.kode && projects === last.projects) return previous;
+      return { userId, home, kode, projects };
+    });
+  }, [userId, live, homeChatsQuery, kodeChatsQuery, homeProjectsQuery]);
+  const fallbackLists = userId === lastLists?.userId ? lastLists : null;
+  const convexHomeChats = live ? (homeChatsQuery ?? fallbackLists?.home) : fallbackLists?.home;
+  const convexKodeChats = live ? (kodeChatsQuery ?? fallbackLists?.kode) : fallbackLists?.kode;
+  const convexHomeProjects = live ? (homeProjectsQuery ?? fallbackLists?.projects) : fallbackLists?.projects;
 
   // Mutations for Home tab (chats / messages / projects)
   const createHomeChat = useMutation(api.chats.createChat);

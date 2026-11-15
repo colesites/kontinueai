@@ -74,11 +74,16 @@ export function AuthScreen() {
 		[isSignedIn, signIn, signInLoaded, setActive],
 	);
 
-	// Deep-link callbacks (`kontinueai://auth/callback?...`) can arrive before
-	// Clerk finishes loading, so always call the latest handler via a ref.
+	// The browser can return before Clerk is ready to exchange a ticket.
+	// Hold those URLs until sign-in can accept them.
+	const queuedUrls = useRef<string[]>([]);
 	const handleUrlsRef = useRef<(urls: string[]) => void>(() => {});
 	handleUrlsRef.current = (urls: string[]) => {
 		if (isSignedIn) return;
+		if (!signInLoaded || !signIn) {
+			queuedUrls.current.push(...urls);
+			return;
+		}
 		for (const url of urls) {
 			const result = parseAuthCallback(url);
 			if (!result) continue;
@@ -93,7 +98,12 @@ export function AuthScreen() {
 	};
 
 	useEffect(() => {
-		if (!signInLoaded) return;
+		if (!signInLoaded || !signIn) return;
+		const queued = queuedUrls.current.splice(0);
+		if (queued.length > 0) handleUrlsRef.current(queued);
+	}, [signInLoaded, signIn]);
+
+	useEffect(() => {
 		let disposed = false;
 		let unlisten: (() => void) | undefined;
 
@@ -110,7 +120,7 @@ export function AuthScreen() {
 			})
 			.catch(() => {});
 
-		// Also listen to localhost loopback callbacks emitted by start_desktop_auth_server
+		// Loopback callbacks emitted by start_desktop_auth_server.
 		let unlistenOauth: (() => void) | undefined;
 		import("@tauri-apps/api/event")
 			.then(({ listen }) =>
@@ -131,7 +141,7 @@ export function AuthScreen() {
 			unlisten?.();
 			unlistenOauth?.();
 		};
-	}, [signInLoaded]);
+	}, []);
 
 	const handleOpenBrowser = async (mode: AuthMode) => {
 		if (busy === "ticket") return;

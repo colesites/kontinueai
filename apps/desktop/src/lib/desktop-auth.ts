@@ -4,11 +4,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 /**
  * Browser-based desktop sign-in (the same pattern ChatGPT / Claude desktop use).
  *
- * 1. The app starts a localhost loopback listener (via Rust tauri-plugin-oauth).
+ * 1. The app starts a 127.0.0.1 loopback listener.
  * 2. It opens the browser at `${WEB_APP_URL}/desktop-auth?state=…&mode=…&callback_port=PORT`.
  * 3. The user authenticates in their browser (Google, email, etc.).
- * 4. The browser automatically redirects to `http://localhost:PORT/?ticket=…&state=…`.
- * 5. In production / packaged app, it also falls back to `kontinueai://auth/callback`.
+ * 4. The browser navigates to `http://127.0.0.1:PORT/?ticket=…&state=…`.
+ * 5. That page also opens `kontinueai://auth/callback` so the app comes forward.
  * 6. The app exchanges the ticket for a Clerk session.
  */
 
@@ -53,6 +53,7 @@ export function clearPendingBrowserSignIn() {
 }
 
 const claimedTickets = new Set<string>();
+let acceptedTicket: string | null = null;
 
 /** One-shot: the same ticket can arrive from loopback and the deep link. */
 export function claimAuthTicket(ticket: string) {
@@ -63,6 +64,7 @@ export function claimAuthTicket(ticket: string) {
 
 export function releaseAuthTicket(ticket: string) {
 	claimedTickets.delete(ticket);
+	if (acceptedTicket === ticket) acceptedTicket = null;
 }
 
 export function browserSignInUrl(
@@ -135,6 +137,8 @@ export function parseAuthCallback(rawUrl: string): CallbackResult {
 	if (!ticket || !state) {
 		return { ok: false, reason: "The sign-in link was incomplete." };
 	}
+	// Loopback and the custom scheme can both deliver the same ticket.
+	if (acceptedTicket === ticket) return null;
 	if (!pending || pending.state !== state) {
 		return {
 			ok: false,
@@ -142,6 +146,7 @@ export function parseAuthCallback(rawUrl: string): CallbackResult {
 				"This sign-in link wasn't started from this app or has expired. Please try again.",
 		};
 	}
+	acceptedTicket = ticket;
 	clearPendingBrowserSignIn();
 	return { ok: true, ticket };
 }

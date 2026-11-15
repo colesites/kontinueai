@@ -1,6 +1,9 @@
 import { SignUp } from "@clerk/nextjs";
-import { clerkPostAuthRedirect } from "../../../../lib/auth-routing";
 import { AuthScaffold } from "../../../../components/AuthScaffold";
+import {
+	clerkPostAuthRedirect,
+	desktopSignUpRedirects,
+} from "../../../../lib/auth-routing";
 
 export default async function SignUpPage({
 	searchParams,
@@ -17,7 +20,7 @@ export default async function SignUpPage({
 		<AuthScaffold subtitle="Create an account to get started">
 			<SignUp
 				fallbackRedirectUrl="/"
-				{...(desktopReturn ? { forceRedirectUrl: desktopReturn } : {})}
+				{...desktopSignUpRedirects(desktopReturn)}
 				appearance={{
 					elements: {
 						rootBox: "mx-auto",

@@ -27,6 +27,51 @@ export function protectedAppRedirect(userId: string | null): "/sign-in" | null {
 
 const DESKTOP_AUTH_STATE = /^[a-f0-9]{64}$/;
 
+/** Short-lived marker so a finished browser sign-in can still open the desktop app. */
+export const DESKTOP_AUTH_RETURN_COOKIE = "kontinue_desktop_return";
+
+/**
+ * App pages can resume a desktop handoff. Sign-in, sign-up, and the handoff
+ * page itself must keep running so Clerk can finish the attempt.
+ */
+export function shouldResumeDesktopAuth(pathname: string): boolean {
+	if (pathname === "/desktop-auth" || pathname.startsWith("/desktop-auth/"))
+		return false;
+	if (isPublicAuthRoute(pathname)) return false;
+	if (pathname.startsWith("/api") || pathname.startsWith("/_next"))
+		return false;
+	return true;
+}
+
+export function desktopAuthResumePath(
+	cookieValue: string | undefined,
+	pathname: string,
+	origin: string,
+): string | undefined {
+	if (!cookieValue || !shouldResumeDesktopAuth(pathname)) return undefined;
+	return clerkPostAuthRedirect(cookieValue, origin);
+}
+
+export function desktopSignInRedirects(returnTo: string | undefined) {
+	if (!returnTo) return {};
+	const redirect = encodeURIComponent(returnTo);
+	return {
+		forceRedirectUrl: returnTo,
+		signUpForceRedirectUrl: returnTo,
+		signUpUrl: `/sign-up?redirect_url=${redirect}`,
+	};
+}
+
+export function desktopSignUpRedirects(returnTo: string | undefined) {
+	if (!returnTo) return {};
+	const redirect = encodeURIComponent(returnTo);
+	return {
+		forceRedirectUrl: returnTo,
+		signInForceRedirectUrl: returnTo,
+		signInUrl: `/sign-in?redirect_url=${redirect}`,
+	};
+}
+
 /**
  * Clerk's instance-level after-sign-in URL is `/`, which would drop the
  * desktop handoff. Only same-origin `/desktop-auth` (with a valid state)

@@ -18,6 +18,7 @@ mod mcp_auth;
 mod mcp_import;
 
 mod browser_view;
+mod desktop_auth;
 mod panel;
 mod settings_info;
 mod menu;
@@ -2032,59 +2033,7 @@ async fn kode_model_context_windows() -> Result<std::collections::HashMap<String
 
 #[tauri::command]
 async fn start_desktop_auth_server(app: tauri::AppHandle) -> Result<u16, String> {
-    use tauri::Emitter;
-    use tauri_plugin_oauth::{start_with_config, OauthConfig};
-
-    let response_html = r#"<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Signed in to Kontinue AI</title>
-  <style>
-    body {
-      background: #0d0d0e;
-      color: #f5f5f5;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      margin: 0;
-    }
-    .card {
-      text-align: center;
-      padding: 32px 40px;
-      border-radius: 16px;
-      background: #18181b;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-      max-width: 360px;
-    }
-    h1 { font-size: 20px; margin: 0 0 8px; color: #fff; }
-    p { font-size: 13px; color: rgba(255, 255, 255, 0.6); margin: 0; line-height: 1.5; }
-    .icon { font-size: 36px; margin-bottom: 12px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">✨</div>
-    <h1>Signed in!</h1>
-    <p>You can close this tab and return to Kontinue AI Desktop.</p>
-  </div>
-</body>
-</html>"#;
-
-    let config = OauthConfig {
-        response: Some(response_html.into()),
-        ..Default::default()
-    };
-
-    let port = start_with_config(config, move |url_str| {
-        let _ = app.emit("oauth://callback", url_str);
-    })
-    .map_err(|e| e.to_string())?;
-
-    Ok(port)
+    desktop_auth::start(app)
 }
 
 // Tauri does not auto-load `.env`. Load the Kontinue AI Desktop env files (relative to the

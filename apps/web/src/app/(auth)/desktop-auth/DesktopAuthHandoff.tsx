@@ -3,13 +3,12 @@
 import { SignOutButton } from "@clerk/nextjs";
 import { Check, Copy, ExternalLink, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { desktopHandoffTargets } from "../../../lib/desktop-handoff";
 
 type Status =
 	| { kind: "minting" }
 	| { kind: "ready"; ticket: string; deepLink: string }
 	| { kind: "error"; message: string };
-
-const DEEP_LINK_BASE = "kontinueai://auth/callback";
 
 export function DesktopAuthHandoff({
 	state,
@@ -35,29 +34,27 @@ export function DesktopAuthHandoff({
 				method: "POST",
 				cache: "no-store",
 			});
-			const data = (await response.json()) as { ticket?: string; error?: string };
+			const data = (await response.json()) as {
+				ticket?: string;
+				error?: string;
+			};
 			if (!response.ok || !data.ticket) {
 				throw new Error(data.error ?? "Could not create a sign-in token");
 			}
 
-			const params = new URLSearchParams({
-				ticket: data.ticket,
+			const { deepLink, loopback } = desktopHandoffTargets(
 				state,
-			}).toString();
+				data.ticket,
+				callbackPort,
+			);
+			setStatus({ kind: "ready", ticket: data.ticket, deepLink });
 
-			// The Tauri OAuth listener binds specifically to IPv4 127.0.0.1.
-			// Using "localhost" may resolve to IPv6 ::1 on macOS, where that
-			// listener is not bound. Keep this handoff page open so the one-time
-			// code remains available if the callback still cannot reach the app.
-			if (callbackPort) {
-				const loopbackUrl = `http://127.0.0.1:${callbackPort}/?${params}`;
-				setStatus({ kind: "ready", ticket: data.ticket, deepLink: loopbackUrl });
-				window.location.assign(loopbackUrl);
+			// Loopback delivers the ticket and asks the OS to focus the desktop app.
+			// Without a port, the custom scheme is the only return path.
+			if (loopback) {
+				window.location.assign(loopback);
 				return;
 			}
-
-			const deepLink = `${DEEP_LINK_BASE}?${params}`;
-			setStatus({ kind: "ready", ticket: data.ticket, deepLink });
 			window.location.href = deepLink;
 		} catch (error) {
 			setStatus({
@@ -117,8 +114,6 @@ export function DesktopAuthHandoff({
 
 					<a
 						href={status.deepLink}
-						target="_blank"
-						rel="noreferrer"
 						className="flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary text-sm font-medium text-primary-foreground transition hover:opacity-90"
 					>
 						<ExternalLink className="size-4" /> Open Kontinue AI
