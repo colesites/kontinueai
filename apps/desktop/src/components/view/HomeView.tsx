@@ -1,6 +1,6 @@
 import { useUser } from "@clerk/clerk-react";
 import { AVAILABLE_MODELS, getDefaultModel, type ModelOption } from "@repo/ai/lib/models";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useConvexConnectionState, useMutation, useQuery } from "convex/react";
 import { ArrowUpRight, Brain, ChevronDown, Copy, HelpCircle, MessageSquare, Pencil, Pin, PinOff, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuShare } from "react-icons/lu";
@@ -24,6 +24,7 @@ import { type KodeChatMessage, type KodeContentPart, sendKodeChat } from "@/lib/
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { createDeltaBatcher, createRunSlot, useRunSlot } from "@/lib/kode-run-state";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
+import { readOfflineValue, writeOfflineValue } from "@/lib/offline-state";
 import { cn } from "@/lib/utils";
 
 const DESKTOP_MODELS: ModelOption[] = AVAILABLE_MODELS.filter((m) => {
@@ -114,8 +115,12 @@ export default function HomeView() {
   const firstName = user?.firstName || user?.fullName || "there";
 
   const [selectedModel, setSelectedModel] = useState<ModelOption>(() => {
-    return DESKTOP_MODELS.find((m) => m.isDefault) ?? DESKTOP_MODELS[0] ?? getDefaultModel();
+    const saved = readOfflineValue(user?.id, "home-model");
+    return DESKTOP_MODELS.find((m) => m.id === saved) ?? DESKTOP_MODELS.find((m) => m.isDefault) ?? DESKTOP_MODELS[0] ?? getDefaultModel();
   });
+  useEffect(() => {
+    writeOfflineValue(user?.id, "home-model", selectedModel.id);
+  }, [user?.id, selectedModel.id]);
   const { reasoningEnabled, setReasoningEnabled } = useReasoningPreference();
   // Replies still streaming, by chat. Kept outside the component so leaving
   // Home and coming back still shows them, and a reply never shows up under
@@ -151,7 +156,17 @@ export default function HomeView() {
 
   const isHomeChat = Boolean(activeChatId && chats.some((c) => c.id === activeChatId));
 
-  const dbMessages = useQuery(api.messages.getMessages, isHomeChat && activeChatId ? { chatId: activeChatId } : "skip");
+  const messagesQuery = useQuery(api.messages.getMessages, isHomeChat && activeChatId ? { chatId: activeChatId } : "skip");
+  const { isAuthenticated } = useConvexAuth();
+  const { isWebSocketConnected } = useConvexConnectionState();
+  const [lastMessages, setLastMessages] = useState<{ chatId: string; messages: NonNullable<typeof messagesQuery> } | null>(null);
+  useEffect(() => {
+    if (messagesQuery && activeChatId && isAuthenticated && isWebSocketConnected) {
+      setLastMessages({ chatId: activeChatId, messages: messagesQuery });
+    }
+  }, [messagesQuery, activeChatId, isAuthenticated, isWebSocketConnected]);
+  const dbMessages = (isAuthenticated && isWebSocketConnected ? messagesQuery : undefined) ??
+    (lastMessages?.chatId === activeChatId ? lastMessages.messages : undefined);
 
   const displayMessages = useMemo(() => {
     const db = (dbMessages ?? []).map((m) => ({

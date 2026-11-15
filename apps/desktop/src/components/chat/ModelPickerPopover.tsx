@@ -8,7 +8,7 @@ import type React from "react";
 import { useMemo, useState } from "react";
 import { updateSettings, useAppSettings } from "../../lib/app-settings";
 import { canUseByokModel, useByokProviders } from "../../lib/kode-byok";
-import { type CliModelOption, cliLoginCommand, cliNeedsLogin, cliPlanLabel, cliVersionIssue, getProvider, parseCliModelId, useCliProviders } from "../../lib/kode-cli";
+import { type CliModelOption, cliLoginCommand, cliModelDisplayName, cliNeedsLogin, cliPlanLabel, cliVersionIssue, getProvider, parseCliModelId, useCliProviders } from "../../lib/kode-cli";
 import { cn } from "../../lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Switch } from "../ui/switch";
@@ -159,7 +159,8 @@ export function ModelPickerPopover({
     return entries;
   }, [filteredModels, kodePlan]);
 
-  const selectedModel = useMemo(() => modelList.find((m) => m.id === selectedModelId) ?? modelList[0], [modelList, selectedModelId]);
+  const selectedModel = useMemo(() => modelList.find((m) => m.id === selectedModelId), [modelList, selectedModelId]);
+  const selectedName = selectedModel?.name ?? cliModelDisplayName(selectedModelId) ?? (selectedModelId || "Select model");
   const kodeBase = getDefaultKodeModel();
   const selectedKode = kodePlan && selectedModel && "tier" in selectedModel ? selectedModel : null;
   const fastAvailable = !!selectedKode && !!kodePlan && canUseFastMode(selectedKode, kodePlan);
@@ -184,7 +185,7 @@ export function ModelPickerPopover({
             className={cn("flex h-7 items-center gap-1.5 rounded-full liquid-glass-pill px-2.5 text-xs text-zinc-800 dark:text-foreground/80 cursor-pointer select-none", triggerClassName)}
           >
             <ProviderIcon provider={selectedModel?.provider} className="size-3.5" />
-            <span className="font-medium text-foreground">{selectedModel?.name ?? "Select model"}</span>
+            <span className="font-medium text-foreground">{selectedName}</span>
             <ChevronDown size={11} className="text-muted-foreground ml-0.5" />
           </button>
         )}

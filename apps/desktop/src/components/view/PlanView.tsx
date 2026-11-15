@@ -5,7 +5,7 @@ import {
   KODE_MODELS,
   type KodePlan,
 } from "@repo/ai/lib/kode";
-import { useConvex, useQuery } from "convex/react";
+import { useConvex, useConvexAuth, useConvexConnectionState, useQuery } from "convex/react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -563,17 +563,17 @@ const PlanView = () => {
     [appSettings, cliStore],
   );
   // A CLI model that was turned off (or whose CLI went away) falls back to Kode.
+  // An empty or failed discovery must not clear the chat's saved model.
   useEffect(() => {
-    if (!cliStatuses || !parseCliModelId(selectedModelId)) return;
-    if (!kodeModels.some((m) => m.id === selectedModelId)) {
-      // Another account of the same provider became active: keep the model.
-      const current = parseCliModelId(selectedModelId);
-      const instance = current ? getProvider(current.instanceId, appSettings) : undefined;
-      const activeId = instance ? activeAccountId(accountKey(instance), appSettings.kodeProviders, appSettings.kodeActiveAccounts) : null;
-      const moved = activeId ? modelOnAccount(selectedModelId, activeId) : null;
-      setSelectedModelId(moved && kodeModels.some((m) => m.id === moved) ? moved : KODE_DEFAULT_MODEL_ID);
-    }
-  }, [cliStatuses, kodeModels, selectedModelId, appSettings]);
+    const current = parseCliModelId(selectedModelId);
+    if (!cliStatuses?.length || cliStore.checking || !current) return;
+    if (cliStore.modelErrors[current.instanceId]) return;
+    if (kodeModels.some((m) => m.id === selectedModelId)) return;
+    const instance = getProvider(current.instanceId, appSettings);
+    const activeId = instance ? activeAccountId(accountKey(instance), appSettings.kodeProviders, appSettings.kodeActiveAccounts) : null;
+    const moved = activeId ? modelOnAccount(selectedModelId, activeId) : null;
+    setSelectedModelId(moved && kodeModels.some((m) => m.id === moved) ? moved : KODE_DEFAULT_MODEL_ID);
+  }, [cliStatuses, cliStore.checking, cliStore.modelErrors, kodeModels, selectedModelId, appSettings, setSelectedModelId]);
 
   const homeDirRef = useRef("");
   useEffect(() => {
@@ -941,10 +941,15 @@ const PlanView = () => {
     isKodeChat && activeChatId ? { chatId: activeChatId, limit: historyLimit } : "skip",
   );
   // Keep showing the current page while a bigger one loads (no flash).
-  const lastPage = useRef<{ chatId: string; page: NonNullable<typeof recentPage> } | null>(null);
-  if (recentPage && activeChatId) lastPage.current = { chatId: activeChatId, page: recentPage };
+  const { isAuthenticated } = useConvexAuth();
+  const { isWebSocketConnected } = useConvexConnectionState();
+  const liveHistory = isAuthenticated && isWebSocketConnected;
+  const [lastPage, setLastPage] = useState<{ chatId: string; page: NonNullable<typeof recentPage> } | null>(null);
+  useEffect(() => {
+    if (recentPage && activeChatId && liveHistory) setLastPage({ chatId: activeChatId, page: recentPage });
+  }, [recentPage, activeChatId, liveHistory]);
   const shownPage =
-    recentPage ?? (lastPage.current && lastPage.current.chatId === activeChatId ? lastPage.current.page : undefined);
+    (liveHistory ? recentPage : undefined) ?? (lastPage?.chatId === activeChatId ? lastPage.page : undefined);
   const convexMessages = shownPage?.messages;
   const hasEarlierMessages = shownPage?.hasMore ?? false;
 

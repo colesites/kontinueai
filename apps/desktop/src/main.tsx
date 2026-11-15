@@ -35,6 +35,9 @@ function StartupError({ error }: { error: unknown }) {
         <pre className="mt-4 overflow-auto whitespace-pre-wrap text-xs text-red-300">
           {message}
         </pre>
+        <button type="button" className="mt-5 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground" onClick={() => window.location.reload()}>
+          Retry startup
+        </button>
       </section>
     </main>
   );
@@ -64,15 +67,18 @@ class StartupErrorBoundary extends React.Component<
   }
 }
 
-// This is deliberately registered before importing App: a failed App dependency
-// used to prevent this callback from ever being installed, trapping the window on
-// the static HTML splash screen.
-setTimeout(() => {
+// Handle a stalled module import without revealing an uninitialized workspace.
+let importTimedOut = false;
+const importTimer = setTimeout(() => {
+  importTimedOut = true;
   dismissSplash();
-}, 7000);
+  root.render(<StartupError error={new Error("The application took too long to load.")} />);
+}, 15000);
 
 void import("./App")
   .then(({ default: App }) => {
+    clearTimeout(importTimer);
+    if (importTimedOut) return;
     root.render(
       <React.StrictMode>
         <StartupErrorBoundary>
@@ -82,6 +88,7 @@ void import("./App")
     );
   })
   .catch((error: unknown) => {
+    clearTimeout(importTimer);
     console.error("[startup] Failed to load Kontinue AI", error);
     dismissSplash();
     root.render(<StartupError error={error} />);

@@ -5,7 +5,11 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AppRouteFallback } from "../../components/RouteLoadingFallbacks";
 import { isKodeComingSoon } from "../../features/kode/lib/availability";
-import { protectedAppRedirect } from "../../lib/auth-routing";
+import {
+	clerkPostAuthRedirect,
+	DESKTOP_AUTH_RETURN_COOKIE,
+	protectedAppRedirect,
+} from "../../lib/auth-routing";
 import { AppProviders } from "../data-providers";
 import { Providers } from "../providers";
 import { AppShell } from "./AppShell";
@@ -33,6 +37,14 @@ async function AuthenticatedAppLayout({
 
 	const authRedirect = protectedAppRedirect(authState.userId);
 	if (authRedirect) redirect(authRedirect);
+
+	// A browser login started by the desktop app can land on the web app.
+	// Send that session back to the handoff instead of opening the chat shell.
+	const desktopReturn = clerkPostAuthRedirect(
+		cookieStore.get(DESKTOP_AUTH_RETURN_COOKIE)?.value,
+		process.env.NEXT_PUBLIC_APP_URL ?? "https://chat.kontinueai.com",
+	);
+	if (desktopReturn) redirect(desktopReturn);
 
 	const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
 	const kodeComingSoon = isKodeComingSoon(null);

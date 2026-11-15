@@ -10,10 +10,8 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { api } from "@/lib/convex-api";
 import { useClerk, useUser } from "@clerk/clerk-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { useQuery } from "convex/react";
 import {
   ChevronDown,
   ExternalLink,
@@ -29,6 +27,7 @@ import { useState } from "react";
 import { useTheme } from "@/components/theme/theme-provider";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { PLAN_LABEL } from "@/components/usage/KodeUsageCard";
+import { useDisplayPlanTier } from "@/hooks/use-plan-tier";
 
 const LeftSidebarFooter = () => {
   const { signOut, openUserProfile } = useClerk();
@@ -41,8 +40,8 @@ const LeftSidebarFooter = () => {
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const initials = (user?.firstName?.[0] ?? "U") + (user?.lastName?.[0] ?? "");
 
-  const usage = useQuery(api.kodeUsage.getUsage, {});
-  const planName = PLAN_LABEL[usage?.plan ?? "free"];
+  const { plan, stale } = useDisplayPlanTier();
+  const planName = plan === null ? "Loading plan…" : PLAN_LABEL[plan];
   const [menuOpen, setMenuOpen] = useState(false);
   const { theme, setTheme } = useTheme();
 
@@ -77,7 +76,7 @@ const LeftSidebarFooter = () => {
             )}
             <span className="flex min-w-0 items-center gap-1 text-body">
               <span className="truncate font-medium text-zinc-800 dark:text-foreground">{shortName}</span>
-              <span className="shrink-0 text-muted-foreground">· {planName}</span>
+              <span className="shrink-0 text-muted-foreground" title={stale ? "Last known plan; reconnecting to verify" : undefined}>· {planName}{stale && plan !== null ? " · Offline" : ""}</span>
             </span>
             <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
           </button>

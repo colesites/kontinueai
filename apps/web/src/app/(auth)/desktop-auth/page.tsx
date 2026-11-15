@@ -3,6 +3,7 @@ import { connection } from "next/server";
 import { AuthScaffold } from "../../../components/AuthScaffold";
 import { DesktopAuthHandoff } from "./DesktopAuthHandoff";
 import { DesktopAuthRedirect } from "./DesktopAuthRedirect";
+
 // The desktop app sends 32 random bytes as hex.
 const STATE_PATTERN = /^[a-f0-9]{64}$/;
 
@@ -18,10 +19,15 @@ export default async function DesktopAuthPage({
 	// This route reads the signed-in user and then redirects. Without a
 	// request-time boundary, the cached shell is the 404 page.
 	await connection();
-	const { state: rawState, mode: rawMode, callback_port: rawPort } = await searchParams;
+	const {
+		state: rawState,
+		mode: rawMode,
+		callback_port: rawPort,
+	} = await searchParams;
 	const state = typeof rawState === "string" ? rawState : undefined;
 	const mode = rawMode === "sign-up" ? "sign-up" : "sign-in";
-	const callbackPort = typeof rawPort === "string" && /^\d+$/.test(rawPort) ? rawPort : undefined;
+	const callbackPort =
+		typeof rawPort === "string" && /^\d+$/.test(rawPort) ? rawPort : undefined;
 
 	if (!state || !STATE_PATTERN.test(state)) {
 		return (

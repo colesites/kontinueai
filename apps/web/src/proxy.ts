@@ -1,6 +1,11 @@
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import type { NextFetchEvent, NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import {
+	clerkPostAuthRedirect,
+	DESKTOP_AUTH_RETURN_COOKIE,
+	desktopAuthResumePath,
+} from "./lib/auth-routing";
 
 const BACKENDS = [
 	"https://api-1.us-east-1.aws.com",
@@ -9,8 +14,44 @@ const BACKENDS = [
 	"https://api-4.us-west-2.aws.com",
 ];
 
-// 1. We define the clerk middleware handler
-const clerk = clerkMiddleware();
+const DESKTOP_AUTH_COOKIE_MAX_AGE = 10 * 60;
+
+// Clerk still owns session propagation. This handler only remembers a desktop
+// sign-in that must return to the app after the browser login finishes.
+const clerk = clerkMiddleware(async (auth, request) => {
+	const { userId } = await auth();
+	const { pathname, search, origin } = request.nextUrl;
+
+	if (pathname === "/desktop-auth") {
+		const response = NextResponse.next();
+		const returnTo = clerkPostAuthRedirect(`${pathname}${search}`, origin);
+		if (userId) {
+			response.cookies.delete(DESKTOP_AUTH_RETURN_COOKIE);
+		} else if (returnTo) {
+			response.cookies.set(DESKTOP_AUTH_RETURN_COOKIE, returnTo, {
+				path: "/",
+				maxAge: DESKTOP_AUTH_COOKIE_MAX_AGE,
+				sameSite: "lax",
+				httpOnly: true,
+				secure: origin.startsWith("https://"),
+			});
+		}
+		return response;
+	}
+
+	if (!userId || request.method !== "GET") return;
+	const accept = request.headers.get("accept") ?? "";
+	if (!accept.includes("text/html")) return;
+	if (request.headers.has("rsc") || request.headers.has("next-router-prefetch"))
+		return;
+	const resume = desktopAuthResumePath(
+		request.cookies.get(DESKTOP_AUTH_RETURN_COOKIE)?.value,
+		pathname,
+		origin,
+	);
+	if (!resume) return;
+	return NextResponse.redirect(new URL(resume, origin));
+});
 
 export async function proxy(request: NextRequest, event: NextFetchEvent) {
 	const { pathname, search } = request.nextUrl;
