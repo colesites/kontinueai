@@ -30,6 +30,13 @@ describe("splitUserAttachments", () => {
     expect(out.files).toEqual(["notes.pdf"]);
   });
 
+  test("an image whose saved name lost its spaces is still not listed twice", () => {
+    const shot = '```kode-image\n{"path":".kode/attachments/1794-Screenshot-2026-11-17-at-7.24.49-PM.png","mediaType":"image/png","root":"/p"}\n```';
+    const out = splitUserAttachments(`Look\n\n[Attached: Screenshot 2026-11-17 at 7.24.49 PM.png]\n\n${shot}`);
+    expect(out.images).toHaveLength(1);
+    expect(out.files).toEqual([]);
+  });
+
   test("leaves a plain message alone", () => {
     expect(splitUserAttachments("Just text [not attached]")).toEqual({ text: "Just text [not attached]", images: [], files: [] });
   });

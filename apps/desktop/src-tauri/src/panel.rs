@@ -940,8 +940,12 @@ pub fn pty_spawn(
         }
         let _ = events.send(PtyEvent::Exit);
     });
+    // The shell exiting is the real signal: the output stream can stay open
+    // on macOS (a background job still holds the terminal), so report it here
+    // too. The web view ignores a second Exit.
     std::thread::spawn(move || {
         let _ = child.wait();
+        let _ = on_event.send(PtyEvent::Exit);
     });
 
     let id = state.next_id.fetch_add(1, Ordering::Relaxed) + 1;

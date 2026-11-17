@@ -1,4 +1,5 @@
 import { mergeWorkspaces, readSharedWorkspace, writeSharedWorkspace } from "./kode-shared-workspace";
+import { quickTitle } from "@/lib/kode-chat-title";
 import { resolveFolderForPath } from "./kode-import-remote";
 import { ask, open } from "@tauri-apps/plugin-dialog";
 import { getSettings } from "./app-settings";
@@ -818,13 +819,8 @@ export function useKodeWorkspace() {
   return context;
 }
 
-function toChatTitle(input: string) {
-  const title = input.replace(/\s+/g, " ").trim();
-
-  if (!title) return "New chat";
-  if (title.length <= 60) return title;
-  return `${title.slice(0, 57).trim()}...`;
-}
+// The first sentence of the message, cut at a word (see kode-chat-title.ts).
+const toChatTitle = quickTitle;
 
 /** Stable local folder id for a path (folder may not exist in the list yet). */
 function hashPath(path: string) {

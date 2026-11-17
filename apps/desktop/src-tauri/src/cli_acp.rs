@@ -33,6 +33,11 @@ impl AcpError {
     }
 
     fn into_message(self) -> String {
+        // Google stopped serving Gemini CLI to personal Google accounts and
+        // answers sign-in with this. Nothing on this computer can fix it.
+        if self.message.contains("no longer supported for Gemini Code Assist") {
+            return "Google no longer lets personal Google accounts use Gemini CLI. Switch this provider's sign-in to Gemini API key (add GEMINI_API_KEY) or Vertex AI, or use Antigravity instead.".to_string();
+        }
         if self.code == AUTH_REQUIRED {
             format!(
                 "{} Sign in first: Settings → Providers → this provider → Sign in.",
@@ -443,6 +448,41 @@ async fn select_model(
     Ok(())
 }
 
+/// `session/new`, signing in once with the chosen method if the agent asks.
+/// Gemini CLI forgets the sign-in method between processes unless its own
+/// settings name one, so without this it reports a missing API key even
+/// when the user picked their Google account.
+async fn new_session(
+    conn: &mut Conn,
+    handler: &mut (dyn Handler + Send),
+    params: Value,
+    config: &CliConfig,
+) -> Result<Value, AcpError> {
+    match conn.request("session/new", params.clone(), handler).await {
+        Err(error) if error.code == AUTH_REQUIRED && !config.auth_method.trim().is_empty() => {
+            let method = json!({ "methodId": config.auth_method.trim() });
+            conn.request("authenticate", method, handler).await?;
+            conn.request("session/new", params, handler).await
+        }
+        other => other,
+    }
+}
+
+/// Downloads known to hang before answering anything: Google's Antigravity
+/// 1.4.5 and 1.5.0 for Intel Macs spin forever inside libffi at startup
+/// (tested 2026-11-17). Starting them only burns a CPU core until our timeout
+/// kills them, so refuse up front. A newer version is tried again.
+fn known_broken(binary: &Path) -> Option<String> {
+    let id = super::registry::managed_id(binary)?;
+    let version = super::registry::managed_version(binary).unwrap_or_default();
+    (id == "antigravity-acp"
+        && super::registry::platform() == "darwin-x86_64"
+        && matches!(version.as_str(), "1.4.5" | "1.5.0"))
+    .then(|| format!(
+        "Google's Antigravity agent {version} doesn't start on Intel Macs: it hangs before answering, so sign-in and models can't work. This is a bug in Google's download, not in Kontinue. It works on Apple silicon Macs; press Update later to try a newer version."
+    ))
+}
+
 /// Run one turn with an ACP agent.
 pub(super) async fn run(
     state: &CliRunState,
@@ -451,6 +491,9 @@ pub(super) async fn run(
     req: &CliRunRequest,
     on_event: Channel<CliEvent>,
 ) -> Result<CliRunResult, String> {
+    if let Some(message) = known_broken(binary) {
+        return Err(message);
+    }
     let root = Path::new(&req.root);
     let mut conn = Conn::spawn(binary, &req.config, root, None)?;
     state.runs.lock().map_err(|_| "Run state unavailable")?.insert(run_id, conn.pid);
@@ -491,9 +534,8 @@ pub(super) async fn run(
         let (session_id, setup) = match session {
             Some(found) => found,
             None => {
-                let setup = conn
-                    .request("session/new", json!({ "cwd": cwd, "mcpServers": super::acp_mcp_servers(req) }), &mut handler)
-                    .await?;
+                let params = json!({ "cwd": cwd, "mcpServers": super::acp_mcp_servers(req) });
+                let setup = new_session(&mut conn, &mut handler, params, &req.config).await?;
                 let id = setup.get("sessionId").and_then(Value::as_str).unwrap_or_default().to_string();
                 (id, setup)
             }
@@ -567,6 +609,9 @@ pub(super) async fn run(
 /// List the agent's models by opening a throwaway session (no prompt is sent).
 pub(super) async fn probe_models(config: &CliConfig) -> Result<Vec<CliModel>, String> {
     let binary = resolve_binary(CliProvider::Acp, config).ok_or("Set the command that starts this agent.")?;
+    if let Some(message) = known_broken(&binary) {
+        return Err(message);
+    }
     let dir = std::env::temp_dir().join("kontinue-acp-probe");
     let _ = std::fs::create_dir_all(&dir);
     let mut conn = Conn::spawn(&binary, config, &dir, None)?;
@@ -574,6 +619,8 @@ pub(super) async fn probe_models(config: &CliConfig) -> Result<Vec<CliModel>, St
     let cwd = dir.to_string_lossy().to_string();
     let result = tokio::time::timeout(std::time::Duration::from_secs(45), async {
         conn.request("initialize", initialize_params(), &mut handler).await?;
+        // No sign-in retry here: probes run in the background and must never
+        // open a browser.
         conn.request("session/new", json!({ "cwd": cwd, "mcpServers": [] }), &mut handler).await
     })
     .await;
@@ -595,13 +642,27 @@ pub(super) async fn authenticate(
     config: &CliConfig,
     on_line: Channel<String>,
 ) -> Result<CliTaskResult, String> {
+    if let Some(message) = known_broken(binary) {
+        let _ = on_line.send(message.clone());
+        return Ok(CliTaskResult { success: false, stopped: false, output: message });
+    }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let mut conn = Conn::spawn(binary, config, Path::new(&home), Some(on_line.clone()))?;
     state.runs.lock().map_err(|_| "Run state unavailable")?.insert(run_id, conn.pid);
     let mut handler = NullHandler;
 
     let result = tokio::time::timeout(std::time::Duration::from_secs(600), async {
-        let init = conn.request("initialize", initialize_params(), &mut handler).await?;
+        // Sign-in may take minutes in the browser, but starting up must not:
+        // an agent that never answers would otherwise spin for ten minutes.
+        let init = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            conn.request("initialize", initialize_params(), &mut handler),
+        )
+        .await
+        .map_err(|_| AcpError {
+            code: 0,
+            message: "The agent didn't start within a minute, so sign-in couldn't begin. Press Update to get its newest version.".to_string(),
+        })??;
         let methods = init.get("authMethods").and_then(Value::as_array).cloned().unwrap_or_default();
         if methods.is_empty() {
             let _ = on_line.send("This agent does not need a separate sign-in.".to_string());

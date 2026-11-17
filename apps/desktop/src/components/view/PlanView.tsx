@@ -3,19 +3,12 @@ import {
   canUseKodeModel,
   KODE_DEFAULT_MODEL_ID,
   KODE_MODELS,
-  type KodePlan,
 } from "@repo/ai/lib/kode";
-import { useConvex, useConvexAuth, useConvexConnectionState, useQuery } from "convex/react";
+import { useConvex, useConvexAuth, useConvexConnectionState, useMutation, useQuery } from "convex/react";
 import {
-  AlertTriangle,
   ArrowUpRight,
-  Check,
   ClipboardList,
-  Copy,
-  Info,
   Loader2,
-  Pencil,
-  RotateCcw,
 } from "lucide-react";
 import {
   useCallback,
@@ -24,8 +17,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { HiSpeakerWave } from "react-icons/hi2";
-import { useStickToBottomContext } from "use-stick-to-bottom";
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -44,8 +35,6 @@ import {
 } from "@/components/ai-elements/conversation";
 import {
   Message,
-  MessageAction,
-  MessageActions,
   MessageContent,
   MessageResponse,
 } from "@/components/ai-elements/message";
@@ -53,86 +42,81 @@ import { Shimmer } from "@/components/ai-elements/shimmer";
 import { ChatInput, type StagedAttachment } from "@/components/chat/ChatInput";
 import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
 import { UserAttachments } from "@/components/chat/UserAttachments";
-import {
-  type ChatTurn,
-  DesktopChatTurnNavigator,
-} from "@/components/chat/DesktopChatTurnNavigator";
-import { ForkIcon } from "@/components/chat/ForkIcon";
+import type { ChatTurn } from "@/components/chat/DesktopChatTurnNavigator";
 import { TodoSummary } from "@/components/chat/TodoList";
 import { TodoDock } from "@/components/chat/TodoDock";
-import { CHAT_APPROVABLE_TOOLS, KodeComposerPrompt } from "@/components/chat/KodeComposerPrompt";
-import { CommandBlock, ToolStepList } from "@/components/chat/ToolStep";
+import { KodeComposerPrompt } from "@/components/chat/KodeComposerPrompt";
+import { ToolStepList } from "@/components/chat/ToolStep";
 import { KodeComposerBar } from "@/components/kode/KodeComposerBar";
 import KodeSessionImport from "@/components/kode/KodeSessionImport";
-import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
+import { ModelPlanUsage } from "@/components/usage/ModelPlanUsage";
 import { usePlanTier } from "@/hooks/use-plan-tier";
-import { getSettings, useAppSettings, type ProviderInstance } from "@/lib/app-settings";
+import { useAppSettings, type ProviderInstance } from "@/lib/app-settings";
 import { getScopedSettings, loadProjectSettings, useScopedSettings } from "@/lib/kode-scoped-settings";
-import { getChatPrefs, moveChatPrefs, setChatPrefs, useChatPrefs } from "@/lib/kode-chat-prefs";
-import { getModelControls, rememberModelWindow } from "@/lib/model-controls";
-import { effortFor } from "@/components/chat/KodeReasoningPopover";
-import { api, type KodeConvexMessage } from "@/lib/convex-api";
-import { type KodeToolStep, runKodeAgent } from "@/lib/kode-agent";
+import { getChatPrefs, setChatPrefs, useChatPrefs } from "@/lib/kode-chat-prefs";
+import { api } from "@/lib/convex-api";
+import { KODE_STARTER_PROMPTS } from "./plan/starter-prompts";
+import {
+  getModelName,
+  HISTORY_PAGE,
+  importedTerminalNotice,
+  isImportedTerminalDump,
+  normalizePlanTier,
+  toChatMessage,
+  toModelHistory,
+  userParts,
+  type ChatMessage,
+} from "./plan/messages";
+import { MessageMeta } from "./plan/MessageMeta";
+import { SystemNotice } from "./plan/SystemNotice";
+import { KodeTurnNavigator } from "./plan/KodeTurnNavigator";
+import { ChatContextSummary } from "./plan/ChatContextSummary";
+import { createSubmitPrompt } from "./plan/submit-prompt";
+import {
+  compactingSlot,
+  DRAFT_KEY,
+  EMPTY_CHAT_MESSAGES,
+  pendingSlot,
+  queuedSlot,
+  sendingSlot,
+} from "./plan/run-state";
 import { useKodeAgentRuntime } from "@/lib/kode-agent-runtime";
-import { expandSlashPrompt, resolveSlash } from "@/lib/kode-commands";
-import { pickTriageModel, triagePrompt, triageReport } from "@/lib/kode-triage";
 import { accountGroups, accountKey, activeAccountId, modelOnAccount, nativeSessionBelongsTo, resolveSwitchTarget, setActiveAccount } from "@/lib/kode-accounts";
 import { homeDir } from "@tauri-apps/api/path";
 import { useSkills } from "@/hooks/use-skills";
-import { getActiveSkills, setActiveSkills } from "@/lib/kode-skills";
 import { discoverMcpTools, loadMcpConfigs, useMcpVersion } from "@/lib/kode-mcp";
 import { pluginMcpConfigs, usePlugins } from "@/lib/kode-plugins";
 import { loadConnectorTools } from "@/lib/kode-connectors";
-import { buildPluginAgentTool } from "@/lib/kode-plugin-agents";
-import { hasHooks, runHooks } from "@/lib/kode-hooks";
 import type { KodeExtraTool } from "@/lib/kode-agent";
-import type { KodeContentPart, KodeToolDefinition } from "@/lib/kode-chat";
+import type { KodeToolDefinition } from "@/lib/kode-chat";
 import { publishChatContext } from "@/lib/kode-chat-context";
-import { createDeltaBatcher, createRunSlot, liveModes, runAborts, useRunSlot } from "@/lib/kode-run-state";
-import { stripLeftoverToolMarkup } from "@/lib/kode-sanitize";
+import { liveModes, runAborts, useRunSlot } from "@/lib/kode-run-state";
 import { interruptedReply } from "@/lib/kode-turn-notes";
-import { clearCheckpoint, leftoverCheckpoints, throttle, writeCheckpoint } from "@/lib/kode-turn-checkpoint";
+import { clearCheckpoint, leftoverCheckpoints } from "@/lib/kode-turn-checkpoint";
 import {
-  clearReportedChatContextUsage,
   contextTokensFor,
   forgetChatContextUsage,
-  recordChatContextUsage,
   rememberChatContextEstimate,
   useChatContextUsage,
 } from "@/lib/kode-context-usage";
 import {
-  cliLoginCommand,
-  cliModelDisplayName,
   cliNeedsLogin,
   cliPickerModels,
-  cliTodos,
-  cliToolStep,
-  cliVersionIssue,
   getCliSession,
   getProvider,
-  getProviders,
-  updateProvider,
   parseCliModelId,
-  runCliTurn,
-  saveCliSession,
   useCliStore,
 } from "@/lib/kode-cli";
-import {
-  type CompactionState,
-  compactHistory,
-  estimateTokens,
-  needsCompaction,
-} from "@/lib/kode-compact";
+import { type CompactionState, estimateTokens } from "@/lib/kode-compact";
 import {
   type ContextWindows,
   getContextWindow,
   loadContextWindows,
 } from "@/lib/kode-context";
-import { getImportContext, nativeContinueOf, providerLabel, readCodingSession, saveImportContext } from "@/lib/kode-import";
+import { getImportContext, nativeContinueOf, providerLabel, saveImportContext } from "@/lib/kode-import";
 import { resumeOffer, resumePrompt } from "@/lib/kode-import-resume";
 import { ImportResumeCard } from "@/components/kode/ImportResumeCard";
-import { invoke } from "@tauri-apps/api/core";
-import { resolveConflict, setChatBusy, syncImportContext } from "@/lib/kode-import-sync";
+import { setChatBusy, syncImportContext } from "@/lib/kode-import-sync";
 import { ImportedChatBar, useImportContext, useImportSyncDeps } from "@/components/kode/ImportedChatBar";
 import { IncomingProjectMoves } from "@/components/kode/ProjectMove";
 import { NoProjectBar } from "@/components/kode/NoProjectBar";
@@ -141,388 +125,35 @@ import { isWebhookEvent, WebhookEventCard } from "@/components/kode/WebhookEvent
 import { CodeRunContext } from "@/components/ai-elements/code-run-context";
 import { envVarsFor } from "@/lib/kode-environments";
 import { FILE_AND_SHELL_TOOLS, needsApproval, type KodeAgentMode, type KodeTodo } from "@/lib/kode-tools";
-import {
-  type KodeWorkspaceMessage,
-  useKodeWorkspace,
-} from "@/lib/kode-workspace";
+import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
 import { LimitCard, ScheduledBar } from "@/components/kode/ScheduledPrompts";
-import { notifyRunEvent } from "@/lib/kode-notify";
-import { addWorktree, isWorktreePath, threadBranch } from "@/lib/kode-branches";
 import { mergeQueued, QueuedMessages, type QueuedMessage } from "@/components/chat/QueuedMessages";
-import { cleanLimitMarker, detectLimit, type LimitHit } from "@/lib/kode-limits";
-import { buildHandoff, describeHandoff } from "@/lib/kode-handoff";
-import { redactSecrets, scanSecrets, scrubHistory } from "@/lib/kode-secrets";
-import { condenseSteps, withSteps } from "@/lib/kode-steps";
+import { buildHandoff } from "@/lib/kode-handoff";
+import { redactSecrets, scanSecrets } from "@/lib/kode-secrets";
+import { condenseSteps } from "@/lib/kode-steps";
 import { setDenialNote } from "@/lib/kode-agent";
 import { HandoffChip, HandoffPreviewDialog } from "@/components/kode/HandoffPreview";
-import { clearInterruptedTurn, getInterruptedTurn, interruptedTurnNote, ledgerFromSteps, recordInterruptedTurn } from "@/lib/kode-tool-ledger";
+import { getInterruptedTurn, interruptedTurnNote } from "@/lib/kode-tool-ledger";
 import { gitStatus } from "@/components/panel/panel-api";
 import { recordPrLinks } from "@/lib/kode-prs";
 import { rememberChatModel } from "@/lib/kode-pr-watch";
-import { buildSubagentTool } from "@/lib/kode-fanout";
-import { formatEditorContext, getEditorContext } from "@/lib/editor-context";
-import {
-  annotationTitle,
-  formatAnnotations,
-  takeAnnotations,
-  type KodeAnnotation,
-} from "@/lib/kode-annotations";
-import {
-  saveAttachmentsToProject,
-  savedAttachmentsNote,
-  splitUserAttachments,
-} from "@/lib/kode-attachments";
+import { publishSubagentModels } from "@/lib/kode-fanout";
+import { claimScheduledPrompt } from "@/lib/kode-continuity";
+import { takeAnnotations } from "@/lib/kode-annotations";
+import { splitUserAttachments } from "@/lib/kode-attachments";
 import {
   getScheduledPrompts,
   idleFor,
   removeScheduledPrompt,
   schedulePrompt,
-  RESET_BUFFER_MS,
   useScheduledPrompts,
   type ScheduledPrompt,
 } from "@/lib/kode-schedule";
 
-const KODE_STARTER_PROMPTS = [
-  {
-    icon: "🚀",
-    title: "Build a component",
-    prompt:
-      "Create a modern, responsive React component with Tailwind CSS and smooth micro-interactions.",
-  },
-  {
-    icon: "🔍",
-    title: "Explain architecture",
-    prompt:
-      "Analyze the architecture of this project and explain data flow, state management, and conventions.",
-  },
-  {
-    icon: "⚡",
-    title: "Optimize performance",
-    prompt:
-      "Review performance bottlenecks in this codebase and suggest concrete optimizations.",
-  },
-  {
-    icon: "🐛",
-    title: "Debug & solve error",
-    prompt:
-      "I'm encountering an issue with type safety and state synchronization. Help me debug it.",
-  },
-];
-
-type ChatMessage = KodeWorkspaceMessage & {
-  // Ephemeral agent tool steps (live during a run, not persisted).
-  toolSteps?: KodeToolStep[];
-  // Plan/todos — now persisted in Convex message metadata.
-  toolTodos?: KodeTodo[];
-  // Imported retry/limit events render as system notices, not chat bubbles.
-  notice?: boolean;
-  // Already saved to Convex (the user's message is saved when it is sent), so
-  // the persisted copy shows instead of this one.
-  saved?: boolean;
-  // The turn stopped on a usage limit: what to resend, and when it resets.
-  limit?: {
-    resetAt: number | null;
-    text: string;
-    modelId: string;
-    mode: KodeAgentMode;
-    attachments?: StagedAttachment[];
-  };
-};
-
-/** A turn that stopped on a usage limit (see src/lib/kode-limits.ts). */
-class KodeLimitError extends Error {
-  constructor(readonly limit: LimitHit) {
-    super(limit.message);
-  }
-}
-
 /** Switch to a chat with a due scheduled prompt only after this much idle time. */
 const SCHEDULE_IDLE_MS = 2 * 60_000;
 
-// Key for an in-flight send started on the home page before a chat exists.
-const DRAFT_KEY = "draft";
-const EMPTY_CHAT_MESSAGES: ChatMessage[] = [];
-
-// Real context size per chat lives in @/lib/kode-context-usage, shared with the
-// workspace panel so the meter survives a chat switch and a tab switch.
-
-// A user message's text and attachments, parsed once per distinct message.
-const userPartsCache = new Map<string, ReturnType<typeof splitUserAttachments>>();
-function userParts(content: string) {
-  let parts = userPartsCache.get(content);
-  if (!parts) {
-    parts = splitUserAttachments(content);
-    if (userPartsCache.size > 500) userPartsCache.clear();
-    userPartsCache.set(content, parts);
-  }
-  return parts;
-}
-
-const getModelName = (modelId: string) =>
-  cliModelDisplayName(modelId) ??
-  KODE_MODELS.find((model) => model.id === modelId)?.name ??
-  "Kode 1.0";
-
-const normalizePlanTier = (tier: string): KodePlan =>
-  tier === "starter" || tier === "plus" || tier === "pro" || tier === "max"
-    ? tier
-    : "free";
-
-const formatRelativeTime = (timestamp?: number) => {
-  if (!timestamp) return "";
-  const diff = Date.now() - timestamp;
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-
-  if (diff < minute) return "now";
-  if (diff < hour) return `${Math.floor(diff / minute)} min ago`;
-  if (diff < day) return `${Math.floor(diff / hour)} hr ago`;
-  return `${Math.floor(diff / day)} d ago`;
-};
-
-function formatMessageStamp(timestamp?: number): string {
-  if (!timestamp) return "";
-  const date = new Date(timestamp);
-  const time = date.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-  });
-  const startOfDay = (value: Date) =>
-    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-  const dayDiff = Math.round(
-    (startOfDay(new Date()) - startOfDay(date)) / 86_400_000,
-  );
-  if (dayDiff <= 0) return time;
-  if (dayDiff === 1) return `Yesterday, ${time}`;
-  if (dayDiff < 7)
-    return `${date.toLocaleDateString([], { weekday: "short" })}, ${time}`;
-  return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
-}
-
-function speakAloud(text: string) {
-  if (typeof window === "undefined" || !window.speechSynthesis) return;
-  const synth = window.speechSynthesis;
-  if (synth.speaking || synth.pending) {
-    synth.cancel();
-    return;
-  }
-  const spoken = text
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
-    .replace(/#+\s/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-  if (!spoken) return;
-  synth.speak(new SpeechSynthesisUtterance(spoken));
-}
-
-function MessageMeta({
-  message,
-  onRewind,
-  onFork,
-  onEdit,
-}: {
-  message: ChatMessage;
-  onRewind?: () => void;
-  onFork?: () => void;
-  onEdit?: () => void;
-}) {
-  const [copied, setCopied] = useState(false);
-  const isUser = message.role === "user";
-  const stamp = formatMessageStamp(message.createdAt);
-
-  if (message.status === "thinking") return null;
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(message.content);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard unavailable — nothing to do.
-    }
-  };
-
-  const copyButton = (
-    <MessageAction
-      tooltip="Copy"
-      onClick={copy}
-      className="size-5 text-foreground/40 hover:text-foreground"
-    >
-      {copied ? <Check size={13} /> : <Copy size={13} />}
-    </MessageAction>
-  );
-  const forkButton = onFork ? (
-    <MessageAction
-      tooltip="Fork from here"
-      onClick={onFork}
-      className="size-5 text-foreground/40 hover:text-foreground"
-    >
-      <ForkIcon />
-    </MessageAction>
-  ) : null;
-  const time = stamp ? (
-    <span className="px-1 text-caption text-foreground/35">{stamp}</span>
-  ) : null;
-
-  return (
-    <MessageActions className="msg-actions -mt-0.5 w-fit gap-1.5 px-0.5 text-foreground/55 transition-opacity group-[.is-user]:ml-auto">
-      {isUser ? (
-        <>
-          {time}
-          {copyButton}
-          {onRewind ? (
-            <MessageAction
-              tooltip="Rewind to here"
-              onClick={onRewind}
-              className="size-5 text-foreground/40 hover:text-foreground"
-            >
-              <RotateCcw size={13} />
-            </MessageAction>
-          ) : null}
-          {forkButton}
-          {onEdit ? (
-            <MessageAction
-              tooltip="Edit"
-              onClick={onEdit}
-              className="size-5 text-foreground/40 hover:text-foreground"
-            >
-              <Pencil size={13} />
-            </MessageAction>
-          ) : null}
-        </>
-      ) : (
-        <>
-          {copyButton}
-          {forkButton}
-          <MessageAction
-            tooltip="Read aloud"
-            onClick={() => speakAloud(message.content)}
-            className="size-5 text-foreground/40 hover:text-foreground"
-          >
-            <HiSpeakerWave size={14} />
-          </MessageAction>
-          {time}
-        </>
-      )}
-    </MessageActions>
-  );
-}
-
-function isImportedTerminalDump(content: string) {
-  return (
-    /toolu_[A-Za-z0-9]+/.test(content) &&
-    /background command|exit code|task-notification/i.test(content)
-  );
-}
-
-function importedTerminalNotice(content: string) {
-  const summary = content.match(
-    /Background command[\s\S]*?\(exit code \d+\)/i,
-  )?.[0];
-  return `Ran: ${summary ?? content.replace(/\s+/g, " ").trim()}`;
-}
-
-function SystemNotice({
-  content,
-  createdAt,
-}: {
-  content: string;
-  createdAt?: number;
-}) {
-  const normalized = content.trim();
-  const warning = /limit|reached/i.test(normalized);
-  const terminal = normalized.startsWith("Ran:");
-
-  if (terminal) {
-    return (
-      <CommandBlock
-        command={normalized.replace(/^Ran:\s*/, "")}
-        status="done"
-      />
-    );
-  }
-
-  return (
-    <div
-      className={`flex items-start justify-center gap-2 py-1 text-center text-label leading-snug ${warning ? "text-amber-600 dark:text-amber-400/90" : "text-foreground/60"}`}
-    >
-      <span className="mt-2 h-px w-8 shrink-0 bg-black/10 dark:bg-white/10" />
-      {warning ? (
-        <AlertTriangle size={12} className="mt-0.5 shrink-0" />
-      ) : (
-        <Info size={12} className="mt-0.5 shrink-0" />
-      )}
-      {/* Notices wrap: they often say what to do next. */}
-      <span className="max-w-lg text-left">{normalized}</span>
-      {createdAt ? (
-        <span className="shrink-0 text-foreground/25">
-          {formatRelativeTime(createdAt)}
-        </span>
-      ) : null}
-      <span className="h-px w-8 bg-white/10" />
-    </div>
-  );
-}
-
-/** Messages per page of chat history. */
-const HISTORY_PAGE = 60;
-
-function toChatMessage(message: KodeConvexMessage, fallbackModel: string): ChatMessage {
-  const meta = message.metadata as { model?: string; todos?: KodeTodo[] } | undefined;
-  const isNotice = message.role === "system";
-  return {
-    id: message._id,
-    role: isNotice ? "assistant" : message.role === "assistant" ? "assistant" : "user",
-    content: message.role === "assistant" ? stripLeftoverToolMarkup(message.content) : message.content,
-    modelId: meta?.model ?? fallbackModel,
-    createdAt: message.createdAt,
-    status: "complete",
-    notice: isNotice,
-    toolTodos: meta?.todos,
-  };
-}
-
-/** Chat turns as the model sees them (no notices, steps condensed). */
-function toModelHistory(messages: ChatMessage[]): { role: "user" | "assistant"; content: string }[] {
-  return messages.flatMap((message) => {
-    if (message.notice || !message.content) return [];
-    if (message.role !== "user" && message.role !== "assistant") return [];
-    return [{ role: message.role, content: condenseSteps(message.content) }];
-  });
-}
-
-// In-flight turns, shared across mounts (see kode-run-state.ts).
-const pendingSlot = createRunSlot<Record<string, ChatMessage[]>>({});
-const sendingSlot = createRunSlot<Record<string, boolean>>({});
-const compactingSlot = createRunSlot<Record<string, boolean>>({});
-const queuedSlot = createRunSlot<Record<string, QueuedMessage[]>>({});
-
-// Checkpoint running turns (kode-turn-checkpoint.ts) so quitting mid-reply
-// doesn't lose them.
-const checkpointRunningTurns = throttle(() => {
-  const sending = sendingSlot.get();
-  const pending = pendingSlot.get();
-  for (const [chatId, running] of Object.entries(sending)) {
-    if (!running || chatId === DRAFT_KEY) continue;
-    const items = pending[chatId] ?? [];
-    const reply = [...items].reverse().find((item) => item.role === "assistant" && !item.notice);
-    if (!reply) continue;
-    const user = items.find((item) => item.role === "user" && !item.saved);
-    writeCheckpoint({
-      chatId,
-      userText: user?.content,
-      reply: withSteps(reply.content, reply.toolSteps ?? []),
-      todos: reply.toolTodos?.length ? reply.toolTodos : undefined,
-      modelId: reply.modelId,
-      at: Date.now(),
-    });
-  }
-});
-pendingSlot.subscribe(checkpointRunningTurns);
 // Recover turns left by a previous run of the app once per launch.
 let checkpointsRecovered = false;
 
@@ -562,6 +193,15 @@ const PlanView = () => {
     () => [...KODE_MODELS, ...cliPickerModels(appSettings, cliStore)],
     [appSettings, cliStore],
   );
+  // The models sub-agents can use (your plan's Kode models and your own
+  // agents), for agents that start them over Kontinue's MCP server.
+  useEffect(() => {
+    publishSubagentModels(
+      kodeModels
+        .filter((m) => parseCliModelId(m.id) || canUseKodeModel(m.id, planTier))
+        .map((m) => ({ id: m.id, name: m.name, provider: m.provider })),
+    );
+  }, [kodeModels, planTier]);
   // A CLI model that was turned off (or whose CLI went away) falls back to Kode.
   // An empty or failed discovery must not clear the chat's saved model.
   useEffect(() => {
@@ -670,6 +310,11 @@ const PlanView = () => {
     newChat,
     assignChatsToFolder,
   } = useKodeWorkspace();
+  // Read when a drafted title arrives, to leave a chat the user renamed alone.
+  const chatsRef = useRef(chats);
+  chatsRef.current = chats;
+  // Kode chats only, whichever tab is open when the drafted title arrives.
+  const updateKodeChatTitle = useMutation(api.kode.updateChatTitle);
   // A mode change applies to this chat's running turn too: the agent reads it
   // before each step, and a step waiting for approval goes ahead if the new
   // mode wouldn't have asked about it.
@@ -1122,848 +767,6 @@ const PlanView = () => {
   // Settings → Source control → "New threads start in": a new thread's first
   // message creates a git worktree on its own branch and runs there. Falls
   // back to the project folder when it isn't a git repo.
-  const workspaceForNewThread = async (text: string): Promise<{ root: string | null; projectId: string | null }> => {
-    const base = { root: projectRoot, projectId: draftProjectId ?? null };
-    if (activeChatId || !projectRoot || sendingChats[DRAFT_KEY] || text.trim().startsWith("/")) return base;
-    if (getSettings().newThreadWorkspace !== "worktree" || isWorktreePath(projectRoot)) return base;
-    try {
-      const path = await addWorktree(projectRoot, threadBranch(text));
-      return { root: path, projectId: ensureFolder(path) };
-    } catch (error) {
-      console.warn("[Kode] New worktree failed, using the project folder:", error);
-      return base;
-    }
-  };
-
-  /**
-   * Save a failed turn that is still only on screen (a usage-limit card, or a
-   * turn whose save failed) so the next message adds to the chat instead of
-   * replacing it. Returns what could not be saved, to keep showing.
-   */
-  const settleLeftoverTurn = async (chatKey: string, chatId: string | null): Promise<ChatMessage[]> => {
-    const leftover = (pendingSlot.get()[chatKey] ?? []).filter((item) => !item.notice && !item.saved);
-    if (leftover.length === 0) return [];
-    const unsaved: ChatMessage[] = [];
-    for (const item of leftover) {
-      if (!chatId || !item.content.trim()) {
-        if (item.content.trim()) unsaved.push(item);
-        continue;
-      }
-      try {
-        await addMessageRecord({
-          chatId,
-          role: item.role === "assistant" ? "assistant" : "user",
-          content: item.role === "assistant" ? withSteps(item.content, item.toolSteps ?? []) : item.content,
-          model: item.modelId,
-          todos: item.toolTodos?.length ? item.toolTodos : undefined,
-        });
-      } catch {
-        unsaved.push(item);
-      }
-    }
-    return unsaved;
-  };
-
-  const submitPrompt = async (
-    text: string,
-    modelId = selectedModelId,
-    attachments?: StagedAttachment[],
-    sendReasoningEnabled?: boolean,
-    modeOverride?: KodeAgentMode,
-    historyOverride?: { role: "user" | "assistant"; content: string }[],
-    annotations: KodeAnnotation[] = [],
-  ) => {
-    // Everything below runs in this thread's folder (maybe a fresh worktree).
-    const workspace = await workspaceForNewThread(text);
-    const projectRoot = workspace.root;
-    const draftProjectId = workspace.projectId;
-    // Approving a plan switches mode and sends in the same tick, so use the
-    // override instead of the (not yet updated) state.
-    const activeMode = modeOverride ?? mode;
-    const key = activeChatId ?? DRAFT_KEY;
-    if (sendingChats[key]) return;
-    const slash = resolveSlash(text);
-    // `/triage [problem]`: diagnostics handed to Claude Code or Codex.
-    if (slash?.name === "triage") {
-      let triageModel = pickTriageModel(selectedModelId, kodeModels, (id) => getProvider(id, appSettings)?.kind);
-      if (!triageModel) {
-        // Claude Code / Codex installed and signed in but switched off: turn
-        // it on for this rather than sending you to Settings.
-        const ready = getProviders(appSettings).find(
-          (p) =>
-            (p.kind === "claude" || p.kind === "codex") &&
-            !p.enabled &&
-            cliStatuses?.some((s) => s.instance === p.id && s.installed && s.loggedIn !== false),
-        );
-        if (ready) {
-          updateProvider(ready.id, { enabled: true });
-          const fresh = cliPickerModels(getSettings(), cliStore);
-          triageModel = pickTriageModel(selectedModelId, fresh, (id) => getProvider(id)?.kind);
-          if (triageModel) {
-            setPendingByChat((current) => ({
-              ...current,
-              [key]: [...(current[key] ?? []), { id: `notice-${Date.now()}`, role: "assistant", content: `Turned on ${ready.label} in Settings → Providers to run triage.`, modelId: selectedModelId, createdAt: Date.now(), status: "complete", notice: true }],
-            }));
-          }
-        }
-      }
-      if (!triageModel) {
-        setPendingByChat((current) => ({
-          ...current,
-          [key]: [...(current[key] ?? []), { id: `notice-${Date.now()}`, role: "assistant", content: "Triage runs on Claude Code or Codex. Turn one on in Settings → Providers and sign in, then try /triage again.", modelId: selectedModelId, createdAt: Date.now(), status: "complete", notice: true }],
-        }));
-        return;
-      }
-      const report = await triageReport(projectRoot).catch(() => "## Diagnostics\nCould not collect diagnostics.");
-      setSelectedModelId(triageModel);
-      return submitPrompt(triagePrompt(slash.rest, report), triageModel, attachments, sendReasoningEnabled, modeOverride, historyOverride, annotations);
-    }
-    // `/switch` = next account, `/switch-<account>` = that account.
-    if (slash && (slash.name === "switch" || slash.name.startsWith("switch-"))) {
-      switchAccount(slash.name === "switch" ? slash.rest : slash.name.slice("switch-".length));
-      return;
-    }
-
-    // Build what the model receives vs what we display/persist. The model gets
-    // full file text + images (multimodal); the bubble shows a compact note.
-    const imageAtts = (attachments ?? []).filter(
-      (a) => a.mediaType.startsWith("image/") && a.url,
-    );
-    const fileAtts = (attachments ?? []).filter((a) => a.text);
-    const fileBlocks = fileAtts
-      .map(
-        (a) => `\n\n[Attached file: ${a.filename}]\n\`\`\`\n${a.text}\n\`\`\``,
-      )
-      .join("");
-    // Expand a leading `/command` or `/skill` into the model's prompt; the bubble
-    // still shows what the user typed.
-    const expandedText = expandSlashPrompt(text, skills);
-    // Attachments are also saved into the project (.kode/attachments) so CLI
-    // agents can open images by path and any agent can reuse the files.
-    const savedFiles =
-      projectRoot && attachments?.length
-        ? await saveAttachmentsToProject(projectRoot, attachments)
-        : [];
-    // The last turn stopped mid-way: tell this turn what its tools really did.
-    const interruptedTurn = getInterruptedTurn(activeChatId);
-    const interruptedPrefix = interruptedTurn ? `${interruptedTurnNote(interruptedTurn)}\n\n---\n\n` : "";
-    // What's open in the file editor (and any selection) rides along so the
-    // agent can act on "this file" / "this function".
-    const editorNote = formatEditorContext(getEditorContext(projectRoot));
-    const modelText = `${interruptedPrefix}${expandedText}${fileBlocks}${savedAttachmentsNote(savedFiles)}${formatAnnotations(annotations)}${editorNote}`;
-    // Steps of this turn, kept for the ledger if the turn doesn't finish.
-    const turnSteps = new Map<string, KodeToolStep>();
-    const noteLine = annotations.length
-      ? `\n\n[${annotations.length} annotation${annotations.length === 1 ? "" : "s"}: ${annotations
-          .map((a) => a.note.trim() || annotationTitle(a))
-          .join("; ")}]`
-      : "";
-    // Images saved in the project show in the bubble (and open full size).
-    const imageBlocks = savedFiles
-      .filter((file) => file.mediaType.startsWith("image/"))
-      .map((file) => `\n\n\`\`\`kode-image\n${JSON.stringify({ path: file.path, mediaType: file.mediaType, root: projectRoot })}\n\`\`\``)
-      .join("");
-    const displayText = `${
-      attachments?.length
-        ? `${text}\n\n[Attached: ${attachments.map((a) => a.filename ?? "file").join(", ")}]`
-        : text
-    }${noteLine}${imageBlocks}`;
-    const userContent: KodeContentPart[] | undefined =
-      imageAtts.length > 0
-        ? [
-            { type: "text", text: modelText },
-            ...imageAtts.map((a) => ({
-              type: "image_url" as const,
-              image_url: { url: a.url as string },
-            })),
-          ]
-        : undefined;
-
-    const now = Date.now();
-    const userMessage: ChatMessage = {
-      id: `user-${now}`,
-      role: "user",
-      content: displayText,
-      modelId,
-      createdAt: now,
-    };
-
-    const cliTarget = parseCliModelId(modelId);
-    // The provider instance (Settings → Providers) that runs this model.
-    const cliProvider = cliTarget
-      ? (getProvider(cliTarget.instanceId) ?? null)
-      : null;
-    if (cliTarget && !cliProvider) {
-      setPendingByChat((current) => ({
-        ...current,
-        [key]: [
-          userMessage,
-          {
-            id: `assistant-${now}`,
-            role: "assistant",
-            content:
-              "This provider was removed. Pick another model, or add it again in Settings → Providers.",
-            modelId,
-            status: "error",
-          },
-        ],
-      }));
-      return;
-    }
-    if (!cliProvider && !canUseKodeModel(modelId, planTier)) {
-      setPendingByChat((current) => ({
-        ...current,
-        [key]: [
-          userMessage,
-          {
-            id: `assistant-${now}`,
-            role: "assistant",
-            content: `${getModelName(modelId)} is not available on your current plan.`,
-            modelId,
-            status: "error",
-          },
-        ],
-      }));
-      return;
-    }
-
-    // Usage limits are enforced by the Kontinue server for every model call
-    // (apps/web/src/app/api/kode/chat); its message is shown if a limit is hit.
-
-    const thinkingMessage: ChatMessage = {
-      id: `assistant-${now}`,
-      role: "assistant",
-      content: "",
-      modelId,
-      createdAt: now,
-      status: "thinking",
-    };
-
-    const abortController = new AbortController();
-    abortByChat.current.set(key, abortController);
-    liveModes.set(key, activeMode);
-
-    setSendingChats((current) => ({ ...current, [key]: true }));
-    runtime.setRunning(key, true);
-    // A failed turn still on screen is saved before this one starts, so a new
-    // message never replaces it. Whatever can't be saved stays above.
-    const kept = await settleLeftoverTurn(key, activeChatId);
-    setPendingByChat((current) => ({
-      ...current,
-      [key]: [...kept, userMessage, thinkingMessage],
-    }));
-    const runItemIds = new Set([userMessage.id, thinkingMessage.id]);
-    // Remove this turn's own bubbles, leaving anything else in the overlay.
-    const dropRunItems = (chatKey: string) =>
-      setPendingByChat((current) => {
-        const rest = (current[chatKey] ?? []).filter((item) => !runItemIds.has(item.id));
-        const next = { ...current };
-        if (rest.length) next[chatKey] = rest;
-        else delete next[chatKey];
-        return next;
-      });
-
-    // History only exists for an already-active chat (draft sends start empty).
-    const history =
-      historyOverride ??
-      (await allPersistedMessages()).reduce<
-        { role: "user" | "assistant"; content: string }[]
-      >((items, message) => {
-        if (message.notice) return items;
-        if (message.content) {
-          items.push({ role: message.role, content: condenseSteps(message.content) });
-        }
-        return items;
-      }, []);
-
-    let runKey = key;
-    let chatId = activeChatId;
-    // Applies streamed text that is still batched (set once streaming starts).
-    let flushStream = () => {};
-    // Your message is saved as soon as the chat exists, not when the reply
-    // ends, so quitting or a crash mid-turn never loses what you asked.
-    let userMessageId: string | null = null;
-    const saveUserMessage = async (id: string) => {
-      try {
-        userMessageId = await addMessageRecord({ chatId: id, role: "user", content: displayText, model: modelId });
-        setPendingByChat((current) => ({
-          ...current,
-          [runKey]: (current[runKey] ?? []).map((item) => (item.id === userMessage.id ? { ...item, saved: true } : item)),
-        }));
-      } catch {
-        // Offline or similar: it is saved with the reply instead.
-      }
-    };
-    try {
-      if (!chatId) {
-        chatId = await createChatRecord({
-          title: text,
-          projectId: draftProjectId,
-        });
-        // Switch to the new chat and migrate the draft overlay/sending state to
-        // its id in the same render so the view never drops back to home.
-        selectChat(chatId);
-        const newId = chatId;
-        // The new chat keeps what the draft was set to; the next new chat
-        // starts from the defaults again.
-        moveChatPrefs(DRAFT_KEY, newId);
-        setChatPrefs(newId, { modelId, mode: activeMode });
-        setPendingByChat((current) => {
-          const next = { ...current };
-          next[newId] = next[DRAFT_KEY] ?? [userMessage, thinkingMessage];
-          delete next[DRAFT_KEY];
-          return next;
-        });
-        setSendingChats((current) => {
-          const next = { ...current };
-          next[newId] = true;
-          delete next[DRAFT_KEY];
-          return next;
-        });
-        runtime.setRunning(newId, true);
-        runtime.clearChat(DRAFT_KEY);
-        // Re-key the abort controller from the draft slot to the real chat id so
-        // the Stop button (which looks up by the now-active chat id) finds it.
-        abortByChat.current.delete(key);
-        abortByChat.current.set(newId, abortController);
-        liveModes.set(newId, liveModes.get(key) ?? activeMode);
-        runKey = newId;
-      }
-      await saveUserMessage(chatId);
-
-      // Live-update the in-flight assistant bubble as reasoning/content tokens
-      // stream in, so the chain-of-thought fills in progressively.
-      const assistantId = thinkingMessage.id;
-      const streamed = createDeltaBatcher<"reasoning" | "content">((field, text) =>
-        setPendingByChat((current) => ({
-          ...current,
-          [runKey]: (current[runKey] ?? []).map((item) =>
-            item.id === assistantId
-              ? { ...item, [field]: (item[field] ?? "") + text }
-              : item,
-          ),
-        })),
-      );
-      flushStream = streamed.flush;
-      const applyDelta = (field: "reasoning" | "content", delta: string) => {
-        // Once stopped, ignore any tokens still arriving from the orphaned stream.
-        if (abortController.signal.aborted) return;
-        streamed.push(field, delta);
-      };
-
-      // Upsert a tool step into the in-flight assistant bubble so its approval /
-      // status card renders and updates as the agent runs.
-      const upsertToolStep = (step: KodeToolStep) => {
-        // Text streamed before this step shows above its card.
-        streamed.flush();
-        turnSteps.set(step.id, step);
-        setPendingByChat((current) => ({
-          ...current,
-          [runKey]: (current[runKey] ?? []).map((item) => {
-            if (item.id !== assistantId) return item;
-            const steps = item.toolSteps ?? [];
-            const idx = steps.findIndex((s) => s.id === step.id);
-            const nextSteps =
-              idx >= 0
-                ? steps.map((s) => (s.id === step.id ? step : s))
-                : [...steps, step];
-            return { ...item, toolSteps: nextSteps };
-          }),
-        }));
-        // Mirror pending questions into the cross-project runtime so the sidebar
-        // can surface "needs you" and answer it remotely.
-        runtime.syncStep(runKey, step);
-      };
-
-      // The model's latest plan/todos this turn (live in the bubble + persisted).
-      let latestTodos: KodeTodo[] = [];
-      const upsertTodos = (todos: KodeTodo[]) => {
-        latestTodos = todos;
-        setPendingByChat((current) => ({
-          ...current,
-          [runKey]: (current[runKey] ?? []).map((item) =>
-            item.id === assistantId ? { ...item, toolTodos: todos } : item,
-          ),
-        }));
-      };
-
-      // Your-subscription turn: run the local Claude Code / Codex CLI. Never
-      // touches the Kontinue server and is not counted in Kode usage.
-      if (cliTarget && cliProvider) {
-        if (!projectRoot) {
-          throw new Error(
-            "Open a project folder to use your Claude Code or Codex subscription.",
-          );
-        }
-        const versionIssue = cliVersionIssue(
-          cliTarget.model,
-          cliProvider,
-          cliStatuses,
-        );
-        if (versionIssue) {
-          throw new Error(
-            `${versionIssue} Use Update in Settings → Providers, or pick one of Kode's models.`,
-          );
-        }
-        const cliChatId = chatId;
-        // An imported Codex chat continues in its original Codex thread when
-        // this account owns it: the thread keeps its own history, no hand-off.
-        const nativeMode = nativeContinueOf(importContext);
-        const importedThread =
-          importContext &&
-          nativeMode !== "off" &&
-          nativeSessionBelongsTo(importContext.provider, importContext.sourcePath, cliProvider, homeDirRef.current)
-            ? importContext.sessionId
-            : null;
-        const storedSession = getCliSession(cliChatId, cliProvider.id);
-        const sessionId = storedSession ?? importedThread;
-        // "Fork": the first turn branches a new session; later turns continue that one.
-        const forkSession = !storedSession && !!importedThread && nativeMode === "fork";
-        // Claude Code finds a session by the folder it ran in.
-        const cliRoot =
-          importedThread && cliProvider.kind === "claude" && importContext?.sessionCwd && importContext.sessionCwd !== projectRoot &&
-          (await invoke<boolean>("kode_path_exists", { path: importContext.sessionCwd }).catch(() => false))
-            ? importContext.sessionCwd
-            : projectRoot;
-        // A fresh CLI session in an existing chat gets a hand-off: the task,
-        // recent turns, the plan and what changed in the project.
-        let prompt = modelText;
-        if (!sessionId) {
-          const earlier = persistedMessages.filter(
-            (m) => !m.notice && m.content.trim(),
-          );
-          const composed = await composeHandoff(modelId, historyOverride);
-          if (composed) {
-            const { handoff, fromModel } = composed;
-            prompt = `${handoff.text}\n\n---\n\n## New message\n${modelText}`;
-            if (earlier.length > 0) {
-              applyDelta(
-                "content",
-                `_${describeHandoff(handoff, fromModel)}_\n\n`,
-              );
-            }
-          }
-        }
-        const unsavedImages = imageAtts.filter(
-          (a) => !savedFiles.some((f) => f.filename === (a.filename || "attachment")),
-        );
-        if (unsavedImages.length > 0) {
-          applyDelta(
-            "content",
-            "_Images couldn't be saved to the project, so the CLI only gets the text._\n\n",
-          );
-        }
-
-        const steps = new Map<string, KodeToolStep>();
-        const notices: string[] = [];
-        const result = await runCliTurn({
-          instance: cliProvider,
-          root: cliRoot,
-          prompt,
-          sessionId,
-          fork: forkSession,
-          model: cliTarget.model,
-          mode: activeMode,
-          // Claude Code and Codex take an effort level; agents that pick it
-          // themselves (Cursor, ACP, or a level in the model's name) get none.
-          effort: (() => {
-            if (chatReasoning === "off") return null;
-            const { efforts } = getModelControls(modelId, getSettings(), getModelName(modelId));
-            return effortFor(efforts, chatReasoning);
-          })(),
-          signal: abortController.signal,
-          onEvent: (event) => {
-            switch (event.type) {
-              case "usage":
-                if (event.window) rememberModelWindow(modelId, event.window);
-                if (event.used) {
-                  recordChatContextUsage(cliChatId, {
-                    inputTokens: event.used,
-                    outputTokens: 0,
-                    totalTokens: event.used,
-                  } as Parameters<typeof recordChatContextUsage>[1]);
-                }
-                break;
-              case "session":
-                saveCliSession(cliChatId, cliProvider.id, event.sessionId);
-                break;
-              case "text":
-                applyDelta("content", event.delta);
-                break;
-              case "reasoning":
-                applyDelta("reasoning", event.delta);
-                break;
-              case "toolStart":
-              case "toolEnd": {
-                const step = cliToolStep(event, steps.get(event.id));
-                steps.set(event.id, step);
-                upsertToolStep(step);
-                break;
-              }
-              case "todos":
-                upsertTodos(cliTodos(event.items));
-                break;
-              case "notice":
-                notices.push(event.message);
-                break;
-            }
-          },
-        });
-        if (result.sessionId)
-          saveCliSession(cliChatId, cliProvider.id, result.sessionId);
-        // The turn just went into the source thread too. Move the import's
-        // sync point past it so background sync doesn't add it a second time.
-        if (importContext && result.sessionId && result.sessionId === importContext.sessionId && importContext.sourcePath) {
-          const anchored = getImportContext(chatId);
-          if (anchored) {
-            // Awaited, so the chat stays "busy" and background sync waits.
-            await readCodingSession(anchored.provider as never, anchored.sourcePath!)
-              .then((session) =>
-                saveImportContext(
-                  resolveConflict(anchored, "reanchor", {
-                    session,
-                    chatMessageCount: (anchored.chatMessageCount ?? anchored.syncedMessageCount ?? anchored.messageCount) + 2,
-                  }),
-                ),
-              )
-              .catch(() => {});
-          }
-        }
-        if (result.error) {
-          const limit = detectLimit(result.error, {
-            resetAt: result.limitResetsAt,
-          });
-          if (limit) throw new KodeLimitError(limit);
-          // Common causes: a signed-out CLI, or one too old for this model.
-          const signedOut =
-            /log ?in|logged out|not logged|authenticat|\/login/i.test(
-              result.error,
-            );
-          const badModel = /model/i.test(result.error);
-          const hint = signedOut
-            ? `Sign in from Settings → Providers → ${cliProvider.label}${cliLoginCommand(cliProvider) ? ` (or run \`${cliLoginCommand(cliProvider)}\` in a terminal)` : ""}, then send again.`
-            : badModel
-              ? `${cliProvider.label} could not use ${getModelName(modelId)}. It may be too old (use Update in Settings → Providers) or your plan may not include this model.`
-              : "";
-          throw new Error(hint ? `${result.error}\n\n${hint}` : result.error);
-        }
-
-        const noticeText = notices.length
-          ? `\n\n> ${notices.join("\n> ")}`
-          : "";
-        const content =
-          (result.text.trim() + noticeText).trim() ||
-          (result.stopped ? "_Stopped._" : "");
-        if (!userMessageId) {
-          await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
-        }
-        await addMessageRecord({
-          chatId,
-          role: "assistant",
-          content: withSteps(content, [...turnSteps.values()]),
-          model: modelId,
-          todos: latestTodos.length > 0 ? latestTodos : undefined,
-        });
-        // The CLI counts its own prompt; our last provider total is stale.
-        clearReportedChatContextUsage(chatId);
-        dropRunItems(runKey);
-        return;
-      }
-
-      // Auto-compaction: if the conversation is near the model's window, summarize
-      // older turns and send [summary, ...recent] instead. Original messages stay.
-      // Surface a "Compacting context…" indicator only when it will actually run
-      // (summarizing a large history can take a moment).
-      const window = getContextWindow(
-        modelId,
-        contextWindows,
-        chatPrefs.contextWindow !== undefined
-          ? chatPrefs.contextWindow
-          : getScopedSettings(projectRoot).kodeContextWindow,
-        getModelName(modelId),
-      );
-      // Switching to this model mid-chat is a hand-off: the history may hold
-      // secrets (say, a token in a pasted terminal log) the new model never
-      // needs. Remove them, like CLI hand-offs do.
-      const lastAssistantModel = [...persistedMessages].reverse().find((m) => m.role === "assistant" && !m.notice)?.modelId;
-      const handingOver = Boolean(lastAssistantModel && lastAssistantModel !== modelId);
-      const scrubbed = handingOver ? scrubHistory(history) : { history, count: 0 };
-      if (scrubbed.count > 0) {
-        applyDelta(
-          "content",
-          `_Removed ${scrubbed.count} secret${scrubbed.count === 1 ? "" : "s"} from the chat history before handing it to ${getModelName(modelId) ?? "this model"}._\n\n`,
-        );
-      }
-      const handoffHistory = scrubbed.history;
-      if (needsCompaction(handoffHistory, window)) {
-        setCompactingChats((current) => ({ ...current, [runKey]: true }));
-      }
-      const { messages: sentHistory, compacted } = await compactHistory(
-        handoffHistory,
-        window,
-        modelId,
-        {
-          get: () => compactionByChat.current.get(runKey) ?? null,
-          set: (state) => compactionByChat.current.set(runKey, state),
-        },
-      );
-      setCompactingChats((current) => ({ ...current, [runKey]: false }));
-      if (compacted) {
-        setCompactedChats((current) => ({ ...current, [runKey]: true }));
-      }
-
-      // Plugin hooks (only plugins you allowed): SessionStart on a chat's
-      // first message, UserPromptSubmit on every message.
-      const hookContext: string[] = [];
-      if (projectRoot && chatId) {
-        const hookPayload = { cwd: projectRoot, sessionId: chatId, prompt: modelText };
-        if (history.length === 0 && hasHooks(plugins, "SessionStart")) {
-          hookContext.push(...(await runHooks(plugins, "SessionStart", hookPayload)).context);
-        }
-        if (hasHooks(plugins, "UserPromptSubmit")) {
-          const submitted = await runHooks(plugins, "UserPromptSubmit", hookPayload);
-          if (submitted.blocked) throw new Error(`A plugin hook stopped this message: ${submitted.blocked}`);
-          hookContext.push(...submitted.context);
-        }
-      }
-      const hookSession = chatId ?? "";
-      const pluginAgentTool = projectRoot
-        ? buildPluginAgentTool({ plugins, root: projectRoot, modelId, mode: activeMode })
-        : null;
-
-      const response = await runKodeAgent({
-        // Background tasks the agent starts are listed under this chat.
-        chatId: runKey === DRAFT_KEY ? null : runKey,
-        // Fast mode (Settings / model picker); the server re-checks the plan.
-        fast: getScopedSettings(projectRoot).kodeFastMode,
-        modelId,
-        history: sentHistory,
-        userText: modelText,
-        userContent,
-        mode: activeMode,
-        contextBudget: window,
-        // Changing the mode in the picker applies from the next step.
-        getMode: () => (liveModes.get(runKey) as KodeAgentMode | undefined) ?? activeMode,
-        projectRoot,
-        extraSystemContext:
-          [importContext?.contextPrompt, ...hookContext].filter(Boolean).join("\n\n") ||
-          undefined,
-        toolHooks:
-          projectRoot && chatId
-            ? {
-                before: async (name, args) =>
-                  hasHooks(plugins, "PreToolUse")
-                    ? (
-                        await runHooks(plugins, "PreToolUse", {
-                          cwd: projectRoot,
-                          sessionId: hookSession,
-                          toolName: name,
-                          toolInput: args,
-                        })
-                      ).blocked
-                    : null,
-                after: async (name, args, result) =>
-                  hasHooks(plugins, "PostToolUse")
-                    ? (
-                        await runHooks(plugins, "PostToolUse", {
-                          cwd: projectRoot,
-                          sessionId: hookSession,
-                          toolName: name,
-                          toolInput: args,
-                          toolResponse: result,
-                        })
-                      ).context
-                    : [],
-              }
-            : undefined,
-        activeSkills: chatId ? getActiveSkills(chatId) : [],
-        mcpTools,
-        // Connected apps, plus "use 3 sub-agents with …" → run_subagents.
-        extraTools: projectRoot
-          ? [
-              ...connectorTools,
-              ...(pluginAgentTool ? [pluginAgentTool] : []),
-              buildSubagentTool({
-                root: projectRoot,
-                models: kodeModels
-                  .filter(
-                    (m) =>
-                      parseCliModelId(m.id) || canUseKodeModel(m.id, planTier),
-                  )
-                  .map((m) => ({ id: m.id, name: m.name })),
-                deps: {
-                  ensureFolder,
-                  createChatRecord,
-                  addMessageRecord,
-                  modelName: getModelName,
-                },
-              }),
-            ]
-          : [],
-        reasoningEnabled: sendReasoningEnabled ?? reasoningEnabled,
-        reasoningEffort: chatReasoning === "off" ? undefined : chatReasoning,
-        onText: (delta) => applyDelta("content", delta),
-        onReasoning: (delta) => applyDelta("reasoning", delta),
-        onToolStep: upsertToolStep,
-        requestApproval: (step) =>
-          // "Allow edits in this chat" was clicked: don't ask again for edits.
-          CHAT_APPROVABLE_TOOLS.has(step.name) && autoEditChats.current.has(runKey)
-            ? Promise.resolve(true)
-            : new Promise<boolean>((resolve) => {
-                runtime.registerApproval(step.id, resolve);
-              }),
-        requestOptions: (step) =>
-          new Promise<string[]>((resolve) => {
-            runtime.registerOptions(step.id, resolve);
-          }),
-        onTodos: upsertTodos,
-        signal: abortController.signal,
-      });
-
-      if (projectRoot && hookSession && hasHooks(plugins, "Stop")) {
-        void runHooks(plugins, "Stop", { cwd: projectRoot, sessionId: hookSession });
-      }
-
-      if (chatId && response.loadedSkills.length > 0) {
-        setActiveSkills(chatId, response.loadedSkills);
-      }
-
-      // The user's message was saved when the turn started; save it now only
-      // if that failed.
-      if (!userMessageId) {
-        await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
-      }
-      await addMessageRecord({
-        chatId,
-        role: "assistant",
-        content: withSteps(response.content, [...turnSteps.values()]),
-        model: modelId,
-        // Whole-turn token cost (summed across all agent iterations) — meters the
-        // user's general daily + weekly token budget.
-        tokens: response.tokensConsumed,
-        todos: latestTodos.length > 0 ? latestTodos : undefined,
-      });
-
-      const finishedId = chatId;
-      if (response.usage) recordChatContextUsage(finishedId, response.usage);
-      clearInterruptedTurn(runKey);
-      // Convex now renders the persisted turns (with sources/todos).
-      dropRunItems(runKey);
-    } catch (error) {
-      flushStream();
-      const message =
-        error instanceof Error
-          ? error.message
-          : typeof error === "string"
-            ? error
-            : "Kode could not reach the model.";
-      const limit =
-        error instanceof KodeLimitError ? error.limit : detectLimit(message);
-      if (turnSteps.size > 0) {
-        recordInterruptedTurn(runKey, {
-          at: Date.now(),
-          model: getModelName(modelId) ?? modelId,
-          reason: limit ? "usage limit" : cleanLimitMarker(message).slice(0, 160),
-          steps: ledgerFromSteps([...turnSteps.values()]),
-        });
-      }
-
-      // Save what this turn did before it failed, so the chat keeps it: the
-      // bubbles used to exist only on screen and were gone after a restart,
-      // and the next "continue" had no record of the work. Usage limits keep
-      // their card (it can schedule the retry) and are not saved here.
-      if (!limit && chatId && runKey !== DRAFT_KEY) {
-        const live = pendingSlot.get()[runKey] ?? [];
-        const reply = live.find((item) => item.id === thinkingMessage.id);
-        const todos = reply?.toolTodos ?? [];
-        try {
-          if (!userMessageId) await addMessageRecord({ chatId, role: "user", content: displayText, model: modelId });
-          await addMessageRecord({
-            chatId,
-            role: "assistant",
-            content: withSteps(
-              interruptedReply(reply?.content ?? "", cleanLimitMarker(message), todos),
-              [...turnSteps.values()],
-            ),
-            model: modelId,
-            todos: todos.length > 0 ? todos : undefined,
-          });
-          clearInterruptedTurn(runKey);
-          dropRunItems(runKey);
-          notifyRunEvent({ chatId: runKey, kind: "failed", detail: cleanLimitMarker(message).slice(0, 140) });
-          return;
-        } catch {
-          // Couldn't save (offline?): keep the turn on screen as before.
-        }
-      }
-
-      // A usage limit leaves the turn unanswered: take back the saved message
-      // so the card's "send when it resets" doesn't show it twice.
-      if (limit && userMessageId) {
-        try {
-          await rewindAfter(userMessageId);
-        } catch {
-          // Leave it saved; the retry will just repeat it.
-        }
-      }
-      setPendingByChat((current) => ({
-        ...current,
-        [runKey]: (current[runKey] ?? []).map((item) =>
-          item.id === userMessage.id && limit
-            ? { ...item, saved: false }
-            : item.id === thinkingMessage.id
-            ? {
-                ...item,
-                content: cleanLimitMarker(message),
-                status: "error",
-                limit: limit
-                  ? {
-                      resetAt: limit.resetAt,
-                      text,
-                      modelId,
-                      mode: activeMode,
-                      attachments,
-                    }
-                  : undefined,
-              }
-            : item,
-        ),
-      }));
-
-      // Settings → General → Auto-resume limited threads: queue the prompt for
-      // the reset time instead of waiting for a click on the limit card.
-      const settingsNow = getSettings();
-      if (
-        limit &&
-        settingsNow.autoResumeLimited &&
-        limit.resetAt &&
-        limit.resetAt > Date.now() &&
-        runKey !== DRAFT_KEY
-      ) {
-        schedulePrompt({
-          chatId: runKey,
-          chatTitle: chats.find((chat) => chat.id === runKey)?.title ?? null,
-          text,
-          modelId,
-          mode: activeMode,
-          attachments,
-          fireAt: limit.resetAt + RESET_BUFFER_MS,
-          reason: "limit",
-        });
-        dropRunItems(runKey);
-        setScheduleNow(Date.now());
-      }
-      notifyRunEvent({ chatId: runKey === DRAFT_KEY ? null : runKey, kind: limit ? "limit" : "failed", detail: cleanLimitMarker(message).slice(0, 140) });
-    } finally {
-      // The turn is saved (or kept on screen): drop its checkpoint.
-      clearCheckpoint(runKey);
-      setSendingChats((current) => ({ ...current, [runKey]: false }));
-      setCompactingChats((current) => ({ ...current, [runKey]: false }));
-      abortByChat.current.delete(runKey);
-      abortByChat.current.delete(key);
-      runtime.clearChat(runKey);
-    }
-  };
 
   // Stop the in-flight run for the chat currently in view.
   const stopCurrentRun = () => {
@@ -2001,6 +804,16 @@ const PlanView = () => {
     return () => window.clearInterval(id);
   }, [scheduled.length]);
   // Due prompts send through the latest submitPrompt (it reads current state).
+  // One turn from a typed message to a saved reply (plan/submit-prompt.tsx).
+  const submitPrompt = createSubmitPrompt({
+    chats, activeChatId, draftProjectId, createChatRecord, addMessageRecord, selectChat,
+    rewindAfter, ensureFolder, abortByChat, allPersistedMessages, appSettings, autoEditChats,
+    chatPrefs, chatReasoning, cliStatuses, cliStore, compactionByChat, composeHandoff,
+    connectorTools, contextWindows, homeDirRef, importContext, kodeModels, mcpTools, chatsRef, mode,
+    persistedMessages, planTier, plugins, projectRoot, reasoningEnabled, runtime, selectedModelId,
+    sendingChats, setCompactedChats, setCompactingChats, setPendingByChat, setScheduleNow,
+    setSelectedModelId, setSendingChats, skills, switchAccount, updateKodeChatTitle,
+  });
   const submitRef = useRef(submitPrompt);
   submitRef.current = submitPrompt;
   // When this chat's turn ends, its queued messages go out as one message.
@@ -2014,13 +827,17 @@ const PlanView = () => {
   }, [sendingChats, currentKey, queued.length]);
   const sendScheduled = (item: ScheduledPrompt) => {
     removeScheduledPrompt(item.id);
-    void submitRef.current(
-      item.text,
-      item.modelId,
-      item.attachments,
-      undefined,
-      item.mode,
-    );
+    // Another open computer may have sent it already (kode-continuity.ts).
+    void claimScheduledPrompt(item).then((mine) => {
+      if (!mine) return;
+      void submitRef.current(
+        item.text,
+        item.modelId,
+        item.attachments,
+        undefined,
+        item.mode,
+      );
+    });
   };
   useEffect(() => {
     const now = scheduleNow;
@@ -2220,6 +1037,7 @@ const PlanView = () => {
       used: usedTokens,
       max: contextWindow,
       modelName: getModelName(selectedModelId),
+      modelId: selectedModelId,
     });
   }, [usedTokens, contextWindow, selectedModelId]);
   // Leaving Kode (this view unmounts) shouldn't leave the workspace panel's
@@ -2631,7 +1449,8 @@ const PlanView = () => {
                         max={contextWindow}
                       />
                     </ContextContentHeader>
-                    <PlanUsageLimits
+                    <ModelPlanUsage
+                      modelId={selectedModelId}
                       className="px-4 py-3.5"
                       onSeeAll={() => openSettings("usage")}
                     />
@@ -2711,7 +1530,8 @@ const PlanView = () => {
                             max={contextWindow}
                           />
                         </ContextContentHeader>
-                        <PlanUsageLimits
+                        <ModelPlanUsage
+                          modelId={selectedModelId}
                           className="px-4 py-3.5"
                           onSeeAll={() => openSettings("usage")}
                         />
@@ -2848,74 +1668,5 @@ const PlanView = () => {
     </div>
   );
 };
-
-// Turn navigator for the Kode chat. Lives inside <Conversation> so it can
-// stop the stick-to-bottom behavior before jumping to an older message.
-function KodeTurnNavigator({ turns }: { turns: ChatTurn[] }) {
-  const { scrollRef, stopScroll } = useStickToBottomContext();
-  const { showTurnNavigator } = useAppSettings();
-  const getScrollElement = useCallback(() => scrollRef.current, [scrollRef]);
-  if (!showTurnNavigator) return null;
-  return (
-    <DesktopChatTurnNavigator
-      turns={turns}
-      getScrollElement={getScrollElement}
-      onJumpToTurn={(turnId) => {
-        const root = scrollRef.current;
-        const message = document.getElementById(turnId);
-        if (!root || !message) return;
-        stopScroll();
-        // scrollIntoView also scrolls overflow:hidden ancestors, which slides
-        // the whole pane. Only the conversation itself should move.
-        let node = message.parentElement;
-        while (node && node !== document.body) {
-          if (node !== root) {
-            const overflow = getComputedStyle(node).overflowY;
-            if (
-              (overflow === "hidden" || overflow === "clip") &&
-              node.scrollTop !== 0
-            ) {
-              node.scrollTop = 0;
-            }
-          }
-          node = node.parentElement;
-        }
-        const top =
-          root.scrollTop +
-          (message.getBoundingClientRect().top -
-            root.getBoundingClientRect().top) -
-          72;
-        const max = Math.max(0, root.scrollHeight - root.clientHeight);
-        root.scrollTo({
-          top: Math.min(Math.max(0, top), max),
-          behavior: "smooth",
-        });
-      }}
-    />
-  );
-}
-
-function ChatContextSummary({ used, max }: { used: number; max: number }) {
-  const pct = max > 0 ? Math.min(100, (used / max) * 100) : 0;
-  const compact = new Intl.NumberFormat("en-US", { notation: "compact" });
-  return (
-    <>
-      <div className="flex items-center justify-between text-label">
-        <span className="text-foreground/90">Context · this chat</span>
-        <span className="font-mono text-caption text-muted-foreground">
-          {compact.format(used)} / {compact.format(max)}
-          <span className="ml-2 font-sans tabular-nums text-foreground/75">
-            {pct < 1 && pct > 0 ? pct.toFixed(1) : Math.round(pct)}%
-          </span>
-        </span>
-      </div>
-      <UsageBar pct={pct} />
-      <p className="text-caption leading-relaxed text-muted-foreground">
-        Older messages are summarized automatically when the chat gets close to
-        the limit.
-      </p>
-    </>
-  );
-}
 
 export default PlanView;

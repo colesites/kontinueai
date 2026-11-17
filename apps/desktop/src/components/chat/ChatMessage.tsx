@@ -1,10 +1,9 @@
 import { ExpandableImage } from "@/components/ui/image-viewer";
-import { Brain, Check, ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
+import { Brain, ChevronRight } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { HiSpeakerWave } from "react-icons/hi2";
 import { MessageResponse } from "@/components/ai-elements/message";
 import { CollapsibleUserText } from "@/components/chat/CollapsibleUserText";
-import { ForkIcon } from "@/components/chat/ForkIcon";
+import { CopyIcon, EditIcon, ForkIcon, RewindIcon, SpeakIcon } from "@/components/chat/message-action-icons";
 import { cn } from "@/lib/utils";
 
 function useTextToSpeech(content: string) {
@@ -55,7 +54,7 @@ function IconButton({ title, onClick, disabled, children }: { title: string; onC
       aria-label={title}
       disabled={disabled}
       onClick={onClick}
-      className="flex size-5 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors kontinue-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+      className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground/80 transition-colors kontinue-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
     >
       {children}
     </button>
@@ -224,14 +223,14 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
 
             {/* Subtle Time & Actions beneath user bubble */}
             {!isEditing && (
-              <div className="msg-actions flex items-center gap-1.5 pr-1 text-caption text-muted-foreground/70 transition-opacity">
+              <div className="msg-actions flex items-center gap-0.5 pr-1 text-caption text-muted-foreground/70 transition-opacity">
                 {timeStr ? <span>{timeStr}</span> : null}
                 <IconButton title="Copy" onClick={handleCopy}>
-                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                  <CopyIcon copied={copied} />
                 </IconButton>
                 {onRewind ? (
                   <IconButton title="Rewind to here" onClick={onRewind}>
-                    <RotateCcw size={13} />
+                    <RewindIcon />
                   </IconButton>
                 ) : null}
                 {onFork ? (
@@ -241,7 +240,7 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
                 ) : null}
                 {onEdit ? (
                   <IconButton title="Edit" onClick={startEdit}>
-                    <Pencil size={13} />
+                    <EditIcon />
                   </IconButton>
                 ) : null}
               </div>
@@ -269,9 +268,9 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
 
             {/* Bottom Actions below Assistant Message */}
             {!isStreaming && (
-              <div className="msg-actions mt-0.5 flex items-center gap-1.5 text-muted-foreground/70 transition-opacity">
+              <div className="msg-actions mt-0.5 -ml-1 flex items-center gap-0.5 text-muted-foreground/70 transition-opacity">
                 <IconButton title="Copy" onClick={handleCopy}>
-                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                  <CopyIcon copied={copied} />
                 </IconButton>
                 {onFork ? (
                   <IconButton title="Fork from here" onClick={onFork}>
@@ -279,7 +278,7 @@ export function ChatMessage({ role, content, reasoning, isStreaming, onEdit, onF
                   </IconButton>
                 ) : null}
                 <IconButton title={isSpeaking ? "Stop reading" : "Read aloud"} onClick={handleSpeak} disabled={!speechText}>
-                  <HiSpeakerWave size={14} />
+                  <SpeakIcon speaking={isSpeaking} />
                 </IconButton>
                 {timeStr ? <span className="px-1 text-caption">{timeStr}</span> : null}
               </div>

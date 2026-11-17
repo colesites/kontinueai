@@ -1,7 +1,6 @@
 import { ensureKontinueServer } from "./desktop-auth";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { LanguageModelUsage } from "ai";
-import { getActiveByokKeyForModel } from "@/lib/kode-byok";
 
 // Incremental events emitted by the Rust `kode_chat` command as tokens arrive.
 export type KodeStreamEvent =
@@ -147,8 +146,6 @@ export async function sendKodeChat({
     channel.onmessage = onEvent;
   }
 
-  const activeByok = await getActiveByokKeyForModel(modelId);
-
   const call = async (freshToken: boolean) =>
     invoke<KodeChatCommandResponse>("kode_chat", {
     request: {
@@ -157,8 +154,6 @@ export async function sendKodeChat({
       tools: tools && tools.length > 0 ? tools : null,
       tool_choice: tools && tools.length > 0 && toolChoice ? toolChoice : null,
       system_context: systemContext ?? null,
-      byok_key: activeByok?.key ?? null,
-      byok_provider: activeByok?.provider ?? null,
       reasoning_enabled: reasoningEnabled !== undefined ? reasoningEnabled : null,
       kontinue_server: kontinueServer,
       session_token: kontinueServer ? await getSessionToken({ fresh: freshToken }) : null,

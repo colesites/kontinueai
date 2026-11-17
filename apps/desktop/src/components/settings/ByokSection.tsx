@@ -2,12 +2,11 @@ import { KeyRound, Loader2, Trash2, Eye, EyeOff, Check, Globe, ShieldCheck } fro
 import { useState, useEffect } from "react";
 
 import {
+  saveAgentRouterExtras,
   saveByokKey,
   removeByokKey,
-  getStoredByokKey,
-  getStoredBaseUrl,
-  getStoredSystemKey,
-  useByokProviders,
+  getAgentRouterBaseUrl,
+  useByokStatus,
   type ByokProvider,
 } from "@/lib/kode-byok";
 
@@ -34,7 +33,10 @@ export function ByokSection({
   hideIntro?: boolean;
 } = {}) {
   const shown = only ? PROVIDERS.filter((p) => only.includes(p.id)) : PROVIDERS;
-  const configured = useByokProviders();
+  // Only whether each key is saved comes back from the keychain, never the key.
+  const status = useByokStatus();
+  const configured = status;
+  const systemKeySaved = status.has("agent_router_system_key");
 
   // Store current input values per provider
   const [keys, setKeys] = useState<Record<ByokProvider, string>>({
@@ -49,14 +51,7 @@ export function ByokSection({
 
   // System Access Key state for Agent Router
   const [systemKey, setSystemKey] = useState("");
-  const [savedSystemKey, setSavedSystemKey] = useState("");
 
-  // Track saved key values to determine dirty state
-  const [savedKeys, setSavedKeys] = useState<Record<ByokProvider, string>>({
-    anthropic: "",
-    openai: "",
-    agent_router: "",
-  });
 
   // Password visibility toggle
   const [showPassword, setShowPassword] = useState<Record<ByokProvider, boolean>>({
@@ -68,56 +63,36 @@ export function ByokSection({
   const [busy, setBusy] = useState<ByokProvider | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load stored keys on mount and whenever provider status changes
+  // The base URL isn't secret, so it is shown; keys never are.
   useEffect(() => {
     let cancelled = false;
-    async function load() {
-      const loaded: Record<ByokProvider, string> = {
-        anthropic: "",
-        openai: "",
-        agent_router: "",
-      };
-      for (const p of PROVIDERS) {
-        const stored = await getStoredByokKey(p.id);
-        if (stored) {
-          loaded[p.id] = stored;
-        }
-      }
-      const url = await getStoredBaseUrl("agent_router");
-      const sys = await getStoredSystemKey("agent_router");
-
-      if (!cancelled) {
-        setKeys(loaded);
-        setSavedKeys(loaded);
-        if (url) {
-          setBaseUrl(url);
-          setSavedBaseUrl(url);
-        }
-        if (sys) {
-          setSystemKey(sys);
-          setSavedSystemKey(sys);
-        }
-      }
-    }
-    void load();
+    void getAgentRouterBaseUrl().then((url) => {
+      if (cancelled) return;
+      setBaseUrl(url);
+      setSavedBaseUrl(url);
+    });
     return () => {
       cancelled = true;
     };
-  }, [configured]);
+  }, [status]);
 
   const save = async (provider: ByokProvider) => {
     const rawVal = keys[provider].trim();
-    if (!rawVal) return;
+    // Agent Router's URL or system key can change without re-entering the key.
+    const extrasOnly = !rawVal && provider === "agent_router" && configured.has(provider);
+    if (!rawVal && !extrasOnly) return;
 
     setError(null);
     setBusy(provider);
     try {
       const urlToSave = provider === "agent_router" ? baseUrl : undefined;
       const sysToSave = provider === "agent_router" ? systemKey : undefined;
-      await saveByokKey(provider, rawVal, urlToSave, sysToSave);
-      setSavedKeys((current) => ({ ...current, [provider]: rawVal }));
+      if (extrasOnly) await saveAgentRouterExtras(urlToSave, sysToSave);
+      else await saveByokKey(provider, rawVal, urlToSave, sysToSave);
+      // Saved in the keychain: clear the fields instead of holding the secret.
+      setKeys((current) => ({ ...current, [provider]: "" }));
       if (urlToSave) setSavedBaseUrl(urlToSave);
-      if (sysToSave !== undefined) setSavedSystemKey(sysToSave);
+      if (sysToSave !== undefined) setSystemKey("");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -131,10 +106,8 @@ export function ByokSection({
     try {
       await removeByokKey(provider);
       setKeys((current) => ({ ...current, [provider]: "" }));
-      setSavedKeys((current) => ({ ...current, [provider]: "" }));
       if (provider === "agent_router") {
         setSystemKey("");
-        setSavedSystemKey("");
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -165,16 +138,15 @@ export function ByokSection({
 
       <div className="space-y-3">
         {shown.map((provider) => {
-          const isConfigured = configured.has(provider.id) || !!savedKeys[provider.id];
+          const isConfigured = configured.has(provider.id);
           const isBusy = busy === provider.id;
           const currentVal = keys[provider.id];
-          const savedVal = savedKeys[provider.id];
           const isVisible = showPassword[provider.id];
 
-          // Key is dirty if entered text differs from saved key, base URL, or system key changed
-          const isKeyDirty = currentVal.trim().length >= 8 && currentVal.trim() !== savedVal;
+          // Something new to save: a key, or a changed Agent Router setting.
+          const isKeyDirty = currentVal.trim().length >= 8;
           const isUrlDirty = provider.id === "agent_router" && baseUrl.trim() !== savedBaseUrl;
-          const isSysDirty = provider.id === "agent_router" && systemKey.trim() !== savedSystemKey;
+          const isSysDirty = provider.id === "agent_router" && systemKey.trim().length > 0;
           const isDirty = isKeyDirty || (isConfigured && (isUrlDirty || isSysDirty));
 
           return (
@@ -217,10 +189,11 @@ export function ByokSection({
                       <span className="text-micro text-foreground/45">Bypasses WAF client security checks</span>
                     </label>
                     <input
-                      type="text"
+                      type="password"
+                      autoComplete="off"
                       value={systemKey}
                       onChange={(e) => setSystemKey(e.target.value)}
-                      placeholder="e.g. P3euDB1k5areVnMQIg0TXYNoCPuGcCw="
+                      placeholder={systemKeySaved ? "Saved in your keychain. Paste a new one to replace it" : "Paste the system access key"}
                       className="kontinue-3d h-8 w-full rounded-full px-3.5 text-label text-foreground outline-none placeholder:text-muted-foreground/60"
                     />
                   </div>
@@ -239,7 +212,7 @@ export function ByokSection({
                         [provider.id]: event.target.value,
                       }))
                     }
-                    placeholder={`Paste ${provider.name} key`}
+                    placeholder={isConfigured ? "Saved in your keychain. Paste a new key to replace it" : `Paste ${provider.name} key`}
                     className="kontinue-3d h-8 w-full rounded-full px-3.5 pr-9 text-label text-foreground outline-none placeholder:text-muted-foreground/60"
                   />
                   {currentVal ? (

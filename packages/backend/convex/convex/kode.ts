@@ -43,7 +43,7 @@ function sortChatsForSidebar<T extends SidebarSortableChat>(
 }
 
 /** Resolve the signed-in Convex user, throwing if unauthenticated/unknown. */
-async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
+export async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
 	const identity = await ctx.auth.getUserIdentity();
 	if (!identity) {
 		throw new Error("Not authenticated");
@@ -62,7 +62,7 @@ async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Doc<"users">> {
 }
 
 /** Load a Kode chat the caller owns, or throw. */
-async function requireOwnedChat(
+export async function requireOwnedChat(
 	ctx: MutationCtx,
 	chatId: Id<"kodeChats">,
 	userId: Id<"users">,

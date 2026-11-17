@@ -8,6 +8,7 @@ import KodeView from "@/components/view/KodeView";
 import { useImportSyncDeps } from "@/components/kode/ImportedChatBar";
 import { useImportBackgroundSync } from "@/lib/kode-import-sync";
 import { useOrchestrationBridge } from "@/lib/kode-orchestration";
+import { useContinuitySync } from "@/lib/kode-continuity";
 import { useImportContextUpload } from "@/lib/kode-import-cloud";
 import { useWebhookThreads } from "@/lib/kode-webhooks";
 import { usePrWatcher } from "@/lib/kode-pr-watcher";
@@ -33,6 +34,8 @@ const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
   // the active tab), and other agents can reach Kode through its MCP server.
   useImportBackgroundSync(useImportSyncDeps());
   useOrchestrationBridge();
+  // Agent sessions and scheduled prompts mirrored to Convex.
+  useContinuitySync();
   // Imported chats' context follows you to your other devices.
   useImportContextUpload(kodeChats.map((chat) => chat.id));
   // Webhook events (GitHub, CI, …) start threads.

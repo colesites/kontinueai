@@ -190,7 +190,9 @@ export default function KodeView(_props: KodeViewProps) {
                     <span className="shrink-0 text-foreground/20">/</span>
                   </>
                 ) : null}
-                <span className="min-w-0 truncate text-label text-foreground/45">
+                {/* Capped so file and browser tabs keep their room; the full
+                    title shows on hover. */}
+                <span title={activeChat.title} className="min-w-0 max-w-[200px] truncate text-label text-foreground/45">
                   {activeChat.title}
                 </span>
               </button>

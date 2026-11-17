@@ -160,6 +160,40 @@ export default defineSchema({
 		updatedAt: v.number(),
 	}).index("by_chat", ["chatId"]),
 
+	// Which local agent session (Claude Code, Codex, …) continues each Kode chat
+	// (kodeContinuity.ts). Session files live on one computer, so `device`
+	// says where it can be resumed.
+	kodeCliSessions: defineTable({
+		ownerId: v.id("users"),
+		chatId: v.id("kodeChats"),
+		instanceId: v.string(),
+		sessionId: v.string(),
+		device: v.string(),
+		updatedAt: v.number(),
+	})
+		.index("by_chatId_and_instanceId", ["chatId", "instanceId"])
+		.index("by_ownerId_and_updatedAt", ["ownerId", "updatedAt"]),
+
+	// Prompts queued to send later ("when my limit resets"), mirrored from the
+	// desktop app (kodeContinuity.ts). A device claims one before sending it,
+	// so two open computers never send it twice. Attachments stay local.
+	kodeScheduledPrompts: defineTable({
+		ownerId: v.id("users"),
+		localId: v.string(),
+		chatId: v.id("kodeChats"),
+		chatTitle: v.optional(v.string()),
+		text: v.string(),
+		modelId: v.string(),
+		mode: v.string(),
+		reason: v.string(),
+		fireAt: v.number(),
+		createdAt: v.number(),
+		claimedBy: v.optional(v.string()),
+		claimedAt: v.optional(v.number()),
+	})
+		.index("by_ownerId_and_localId", ["ownerId", "localId"])
+		.index("by_ownerId_and_fireAt", ["ownerId", "fireAt"]),
+
 	// Webhooks that start Kode threads (kodeWebhooks.ts, http.ts).
 	kodeWebhooks: defineTable({
 		ownerId: v.id("users"),

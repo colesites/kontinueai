@@ -4,35 +4,22 @@
 // Claude ones Kontinue serves) count toward Kontinue, not toward these.
 
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { formatReset, UsageBar } from "@/components/usage/KodeUsageCard";
 import { ModelSelectorLogo } from "@/components/chat/ModelPickerPopover";
 import { useAppSettings } from "@/lib/app-settings";
 import { formatActivity } from "@/lib/kode-import";
-
-type UsageLimit = { label: string; percent: number; resetsAt: number | null };
-type AgentUsage = {
-  id: string;
-  label: string;
-  kind: "claude" | "codex";
-  plan: string | null;
-  email: string | null;
-  live: boolean;
-  limits: UsageLimit[];
-  asOf: number | null;
-  note: string | null;
-};
+import {
+  cachedAgentUsage,
+  readAgentUsage,
+  usageAccount,
+  usageDashboard,
+  type AgentUsage,
+  type UsageAccount,
+} from "@/lib/agent-plan-usage";
 
 const LOGO: Record<string, string> = { claude: "anthropic", codex: "openai", cursor: "cursor", acp: "google" };
-
-/** Agents that keep no usage on this Mac: where to check instead. */
-const DASHBOARDS: Record<string, { name: string; url: string }> = {
-  cursor: { name: "Cursor", url: "https://cursor.com/dashboard?tab=usage" },
-  gemini: { name: "Gemini CLI", url: "https://aistudio.google.com/usage" },
-  antigravity: { name: "Antigravity", url: "https://antigravity.google/docs/plans" },
-};
 
 /** Two provider entries signed in to the same account show as one card. */
 function mergeSameLogin(list: AgentUsage[]): AgentUsage[] {
@@ -45,36 +32,28 @@ function mergeSameLogin(list: AgentUsage[]): AgentUsage[] {
   return out;
 }
 
-// Last read, kept for the session so the page shows it at once.
-let lastUsage: AgentUsage[] | null = null;
-
 export function AgentPlanUsage() {
   const { kodeProviders } = useAppSettings();
-  const [usage, setUsage] = useState<AgentUsage[] | null>(lastUsage);
-  const [loading, setLoading] = useState(false);
-
   const accounts = kodeProviders
-    .filter((p) => p.enabled && (p.kind === "claude" || p.kind === "codex"))
-    .map((p) => ({
-      id: p.id,
-      label: p.label,
-      kind: p.kind,
-      homeDir: p.config.homeDir.trim(),
-      binaryPath: p.config.binaryPath.trim(),
-    }));
+    .filter((p) => p.enabled)
+    .map(usageAccount)
+    .filter((a): a is UsageAccount => a !== null);
   const accountsKey = JSON.stringify(accounts);
+  // The last answers (also read by the context popover) show at once.
+  const [usage, setUsage] = useState<AgentUsage[] | null>(() => {
+    const cached = accounts.map((a) => cachedAgentUsage(a.id));
+    return cached.every((u) => u !== undefined) ? cached.filter((u): u is AgentUsage => u !== null) : null;
+  });
+  const [loading, setLoading] = useState(false);
   const dashboards = kodeProviders
     .filter((p) => p.enabled)
-    .map((p) => (p.kind === "cursor" ? "cursor" : p.kind === "acp" ? p.preset ?? "" : ""))
-    .filter((key, i, all) => DASHBOARDS[key] && all.indexOf(key) === i)
-    .map((key) => DASHBOARDS[key] as { name: string; url: string });
+    .map(usageDashboard)
+    .filter((d, i, all): d is { name: string; url: string } => d !== null && all.findIndex((o) => o?.name === d.name) === i);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const next = await invoke<AgentUsage[]>("settings_agent_usage", { accounts });
-      lastUsage = next;
-      setUsage(next);
+      setUsage(await readAgentUsage(accounts));
     } catch {
       setUsage([]);
     } finally {

@@ -44,6 +44,7 @@ import {
 import {
   type ReactNode,
   useCallback,
+  useLayoutEffect,
   useEffect,
   useMemo,
   useRef,
@@ -352,6 +353,9 @@ function getConnectorLogoUrl(provider: string): string {
   }
 }
 
+const FUNCTION_KEY_CHARS = /[\uF700-\uF8FF]/;
+const FUNCTION_KEY_CHARS_ALL = /[\uF700-\uF8FF]/g;
+
 function renderHighlightedTokens(
   text: string,
   installedConnectors: Set<string>,
@@ -373,7 +377,9 @@ function renderHighlightedTokens(
         nodes.push(
           <span
             key={key}
-            className="text-purple-600 dark:text-purple-400 font-medium"
+            // Colour only: a bolder weight would widen the text and push the
+            // mirror out of line with the caret in the textarea underneath.
+            className="text-purple-600 dark:text-purple-400"
           >
             {part}
           </span>,
@@ -663,16 +669,29 @@ export function ChatInput({
   const resize = useCallback(() => {
     const el = ref.current;
     if (!el) return;
+    // Measuring at height 0 resets the scroll position, so put it back
+    // afterwards: typing at the end follows the caret down, editing higher up
+    // stays where it was. Otherwise new lines land below the visible area.
+    const previousScroll = el.scrollTop;
     el.style.height = "0px";
     const full = el.scrollHeight;
     const nextH = `${Math.min(full, compact ? 140 : 260)}px`;
     el.style.height = nextH;
+    el.scrollTop = el.selectionEnd >= el.value.length ? el.scrollHeight : previousScroll;
     if (mirrorRef.current) {
       mirrorRef.current.style.height = nextH;
+      mirrorRef.current.scrollTop = el.scrollTop;
     }
-    const line = Number.parseFloat(getComputedStyle(el).lineHeight) || 32;
-    setFieldGrown(compact && full > line + 4);
+    const style = getComputedStyle(el);
+    const line = Number.parseFloat(style.lineHeight) || 20;
+    const padding = Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom) || 0;
+    setFieldGrown(compact && full > line + padding + 4);
   }, [compact]);
+
+  // The mirror re-renders after the textarea; keep their scroll in step.
+  useLayoutEffect(() => {
+    if (mirrorRef.current && ref.current) mirrorRef.current.scrollTop = ref.current.scrollTop;
+  }, [value]);
 
   useEffect(() => {
     if (seedNonce > 0) {
@@ -701,6 +720,7 @@ export function ChatInput({
     setAttachments([]);
     setMentionQuery(null);
     setMentionStartIndex(null);
+    setSlashQuery(null);
     requestAnimationFrame(resize);
   };
 
@@ -802,37 +822,56 @@ export function ChatInput({
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const nextVal = e.target.value;
+    let nextVal = e.target.value;
+    // macOS sends arrow and function keys as private-use characters
+    // (U+F700–U+F8FF); the web view sometimes types them in as a box glyph.
+    if (FUNCTION_KEY_CHARS.test(nextVal)) {
+      const el = e.target;
+      const caret = el.selectionStart - (el.value.slice(0, el.selectionStart).match(FUNCTION_KEY_CHARS_ALL)?.length ?? 0);
+      nextVal = nextVal.replace(FUNCTION_KEY_CHARS_ALL, "");
+      el.value = nextVal;
+      el.setSelectionRange(caret, caret);
+    }
     setValue(nextVal);
     resize();
 
-    const caret = e.target.selectionStart;
-    const before = nextVal.slice(0, caret);
-    const match = before.match(/(?:^|\s)@([^\s@]*)$/);
-    if (match) {
-      const query = match[1];
+    syncPickers(nextVal, e.target.selectionStart);
+  };
+
+  /** Open, update or close the @file and /command pickers for the text
+   *  before the caret. Runs on every edit and caret move, so a picker never
+   *  stays open for a spot the caret has left (picking from it then edited
+   *  the wrong part of the text). */
+  const syncPickers = (text: string, caret: number) => {
+    const before = text.slice(0, caret);
+    const mention = before.match(/(?:^|\s)@([^\s@]*)$/);
+    if (mention) {
+      const query = mention[1];
+      if (query !== mentionQuery) setMentionActiveIndex(0);
       setMentionQuery(query);
       setMentionStartIndex(caret - query.length - 1);
-      setMentionActiveIndex(0);
-    } else {
+    } else if (mentionQuery !== null) {
       setMentionQuery(null);
       setMentionStartIndex(null);
     }
 
     // Slash picker: a leading `/name` (commands, skills, connectors), or a
     // `/name` after a space anywhere else (connectors only).
-    const slashMatch = before.match(/(?:^|\s)\/([a-z0-9_-]*)$/i);
-    if (slashMatch) {
-      const query = slashMatch[1] ?? "";
+    const slash = before.match(/(?:^|\s)\/([a-z0-9_-]*)$/i);
+    if (slash) {
+      const query = slash[1] ?? "";
+      if (query !== slashQuery) setSlashActiveIndex(0);
       setSlashQuery(query);
       setSlashStart(caret - query.length - 1);
-      setSlashActiveIndex(0);
-    } else {
+    } else if (slashQuery !== null) {
       setSlashQuery(null);
     }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Enter / arrows confirm an IME composition (Chinese, Japanese, Korean,
+    // the accent popup); they must not send the message or pick from a menu.
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (slashQuery !== null && slashCandidates.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -852,6 +891,11 @@ export function ChatInput({
       }
       if (e.key === "Escape") {
         e.preventDefault();
+        // Opened from + → Commands and closed untouched: take the "/ " back out.
+        if (slashStart === 0 && slashQuery === "" && value.startsWith("/ ")) {
+          setValue(value.slice(2));
+          requestAnimationFrame(() => ref.current?.setSelectionRange(0, 0));
+        }
         setSlashQuery(null);
         return;
       }
@@ -1089,7 +1133,8 @@ export function ChatInput({
         )}
 
         {/* Slash command / skill picker */}
-        {slashQuery !== null ? (
+        {/* Only with matches: typing a path like " /usr" shouldn't open an empty box. */}
+        {slashQuery !== null && slashCandidates.length > 0 ? (
           <SlashPicker
             entries={slashCandidates}
             activeIndex={slashActiveIndex}
@@ -1165,7 +1210,7 @@ export function ChatInput({
             className={cn(
               "pointer-events-none absolute inset-0 select-none overflow-hidden whitespace-pre-wrap break-words font-sans",
               compact
-                ? "px-1 py-0 text-lead leading-8"
+                ? "px-1 py-1.5 text-lead leading-5"
                 : "px-2.5 pt-1.5 text-[15px] leading-relaxed",
             )}
           >
@@ -1194,24 +1239,18 @@ export function ChatInput({
                 mirrorRef.current.scrollTop = e.currentTarget.scrollTop;
               }
             }}
-            onClick={(e) => {
-              const caret = e.currentTarget.selectionStart;
-              const before = value.slice(0, caret);
-              const match = before.match(/(?:^|\s)@([a-zA-Z0-9_]*)$/);
-              if (match) {
-                setMentionQuery(match[1]);
-                setMentionStartIndex(caret - match[1].length - 1);
-              } else {
-                setMentionQuery(null);
-              }
-            }}
+            // Clicks and arrow keys move the caret without an edit.
+            onSelect={(e) => syncPickers(e.currentTarget.value, e.currentTarget.selectionStart)}
             onKeyDown={handleKeyDown}
             placeholder={placeholder}
             aria-label="Message Kode"
             className={cn(
               compact
-                ? "relative z-10 h-8 min-h-8 max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-1 py-0 text-lead leading-8 font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55"
-                : "relative z-10 min-h-[64px] max-h-[260px] w-full resize-none bg-transparent px-2.5 pt-1.5 text-[15px] leading-relaxed font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
+                // 20px lines + 6px padding keep one line at 32px with a caret
+                // the height of the text. No scrollbar: it would narrow the
+                // textarea but not the mirror, so lines would wrap differently.
+                ? "no-scrollbar relative z-10 h-8 min-h-8 max-h-[140px] w-full resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-lead leading-5 font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55"
+                : "no-scrollbar relative z-10 min-h-[64px] max-h-[260px] w-full resize-none bg-transparent px-2.5 pt-1.5 text-[15px] leading-relaxed font-sans focus:outline-none disabled:cursor-not-allowed disabled:opacity-55",
               value.length > 0
                 ? "text-transparent caret-zinc-900 dark:caret-white"
                 : "text-zinc-900 dark:text-foreground placeholder:text-zinc-400 dark:placeholder:text-foreground/35",
@@ -1428,10 +1467,20 @@ export function ChatInput({
                 >
                   <DropdownMenuItem
                     onClick={() => {
-                      setValue("/");
+                      // Commands go at the start; keep what's already written.
+                      // (This used to replace the whole draft with "/".)
+                      const next = value ? `/ ${value}` : "/";
+                      setValue(next);
+                      setSlashStart(0);
                       setSlashQuery("");
                       setSlashActiveIndex(0);
-                      requestAnimationFrame(() => ref.current?.focus());
+                      requestAnimationFrame(() => {
+                        const el = ref.current;
+                        if (!el) return;
+                        el.focus();
+                        el.setSelectionRange(1, 1);
+                        resize();
+                      });
                     }}
                   >
                     <SlashCommandIcon size={14} />
@@ -1814,10 +1863,12 @@ export function ChatInput({
                 if (compact) {
                   return bannerSlot
                     ? createPortal(
-                        // Keyed by mode: when the chips change width the old ones are
-                        // replaced, not moved. macOS WebKit didn't repaint the area a
-                        // moved chip left, which drew a second "High · 256k".
-                        <div key={mode ?? "none"} className="flex min-w-0 flex-1 items-center gap-1 [&_button]:!h-6 [&_button]:!rounded-md [&_button]:!border-transparent [&_button]:!bg-transparent [&_button]:!px-1 [&_button]:!text-caption [&_button]:!font-normal [&_button]:!shadow-none">
+                        // Keyed by mode and model: when the chips change width the old
+                        // ones are replaced, not moved. macOS WebKit didn't repaint the
+                        // area a moved chip left, which drew a second "High · 256k" and
+                        // scattered pills after picking a model. No transitions either:
+                        // the pill styles overridden here would animate in and out.
+                        <div key={`${mode ?? "none"}:${modelId}`} className="flex min-w-0 flex-1 items-center gap-1 [&_button]:!h-6 [&_button]:!rounded-md [&_button]:!border-transparent [&_button]:!bg-transparent [&_button]:!bg-none [&_button]:!px-1 [&_button]:!text-caption [&_button]:!font-normal [&_button]:!shadow-none [&_button]:!transition-none">
                           {controls}
                           <div className="ml-auto shrink-0">{trailing}</div>
                         </div>,

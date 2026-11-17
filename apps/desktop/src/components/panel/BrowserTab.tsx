@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight, ExternalLink, Globe, MousePointerClick, RotateCw
 import { addAnnotation } from "@/lib/kode-annotations";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { cn } from "@/lib/utils";
+import { isPanelResizing, onPanelResize } from "./panel-api";
 
 /** What the in-page picker reports (src-tauri/src/browser_view.rs). */
 type PickedElement = { url: string; selector: string; label: string; html: string };
@@ -210,7 +211,7 @@ export function BrowserTab({
     let cancelled = false;
     let attempts = 0;
     const tick = () => {
-      if (cancelled || !visibleRef.current) return;
+      if (cancelled || !visibleRef.current || isPanelResizing()) return;
       const node = hostRef.current;
       const url = currentRef.current;
       if (!node || !url) return;
@@ -250,9 +251,19 @@ export function BrowserTab({
     const observer = new ResizeObserver(() => tick());
     if (hostRef.current) observer.observe(hostRef.current);
     window.addEventListener("resize", tick);
+    // The native view paints above the page and would swallow the drag, so
+    // hide it while the panel is resized and place it once on release.
+    const stopPanelResize = onPanelResize((resizing) => {
+      if (!resizing) tick();
+      else if (active && current)
+        enqueue(async () => {
+          await invoke("browser_hide", { label }).catch(() => {});
+        });
+    });
     return () => {
       cancelled = true;
       observer.disconnect();
+      stopPanelResize();
       window.removeEventListener("resize", tick);
     };
   }, [active, current, dark, enqueue, label]);

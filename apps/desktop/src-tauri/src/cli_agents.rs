@@ -330,6 +330,11 @@ fn cli_command(provider: CliProvider, binary: &Path, config: &CliConfig) -> Comm
     if let (Some(var), false) = (provider.home_env(), home.is_empty()) {
         cmd.env(var, expand_home(home));
     }
+    // OpenCode keeps its sign-ins and sessions under $XDG_DATA_HOME/opencode,
+    // so a separate data folder is a separate account.
+    if provider == CliProvider::Acp && config.preset == "opencode" && !home.is_empty() {
+        cmd.env("XDG_DATA_HOME", expand_home(home));
+    }
     for (name, value) in &config.env {
         if !name.trim().is_empty() {
             cmd.env(name.trim(), value);
@@ -1049,8 +1054,27 @@ fn claude_args(req: &CliRunRequest, mcp: &[ResolvedMcp], plugin_dirs: &[String])
     if !mcp.is_empty() {
         args.push(format!("--mcp-config={}", claude_mcp_config(mcp)));
     }
+    // Print mode can't ask about MCP tools, so it would refuse Kontinue's own.
+    // Allow them as Kode's own agent would: starting sub-agents only where
+    // edits run without asking; reading threads and models in any mode.
+    if mcp.iter().any(|server| server.spec.name == "kontinue") {
+        args.push("--allowedTools".to_string());
+        args.push(kontinue_allowed_tools(&req.mode));
+    }
     args.extend(req.config.launch_args.iter().cloned());
     args
+}
+
+/// Kontinue MCP tools Claude Code may call without asking, by Kode mode.
+fn kontinue_allowed_tools(mode: &str) -> String {
+    if matches!(mode, "auto_edits" | "design" | "auto" | "full_access") {
+        return "mcp__kontinue".to_string();
+    }
+    ["list_projects", "list_threads", "search_threads", "list_models", "wait_for_subagents", "checkpoint_kontinue_session"]
+        .iter()
+        .map(|tool| format!("mcp__kontinue__{tool}"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 fn codex_args(req: &CliRunRequest, mcp_overrides: &[String]) -> Vec<String> {
@@ -1311,6 +1335,16 @@ pub async fn kode_cli_run(
     })
 }
 
+/// A Claude Code sub-agent's step id, marked with the Task call that started
+/// it ("<task id>:<step id>") so the app can group a sub-agent's steps under
+/// it (ToolStep.tsx). Main-agent steps keep their id.
+fn subagent_step_id(event: &Value, id: String) -> String {
+    match event.get("parent_tool_use_id").and_then(Value::as_str) {
+        Some(parent) if !parent.is_empty() => format!("{parent}:{id}"),
+        _ => id,
+    }
+}
+
 // Rust's `str::floor_char_boundary` is unstable; small local version.
 trait FloorCharBoundary {
     fn floor_char_boundary_compat(&self, index: usize) -> usize;
@@ -1347,9 +1381,15 @@ struct Parser {
     /// Full assistant text of the turn (what gets persisted).
     text: String,
     error: Option<String>,
-    /// Claude: token deltas arrived, so skip the duplicate full text blocks.
-    streamed_text: bool,
-    streamed_thinking: bool,
+    /// Claude: model calls (message ids) whose text / thinking already arrived
+    /// as token deltas, so their full blocks are duplicates. Per message, not
+    /// per turn: a call Claude Code sends without deltas (e.g. a retry without
+    /// streaming) still has its text kept. A turn-wide flag dropped all text
+    /// after the first streamed call while the tool steps kept coming.
+    streamed_text: std::collections::HashSet<String>,
+    streamed_thinking: std::collections::HashSet<String>,
+    /// Claude: the model call the current deltas belong to (from message_start).
+    streaming_message: String,
     /// A tool ran since the last text, so start the next text on a new paragraph.
     tool_since_text: bool,
     /// Epoch ms when a rejected usage limit resets.
@@ -1365,8 +1405,9 @@ impl Parser {
             session_id,
             text: String::new(),
             error: None,
-            streamed_text: false,
-            streamed_thinking: false,
+            streamed_text: Default::default(),
+            streamed_thinking: Default::default(),
+            streaming_message: String::new(),
             tool_since_text: false,
             limit_resets_at: None,
             context_used: None,
@@ -1421,16 +1462,23 @@ impl Parser {
             }
             Some("stream_event") => {
                 let Some(inner) = event.get("event") else { return out };
+                if inner.get("type").and_then(Value::as_str) == Some("message_start") {
+                    self.streaming_message = inner
+                        .pointer("/message/id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default()
+                        .to_string();
+                }
                 if inner.get("type").and_then(Value::as_str) == Some("content_block_delta") {
                     let delta = inner.get("delta").cloned().unwrap_or(Value::Null);
                     match delta.get("type").and_then(Value::as_str) {
                         Some("text_delta") => {
-                            self.streamed_text = true;
+                            self.streamed_text.insert(self.streaming_message.clone());
                             let text = str_at(&delta, "text").unwrap_or_default();
                             self.push_text(&text, &mut out);
                         }
                         Some("thinking_delta") => {
-                            self.streamed_thinking = true;
+                            self.streamed_thinking.insert(self.streaming_message.clone());
                             if let Some(text) = str_at(&delta, "thinking") {
                                 out.push(CliEvent::Reasoning { delta: text });
                             }
@@ -1441,7 +1489,27 @@ impl Parser {
             }
             Some("assistant") => {
                 // Each model call's usage: what was in context for that call.
-                if let Some(usage) = event.pointer("/message/usage") {
+                // Sub-agents (Task tool) stream their own calls here too, marked
+                // with the tool call that started them. Their context is not
+                // this chat's, so counting it made the meter jump up mid-reply
+                // and drop back when the main agent carried on.
+                let from_subagent = event.get("parent_tool_use_id").is_some_and(|id| !id.is_null());
+                // Was this call's text / thinking already streamed as deltas?
+                // Deltas without a message_start are filed under "" and match
+                // the next full message once. A sub-agent's text is its own
+                // working, not part of this reply.
+                let message_id = event.pointer("/message/id").and_then(Value::as_str).unwrap_or_default().to_string();
+                if self.streamed_text.remove("") {
+                    self.streamed_text.insert(message_id.clone());
+                }
+                if self.streamed_thinking.remove("") {
+                    self.streamed_thinking.insert(message_id.clone());
+                }
+                if from_subagent {
+                    self.streamed_text.insert(message_id.clone());
+                    self.streamed_thinking.insert(message_id.clone());
+                }
+                if let Some(usage) = event.pointer("/message/usage").filter(|_| !from_subagent) {
                     let n = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
                     let total = n("input_tokens")
                         + n("cache_read_input_tokens")
@@ -1458,11 +1526,11 @@ impl Parser {
                     .unwrap_or_default();
                 for block in blocks {
                     match block.get("type").and_then(Value::as_str) {
-                        Some("text") if !self.streamed_text => {
+                        Some("text") if !self.streamed_text.contains(&message_id) => {
                             let text = str_at(&block, "text").unwrap_or_default();
                             self.push_text(&text, &mut out);
                         }
-                        Some("thinking") if !self.streamed_thinking => {
+                        Some("thinking") if !self.streamed_thinking.contains(&message_id) => {
                             if let Some(text) = str_at(&block, "thinking") {
                                 out.push(CliEvent::Reasoning { delta: format!("{text}\n") });
                             }
@@ -1477,7 +1545,7 @@ impl Parser {
                             }
                             self.tool_since_text = true;
                             out.push(CliEvent::ToolStart {
-                                id: str_at(&block, "id").unwrap_or_default(),
+                                id: subagent_step_id(event, str_at(&block, "id").unwrap_or_default()),
                                 name,
                                 input,
                             });
@@ -1506,7 +1574,7 @@ impl Parser {
                         _ => String::new(),
                     };
                     out.push(CliEvent::ToolEnd {
-                        id: str_at(&block, "tool_use_id").unwrap_or_default(),
+                        id: subagent_step_id(event, str_at(&block, "tool_use_id").unwrap_or_default()),
                         output: clip(&output),
                         is_error: block.get("is_error").and_then(Value::as_bool).unwrap_or(false),
                     });
@@ -1831,6 +1899,38 @@ mod tests {
         parser.handle(&json!({"type":"assistant","message":{"content":[],"usage":{"input_tokens":10,"cache_read_input_tokens":9000,"cache_creation_input_tokens":500,"output_tokens":490}}}));
         let out = parser.handle(&json!({"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s1","modelUsage":{"claude-opus-5-5":{"contextWindow":1000000},"claude-haiku-4-5":{"contextWindow":200000}}}));
         assert!(out.iter().any(|e| matches!(e, CliEvent::Usage { used: Some(10000), window: Some(1000000) })));
+    }
+
+    #[test]
+    fn keeps_text_of_calls_that_were_not_streamed() {
+        let mut parser = Parser::new(CliProvider::Claude, None);
+        // Call 1 streams its text, then repeats it as a full message.
+        parser.handle(&json!({"type":"stream_event","event":{"type":"message_start","message":{"id":"m1"}}}));
+        parser.handle(&json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"First."}}}));
+        parser.handle(&json!({"type":"assistant","message":{"id":"m1","content":[{"type":"text","text":"First."},{"type":"tool_use","id":"t1","name":"Bash","input":{}}]}}));
+        // Call 2 arrives only as a full message (no deltas): its text is kept.
+        parser.handle(&json!({"type":"assistant","message":{"id":"m2","content":[{"type":"text","text":"Second."}]}}));
+        // A sub-agent's text is not part of the reply.
+        parser.handle(&json!({"type":"assistant","parent_tool_use_id":"t1","message":{"id":"s1","content":[{"type":"text","text":"Sub-agent notes."}]}}));
+        assert_eq!(parser.text, "First.\n\nSecond.");
+    }
+
+    #[test]
+    fn subagent_steps_are_marked_with_their_task() {
+        let mut parser = Parser::new(CliProvider::Claude, None);
+        let out = parser.handle(&json!({"type":"assistant","parent_tool_use_id":"toolu_task","message":{"id":"s1","content":[{"type":"tool_use","id":"toolu_read","name":"Read","input":{}}]}}));
+        assert!(out.iter().any(|e| matches!(e, CliEvent::ToolStart { id, .. } if id == "toolu_task:toolu_read")));
+        let out = parser.handle(&json!({"type":"user","parent_tool_use_id":"toolu_task","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_read","content":"ok"}]}}));
+        assert!(out.iter().any(|e| matches!(e, CliEvent::ToolEnd { id, .. } if id == "toolu_task:toolu_read")));
+    }
+
+    #[test]
+    fn subagent_usage_is_not_this_chats_context() {
+        let mut parser = Parser::new(CliProvider::Claude, None);
+        parser.handle(&json!({"type":"assistant","parent_tool_use_id":null,"message":{"content":[],"usage":{"input_tokens":12000,"output_tokens":300}}}));
+        parser.handle(&json!({"type":"assistant","parent_tool_use_id":"toolu_1","message":{"content":[],"usage":{"input_tokens":90000,"output_tokens":800}}}));
+        let out = parser.handle(&json!({"type":"result","subtype":"success","is_error":false,"result":"ok","session_id":"s1"}));
+        assert!(out.iter().any(|e| matches!(e, CliEvent::Usage { used: Some(12300), .. })));
     }
 
     #[test]

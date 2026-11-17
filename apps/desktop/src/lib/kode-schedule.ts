@@ -1,6 +1,7 @@
 // Prompts queued to send later, mostly "send when my limit resets".
 //
-// Kept in localStorage so they survive a restart. The chat view (PlanView)
+// Kept in localStorage so they survive a restart, and mirrored to Convex
+// (kode-continuity.ts) for other computers. The chat view (PlanView)
 // sends due prompts for the open chat; for another chat it switches to it when
 // you have been idle for a while, or shows a "ready" bar you can click.
 
@@ -66,6 +67,19 @@ export function useScheduledPrompts(): ScheduledPrompt[] {
 
 export function getScheduledPrompts(): ScheduledPrompt[] {
   return items;
+}
+
+/** Watch the queue outside React (kode-continuity.ts mirrors it). */
+export function subscribeScheduledPrompts(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+/** Add prompts another computer queued (kept ids, no attachments). */
+export function mergeScheduledPrompts(incoming: ScheduledPrompt[]) {
+  const known = new Set(items.map((item) => item.id));
+  const fresh = incoming.filter((item) => !known.has(item.id));
+  if (fresh.length) commit([...items, ...fresh]);
 }
 
 /** Queue a prompt. Returns false when attachments had to be dropped. */
