@@ -7,8 +7,16 @@
 //                message a thread, hand off context)
 // - events.jsonl checkpoints, which make the app sync the imported session now
 //
+// - results/<id>.json written by the app: progress and results of sub-agents
+//                a run_subagents request started
+//
 // Tools: checkpoint_kontinue_session, list_projects, list_threads,
-// search_threads, start_thread, message_thread, handoff_context.
+// search_threads, start_thread, message_thread, handoff_context, list_models,
+// run_subagents, wait_for_subagents.
+//
+// Sub-agents: Kode attaches this server to the main agent's turn with
+// KODE_PARENT_CHAT_ID (and KODE_PROJECT_ROOT) set, so the group shows under
+// that chat. Sub-agents' own turns don't get it, so they can't start more.
 
 use crate::kode_hooks::{append_event, kode_dir};
 use serde_json::{json, Value};
@@ -69,6 +77,29 @@ pub(crate) fn tool_list() -> Value {
             "Send a message to an existing Kontinue thread.",
             json!({ "thread_id": s("Thread id from list_threads."), "message": s("The message.") }),
             &["thread_id", "message"],
+        ),
+        tool(
+            "list_models",
+            "List the models Kontinue can run as sub-agents (Kode models and the user's own agents such as Claude Code, Codex, Cursor and OpenCode).",
+            json!({}),
+            &[],
+        ),
+        tool(
+            "run_subagents",
+            "Send one task to several models at once. Each works in its own git branch and worktree with its own Kontinue chat, and the user sees them live. Use it when the user asks for sub-agents, several models, or to compare models. Each sub-agent starts fresh, so write a complete, self-contained task. Returns within about 45 seconds: the results if they finished, or an id to pass to wait_for_subagents.",
+            json!({
+                "task": s("The full task each sub-agent should do."),
+                "models": { "type": "array", "items": { "type": "string" }, "description": "Model names or ids from list_models, as many as the user asked for." },
+                "mode": { "type": "string", "enum": ["auto_edits", "full_access", "plan"], "description": "auto_edits (default): edits applied, risky commands skipped. full_access: commands run too. plan: read-only." },
+                "project_path": s("Folder to work in. Defaults to this session's project."),
+            }),
+            &["task", "models"],
+        ),
+        tool(
+            "wait_for_subagents",
+            "Wait for sub-agents started by run_subagents and get their status, or their results once they finish. Call again while they are still running.",
+            json!({ "id": s("The id run_subagents returned."), "wait_seconds": { "type": "number", "description": "How long to wait, up to 45 (default)." } }),
+            &["id"],
         ),
         tool(
             "handoff_context",
@@ -185,6 +216,48 @@ pub(crate) fn call_tool(name: &str, args: &Value, state: &Value) -> Result<Strin
             let id = queue(json!({ "type": "message_thread", "threadId": thread, "message": message }))?;
             Ok(format!("Queued ({id}). Kontinue will send it to the thread."))
         }
+        "list_models" => {
+            let models = state.get("models").cloned().unwrap_or_else(|| json!([]));
+            if models.as_array().map_or(true, Vec::is_empty) {
+                return Err("Kontinue hasn't published its models yet. Open Kontinue and try again.".into());
+            }
+            Ok(serde_json::to_string_pretty(&models).unwrap_or_default())
+        }
+        "run_subagents" => {
+            let parent = std::env::var("KODE_PARENT_CHAT_ID").ok().filter(|v| !v.is_empty()).ok_or(
+                "Only the main agent of a Kontinue chat can start sub-agents (this session isn't one, or is a sub-agent itself).",
+            )?;
+            let task = arg(args, "task").ok_or("task is required")?;
+            let models: Vec<String> = args
+                .get("models")
+                .and_then(Value::as_array)
+                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .unwrap_or_default();
+            if models.is_empty() {
+                return Err("models is required: pick some from list_models.".into());
+            }
+            let project = arg(args, "project_path")
+                .map(str::to_string)
+                .or_else(|| std::env::var("KODE_PROJECT_ROOT").ok())
+                .ok_or("project_path is required")?;
+            let id = queue(json!({
+                "type": "run_subagents",
+                "parentChatId": parent,
+                "projectPath": project,
+                "task": task,
+                "models": models,
+                "mode": arg(args, "mode"),
+            }))?;
+            Ok(wait_for_result(&id, MAX_WAIT_SECS))
+        }
+        "wait_for_subagents" => {
+            let id = arg(args, "id").ok_or("id is required")?;
+            if !id.starts_with("req-") || id.contains(['/', '\\', '.']) {
+                return Err(format!("{id} isn't a sub-agent id from run_subagents."));
+            }
+            let secs = args.get("wait_seconds").and_then(Value::as_u64).unwrap_or(MAX_WAIT_SECS).min(MAX_WAIT_SECS);
+            Ok(wait_for_result(id, secs))
+        }
         "handoff_context" => {
             let project = arg(args, "project_path").ok_or("project_path is required")?;
             let summary = arg(args, "summary").ok_or("summary is required")?;
@@ -197,6 +270,52 @@ pub(crate) fn call_tool(name: &str, args: &Value, state: &Value) -> Result<Strin
             Ok(format!("Queued ({id}). Kontinue will start a thread with this hand-off."))
         }
         other => Err(format!("Unknown tool: {other}")),
+    }
+}
+
+/// Longest a tool call blocks: some agents give up on tools after a minute.
+const MAX_WAIT_SECS: u64 = 45;
+
+/// Wait (up to `secs`) for the app to report on a sub-agent request, then
+/// describe it: the final report once done, else progress and the id.
+fn wait_for_result(id: &str, secs: u64) -> String {
+    let Some(path) = kode_dir().map(|dir| dir.join("results").join(format!("{id}.json"))) else {
+        return "No home folder.".into();
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let mut last: Option<Value> = None;
+    loop {
+        if let Some(result) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
+            if result.get("done").and_then(Value::as_bool) == Some(true) {
+                return result.get("report").and_then(Value::as_str).unwrap_or("Sub-agents finished.").to_string();
+            }
+            last = Some(result);
+        }
+        if std::time::Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(1000));
+    }
+    match last {
+        None => format!(
+            "Queued ({id}), but Kontinue hasn't picked it up yet. Is the app open? Call wait_for_subagents with this id to check again."
+        ),
+        Some(progress) => {
+            let lines: Vec<String> = progress
+                .get("runs")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .map(|run| {
+                    let field = |key: &str| run.get(key).and_then(Value::as_str).unwrap_or("");
+                    format!("- {}: {}", field("model"), field("status"))
+                })
+                .collect();
+            format!(
+                "Sub-agents still working ({id}):\n{}\nCall wait_for_subagents with this id to keep waiting.",
+                lines.join("\n")
+            )
+        }
     }
 }
 
@@ -268,6 +387,20 @@ pub fn kode_orch_take_inbox() -> Vec<Value> {
     text.lines().filter_map(|l| serde_json::from_str(l).ok()).collect()
 }
 
+/// Progress or the final report of a run_subagents request, for the waiting
+/// MCP server (see wait_for_result).
+#[tauri::command(async)]
+pub fn kode_orch_write_result(id: String, result: Value) -> Result<(), String> {
+    if !id.starts_with("req-") || id.contains(['/', '\\', '.']) {
+        return Err(format!("`{id}` is not a request id."));
+    }
+    let dir = kode_dir().ok_or("No home folder.")?.join("results");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let tmp = dir.join(format!("{id}.tmp"));
+    std::fs::write(&tmp, serde_json::to_vec(&result).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, dir.join(format!("{id}.json"))).map_err(|e| e.to_string())
+}
+
 /// The command other agents use to start this server.
 #[tauri::command(async)]
 pub fn kode_mcp_server_command() -> Result<Value, String> {
@@ -297,7 +430,25 @@ mod tests {
         let names: Vec<&str> = tools["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert!(names.contains(&"checkpoint_kontinue_session"));
         assert!(names.contains(&"start_thread"));
+        assert!(names.contains(&"run_subagents"));
         assert!(handle(&json!({ "method": "notifications/initialized" })).is_none());
+    }
+
+    #[test]
+    fn lists_published_models() {
+        let state = json!({ "models": [{ "id": "cli:codex:gpt", "name": "GPT (Codex)" }] });
+        assert!(call_tool("list_models", &json!({}), &state).unwrap().contains("GPT (Codex)"));
+        assert!(call_tool("list_models", &json!({}), &json!({})).is_err());
+    }
+
+    #[test]
+    fn subagents_need_a_main_chat_and_a_real_id() {
+        // Sub-agents' own sessions run without KODE_PARENT_CHAT_ID.
+        if std::env::var("KODE_PARENT_CHAT_ID").is_err() {
+            let error = call_tool("run_subagents", &json!({ "task": "t", "models": ["a"] }), &json!({})).unwrap_err();
+            assert!(error.contains("main agent"));
+        }
+        assert!(call_tool("wait_for_subagents", &json!({ "id": "../../etc/passwd" }), &json!({})).is_err());
     }
 
     #[test]

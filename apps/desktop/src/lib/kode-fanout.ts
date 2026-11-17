@@ -4,19 +4,25 @@
 // Kode agent calls the `run_subagents` tool (buildSubagentTool) and gets every
 // result back to compare. Runs are unattended: edits are accepted, and anything
 // that would need your approval is declined.
+//
+// Any number of models can be asked; at most MAX_PARALLEL run at once (each is
+// a full agent with its own worktree and process) and the rest wait queued.
 
+import { useSyncExternalStore } from "react";
 import { gitStatus } from "@/components/panel/panel-api";
 import { runKodeAgent, type KodeExtraTool } from "./kode-agent";
 import { getProvider, parseCliModelId, runCliTurn, saveCliSession } from "./kode-cli";
 import type { KodeAgentMode, KodeTodo } from "./kode-tools";
 import { addWorktree, branchPrefix, slugify } from "./kode-branches";
 
-export type FanOutRunStatus = "starting" | "running" | "done" | "error" | "stopped";
+export type FanOutRunStatus = "queued" | "starting" | "running" | "done" | "error" | "stopped";
 
 export type FanOutRun = {
   id: string;
   modelId: string;
   modelName: string;
+  /** Logo key for the model's provider (ModelSelectorLogo). */
+  provider: string | null;
   status: FanOutRunStatus;
   chatId: string | null;
   worktree: string | null;
@@ -35,6 +41,8 @@ export type FanOutRun = {
 
 export type FanOut = {
   id: string;
+  /** The chat whose agent started these sub-agents. */
+  parentChatId: string | null;
   prompt: string;
   mode: KodeAgentMode;
   createdAt: number;
@@ -52,6 +60,8 @@ export type FanOutDeps = {
     todos?: KodeTodo[];
   }) => Promise<unknown>;
   modelName: (modelId: string) => string;
+  /** Logo key for a model's provider, for the sub-agent rows. */
+  modelProvider?: (modelId: string) => string | undefined;
 };
 
 // ---------------------------------------------------------------------------
@@ -61,10 +71,69 @@ export type FanOutDeps = {
 const EMPTY: FanOut[] = [];
 let fanOuts: FanOut[] = EMPTY;
 const controllers = new Map<string, AbortController>();
+const listeners = new Set<() => void>();
 
 function emit(next: FanOut[]) {
   fanOuts = next.length ? next : EMPTY;
+  for (const listener of listeners) listener();
 }
+
+/** Every sub-agent group started this session, newest first. */
+export function useFanOuts(): FanOut[] {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    () => fanOuts,
+    () => fanOuts,
+  );
+}
+
+/** Watch the groups outside React (the MCP bridge reports progress). */
+export function subscribeFanOuts(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function getFanOut(id: string): FanOut | undefined {
+  return fanOuts.find((f) => f.id === id);
+}
+
+// Models that can run as sub-agents, published by the chat view (plan rules
+// and the user's providers decide the list) for agents that ask over MCP.
+export type PublishedModel = SubagentModel & { provider?: string };
+let publishedModels: PublishedModel[] = [];
+const modelListeners = new Set<() => void>();
+
+export function publishSubagentModels(models: PublishedModel[]) {
+  const same =
+    models.length === publishedModels.length &&
+    models.every((m, i) => m.id === publishedModels[i]?.id && m.name === publishedModels[i]?.name);
+  if (same) return;
+  publishedModels = models;
+  for (const listener of modelListeners) listener();
+}
+
+export function getSubagentModels(): PublishedModel[] {
+  return publishedModels;
+}
+
+export function useSubagentModels(): PublishedModel[] {
+  return useSyncExternalStore(
+    (listener) => {
+      modelListeners.add(listener);
+      return () => modelListeners.delete(listener);
+    },
+    () => publishedModels,
+    () => publishedModels,
+  );
+}
+
+/** Sub-agents running at once; more than this wait queued. */
+export const MAX_PARALLEL = 6;
+/** Sanity bound on one request, not a product limit. */
+export const MAX_SUBAGENTS = 16;
 
 function patchRun(fanOutId: string, runId: string, patch: Partial<FanOutRun>) {
   emit(
@@ -76,6 +145,11 @@ function patchRun(fanOutId: string, runId: string, patch: Partial<FanOutRun>) {
 
 export function stopFanOutRun(runId: string) {
   controllers.get(runId)?.abort();
+  // Still queued: it never started, so just mark it.
+  for (const fanOut of fanOuts) {
+    const run = fanOut.runs.find((r) => r.id === runId);
+    if (run?.status === "queued") patchRun(fanOut.id, runId, { status: "stopped", finishedAt: Date.now() });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -97,6 +171,7 @@ export function startFanOut(input: {
   modelIds: string[];
   mode: KodeAgentMode;
   deps: FanOutDeps;
+  parentChatId?: string | null;
   signal?: AbortSignal;
 }): { id: string; done: Promise<FanOutRun[]> } {
   const { root, prompt, modelIds, mode, deps } = input;
@@ -108,7 +183,8 @@ export function startFanOut(input: {
       id: `${id}-${index}`,
       modelId,
       modelName,
-      status: "starting",
+      provider: deps.modelProvider?.(modelId) ?? null,
+      status: "queued",
       chatId: null,
       worktree: null,
       branch: fanOutBranch(prompt, modelName, `${suffix}${index}`),
@@ -122,13 +198,22 @@ export function startFanOut(input: {
       finishedAt: null,
     };
   });
-  emit([{ id, prompt, mode, createdAt: Date.now(), runs }, ...fanOuts]);
+  emit([{ id, parentChatId: input.parentChatId ?? null, prompt, mode, createdAt: Date.now(), runs }, ...fanOuts]);
   input.signal?.addEventListener("abort", () => runs.forEach((run) => stopFanOutRun(run.id)), {
     once: true,
   });
-  const done = Promise.all(runs.map((run) => runOne(id, run, root, prompt, mode, deps))).then(
-    () => fanOuts.find((f) => f.id === id)?.runs ?? runs,
-  );
+  // A small pool: MAX_PARALLEL workers take runs in order until none are left.
+  let next = 0;
+  const worker = async () => {
+    while (next < runs.length) {
+      const run = runs[next++];
+      const current = fanOuts.find((f) => f.id === id)?.runs.find((r) => r.id === run.id);
+      if (current?.status === "stopped" || input.signal?.aborted) continue;
+      await runOne(id, run, root, prompt, mode, deps);
+    }
+  };
+  const workers = Array.from({ length: Math.min(MAX_PARALLEL, runs.length) }, worker);
+  const done = Promise.all(workers).then(() => fanOuts.find((f) => f.id === id)?.runs ?? runs);
   return { id, done };
 }
 
@@ -142,6 +227,7 @@ async function runOne(
 ) {
   const controller = new AbortController();
   controllers.set(run.id, controller);
+  patchRun(fanOutId, run.id, { status: "starting", startedAt: Date.now() });
   let text = "";
   let todos: KodeTodo[] = [];
   const declined: string[] = [];
@@ -267,9 +353,10 @@ export function resolveSubagentModels(
   return { ids, unknown };
 }
 
-const SUBAGENT_MODES: KodeAgentMode[] = ["auto_edits", "full_access", "plan"];
+export const SUBAGENT_MODES: KodeAgentMode[] = ["auto_edits", "full_access", "plan"];
 
-function reportRuns(runs: FanOutRun[]): string {
+/** Every run's outcome, for the agent that started them to compare. */
+export function reportRuns(runs: FanOutRun[]): string {
   return runs
     .map((run) => {
       const head = `### ${run.modelName}: ${run.status}`;
@@ -287,6 +374,8 @@ export function buildSubagentTool(input: {
   root: string;
   models: SubagentModel[];
   deps: FanOutDeps;
+  /** The chat this agent runs in; its sub-agents show under it. */
+  parentChatId?: string | null;
 }): KodeExtraTool {
   const { root, models, deps } = input;
   const list = models.map((m) => `${m.name} (${m.id})`).join("; ");
@@ -309,7 +398,7 @@ export function buildSubagentTool(input: {
             models: {
               type: "array",
               items: { type: "string" },
-              description: "2 to 4 model names or ids from the available list.",
+              description: `Model names or ids from the available list, as many as the user asked for (up to ${MAX_SUBAGENTS}).`,
             },
             mode: {
               type: "string",
@@ -332,11 +421,19 @@ export function buildSubagentTool(input: {
       const mode = SUBAGENT_MODES.includes(args.mode as KodeAgentMode)
         ? (args.mode as KodeAgentMode)
         : "auto_edits";
-      const { done } = startFanOut({ root, prompt: task, modelIds: ids.slice(0, 4), mode, deps, signal });
+      const { done } = startFanOut({
+        root,
+        prompt: task,
+        modelIds: ids.slice(0, MAX_SUBAGENTS),
+        mode,
+        deps,
+        parentChatId: input.parentChatId,
+        signal,
+      });
       const runs = await done;
       const skipped = [
         ...unknown.map((name) => `${name} (not available)`),
-        ...ids.slice(4).map((id) => `${deps.modelName(id)} (limit is 4)`),
+        ...ids.slice(MAX_SUBAGENTS).map((id) => `${deps.modelName(id)} (over ${MAX_SUBAGENTS} in one request)`),
       ];
       return [
         `Ran ${runs.length} sub-agent(s). Each has its own chat in the sidebar under its worktree folder.`,

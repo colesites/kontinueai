@@ -15,6 +15,7 @@ import { TerminalTab } from "./TerminalTab";
 import { FilesTab } from "./FilesTab";
 import { BrowserSidebar } from "./BrowserSidebar";
 import { useGitStatus } from "./use-git-status";
+import { setPanelResizing } from "./panel-api";
 
 export type PanelTab = "environment" | "changes" | "prs" | "terminal" | "files" | "browser";
 
@@ -90,7 +91,6 @@ export function WorkspacePanel({
       TABS.some((t) => t.id === raw) ? (raw as PanelTab) : null,
     ),
   );
-  const [resizing, setResizing] = useState(false);
   const [terminalRoots, setTerminalRoots] = useState<string[]>([]);
   if (projectPath && !terminalRoots.includes(projectPath)) setTerminalRoots([...terminalRoots, projectPath]);
   const frame = useRef<number | null>(null);
@@ -115,42 +115,59 @@ export function WorkspacePanel({
   const asideRef = useRef<HTMLElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
 
-  // Resize by writing styles directly (once per frame) and save the width on
-  // release, so terminals and tabs don't re-render while dragging.
-  const startResize = (event: React.PointerEvent) => {
+  // Resize like the left sidebar: write styles directly (once per frame), no
+  // React state until release. The pointer is captured so the drag keeps up
+  // when it crosses the browser view, and terminals / the browser wait for
+  // the release instead of resizing every frame (see setPanelResizing).
+  const startResize = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.button !== 0) return;
     event.preventDefault();
+    const handle = event.currentTarget;
+    const aside = asideRef.current;
+    const inner = innerRef.current;
+    const pointerId = event.pointerId;
     const startX = event.clientX;
     const startWidth = width;
     let next = startWidth;
-    setResizing(true);
+    handle.setPointerCapture(pointerId);
+    if (aside) aside.style.transition = "none";
     document.body.style.cursor = "ew-resize";
     document.body.style.userSelect = "none";
+    setPanelResizing(true);
     const onMove = (ev: PointerEvent) => {
       next = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, startWidth + startX - ev.clientX));
       if (frame.current !== null) return;
       frame.current = requestAnimationFrame(() => {
         frame.current = null;
-        if (asideRef.current) asideRef.current.style.width = `${next}px`;
-        if (innerRef.current) innerRef.current.style.width = `${next}px`;
+        if (aside) aside.style.width = `${next}px`;
+        if (inner) inner.style.width = `${next}px`;
       });
     };
     const onUp = () => {
       if (frame.current !== null) cancelAnimationFrame(frame.current);
       frame.current = null;
+      if (aside) {
+        aside.style.width = `${next}px`;
+        aside.style.transition = "";
+      }
+      if (inner) inner.style.width = `${next}px`;
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
+      if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+      handle.removeEventListener("pointermove", onMove);
+      handle.removeEventListener("pointerup", onUp);
+      handle.removeEventListener("pointercancel", onUp);
       setWidth(next);
-      setResizing(false);
+      setPanelResizing(false);
       try {
         localStorage.setItem(WIDTH_KEY, String(next));
       } catch {
         // ignore
       }
     };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointermove", onMove);
+    handle.addEventListener("pointerup", onUp);
+    handle.addEventListener("pointercancel", onUp);
   };
 
   const resizeBy = (delta: number) => {
@@ -179,10 +196,7 @@ export function WorkspacePanel({
     <aside
       ref={asideRef}
       aria-hidden={!open}
-      className={cn(
-        "relative h-full shrink-0 overflow-hidden",
-        !resizing && "transition-[width] duration-300 ease-in-out",
-      )}
+      className="relative h-full shrink-0 overflow-hidden transition-[width] duration-300 ease-in-out"
       style={{ width: open ? width : 0 }}
     >
       <div

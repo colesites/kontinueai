@@ -85,14 +85,18 @@ export function splitUserAttachments(content: string): { text: string; images: M
   const attached = text.match(ATTACHED_LINE);
   if (attached) {
     text = text.replace(ATTACHED_LINE, "");
-    const shown = new Set(images.map((image) => displayName(image.path)));
+    // Saved names swap spaces and other characters for "-", so compare
+    // letters and digits only, or every image also showed as a file chip.
+    const shown = new Set(images.map((image) => sameNameKey(displayName(image.path))));
     files = attached[1]
       .split(", ")
       .map((name) => name.trim())
-      .filter((name) => name && !shown.has(name));
+      .filter((name) => name && !shown.has(sameNameKey(name)));
   }
   return { text: text.trim(), images, files };
 }
+
+const sameNameKey = (name: string) => name.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 /** Saved files are prefixed with a timestamp ("1731-shot.png"). */
 export function displayName(path: string): string {

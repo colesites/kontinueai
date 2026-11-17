@@ -20,6 +20,7 @@ import { ViewErrorBoundary } from "@/components/layout/ViewErrorBoundary";
 import { TitleTooltips } from "@/components/ui/title-tooltips";
 
 const STARTUP_TIMEOUT_MS = 15_000;
+const OFFLINE_STARTUP_MS = 1_500;
 
 function removeSplash() {
   const splash = document.getElementById("splash");
@@ -86,11 +87,25 @@ function SignedInStartup() {
 
   useEffect(() => {
     if (opened) return;
-    const timer = setTimeout(() => setTimedOut(true), STARTUP_TIMEOUT_MS);
+    // No network at all: don't make the user wait out the full timeout.
+    const wait = navigator.onLine ? STARTUP_TIMEOUT_MS : OFFLINE_STARTUP_MS;
+    const timer = setTimeout(() => setTimedOut(true), wait);
     return () => clearTimeout(timer);
   }, [opened]);
 
-  const showFailure = !opened && !ready && (timedOut || failed);
+  // Can't reach Convex: open the workspace offline instead of a dead end.
+  // It shows the last known chats and plan, and local agents (Claude Code,
+  // Codex, …) don't need the cloud. A sync that failed while connected is a
+  // real error and still shows the failure screen.
+  const offline = !isWebSocketConnected;
+  useEffect(() => {
+    if (!opened && timedOut && offline) {
+      setOpened(true);
+      removeSplash();
+    }
+  }, [opened, timedOut, offline]);
+
+  const showFailure = !opened && !ready && ((timedOut && !offline) || failed);
   useEffect(() => {
     if (showFailure) removeSplash();
   }, [showFailure]);

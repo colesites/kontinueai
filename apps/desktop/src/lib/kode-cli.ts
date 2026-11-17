@@ -129,11 +129,11 @@ export const ACP_PRESETS: Record<AcpPreset, AcpPresetInfo> = {
     plan: "Google",
     loginCommand: null,
     install: "https://github.com/google-gemini/gemini-cli",
-    command: "gemini --experimental-acp",
-    description: "Google's agent. Sign in with your Google account, or use a Gemini or Vertex AI key.",
+    command: "gemini --acp",
+    description: "Google's agent. Use a Gemini or Vertex AI key. Google no longer allows personal Google accounts here.",
     authMethods: [
-      { id: "oauth-personal", label: "Google account", description: "Uses your Google subscription." },
       { id: "gemini-api-key", label: "Gemini API key", description: "Billed to your key. Add GEMINI_API_KEY." },
+      { id: "oauth-personal", label: "Google account", description: "Work accounts with Gemini Code Assist only. Google turned this off for personal accounts." },
       { id: "vertex-ai", label: "Vertex AI", description: "Billed to your Google Cloud project." },
     ],
   },
@@ -285,8 +285,19 @@ export function cliPlanLabel(instance: InstanceRef): string {
 }
 
 /** Terminal command that signs the CLI in, when it has one. */
-export function cliLoginCommand(instance: InstanceRef): string | null {
-  return info(instance).loginCommand;
+export function cliLoginCommand(instance: InstanceRef & { config?: { homeDir?: string } }): string | null {
+  const command = info(instance).loginCommand;
+  // A second OpenCode account signs in into its own data folder.
+  const dataDir = instance.config?.homeDir?.trim();
+  if (command && instance.kind === "acp" && instance.preset === "opencode" && dataDir) {
+    return `XDG_DATA_HOME=${dataDir} ${command}`;
+  }
+  return command;
+}
+
+/** OpenCode: one data folder per account (XDG_DATA_HOME, see cli_agents.rs). */
+export function usesDataFolder(instance: { kind: string; preset?: string | null }): boolean {
+  return instance.kind === "acp" && instance.preset === "opencode";
 }
 
 export function cliNeedsLogin(statuses: CliStatus[] | null, instanceId: string): boolean {
@@ -718,12 +729,23 @@ export function getCliSession(chatId: string, instanceId: string): string | null
   }
 }
 
-export function saveCliSession(chatId: string, instanceId: string, sessionId: string) {
+const sessionListeners = new Set<(chatId: string, instanceId: string, sessionId: string) => void>();
+
+/** Told about every newly saved session (kode-continuity.ts mirrors them). */
+export function onCliSessionSaved(listener: (chatId: string, instanceId: string, sessionId: string) => void) {
+  sessionListeners.add(listener);
+  return () => sessionListeners.delete(listener);
+}
+
+export function saveCliSession(chatId: string, instanceId: string, sessionId: string, { silent = false } = {}) {
+  if (getCliSession(chatId, instanceId) === sessionId) return;
   try {
     localStorage.setItem(SESSION_KEY(chatId), JSON.stringify({ provider: instanceId, sessionId }));
   } catch {
     // Storage unavailable: follow-ups just start a fresh session.
   }
+  // `silent`: restoring from the mirror, nothing new to send back.
+  if (!silent) for (const listener of sessionListeners) listener(chatId, instanceId, sessionId);
 }
 
 // ---------------------------------------------------------------------------
@@ -742,6 +764,10 @@ export type RunCliTurnParams = {
   mode: string;
   /** Reasoning effort for agents that take one (Claude Code, Codex). */
   effort?: string | null;
+  /** The Kontinue chat this turn belongs to. Set for a main agent: it gets
+   *  Kontinue's MCP server (sub-agents, threads) tied to this chat. Left out
+   *  for sub-agents, so they can't start sub-agents of their own. */
+  parentChatId?: string | null;
   signal?: AbortSignal;
   onEvent: (event: CliEvent) => void;
 };
@@ -751,19 +777,41 @@ export type RunCliTurnParams = {
  * itself (--plugin-dir, which brings their MCP servers), so it only gets the
  * servers you added; other CLIs get yours plus the plugin ones.
  */
-function cliExtensions(kind: ProviderKind) {
+function cliExtensions(kind: ProviderKind, kontinue: McpSpec | null) {
   const plugins = getPlugins().filter((p) => p.enabled);
   const own = loadMcpConfigs().filter((c) => c.enabled);
   const servers = kind === "claude" ? own : [...own, ...pluginMcpConfigs(plugins).filter((c) => c.enabled)];
+  const specs: McpSpec[] = servers.map((c) => ({
+    name: c.name,
+    command: c.command ?? null,
+    args: c.args ?? [],
+    env: c.env ?? {},
+    url: c.url ?? null,
+  }));
   return {
     pluginDirs: kind === "claude" ? plugins.map((p) => p.dir) : [],
-    mcpServers: servers.map((c) => ({
-      name: c.name,
-      command: c.command ?? null,
-      args: c.args ?? [],
-      env: c.env ?? {},
-      url: c.url ?? null,
-    })),
+    // Ours replaces a copy the user added by hand (that one has no chat id).
+    mcpServers: kontinue ? [...specs.filter((spec) => spec.name !== KONTINUE_MCP_NAME), kontinue] : specs,
+  };
+}
+
+type McpSpec = { name: string; command: string | null; args: string[]; env: Record<string, string>; url: string | null };
+
+const KONTINUE_MCP_NAME = "kontinue";
+let kontinueMcpCommand: Promise<{ command: string; args: string[] } | null> | null = null;
+
+/** Kontinue's own MCP server for a main agent's turn in `chatId`. */
+async function kontinueMcp(chatId: string | null | undefined, root: string): Promise<McpSpec | null> {
+  if (!chatId) return null;
+  kontinueMcpCommand ??= invoke<{ command: string; args: string[] }>("kode_mcp_server_command").catch(() => null);
+  const command = await kontinueMcpCommand;
+  if (!command) return null;
+  return {
+    name: KONTINUE_MCP_NAME,
+    command: command.command,
+    args: command.args,
+    env: { KODE_PARENT_CHAT_ID: chatId, KODE_PROJECT_ROOT: root },
+    url: null,
   };
 }
 
@@ -776,6 +824,7 @@ export async function runCliTurn({
   model,
   mode,
   effort = null,
+  parentChatId = null,
   signal,
   onEvent,
 }: RunCliTurnParams): Promise<CliRunResult> {
@@ -799,7 +848,7 @@ export async function runCliTurn({
         mode,
         effort,
         config: rustConfig(instance),
-        ...cliExtensions(instance.kind),
+        ...cliExtensions(instance.kind, await kontinueMcp(parentChatId, root)),
       },
       onEvent: channel,
     });

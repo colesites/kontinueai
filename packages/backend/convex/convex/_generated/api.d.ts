@@ -25,6 +25,7 @@ import type * as importParsers from "../importParsers.js";
 import type * as imports from "../imports.js";
 import type * as importsWorker from "../importsWorker.js";
 import type * as kode from "../kode.js";
+import type * as kodeContinuity from "../kodeContinuity.js";
 import type * as kodeProjectMoves from "../kodeProjectMoves.js";
 import type * as kodeUsage from "../kodeUsage.js";
 import type * as kodeWeb from "../kodeWeb.js";
@@ -76,6 +77,7 @@ declare const fullApi: ApiFromModules<{
   imports: typeof imports;
   importsWorker: typeof importsWorker;
   kode: typeof kode;
+  kodeContinuity: typeof kodeContinuity;
   kodeProjectMoves: typeof kodeProjectMoves;
   kodeUsage: typeof kodeUsage;
   kodeWeb: typeof kodeWeb;

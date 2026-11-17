@@ -476,8 +476,45 @@ export type KodeProjectMovesApi = {
   };
 };
 
+/** A scheduled prompt as Convex keeps it (attachments stay on the device). */
+export type MirroredScheduledPrompt = {
+  localId: string;
+  chatId: string;
+  chatTitle?: string;
+  text: string;
+  modelId: string;
+  mode: string;
+  reason: string;
+  fireAt: number;
+  createdAt: number;
+};
+
 export const api = anyApi as unknown as KodeConvexApi;
 export const projectMovesApi = anyApi as unknown as KodeProjectMovesApi;
+
+export type KodeContinuityApi = {
+  /** Continuity the desktop mirrors to Convex (kodeContinuity.ts). */
+  kodeContinuity: {
+    saveCliSession: FunctionReference<"mutation", "public", { chatId: string; instanceId: string; sessionId: string; device: string }, null>;
+    listCliSessions: FunctionReference<
+      "query",
+      "public",
+      Record<string, never>,
+      { chatId: string; instanceId: string; sessionId: string; device: string; updatedAt: number }[]
+    >;
+    upsertScheduledPrompt: FunctionReference<"mutation", "public", MirroredScheduledPrompt, null>;
+    removeScheduledPrompt: FunctionReference<"mutation", "public", { localId: string }, null>;
+    claimScheduledPrompt: FunctionReference<
+      "mutation",
+      "public",
+      { localId: string; device: string },
+      "claimed" | "taken" | "missing"
+    >;
+    listScheduledPrompts: FunctionReference<"query", "public", Record<string, never>, MirroredScheduledPrompt[]>;
+  };
+};
+
+export const continuityApi = anyApi as unknown as KodeContinuityApi;
 export const webhooksApi = anyApi as unknown as KodeWebhooksApi;
 export const tasksApi = anyApi as unknown as KontinueTasksApi;
 

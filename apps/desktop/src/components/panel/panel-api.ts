@@ -2,6 +2,25 @@
 // the existing project file commands.
 import { Channel, invoke } from "@tauri-apps/api/core";
 
+// While the workspace panel is dragged, heavy content (terminal refits, the
+// native browser view) waits for the release instead of resizing every frame.
+const PANEL_RESIZE_EVENT = "kontinue:panel-resize";
+let panelResizing = false;
+
+export const isPanelResizing = () => panelResizing;
+
+export function setPanelResizing(resizing: boolean) {
+  panelResizing = resizing;
+  window.dispatchEvent(new CustomEvent(PANEL_RESIZE_EVENT, { detail: resizing }));
+}
+
+/** Calls `listener(resizing)` when a panel drag starts or ends. */
+export function onPanelResize(listener: (resizing: boolean) => void): () => void {
+  const handler = (event: Event) => listener((event as CustomEvent<boolean>).detail);
+  window.addEventListener(PANEL_RESIZE_EVENT, handler);
+  return () => window.removeEventListener(PANEL_RESIZE_EVENT, handler);
+}
+
 export type GitFileStatus =
   | "modified"
   | "added"

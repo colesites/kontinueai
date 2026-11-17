@@ -1,203 +1,134 @@
+// Your own API keys (BYOK) for Kode's Anthropic / OpenAI / Agent Router models.
+//
+// Keys go one way: from Settings into the OS keychain (src-tauri lib.rs,
+// kode_byok_set_key). The web view never reads them back; Rust reads them
+// itself when it sends a request. Only whether a key is set, and the
+// non-secret Agent Router base URL, come back here.
+
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 
 export type ByokProvider = "anthropic" | "openai" | "agent_router";
 
-type ByokKeyStatus = {
-  provider: ByokProvider;
-  configured: boolean;
-};
+type ByokKeyStatus = { provider: string; configured: boolean };
 
 const BYOK_CHANGED_EVENT = "kode-byok-changed";
-const LOCAL_STORAGE_PREFIX = "kode-byok-key-";
-const LOCAL_STORAGE_BASE_URL_PREFIX = "kode-byok-base-url-";
-const LOCAL_STORAGE_SYSTEM_KEY_PREFIX = "kode-byok-system-key-";
+const DEFAULT_AGENT_ROUTER_URL = "https://co.agentrouter.org";
+
+// Older builds also kept keys in localStorage, in plain text.
+const LEGACY_PREFIXES = {
+  key: "kode-byok-key-",
+  baseUrl: "kode-byok-base-url-",
+  systemKey: "kode-byok-system-key-",
+} as const;
+
+function setSecret(name: string, value: string): Promise<void> {
+  return invoke("kode_byok_set_key", { provider: name, apiKey: value });
+}
 
 export async function saveByokKey(
   provider: ByokProvider,
   apiKey: string,
   baseUrl?: string,
-  systemKey?: string
+  systemKey?: string,
 ): Promise<void> {
   const cleanKey = apiKey.trim();
-  if (cleanKey.length < 8) {
-    throw new Error("API key must be at least 8 characters.");
-  }
-
-  // 1. Try saving to native OS keychain via Tauri
+  if (cleanKey.length < 8) throw new Error("API key must be at least 8 characters.");
   try {
-    await invoke("kode_byok_set_key", { provider, apiKey: cleanKey });
-    if (baseUrl && provider === "agent_router") {
-      await invoke("kode_byok_set_key", {
-        provider: "agent_router_base_url",
-        apiKey: baseUrl.trim(),
-      });
+    await setSecret(provider, cleanKey);
+    if (provider === "agent_router") {
+      if (baseUrl?.trim()) await setSecret("agent_router_base_url", baseUrl.trim());
+      if (systemKey?.trim()) await setSecret("agent_router_system_key", systemKey.trim());
     }
-    if (systemKey !== undefined && provider === "agent_router") {
-      await invoke("kode_byok_set_key", {
-        provider: "agent_router_system_key",
-        apiKey: systemKey.trim(),
-      });
-    }
-  } catch (err) {
-    console.warn("[byok] Tauri keychain set error (using local fallback):", err);
+  } catch (error) {
+    // No plain-text fallback: a key that can't go in the keychain isn't saved.
+    throw new Error(`Couldn't save the key in your keychain: ${String(error)}`);
   }
+  notifyByokChanged();
+}
 
-  // 2. Always persist to localStorage fallback so keys never vanish
+/** Agent Router's base URL and system key, keeping the saved API key. */
+export async function saveAgentRouterExtras(baseUrl?: string, systemKey?: string): Promise<void> {
   try {
-    localStorage.setItem(LOCAL_STORAGE_PREFIX + provider, cleanKey);
-    if (baseUrl && provider === "agent_router") {
-      localStorage.setItem(LOCAL_STORAGE_BASE_URL_PREFIX + provider, baseUrl.trim());
-    }
-    if (systemKey !== undefined && provider === "agent_router") {
-      localStorage.setItem(LOCAL_STORAGE_SYSTEM_KEY_PREFIX + provider, systemKey.trim());
-    }
-  } catch {
-    // ignore quota errors
+    if (baseUrl?.trim()) await setSecret("agent_router_base_url", baseUrl.trim());
+    if (systemKey?.trim()) await setSecret("agent_router_system_key", systemKey.trim());
+  } catch (error) {
+    throw new Error(`Couldn't save to your keychain: ${String(error)}`);
   }
-
   notifyByokChanged();
 }
 
 export async function removeByokKey(provider: ByokProvider): Promise<void> {
-  // 1. Try removing from native OS keychain
-  try {
-    await invoke("kode_byok_remove_key", { provider });
-    if (provider === "agent_router") {
-      await invoke("kode_byok_remove_key", { provider: "agent_router_base_url" });
-      await invoke("kode_byok_remove_key", { provider: "agent_router_system_key" });
-    }
-  } catch (err) {
-    console.warn("[byok] Tauri keychain remove error:", err);
-  }
-
-  // 2. Remove from localStorage fallback
-  try {
-    localStorage.removeItem(LOCAL_STORAGE_PREFIX + provider);
-    if (provider === "agent_router") {
-      localStorage.removeItem(LOCAL_STORAGE_BASE_URL_PREFIX + provider);
-      localStorage.removeItem(LOCAL_STORAGE_SYSTEM_KEY_PREFIX + provider);
-    }
-  } catch {
-    // ignore
-  }
-
+  const names = provider === "agent_router" ? [provider, "agent_router_base_url", "agent_router_system_key"] : [provider];
+  for (const name of names) await invoke("kode_byok_remove_key", { provider: name });
+  clearLegacy(provider);
   notifyByokChanged();
 }
 
-export async function getStoredByokKey(provider: ByokProvider): Promise<string | null> {
-  // 1. Try reading from native OS keychain
-  try {
-    const nativeKey = await invoke<string | null>("kode_byok_get_key", { provider });
-    if (nativeKey && nativeKey.trim().length >= 8) {
-      return nativeKey.trim();
-    }
-  } catch {
-    // fall back
-  }
-
-  // 2. Fall back to localStorage
-  try {
-    const localKey = localStorage.getItem(LOCAL_STORAGE_PREFIX + provider);
-    if (localKey && localKey.trim().length >= 8) {
-      return localKey.trim();
-    }
-  } catch {
-    // ignore
-  }
-
-  return null;
+/** The Agent Router base URL (not a secret, so Settings can show it). */
+export async function getAgentRouterBaseUrl(): Promise<string> {
+  const url = await invoke<string | null>("kode_byok_get_setting", { name: "agent_router_base_url" }).catch(() => null);
+  return url?.trim() || DEFAULT_AGENT_ROUTER_URL;
 }
 
-export async function getStoredBaseUrl(provider: ByokProvider): Promise<string> {
-  if (provider !== "agent_router") return "";
-
-  try {
-    const nativeUrl = await invoke<string | null>("kode_byok_get_key", {
-      provider: "agent_router_base_url",
-    });
-    if (nativeUrl && nativeUrl.trim().length > 0) return nativeUrl.trim();
-  } catch {
-    // ignore
-  }
-
-  try {
-    const localUrl = localStorage.getItem(LOCAL_STORAGE_BASE_URL_PREFIX + provider);
-    if (localUrl && localUrl.trim().length > 0) return localUrl.trim();
-  } catch {
-    // ignore
-  }
-
-  return "https://co.agentrouter.org";
+/** Which keys are saved: providers, plus "agent_router_system_key". */
+async function loadByokStatus(): Promise<Set<string>> {
+  await migrateLegacyKeys();
+  const statuses = await invoke<ByokKeyStatus[]>("kode_byok_status").catch(() => []);
+  return new Set(statuses.filter((status) => status.configured).map((status) => status.provider));
 }
 
-export async function getStoredSystemKey(provider: ByokProvider): Promise<string> {
-  if (provider !== "agent_router") return "";
-
+function clearLegacy(provider: ByokProvider) {
   try {
-    const nativeKey = await invoke<string | null>("kode_byok_get_key", {
-      provider: "agent_router_system_key",
-    });
-    if (nativeKey && nativeKey.trim().length > 0) return nativeKey.trim();
+    for (const prefix of Object.values(LEGACY_PREFIXES)) localStorage.removeItem(prefix + provider);
   } catch {
-    // ignore
+    // Storage unavailable: nothing to clear.
   }
-
-  try {
-    const localKey = localStorage.getItem(LOCAL_STORAGE_SYSTEM_KEY_PREFIX + provider);
-    if (localKey && localKey.trim().length > 0) return localKey.trim();
-  } catch {
-    // ignore
-  }
-
-  return "";
 }
 
-export async function loadByokProviders(): Promise<Set<ByokProvider>> {
-  const result = new Set<ByokProvider>();
+let migration: Promise<void> | null = null;
 
-  // Check Tauri native keychain
-  try {
-    const statuses = await invoke<ByokKeyStatus[]>("kode_byok_status");
-    for (const status of statuses) {
-      if (status.configured) result.add(status.provider);
-    }
-  } catch {
-    // ignore
-  }
-
-  // Check localStorage fallback
-  for (const provider of ["anthropic", "openai", "agent_router"] as ByokProvider[]) {
-    try {
-      const val = localStorage.getItem(LOCAL_STORAGE_PREFIX + provider);
-      if (val && val.trim().length >= 8) {
-        result.add(provider);
+/** Move keys an older build left in localStorage into the keychain, once. */
+function migrateLegacyKeys(): Promise<void> {
+  migration ??= (async () => {
+    for (const provider of ["anthropic", "openai", "agent_router"] as ByokProvider[]) {
+      let key: string | null = null;
+      let baseUrl: string | null = null;
+      let systemKey: string | null = null;
+      try {
+        key = localStorage.getItem(LEGACY_PREFIXES.key + provider);
+        baseUrl = localStorage.getItem(LEGACY_PREFIXES.baseUrl + provider);
+        systemKey = localStorage.getItem(LEGACY_PREFIXES.systemKey + provider);
+      } catch {
+        return;
       }
-    } catch {
-      // ignore
+      if (!key && !baseUrl && !systemKey) continue;
+      try {
+        if (key && key.trim().length >= 8) await setSecret(provider, key.trim());
+        if (provider === "agent_router" && baseUrl?.trim()) await setSecret("agent_router_base_url", baseUrl.trim());
+        if (provider === "agent_router" && systemKey?.trim()) await setSecret("agent_router_system_key", systemKey.trim());
+        clearLegacy(provider);
+      } catch {
+        // Keychain unavailable: leave it for the next launch rather than lose it.
+      }
     }
-  }
-
-  return result;
+  })();
+  return migration;
 }
 
 export function notifyByokChanged() {
   window.dispatchEvent(new Event(BYOK_CHANGED_EVENT));
 }
 
-export function useByokProviders() {
-  const [providers, setProviders] = useState<Set<ByokProvider>>(() => new Set());
-
+/** Saved keys, kept fresh when Settings changes them. */
+export function useByokStatus(): Set<string> {
+  const [status, setStatus] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      void loadByokProviders()
-        .then((next) => {
-          if (!cancelled) setProviders(next);
-        })
-        .catch(() => {
-          if (!cancelled) setProviders(new Set());
-        });
+      void loadByokStatus().then((next) => {
+        if (!cancelled) setStatus(next);
+      });
     };
     refresh();
     window.addEventListener(BYOK_CHANGED_EVENT, refresh);
@@ -206,8 +137,16 @@ export function useByokProviders() {
       window.removeEventListener(BYOK_CHANGED_EVENT, refresh);
     };
   }, []);
+  return status;
+}
 
-  return useMemo(() => providers, [providers]);
+/** Providers with a saved key. */
+export function useByokProviders(): Set<ByokProvider> {
+  const status = useByokStatus();
+  return useMemo(
+    () => new Set((["anthropic", "openai", "agent_router"] as ByokProvider[]).filter((p) => status.has(p))),
+    [status],
+  );
 }
 
 export function providerForByokModel(modelId: string): ByokProvider | null {
@@ -223,28 +162,8 @@ export const AGENT_ROUTER_SUPPORTED_MODELS = new Set([
 ]);
 
 export function canUseByokModel(modelId: string, providers: Set<ByokProvider>) {
-  // Agent Router ONLY unlocks the 3 specific supported models
-  if (providers.has("agent_router") && AGENT_ROUTER_SUPPORTED_MODELS.has(modelId)) {
-    return true;
-  }
-
+  // Agent Router unlocks only these models.
+  if (providers.has("agent_router") && AGENT_ROUTER_SUPPORTED_MODELS.has(modelId)) return true;
   const provider = providerForByokModel(modelId);
   return provider !== null && providers.has(provider);
-}
-
-export async function getActiveByokKeyForModel(
-  modelId: string
-): Promise<{ provider: ByokProvider; key: string } | null> {
-  if (AGENT_ROUTER_SUPPORTED_MODELS.has(modelId)) {
-    const arKey = await getStoredByokKey("agent_router");
-    if (arKey) return { provider: "agent_router", key: arKey };
-  }
-
-  const provider = providerForByokModel(modelId);
-  if (provider) {
-    const key = await getStoredByokKey(provider);
-    if (key) return { provider, key };
-  }
-
-  return null;
 }

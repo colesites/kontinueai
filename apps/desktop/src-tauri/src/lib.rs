@@ -12,6 +12,7 @@ mod git_hosts;
 mod triage;
 mod project_move;
 mod text_tool_markup;
+mod anthropic;
 mod bg_tasks;
 mod mcp;
 mod mcp_auth;
@@ -83,12 +84,8 @@ struct KodeChatRequest {
     // Kode system prompt. Built by the frontend skills system per request.
     #[serde(default)]
     system_context: Option<String>,
-    // Optional BYOK API key passed directly from client persistence fallback
-    #[serde(default)]
-    byok_key: Option<String>,
-    // Optional BYOK provider ID ("anthropic" | "openai" | "agent_router")
-    #[serde(default)]
-    byok_provider: Option<String>,
+    // BYOK keys are never sent over IPC: Rust reads them from the keychain
+    // when it builds the route (see resolve_model_route).
     // Optional thinking / reasoning toggle from the user
     #[serde(default)]
     reasoning_enabled: Option<bool>,
@@ -166,11 +163,7 @@ async fn kode_chat(
     request: KodeChatRequest,
     on_event: Channel<KodeStreamEvent>,
 ) -> Result<KodeChatResponse, String> {
-    let direct = resolve_model_route(
-        &request.model_id,
-        request.byok_key.as_deref(),
-        request.byok_provider.as_deref(),
-    );
+    let direct = resolve_model_route(&request.model_id);
     let is_byok_direct = matches!(&direct, Ok(route) if route.name.ends_with("(BYOK)"));
     let use_server = request.kontinue_server.unwrap_or(false) && !is_byok_direct;
     let route = if use_server {
@@ -211,9 +204,15 @@ async fn kode_chat(
     let response = loop {
         attempt += 1;
 
-        match client
-            .post(route.url)
-            .bearer_auth(&route.api_key)
+        // Routes that authenticate with `x-api-key` (Anthropic) carry their
+        // own headers; a Bearer token next to it is rejected.
+        let request = client.post(route.url);
+        let request = if route.headers.contains_key("x-api-key") {
+            request
+        } else {
+            request.bearer_auth(&route.api_key)
+        };
+        match request
             .headers(route.headers.clone())
             .json(&payload)
             .send()
@@ -288,6 +287,8 @@ async fn kode_chat(
     let mut saw_end = false;
     // The connection dropped after some of the reply arrived.
     let mut interrupted = false;
+    // Direct Anthropic replies: which content block is which tool call.
+    let mut anthropic_stream = anthropic::Stream::default();
 
     while let Some(chunk) = stream.next().await {
         let bytes = match chunk {
@@ -324,6 +325,50 @@ async fn kode_chat(
                 let Ok(value) = serde_json::from_str::<Value>(data) else {
                     continue;
                 };
+
+                if route.is_anthropic_native {
+                    for piece in anthropic_stream.event(&value) {
+                        match piece {
+                            anthropic::Piece::Text(text) => {
+                                push_content(&mut content, &mut streamed, &text, &on_event)
+                            }
+                            anthropic::Piece::Reasoning(text) => {
+                                if !text.is_empty() {
+                                    reasoning.push_str(&text);
+                                    let _ = on_event.send(KodeStreamEvent::Reasoning { delta: text });
+                                }
+                            }
+                            anthropic::Piece::ToolStart { slot, id, name } => {
+                                while tool_calls.len() <= slot {
+                                    tool_calls.push(ToolCallAccum::default());
+                                }
+                                tool_calls[slot].id = id;
+                                tool_calls[slot].name = name;
+                            }
+                            anthropic::Piece::ToolArguments { slot, json } => {
+                                if let Some(call) = tool_calls.get_mut(slot) {
+                                    call.arguments.push_str(&json);
+                                }
+                            }
+                            anthropic::Piece::Finish(reason) => {
+                                finish_reason = Some(reason);
+                                saw_end = true;
+                            }
+                            anthropic::Piece::Usage { input, output } => {
+                                usage = Some(KodeChatUsage {
+                                    input_tokens: input,
+                                    output_tokens: output,
+                                    reasoning_tokens: None,
+                                    total_tokens: Some(input.unwrap_or(0) + output.unwrap_or(0)),
+                                });
+                            }
+                            anthropic::Piece::Error(message) => {
+                                return Err(format!("{}: {message}", route.name));
+                            }
+                        }
+                    }
+                    continue;
+                }
 
                 if let Some(found) = extract_usage(value.get("usage")) {
                     usage = Some(found);
@@ -376,19 +421,7 @@ async fn kode_chat(
 
                 if let Some(delta) = delta {
                     if let Some(text) = delta.get("content").and_then(Value::as_str) {
-                        if !text.is_empty() {
-                            content.push_str(text);
-                            // Some models (DeepSeek) write tool calls as markup in
-                            // the text. Only stream what is safely before it, so
-                            // it never flashes on screen; it's parsed at the end.
-                            let safe = text_tool_markup::safe_prefix_len(&content);
-                            if safe > streamed {
-                                let _ = on_event.send(KodeStreamEvent::Content {
-                                    delta: content[streamed..safe].to_string(),
-                                });
-                                streamed = safe;
-                            }
-                        }
+                        push_content(&mut content, &mut streamed, text, &on_event);
                     }
                     if let Some(text) = delta
                         .get("reasoning")
@@ -487,6 +520,21 @@ async fn kode_chat(
     })
 }
 
+/// Add reply text and stream what is safe to show. Some models (DeepSeek)
+/// write tool calls as markup in the text, so only the part before any markup
+/// is streamed; it never flashes on screen and is parsed at the end.
+fn push_content(content: &mut String, streamed: &mut usize, text: &str, on_event: &Channel<KodeStreamEvent>) {
+    if text.is_empty() {
+        return;
+    }
+    content.push_str(text);
+    let safe = text_tool_markup::safe_prefix_len(content);
+    if safe > *streamed {
+        let _ = on_event.send(KodeStreamEvent::Content { delta: content[*streamed..safe].to_string() });
+        *streamed = safe;
+    }
+}
+
 // Exponential-ish backoff: ~400ms, 800ms, 1600ms between retries.
 async fn backoff(attempt: usize) {
     let millis = 400u64 * (1 << (attempt.saturating_sub(1)).min(3) as u64);
@@ -538,28 +586,7 @@ impl ModelRoute {
         }
 
         if self.is_anthropic_native {
-            let mut anthropic_messages = Vec::new();
-            for msg in messages {
-                if let Some(role) = msg.get("role").and_then(Value::as_str) {
-                    if role == "user" || role == "assistant" {
-                        let content = msg.get("content").unwrap_or(&json!("")).clone();
-                        anthropic_messages.push(json!({
-                            "role": role,
-                            "content": content
-                        }));
-                    }
-                }
-            }
-            let mut payload = json!({
-                "model": self.model_id,
-                "max_tokens": 8192,
-                "system": system_content,
-                "messages": anthropic_messages,
-            });
-            if stream {
-                payload["stream"] = json!(true);
-            }
-            return payload;
+            return anthropic::payload(&self.model_id, &system_content, messages, tools, anthropic::max_output(&self.model_id), stream);
         }
         let mut chat_messages: Vec<Value> = Vec::with_capacity(messages.len() + 1);
         chat_messages.push(json!({
@@ -626,20 +653,12 @@ fn is_agent_router_model(model_id: &str) -> bool {
     )
 }
 
-fn resolve_model_route(
-    model_id: &str,
-    request_byok_key: Option<&str>,
-    request_byok_provider: Option<&str>,
-) -> Result<ModelRoute, String> {
+fn resolve_model_route(model_id: &str) -> Result<ModelRoute, String> {
     // 1. AGENT ROUTER BYOK ROUTE:
     // Only route to Agent Router if the selected model is one of the 3 supported Agent Router models:
     // (anthropic/claude-opus-5, anthropic/claude-opus-4.8, openai/gpt-5.6-sol)
     if is_agent_router_model(model_id) {
-        let ar_key = if request_byok_provider == Some("agent_router") && request_byok_key.map(|k| !k.trim().is_empty()).unwrap_or(false) {
-            request_byok_key.map(ToString::to_string)
-        } else {
-            read_byok_key("agent_router")
-        };
+        let ar_key = read_byok_key("agent_router");
 
         if let Some(byok_key) = ar_key {
             let base_url = read_byok_key("agent_router_base_url")
@@ -738,14 +757,7 @@ fn resolve_model_route(
 
     // 2. DIRECT PROVIDER BYOK ROUTING FOR OPENAI / ANTHROPIC:
     let provider = gateway_provider(model_id);
-    let user_byok_key = provider.and_then(|p| {
-        if request_byok_provider == Some(p) && request_byok_key.map(|k| !k.trim().is_empty()).unwrap_or(false) {
-            request_byok_key.map(ToString::to_string)
-        } else {
-            read_byok_key(p)
-        }
-        .filter(|key| !key.trim().is_empty())
-    });
+    let user_byok_key = provider.and_then(read_byok_key);
 
     // DIRECT PROVIDER ROUTING FOR BYOK KEYS:
     // Bypasses third-party gateway proxies entirely so users connect directly to
@@ -777,14 +789,9 @@ fn resolve_model_route(
         }
 
         if provider_name == "anthropic" {
-            let raw_slug = model_id.strip_prefix("anthropic/").unwrap_or(model_id);
-            let model_slug = match raw_slug {
-                "claude-opus-5" => "claude-3-7-sonnet-20250219",
-                "claude-opus-4.8" => "claude-3-opus-20240229",
-                "claude-sonnet-4-20250514" => "claude-3-5-sonnet-20241022",
-                other => other,
-            }
-            .to_string();
+            // The model the user picked, under Anthropic's id. (This used to
+            // swap in older models, e.g. Claude 3.7 Sonnet for Opus 5.)
+            let model_slug = anthropic::model_id(model_id);
 
             let mut headers = reqwest::header::HeaderMap::new();
             headers.insert(
@@ -814,10 +821,7 @@ fn resolve_model_route(
 
     if is_gateway_model(model_id) {
         let byok = provider.and_then(|provider| {
-            request_byok_key
-                .map(ToString::to_string)
-                .or_else(|| read_byok_key(provider))
-                .map(|key| (provider.to_string(), key))
+            read_byok_key(provider).map(|key| (provider.to_string(), key))
         });
         return Ok(ModelRoute {
             name: "Vercel AI Gateway",
@@ -934,6 +938,31 @@ fn kontinue_set_base_url(url: String) -> Result<String, String> {
 }
 
 #[cfg(test)]
+mod safe_join_tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn writes_cannot_follow_a_symlink_out_of_the_project() {
+        let base = std::env::temp_dir().join(format!("kode-safe-join-{}", std::process::id()));
+        let project = base.join("project");
+        let outside = base.join("outside");
+        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        std::os::unix::fs::symlink(&outside, project.join("link")).unwrap();
+        let root = project.to_string_lossy().to_string();
+
+        assert!(safe_join_for_write(&root, "link/file.txt").is_err());
+        assert!(safe_join_for_write(&root, "link").is_err());
+        assert!(safe_join_for_write(&root, "src/new/file.txt").is_ok());
+        assert!(safe_join_for_write(&root, "../outside/file.txt").is_err());
+        // Reading through the link is still allowed.
+        assert!(safe_join(&root, "link/file.txt").is_ok());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+}
+
+#[cfg(test)]
 mod base_url_tests {
     use super::valid_base_url;
 
@@ -1044,7 +1073,7 @@ fn gateway_provider(model_id: &str) -> Option<&'static str> {
 
 #[tauri::command(async)]
 fn kode_byok_status() -> Vec<ByokKeyStatus> {
-    ["anthropic", "openai", "agent_router"]
+    ["anthropic", "openai", "agent_router", "agent_router_system_key"]
         .into_iter()
         .map(|provider| ByokKeyStatus {
             provider: provider.to_string(),
@@ -1091,9 +1120,14 @@ fn kode_byok_remove_key(provider: String) -> Result<(), String> {
     }
 }
 
+/// Non-secret BYOK settings the Settings page shows (the Agent Router base
+/// URL). API keys and the system key are never returned to the web view.
 #[tauri::command(async)]
-fn kode_byok_get_key(provider: String) -> Result<Option<String>, String> {
-    Ok(read_byok_key(&provider))
+fn kode_byok_get_setting(name: String) -> Result<Option<String>, String> {
+    match name.as_str() {
+        "agent_router_base_url" => Ok(read_byok_key(&name)),
+        _ => Err(format!("`{name}` is a secret and stays in the keychain.")),
+    }
 }
 
 fn openrouter_api_key() -> Result<String, String> {
@@ -1190,6 +1224,34 @@ fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
     Ok(result)
 }
 
+/// `safe_join` for anything that changes the disk (write, edit, create,
+/// rename, delete). The text of the path stays inside the project, but a
+/// symlink inside it can still point elsewhere (`docs -> /etc`), so resolve
+/// the deepest part that exists and check that too. Reads use plain
+/// `safe_join`: monorepo links (node_modules, workspace packages) often point
+/// outside the open folder and are fine to read.
+fn safe_join_for_write(root: &str, rel: &str) -> Result<PathBuf, String> {
+    let target = safe_join(root, rel)?;
+    let root_path = std::fs::canonicalize(root)
+        .map_err(|error| format!("Invalid project root '{root}': {error}"))?;
+    let mut existing = target.as_path();
+    let resolved = loop {
+        // `symlink_metadata` so a dangling link is caught, not skipped.
+        if existing.symlink_metadata().is_ok() {
+            break std::fs::canonicalize(existing)
+                .map_err(|error| format!("Could not resolve {rel}: {error}"))?;
+        }
+        match existing.parent() {
+            Some(parent) => existing = parent,
+            None => break root_path.clone(),
+        }
+    };
+    if !resolved.starts_with(&root_path) {
+        return Err(format!("{rel} points outside the project through a symlink, so Kode won't change it."));
+    }
+    Ok(target)
+}
+
 #[tauri::command(async)]
 fn kode_read_file(root: String, path: String) -> Result<String, String> {
     let target = safe_join(&root, &path)?;
@@ -1279,7 +1341,7 @@ fn kode_list_project_files(root: String) -> Result<Vec<String>, String> {
 
 #[tauri::command(async)]
 fn kode_write_file(root: String, path: String, content: String) -> Result<(), String> {
-    let target = safe_join(&root, &path)?;
+    let target = safe_join_for_write(&root, &path)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("Could not create directories for {path}: {error}"))?;
@@ -1319,7 +1381,7 @@ fn kode_save_attachment(root: String, filename: String, data: String) -> Result<
         "{ATTACHMENT_DIR}/{stamp}-{}",
         if safe.is_empty() { "attachment".to_string() } else { safe }
     );
-    let target = safe_join(&root, &rel)?;
+    let target = safe_join_for_write(&root, &rel)?;
     if let Some(parent) = target.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|error| format!("Could not create {ATTACHMENT_DIR}: {error}"))?;
@@ -1378,7 +1440,7 @@ fn kode_edit_file(
     new_string: String,
     replace_all: Option<bool>,
 ) -> Result<(), String> {
-    let target = safe_join(&root, &path)?;
+    let target = safe_join_for_write(&root, &path)?;
     let original = std::fs::read_to_string(&target)
         .map_err(|error| format!("Could not read {path}: {error}"))?;
     let occurrences = original.matches(&old_string).count();
@@ -1870,8 +1932,8 @@ async fn kode_run_command(
 /// Rename or move a file or folder inside the project. Never overwrites.
 #[tauri::command(async)]
 fn kode_rename_path(root: String, from: String, to: String) -> Result<(), String> {
-    let source = safe_join(&root, &from)?;
-    let target = safe_join(&root, &to)?;
+    let source = safe_join_for_write(&root, &from)?;
+    let target = safe_join_for_write(&root, &to)?;
     if !source.exists() {
         return Err(format!("{from} no longer exists."));
     }
@@ -1887,7 +1949,7 @@ fn kode_rename_path(root: String, from: String, to: String) -> Result<(), String
 /// Create an empty file or a folder inside the project. Never overwrites.
 #[tauri::command(async)]
 fn kode_create_entry(root: String, path: String, is_dir: bool) -> Result<(), String> {
-    let target = safe_join(&root, &path)?;
+    let target = safe_join_for_write(&root, &path)?;
     if target.exists() {
         return Err(format!("{path} already exists."));
     }
@@ -1908,7 +1970,7 @@ fn kode_create_entry(root: String, path: String, is_dir: bool) -> Result<(), Str
 /// Move a file or folder from the project to the Trash (recoverable).
 #[tauri::command(async)]
 fn kode_trash_path(root: String, path: String) -> Result<(), String> {
-    let target = safe_join(&root, &path)?;
+    let target = safe_join_for_write(&root, &path)?;
     if target == std::fs::canonicalize(&root).unwrap_or_default() {
         return Err("The project folder itself can't be deleted here.".into());
     }
@@ -1936,7 +1998,7 @@ fn kode_trash_path(root: String, path: String) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn kode_delete_file(root: String, path: String) -> Result<(), String> {
-    let target = safe_join(&root, &path)?;
+    let target = safe_join_for_write(&root, &path)?;
     if target.is_dir() {
         std::fs::remove_dir_all(&target)
             .map_err(|error| format!("Could not delete directory {path}: {error}"))
@@ -2171,7 +2233,7 @@ pub fn run() {
             ,kode_byok_status
             ,kode_byok_set_key
             ,kode_byok_remove_key
-            ,kode_byok_get_key
+            ,kode_byok_get_setting
             ,kode_import::kode_scan_coding_sessions
             ,kode_import::kode_read_coding_session
             ,kode_import::kode_project_state
@@ -2192,6 +2254,7 @@ pub fn run() {
             ,bg_tasks::kode_bg_clear_finished
             ,kode_mcp_server::kode_orch_write_state
             ,kode_mcp_server::kode_orch_take_inbox
+            ,kode_mcp_server::kode_orch_write_result
             ,kode_mcp_server::kode_mcp_server_command
             ,snapshot::kode_capture_snapshot
             ,kode_read_attachment

@@ -1,4 +1,5 @@
 import { BackgroundTasksSections } from "./BackgroundTasks";
+import { SubagentsSection } from "./SubagentsSection";
 import { isWorktreePath } from "@/lib/kode-branches";
 import { useState, type ComponentProps, type ReactNode } from "react";
 import { useQuery } from "convex/react";
@@ -28,6 +29,7 @@ import { api } from "@/lib/convex-api";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { useChatContext } from "@/lib/kode-chat-context";
 import { PlanUsageLimits, UsageBar } from "@/components/usage/KodeUsageCard";
+import { ModelPlanUsage } from "@/components/usage/ModelPlanUsage";
 import { cn } from "@/lib/utils";
 import { githubWebUrl, type GitStatus } from "./panel-api";
 import { ShipDialog } from "./ShipDialog";
@@ -187,7 +189,13 @@ export function EnvironmentTab({
               "Open a chat to see its context."
             )}
           </div>
-          <PlanUsageLimits onSeeAll={() => openSettings("usage")} />
+          {/* The plan the selected model counts toward: Kontinue's, or the
+              user's own agent's (Claude Code, Codex, Cursor…). */}
+          {context ? (
+            <ModelPlanUsage modelId={context.modelId} onSeeAll={() => openSettings("usage")} />
+          ) : (
+            <PlanUsageLimits onSeeAll={() => openSettings("usage")} />
+          )}
         </div>
       </Disclosure>
 
@@ -294,6 +302,9 @@ export function EnvironmentTab({
           <p className="py-1 text-label text-muted-foreground">{git.error ?? "Not a git repository."}</p>
         )}
       </Section>
+
+      {/* Sub-agents this chat's agent started (run_subagents). */}
+      <SubagentsSection Section={Section} Divider={Divider} />
 
       {/* Servers / background commands the agent started in this chat. */}
       <BackgroundTasksSections chatId={activeChatId} root={projectPath} Section={Section} Divider={Divider} />

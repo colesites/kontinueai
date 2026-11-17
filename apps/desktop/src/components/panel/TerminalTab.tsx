@@ -7,13 +7,24 @@ import { cn } from "@/lib/utils";
 import { envVarsFor } from "@/lib/kode-environments";
 import {
   errorText,
+  isPanelResizing,
   killTerminal,
+  onPanelResize,
   resizeTerminal,
   spawnTerminal,
   writeTerminal,
 } from "./panel-api";
 
-type Session = { key: number; title: string; cwd: string };
+type Session = {
+  key: number;
+  /** Shown as "Terminal N"; the lowest number not in use. */
+  number: number;
+  cwd: string;
+  /** Set by the user (double-click the tab). */
+  name?: string;
+  /** Set by the shell through its title escape sequence. */
+  shellTitle?: string;
+};
 
 const DARK_THEME: ITheme = {
   background: "#050506",
@@ -60,21 +71,38 @@ const isDark = () => document.documentElement.classList.contains("dark");
 export function TerminalTab({ projectPath, visible }: { projectPath: string; visible: boolean }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeKey, setActiveKey] = useState<number | null>(null);
+  const [renaming, setRenaming] = useState<number | null>(null);
   const nextKey = useRef(1);
+  const activeRef = useRef(activeKey);
+  activeRef.current = activeKey;
 
   const addSession = () => {
     const key = nextKey.current++;
-    setSessions((current) => [...current, { key, title: `Terminal ${key}`, cwd: projectPath }]);
+    setSessions((current) => {
+      // Reuse the lowest free number, so closing Terminal 2 frees "2".
+      const used = new Set(current.map((s) => s.number));
+      let number = 1;
+      while (used.has(number)) number++;
+      return [...current, { key, number, cwd: projectPath }];
+    });
     setActiveKey(key);
   };
 
   const closeSession = (key: number) => {
     setSessions((current) => {
+      const index = current.findIndex((s) => s.key === key);
+      if (index === -1) return current;
       const next = current.filter((s) => s.key !== key);
-      if (activeKey === key) setActiveKey(next[next.length - 1]?.key ?? null);
+      if (activeRef.current === key) {
+        // Activate the neighbour, like browser tabs.
+        setActiveKey((next[index] ?? next[index - 1])?.key ?? null);
+      }
       return next;
     });
   };
+
+  const updateSession = (key: number, patch: Partial<Session>) =>
+    setSessions((current) => current.map((s) => (s.key === key ? { ...s, ...patch } : s)));
 
   // Open the first terminal the first time the tab is shown.
   useEffect(() => {
@@ -85,29 +113,48 @@ export function TerminalTab({ projectPath, visible }: { projectPath: string; vis
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="no-scrollbar flex h-9 shrink-0 items-center gap-1 overflow-x-auto px-2">
-        {sessions.map((session) => (
-          <div
-            key={session.key}
-            className={cn(
-              "group flex h-7 shrink-0 items-center gap-1 rounded-full pr-1 pl-3 text-label transition-colors",
-              session.key === activeKey
-                ? "kontinue-menu-active"
-                : "text-muted-foreground kontinue-hover",
-            )}
-          >
-            <button type="button" className="cursor-pointer" onClick={() => setActiveKey(session.key)}>
-              {session.title}
-            </button>
-            <button
-              type="button"
-              aria-label={`Close ${session.title}`}
-              onClick={() => closeSession(session.key)}
-              className="flex size-5 cursor-pointer items-center justify-center rounded-full opacity-60 hover:opacity-100"
+        {sessions.map((session) => {
+          const title = sessionTitle(session);
+          return (
+            <div
+              key={session.key}
+              className={cn(
+                "group flex h-7 shrink-0 items-center gap-1 rounded-full pr-1 pl-3 text-label transition-colors",
+                session.key === activeKey
+                  ? "kontinue-menu-active"
+                  : "text-muted-foreground kontinue-hover",
+              )}
             >
-              <X size={11} />
-            </button>
-          </div>
-        ))}
+              {renaming === session.key ? (
+                <RenameInput
+                  initial={session.name ?? title}
+                  onDone={(name) => {
+                    if (name !== null) updateSession(session.key, { name: name || undefined });
+                    setRenaming(null);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  title="Double-click to rename"
+                  className="max-w-40 cursor-pointer truncate"
+                  onClick={() => setActiveKey(session.key)}
+                  onDoubleClick={() => setRenaming(session.key)}
+                >
+                  {title}
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={`Close ${title}`}
+                onClick={() => closeSession(session.key)}
+                className="flex size-5 cursor-pointer items-center justify-center rounded-full opacity-60 hover:opacity-100"
+              >
+                <X size={11} />
+              </button>
+            </div>
+          );
+        })}
         <button
           type="button"
           title="New terminal"
@@ -136,16 +183,43 @@ export function TerminalTab({ projectPath, visible }: { projectPath: string; vis
             key={session.key}
             cwd={session.cwd}
             visible={visible && session.key === activeKey}
-            onTitle={(title) =>
-              setSessions((current) =>
-                current.map((s) => (s.key === session.key ? { ...s, title } : s)),
-              )
-            }
+            onTitle={(shellTitle) => updateSession(session.key, { shellTitle })}
             onExit={() => closeSession(session.key)}
           />
         ))}
       </div>
     </div>
+  );
+}
+
+/** A name the user typed wins over the title the shell sets. */
+function sessionTitle(session: Session) {
+  return session.name ?? session.shellTitle ?? `Terminal ${session.number}`;
+}
+
+/** Inline tab rename: Enter saves, Escape cancels, an empty name resets. */
+function RenameInput({ initial, onDone }: { initial: string; onDone: (name: string | null) => void }) {
+  const [value, setValue] = useState(initial);
+  const done = useRef(false);
+  const finish = (name: string | null) => {
+    if (done.current) return;
+    done.current = true;
+    onDone(name);
+  };
+  return (
+    <input
+      autoFocus
+      value={value}
+      aria-label="Terminal name"
+      onFocus={(e) => e.currentTarget.select()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => finish(value.trim())}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") finish(value.trim());
+        else if (e.key === "Escape") finish(null);
+      }}
+      className="w-28 bg-transparent text-label text-foreground outline-none"
+    />
   );
 }
 
@@ -217,7 +291,7 @@ function TerminalView({
       if (ptyRef.current !== null) void resizeTerminal(ptyRef.current, cols, rows);
     });
 
-    const observer = new ResizeObserver(() => {
+    const refit = () => {
       if (host.offsetWidth > 0 && host.offsetHeight > 0) {
         try {
           fit.fit();
@@ -225,8 +299,16 @@ function TerminalView({
           // ignore transient layout states
         }
       }
+    };
+    // Refitting redraws the terminal and resizes the shell, so skip it while
+    // the panel is dragged and fit once on release.
+    const observer = new ResizeObserver(() => {
+      if (!isPanelResizing()) refit();
     });
     observer.observe(host);
+    const stopPanelResize = onPanelResize((resizing) => {
+      if (!resizing) refit();
+    });
 
     // Follow light/dark theme switches.
     const themeObserver = new MutationObserver(() => {
@@ -237,6 +319,7 @@ function TerminalView({
     return () => {
       disposed = true;
       observer.disconnect();
+      stopPanelResize();
       themeObserver.disconnect();
       input.dispose();
       title.dispose();

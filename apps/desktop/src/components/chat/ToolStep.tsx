@@ -1,7 +1,10 @@
 import { ChevronRight, FilePen, FilePlus, FileText, FolderOpen, Globe, Loader2, MessageCircleQuestion, Search, Sparkles, Terminal, Trash2, Wrench, type LucideIcon } from "lucide-react";
 import { useState } from "react";
 import type { KodeToolStep } from "@/lib/kode-agent";
+import { useFanOuts } from "@/lib/kode-fanout";
 import { cn } from "@/lib/utils";
+import { FanOutGroup, hasFanOut } from "./FanOutGroup";
+import { SubagentGroup, type SubagentItem } from "./SubagentGroup";
 
 function shellCommand(step: KodeToolStep) {
   if (typeof step.args.command === "string" && step.args.command.trim()) {
@@ -89,6 +92,12 @@ export function ToolStepView({ step }: { step: KodeToolStep; onApprove?: (id: st
     );
   }
 
+  // Kode's sub-agents: the live group while it's around this session.
+  // Also through Kontinue's MCP server: "mcp__kontinue__run_subagents".
+  if (/(^|__)run_subagents$/.test(step.name)) {
+    return <RunSubagentsStep step={step} status={status} />;
+  }
+
   if (command) {
     return <CommandBlock command={command} result={step.result} status={status} />;
   }
@@ -155,8 +164,108 @@ function ToolStepGroup({ steps }: { steps: KodeToolStep[] }) {
   );
 }
 
-/** Renders a list of tool steps, collapsing consecutive same-tool calls. */
+function RunSubagentsStep({ step, status }: { step: KodeToolStep; status: StepStatus }) {
+  const fanOuts = useFanOuts();
+  if (hasFanOut(fanOuts, step.args.task)) return <FanOutGroup task={String(step.args.task)} />;
+  return <ResultBlock name={step.name} description={step.description} result={step.result} status={status} />;
+}
+
+// ---------------------------------------------------------------------------
+// Sub-agents inside a CLI agent's turn. Their steps arrive in the same stream,
+// marked with the sub-agent they belong to: OpenCode sends "ses_…:call_…",
+// and Claude Code's are marked "<Task tool id>:<id>" (cli_agents.rs). Only
+// those two shapes count: other providers use ":" in ordinary ids
+// ("functions.read_file:0").
+// ---------------------------------------------------------------------------
+
+const SUBAGENT_ID = /^((?:ses|toolu)_[A-Za-z0-9]+):./;
+
+function subagentKey(step: KodeToolStep): string | null {
+  return step.id.match(SUBAGENT_ID)?.[1] ?? null;
+}
+
+/** OpenCode prefixes each sub-agent step with its task: "Review app (Kimi): read". */
+function splitTitle(description: string): [string | null, string] {
+  const at = description.lastIndexOf(": ");
+  return at > 0 ? [description.slice(0, at), description.slice(at + 2)] : [null, description];
+}
+
+type Entry = { kind: "step"; step: KodeToolStep } | { kind: "subagents"; items: SubagentItem[] };
+
+/** Main steps in order, with every sub-agent's steps gathered into one group
+ *  where the first of them appeared. */
+export function withSubagents(steps: KodeToolStep[]): Entry[] {
+  const byKey = new Map<string, KodeToolStep[]>();
+  for (const step of steps) {
+    const key = subagentKey(step);
+    if (key) byKey.set(key, [...(byKey.get(key) ?? []), step]);
+  }
+  if (byKey.size === 0) return steps.map((step) => ({ kind: "step", step }));
+
+  const parents = new Map(steps.filter((step) => byKey.has(step.id)).map((step) => [step.id, step]));
+  const items: SubagentItem[] = [...byKey.entries()].map(([key, children]) => {
+    const parent = parents.get(key);
+    const [title] = splitTitle(children[0].description);
+    const running = children.some((c) => c.state === "running") || parent?.state === "running";
+    const failed = !running && (parent?.state === "error" || children.every((c) => c.state === "error"));
+    const label = parent?.description || title || `Sub-agent ${key.slice(-6)}`;
+    return {
+      key,
+      label,
+      status: running ? "working" : failed ? "error" : "done",
+      detail: `${children.length} step${children.length === 1 ? "" : "s"}`,
+      children: (
+        <ToolStepList
+          steps={children.map((child) => ({ ...child, description: splitTitle(child.description)[1] }))}
+        />
+      ),
+    };
+  });
+
+  const entries: Entry[] = [];
+  let placed = false;
+  for (const step of steps) {
+    const isSub = subagentKey(step) !== null || parents.has(step.id);
+    // OpenCode's own "subagent" launcher rows say nothing the group doesn't.
+    const launcher = step.description === "subagent";
+    if (isSub || launcher) {
+      if (!placed) {
+        entries.push({ kind: "subagents", items });
+        placed = true;
+      }
+      continue;
+    }
+    entries.push({ kind: "step", step });
+  }
+  return entries;
+}
+
+/** Renders a list of tool steps, collapsing consecutive same-tool calls and
+ *  gathering sub-agents' steps into one group. */
 export function ToolStepList({ steps }: { steps: KodeToolStep[] }) {
+  // Runs of plain steps stay together so same-tool calls still collapse.
+  const blocks: ({ kind: "steps"; steps: KodeToolStep[] } | { kind: "subagents"; items: SubagentItem[] })[] = [];
+  for (const entry of withSubagents(steps)) {
+    const last = blocks[blocks.length - 1];
+    if (entry.kind === "subagents") blocks.push(entry);
+    else if (last?.kind === "steps") last.steps.push(entry.step);
+    else blocks.push({ kind: "steps", steps: [entry.step] });
+  }
+  return (
+    <>
+      {blocks.map((block, index) =>
+        block.kind === "subagents" ? (
+          <SubagentGroup key={`subagents-${index}`} items={block.items} />
+        ) : (
+          <PlainSteps key={block.steps[0].id} steps={block.steps} />
+        ),
+      )}
+    </>
+  );
+}
+
+/** Consecutive same-tool calls collapse into one counted row. */
+function PlainSteps({ steps }: { steps: KodeToolStep[] }) {
   const groups: KodeToolStep[][] = [];
   for (const step of steps) {
     const last = groups[groups.length - 1];

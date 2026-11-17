@@ -38,6 +38,7 @@ import {
 import {
   ACP_PRESETS,
   cliLoginCommand,
+  usesDataFolder,
   cliModelCatalog,
   cliPlanLabel,
   cliVersionIssue,
@@ -96,9 +97,9 @@ export function ProvidersSection() {
   const store = useCliStore();
   const providers = settings.kodeProviders;
   const [selected, setSelected] = useState<string>(() => providers[0]?.id ?? "claude");
-  const [adding, setAdding] = useState(false);
-  // "Add account" in Accounts: open the form already set to that provider.
-  const [addLike, setAddLike] = useState<ProviderInstance | null>(null);
+  // Opens the Add provider dialog. Its open state lives in AddProviderHost so
+  // opening it doesn't re-render this whole page (model lists and all).
+  const openAdd = useRef<AddProviderOpener | null>(null);
   const [tasks, setTasks] = useState<Record<string, TaskState>>({});
   const [now, setNow] = useState(() => Date.now());
 
@@ -185,10 +186,7 @@ export function ProvidersSection() {
         </div>
       </div>
 
-      <AccountSwitcher providers={providers} active={settings.kodeActiveAccounts ?? {}} statuses={store.statuses} onAdd={(like) => {
-          setAddLike(like);
-          setAdding(true);
-        }} />
+      <AccountSwitcher providers={providers} active={settings.kodeActiveAccounts ?? {}} statuses={store.statuses} onAdd={(like) => openAdd.current?.(like)} />
 
       <section className="liquid-glass-dropdown flex min-h-[540px] overflow-hidden !rounded-[20px]">
         {/* Instance list */}
@@ -226,7 +224,7 @@ export function ProvidersSection() {
           })}
           <button
             type="button"
-            onClick={() => setAdding(true)}
+            onClick={() => openAdd.current?.(null)}
             className="flex cursor-pointer items-center gap-2.5 px-3.5 py-3 text-body text-muted-foreground transition-colors kontinue-hover hover:text-foreground"
           >
             <span className="flex size-7 items-center justify-center">
@@ -272,13 +270,8 @@ export function ProvidersSection() {
         </div>
       </section>
 
-      <AddProviderDialog
-        open={adding}
-        onOpenChange={(next) => {
-          setAdding(next);
-          if (!next) setAddLike(null);
-        }}
-        like={addLike}
+      <AddProviderHost
+        openerRef={openAdd}
         onAdded={(id, installAgentId) => {
           setSelected(id);
           // Registry downloads start installing straight away.
@@ -289,6 +282,40 @@ export function ProvidersSection() {
         }}
       />
     </div>
+  );
+}
+
+/** "Add account" in Accounts passes the provider to copy; Add provider passes null. */
+type AddProviderOpener = (like: ProviderInstance | null) => void;
+
+function AddProviderHost({
+  openerRef,
+  onAdded,
+}: {
+  openerRef: React.MutableRefObject<AddProviderOpener | null>;
+  onAdded: (id: string, installAgentId?: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [like, setLike] = useState<ProviderInstance | null>(null);
+  useEffect(() => {
+    openerRef.current = (next) => {
+      setLike(next);
+      setOpen(true);
+    };
+    return () => {
+      openerRef.current = null;
+    };
+  }, [openerRef]);
+  return (
+    <AddProviderDialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) setLike(null);
+      }}
+      like={like}
+      onAdded={onAdded}
+    />
   );
 }
 
@@ -582,6 +609,14 @@ function InstanceDetail({
               label={instance.kind === "claude" ? "Config folder (CLAUDE_CONFIG_DIR)" : "CODEX_HOME"}
               description="Use a separate config and sign-in folder, for example a second account."
               placeholder={instance.kind === "claude" ? "~/.claude" : "~/.codex"}
+            />
+          ) : usesDataFolder(instance) ? (
+            <ConfigField
+              instance={instance}
+              field="homeDir"
+              label="Data folder (XDG_DATA_HOME)"
+              description="Where this account's OpenCode sign-ins and sessions live. Use a different folder for each account."
+              placeholder="~/.local/share"
             />
           ) : null}
           <ConfigField

@@ -158,7 +158,9 @@ export function AddProviderDialog({
     setCommand(
       next.kind !== "acp" ? "" : next.command ?? presetLaunch?.command ?? ACP_PRESETS[next.preset ?? "custom"].command,
     );
-    setAuthMethod(ACP_PRESETS[next.preset ?? "custom"].authMethods && !next.registry ? "oauth-personal" : "");
+    // The preset's first sign-in method (Gemini CLI: API key, as Google no
+    // longer lets personal accounts sign in there).
+    setAuthMethod(next.registry ? "" : ACP_PRESETS[next.preset ?? "custom"].authMethods?.[0]?.id ?? "");
   };
 
   const pickRegistry = (agent: RegistryAgent) => {
@@ -520,6 +522,13 @@ export function AddProviderDialog({
                       placeholder={choice.kind === "claude" ? "~/.claude-work" : "~/.codex-work"}
                       mono
                     />
+                  </Field>
+                ) : choice.kind === "acp" && choice.preset === "opencode" ? (
+                  <Field
+                    label="Data folder (XDG_DATA_HOME)"
+                    description="A separate folder keeps this OpenCode account's sign-in and sessions apart. Leave empty for your default account."
+                  >
+                    <TextInput value={homeDir} onChange={setHomeDir} placeholder="~/.opencode-work" mono />
                   </Field>
                 ) : null}
                 {!isAcp ? (

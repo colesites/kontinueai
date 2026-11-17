@@ -588,11 +588,12 @@ code:not(pre code) {
     inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
-/* Scrim behind every dialog. */
+/* Scrim behind every dialog. No backdrop blur: a full-window blur is
+   recomputed on every frame of the open animation and every repaint under it,
+   which made dialogs slow to appear on Intel Macs. A slightly deeper tint
+   gives the same separation. */
 .kontinue-scrim {
-  background-color: rgba(24, 21, 36, 0.32);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background-color: rgba(24, 21, 36, 0.4);
 }
 .dark .kontinue-scrim {
   background-color: rgba(0, 0, 0, 0.6);
