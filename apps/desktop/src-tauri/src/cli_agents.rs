@@ -1125,6 +1125,18 @@ fn kontinue_allowed_tools(mode: &str) -> String {
         .join(",")
 }
 
+/// Package-manager caches in your home folder that builds write to
+/// (only the ones that exist).
+fn codex_cache_roots() -> Vec<String> {
+    let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else { return Vec::new() };
+    [".cargo", ".rustup", ".npm", ".bun", ".pnpm-store", ".yarn", ".cache", ".gradle", ".m2", "go", "Library/Caches", "Library/pnpm"]
+        .iter()
+        .map(|dir| home.join(dir))
+        .filter(|dir| dir.is_dir())
+        .map(|dir| dir.to_string_lossy().to_string())
+        .collect()
+}
+
 fn codex_args(req: &CliRunRequest, mcp_overrides: &[String]) -> Vec<String> {
     let mut args = vec![
         "exec".to_string(),
@@ -1146,6 +1158,19 @@ fn codex_args(req: &CliRunRequest, mcp_overrides: &[String]) -> Vec<String> {
         "auto_edits" | "design" | "auto" => {
             args.push("--sandbox".to_string());
             args.push("workspace-write".to_string());
+            // Kode's Auto runs routine commands. In Codex's sandbox those need
+            // the network (git push, gh, package installs) and their caches
+            // outside the project, which are both off by default.
+            if req.mode == "auto" {
+                args.push("-c".to_string());
+                args.push("sandbox_workspace_write.network_access=true".to_string());
+                let roots = codex_cache_roots();
+                if !roots.is_empty() {
+                    let list: Vec<String> = roots.iter().map(|r| serde_json::to_string(r).unwrap_or_default()).collect();
+                    args.push("-c".to_string());
+                    args.push(format!("sandbox_workspace_write.writable_roots=[{}]", list.join(",")));
+                }
+            }
         }
         _ => {
             args.push("--sandbox".to_string());
@@ -1913,6 +1938,20 @@ fn claude_todos(input: &Value) -> Option<Vec<CliTodo>> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn codex_auto_gets_network_but_auto_edits_does_not() {
+        let req = |mode: &str| -> CliRunRequest {
+            serde_json::from_value(serde_json::json!({
+                "provider": "codex", "root": "/tmp", "prompt": "hi", "sessionId": null, "model": null, "mode": mode
+            }))
+            .unwrap()
+        };
+        let network = "sandbox_workspace_write.network_access=true".to_string();
+        assert!(codex_args(&req("auto"), &[]).contains(&network));
+        assert!(!codex_args(&req("auto_edits"), &[]).contains(&network));
+        assert!(codex_args(&req("full_access"), &[]).contains(&"--dangerously-bypass-approvals-and-sandbox".to_string()));
+    }
 
     #[test]
     fn codex_waits_longer_on_kontinue_tools() {
