@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { JsonLd } from "@/components/marketing/JsonLd";
-import { AppsSection } from "@/components/sections/AppsSection";
 import { FAQSection } from "@/components/sections/FAQSection";
 import { FeaturesSection } from "@/components/sections/FeaturesSection";
 import { FinalCTA } from "@/components/sections/FinalCTA";
@@ -8,24 +7,36 @@ import { HeroSection } from "@/components/sections/HeroSection";
 import { HowItWorksSection } from "@/components/sections/HowItWorksSection";
 import { PricingSection } from "@/components/sections/PricingSection";
 import { pricingTiers } from "@/data/pricing";
+import {
+	formatDownloads,
+	getDesktopRelease,
+	SHOW_DOWNLOADS_FROM,
+} from "@/lib/desktop-release";
 import { pageMetadata } from "@/lib/metadata";
 import { softwareSchema } from "@/lib/structured-data";
 
 export const metadata: Metadata = pageMetadata({
-	title: "Kontinue AI | Hit your AI limit? Keep going.",
+	title: "Continue ChatGPT, Claude and Claude Code After a Limit | Kontinue AI",
 	description:
-		"Out of messages on Claude or ChatGPT? Bring the conversation to Kontinue AI and continue with the full context on K-AI 1.0 or any leading model.",
+		"Out of messages in ChatGPT, Claude or Gemini, or rate-limited in Claude Code or Codex? Paste the share link and keep going with the full context.",
 	path: "/",
 });
 
-export default function Home() {
+export default async function Home() {
+	const release = await getDesktopRelease();
+	const desktop = {
+		version: release?.version ?? null,
+		downloads:
+			release && release.totalDownloads >= SHOW_DOWNLOADS_FROM
+				? formatDownloads(release.totalDownloads)
+				: null,
+	};
 	return (
 		<>
 			<JsonLd data={softwareSchema} />
-			<HeroSection />
+			<HeroSection desktop={desktop} />
 			<HowItWorksSection />
 			<FeaturesSection />
-			<AppsSection />
 			<PricingSection tiers={pricingTiers} />
 			<FAQSection />
 			<FinalCTA />

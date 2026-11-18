@@ -18,6 +18,11 @@ export const organizationSchema = {
 	url: SITE_URL,
 	logo: `${SITE_URL}/kontinueai-icon.png`,
 	description: product.positioning.short,
+	// The brand's own profiles, so it isn't confused with similarly named companies.
+	sameAs: [
+		...product.company.socialLinks.map((link) => link.href),
+		...product.company.profiles,
+	],
 	founder: founderSchema,
 	contactPoint: {
 		"@type": "ContactPoint",
@@ -42,7 +47,7 @@ export const softwareSchema = {
 	"@id": `${SITE_URL}/#software`,
 	name: product.company.name,
 	applicationCategory: "BusinessApplication",
-	operatingSystem: "Web",
+	operatingSystem: "Web, macOS, Windows, Linux",
 	url: SITE_URL,
 	description: product.positioning.long,
 	featureList: [

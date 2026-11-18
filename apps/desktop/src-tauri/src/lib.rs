@@ -960,6 +960,30 @@ mod safe_join_tests {
         assert!(safe_join(&root, "link/file.txt").is_ok());
         let _ = std::fs::remove_dir_all(&base);
     }
+
+    #[test]
+    fn absolute_and_dotted_paths_inside_the_project_resolve() {
+        let base = std::env::temp_dir().join(format!("kode-safe-join-abs-{}", std::process::id()));
+        let project = base.join("project");
+        std::fs::create_dir_all(project.join("src")).unwrap();
+        std::fs::write(project.join("src/a.ts"), "a").unwrap();
+        let root = project.to_string_lossy().to_string();
+        let canonical = std::fs::canonicalize(&project).unwrap();
+
+        let absolute = project.join("src/a.ts").to_string_lossy().to_string();
+        assert_eq!(safe_join(&root, &absolute).unwrap(), canonical.join("src/a.ts"));
+        assert_eq!(safe_join(&root, "src/../src/a.ts").unwrap(), canonical.join("src/a.ts"));
+        assert!(safe_join(&root, "../outside.txt").is_err());
+        assert!(safe_join(&root, "/etc/hosts").is_err());
+        let sneaky = format!("{root}/../outside.txt");
+        assert!(safe_join(&root, &sneaky).is_err());
+
+        // Only Full access reads outside the project.
+        assert!(read_target(&root, "/etc/hosts", false).unwrap_err().contains("Full access"));
+        assert_eq!(read_target(&root, "/etc/hosts", true).unwrap(), PathBuf::from("/etc/hosts"));
+        assert!(read_target(&root, "../outside.txt", true).is_err());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
 
 #[cfg(test)]
@@ -1201,20 +1225,41 @@ struct KodeFileEntry {
 
 // Resolve `rel` against the canonical project `root`, rejecting any path that
 // would escape it. Does not require the target to exist (so writes to new files
-// and nested dirs work), but forbids `..`, absolute paths, and drive prefixes.
+// and nested dirs work). Models often send absolute paths or `a/../b`: those
+// are fine as long as they land inside the project.
 fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
     let root_path = std::fs::canonicalize(root)
         .map_err(|error| format!("Invalid project root '{root}': {error}"))?;
+    let rel_path = std::path::Path::new(rel);
+    let inside = if rel_path.is_absolute() {
+        // The project as opened (`/tmp/x`) or resolved (`/private/tmp/x`), or an
+        // existing path that resolves into it through a link.
+        rel_path
+            .strip_prefix(&root_path)
+            .or_else(|_| rel_path.strip_prefix(root))
+            .map(std::path::Path::to_path_buf)
+            .ok()
+            .or_else(|| {
+                let resolved = std::fs::canonicalize(rel_path).ok()?;
+                resolved.strip_prefix(&root_path).ok().map(std::path::Path::to_path_buf)
+            })
+            .ok_or_else(|| format!("{rel} is outside the project folder ({}).", root_path.display()))?
+    } else {
+        rel_path.to_path_buf()
+    };
     let mut result = root_path.clone();
-    for component in std::path::Path::new(rel).components() {
+    for component in inside.components() {
         match component {
             Component::Normal(part) => result.push(part),
             Component::CurDir => {}
             Component::ParentDir => {
-                return Err("Path may not contain '..'".to_string());
+                if result == root_path {
+                    return Err(format!("{rel} is outside the project folder ({}).", root_path.display()));
+                }
+                result.pop();
             }
             Component::RootDir | Component::Prefix(_) => {
-                return Err("Absolute paths are not allowed".to_string());
+                return Err("Absolute paths must be inside the project folder".to_string());
             }
         }
     }
@@ -1222,6 +1267,19 @@ fn safe_join(root: &str, rel: &str) -> Result<PathBuf, String> {
         return Err("Path escapes the project root".to_string());
     }
     Ok(result)
+}
+
+/// Where a read goes. Full access may read anywhere on the computer (it can
+/// already run any command); other modes stay inside the project.
+fn read_target(root: &str, path: &str, anywhere: bool) -> Result<PathBuf, String> {
+    match safe_join(root, path) {
+        Ok(target) => Ok(target),
+        Err(_) if anywhere && std::path::Path::new(path).is_absolute() => Ok(PathBuf::from(path)),
+        Err(error) if std::path::Path::new(path).is_absolute() => {
+            Err(format!("{error} Switch Kode to Full access to read files outside the project."))
+        }
+        Err(error) => Err(error),
+    }
 }
 
 /// `safe_join` for anything that changes the disk (write, edit, create,
@@ -1253,14 +1311,14 @@ fn safe_join_for_write(root: &str, rel: &str) -> Result<PathBuf, String> {
 }
 
 #[tauri::command(async)]
-fn kode_read_file(root: String, path: String) -> Result<String, String> {
-    let target = safe_join(&root, &path)?;
+fn kode_read_file(root: String, path: String, anywhere: Option<bool>) -> Result<String, String> {
+    let target = read_target(&root, &path, anywhere.unwrap_or(false))?;
     std::fs::read_to_string(&target).map_err(|error| format!("Could not read {path}: {error}"))
 }
 
 #[tauri::command(async)]
-fn kode_list_dir(root: String, path: String) -> Result<Vec<KodeFileEntry>, String> {
-    let dir = safe_join(&root, &path)?;
+fn kode_list_dir(root: String, path: String, anywhere: Option<bool>) -> Result<Vec<KodeFileEntry>, String> {
+    let dir = read_target(&root, &path, anywhere.unwrap_or(false))?;
     let root_canon = std::fs::canonicalize(&root).map_err(|e| e.to_string())?;
     let mut entries = Vec::new();
     for entry in std::fs::read_dir(&dir).map_err(|error| format!("Could not list {path}: {error}"))? {

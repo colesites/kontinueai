@@ -570,26 +570,34 @@ export async function loadInstanceModels(instance: ProviderInstance): Promise<vo
     });
     const { [instance.id]: _, ...errors } = store.modelErrors;
     void _;
+    if (instance.kind === "acp") acpModelsLoadedAt[instance.id] = Date.now();
     setStore({ accountModels: { ...store.accountModels, [instance.id]: models }, modelErrors: errors });
   } catch (error) {
     setStore({ modelErrors: { ...store.modelErrors, [instance.id]: String(error) } });
   }
 }
 
-async function loadAccountModels(statuses: CliStatus[]) {
+/** Model lists rarely change, so background checks re-ask an ACP agent only this often. */
+const ACP_MODELS_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+const acpModelsLoadedAt: Record<string, number> = {};
+
+async function loadAccountModels(statuses: CliStatus[], force: boolean) {
   const jobs = getProviders()
     .filter((instance) => {
       const status = statuses.find((s) => s.instance === instance.id);
       if (!status?.installed) return false;
       if (instance.kind === "cursor") return status.loggedIn === true;
-      // ACP agents start a short test session, so only for enabled ones.
-      return instance.kind === "acp" && instance.enabled;
+      // ACP agents list models only from a test session, which can land in
+      // the agent's own history, so only for enabled ones and not on every check.
+      if (instance.kind !== "acp" || !instance.enabled) return false;
+      const loadedAt = acpModelsLoadedAt[instance.id];
+      return force || !store.accountModels[instance.id]?.length || !loadedAt || Date.now() - loadedAt > ACP_MODELS_MAX_AGE_MS;
     })
     .map(loadInstanceModels);
   await Promise.all(jobs);
 }
 
-function detectClis(): Promise<CliStatus[]> {
+function detectClis(force = false): Promise<CliStatus[]> {
   if (inflight) return inflight;
   setStore({ checking: true });
   inflight = invoke<CliStatus[]>("kode_cli_detect", {
@@ -598,7 +606,7 @@ function detectClis(): Promise<CliStatus[]> {
     .catch(() => [] as CliStatus[])
     .then(async (statuses) => {
       setStore({ statuses });
-      await loadAccountModels(statuses);
+      await loadAccountModels(statuses, force);
       setStore({ checkedAt: Date.now(), checking: false });
       return statuses;
     })
@@ -624,7 +632,7 @@ function scheduleHealthCheck() {
 /** Re-check every instance (install, version, sign-in, models) now. */
 export function refreshCliProviders(): Promise<CliStatus[]> {
   scheduleHealthCheck();
-  return detectClis();
+  return detectClis(true);
 }
 
 function subscribeStore(listener: () => void) {
@@ -815,6 +823,41 @@ async function kontinueMcp(chatId: string | null | undefined, root: string): Pro
   };
 }
 
+/** Each CLI agent's own checklist tool; its updates show as the plan in Kode. */
+const PLAN_TOOL: Record<ProviderKind, string> = {
+  claude: "the TodoWrite tool",
+  codex: "the update_plan tool",
+  cursor: "your todo list tool",
+  acp: "your plan or todo tool",
+};
+
+/** Modes where a CLI agent's commands that need approval are refused: it runs
+ *  non-interactively, so nobody can approve them mid-turn. */
+const REFUSES_COMMANDS = new Set(["supervised", "ask", "auto_edits", "design"]);
+
+/**
+ * Kontinue's working rules for a CLI agent's turn. Kode's own agent opens every
+ * multi-step task with a checklist that the user watches fill in; CLI agents
+ * have the same kind of tool but only use it when they feel like it, so each
+ * turn asks for it. In modes that refuse commands, a refused command is
+ * reported instead of retried over and over.
+ */
+export function withKontinueInstructions(kind: ProviderKind, mode: string, prompt: string): string {
+  const rules = [
+    `For any task with more than one step, your first action is a short checklist with ${PLAN_TOOL[kind]}, exactly one item in progress.`,
+    "Update it the moment each item finishes (mark it completed and the next one in progress), so the user sees live progress.",
+    "Do not end the turn while an item is still pending or in progress, unless you are deliberately dropping it.",
+    "Skip the checklist for a simple question or a one-step change.",
+  ];
+  if (REFUSES_COMMANDS.has(mode)) {
+    rules.push(
+      "In this mode, commands that need approval are refused automatically, because nobody can approve them during the run.",
+      "If one is refused, do not retry it or work around it: finish what you can, then list the commands for the user to run or suggest switching Kode to Auto or Full access.",
+    );
+  }
+  return `<kontinue-instructions>\n${rules.join(" ")}\n</kontinue-instructions>\n\n${prompt}`;
+}
+
 export async function runCliTurn({
   instance,
   root,
@@ -841,7 +884,7 @@ export async function runCliTurn({
       request: {
         provider: instance.kind,
         root,
-        prompt,
+        prompt: withKontinueInstructions(instance.kind, mode, prompt),
         sessionId,
         fork: fork && !!sessionId,
         model: model && model !== DEFAULT_MODEL.id ? model : null,

@@ -86,7 +86,7 @@ pub(crate) fn tool_list() -> Value {
         ),
         tool(
             "run_subagents",
-            "Send one task to several models at once. Each works in its own git branch and worktree with its own Kontinue chat, and the user sees them live. Use it when the user asks for sub-agents, several models, or to compare models. Each sub-agent starts fresh, so write a complete, self-contained task. Returns within about 45 seconds: the results if they finished, or an id to pass to wait_for_subagents.",
+            &format!("Send one task to several models at once. Each works in its own git branch and worktree with its own Kontinue chat, and the user sees them live. Use it when the user asks for sub-agents, several models, or to compare models. Each sub-agent starts fresh, so write a complete, self-contained task. Returns within about {}: the results if they finished, or an id to pass to wait_for_subagents.", wait_label(max_wait_secs())),
             json!({
                 "task": s("The full task each sub-agent should do."),
                 "models": { "type": "array", "items": { "type": "string" }, "description": "Model names or ids from list_models, as many as the user asked for." },
@@ -98,7 +98,7 @@ pub(crate) fn tool_list() -> Value {
         tool(
             "wait_for_subagents",
             "Wait for sub-agents started by run_subagents and get their status, or their results once they finish. Call again while they are still running.",
-            json!({ "id": s("The id run_subagents returned."), "wait_seconds": { "type": "number", "description": "How long to wait, up to 45 (default)." } }),
+            json!({ "id": s("The id run_subagents returned."), "wait_seconds": { "type": "number", "description": format!("How long to wait in seconds, up to {} (default).", max_wait_secs()) } }),
             &["id"],
         ),
         tool(
@@ -248,14 +248,14 @@ pub(crate) fn call_tool(name: &str, args: &Value, state: &Value) -> Result<Strin
                 "models": models,
                 "mode": arg(args, "mode"),
             }))?;
-            Ok(wait_for_result(&id, MAX_WAIT_SECS))
+            Ok(wait_for_result(&id, max_wait_secs()))
         }
         "wait_for_subagents" => {
             let id = arg(args, "id").ok_or("id is required")?;
             if !id.starts_with("req-") || id.contains(['/', '\\', '.']) {
                 return Err(format!("{id} isn't a sub-agent id from run_subagents."));
             }
-            let secs = args.get("wait_seconds").and_then(Value::as_u64).unwrap_or(MAX_WAIT_SECS).min(MAX_WAIT_SECS);
+            let secs = args.get("wait_seconds").and_then(Value::as_u64).unwrap_or(max_wait_secs()).min(max_wait_secs());
             Ok(wait_for_result(id, secs))
         }
         "handoff_context" => {
@@ -273,8 +273,24 @@ pub(crate) fn call_tool(name: &str, args: &Value, state: &Value) -> Result<Strin
     }
 }
 
-/// Longest a tool call blocks: some agents give up on tools after a minute.
-const MAX_WAIT_SECS: u64 = 45;
+/// Longest a tool call blocks unless the app says otherwise: some agents
+/// give up on a tool after about a minute.
+const DEFAULT_MAX_WAIT_SECS: u64 = 45;
+
+/// How long a call may block. The app raises it (KODE_MAX_WAIT_SECS) for
+/// agents whose tool timeout it also raises, so sub-agents can finish within
+/// one call instead of the model polling every 45 seconds.
+fn max_wait_secs() -> u64 {
+    std::env::var("KODE_MAX_WAIT_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map(|secs| secs.clamp(15, 3_600))
+        .unwrap_or(DEFAULT_MAX_WAIT_SECS)
+}
+
+fn wait_label(secs: u64) -> String {
+    if secs >= 120 { format!("{} minutes", secs / 60) } else { format!("{secs} seconds") }
+}
 
 /// Wait (up to `secs`) for the app to report on a sub-agent request, then
 /// describe it: the final report once done, else progress and the id.
@@ -282,9 +298,15 @@ fn wait_for_result(id: &str, secs: u64) -> String {
     let Some(path) = kode_dir().map(|dir| dir.join("results").join(format!("{id}.json"))) else {
         return "No home folder.".into();
     };
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+    let started = std::time::Instant::now();
+    let deadline = started + std::time::Duration::from_secs(secs);
     let mut last: Option<Value> = None;
     loop {
+        // Nothing picked it up within a minute: the app is likely closed, so
+        // say so now instead of blocking for the whole wait.
+        if last.is_none() && !path.exists() && started.elapsed() > std::time::Duration::from_secs(60) {
+            break;
+        }
         if let Some(result) = std::fs::read_to_string(&path).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) {
             if result.get("done").and_then(Value::as_bool) == Some(true) {
                 return result.get("report").and_then(Value::as_str).unwrap_or("Sub-agents finished.").to_string();

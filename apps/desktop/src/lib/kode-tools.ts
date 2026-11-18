@@ -369,11 +369,13 @@ export function isToolAllowedInMode(
   return true;
 }
 
-// Tool schema handed to the model. Paths are always relative to the project root.
+// Tool schema handed to the model. Paths are relative to the project root; an
+// absolute path inside the project also works, and in Full access reads may
+// use any absolute path.
 export function buildFileToolDefinitions(): KodeToolDefinition[] {
   const pathProp = {
     type: "string",
-    description: "Path relative to the project root. No leading slash, no '..'.",
+    description: "Path relative to the project root (an absolute path inside the project also works).",
   };
   return [
     {
@@ -602,8 +604,10 @@ export async function executeFileTool(
   toolName: string,
   args: ToolArgs,
   root: string,
-  scope: { chatId: string | null } = { chatId: null },
+  scope: { chatId: string | null; mode?: string } = { chatId: null },
 ): Promise<string> {
+  // Full access may read anywhere on the computer, as its commands can.
+  const anywhere = scope.mode === "full_access";
   switch (toolName) {
     case KODE_BG_START_TOOL: {
       const task = await invoke<BgTask>("kode_bg_start", {
@@ -634,11 +638,12 @@ export async function executeFileTool(
       return await invoke<string>("kode_read_file", {
         root,
         path: str(args, "path"),
+        anywhere,
       });
     case "list_dir": {
       const entries = await invoke<
         { name: string; path: string; is_dir: boolean }[]
-      >("kode_list_dir", { root, path: (args.path as string) ?? "" });
+      >("kode_list_dir", { root, path: (args.path as string) ?? "", anywhere });
       if (entries.length === 0) return "(empty directory)";
       return entries
         .map((e) => `${e.is_dir ? "[dir] " : "      "}${e.path}`)

@@ -58,6 +58,7 @@ import { addWorktree, isWorktreePath, threadBranch } from "@/lib/kode-branches";
 import { cleanLimitMarker, detectLimit } from "@/lib/kode-limits";
 import { describeHandoff } from "@/lib/kode-handoff";
 import { scrubHistory } from "@/lib/kode-secrets";
+import { linkTurnPrs } from "@/lib/kode-prs";
 import { condenseSteps, withSteps } from "@/lib/kode-steps";
 import { clearInterruptedTurn, getInterruptedTurn, interruptedTurnNote, ledgerFromSteps, recordInterruptedTurn } from "@/lib/kode-tool-ledger";
 import { buildSubagentTool } from "@/lib/kode-fanout";
@@ -201,6 +202,12 @@ export function createSubmitPrompt(deps: SubmitDeps) {
     // Everything below runs in this thread's folder (maybe a fresh worktree).
     const workspace = await workspaceForNewThread(text);
     const projectRoot = workspace.root;
+    // Link the PRs this turn opened, pushed to or merged, so the chat shows
+    // their status whichever agent ran it (in the background).
+    const linkPrsOfTurn = (chatId: string, steps: KodeToolStep[], reply: string) => {
+      const title = chatsRef.current.find((chat) => chat.id === chatId)?.title ?? "Kode chat";
+      void linkTurnPrs(chatId, title, projectRoot, steps, reply);
+    };
     const draftProjectId = workspace.projectId;
     // Approving a plan switches mode and sends in the same tick, so use the
     // override instead of the (not yet updated) state.
@@ -701,6 +708,7 @@ export function createSubmitPrompt(deps: SubmitDeps) {
           model: modelId,
           todos: latestTodos.length > 0 ? latestTodos : undefined,
         });
+        linkPrsOfTurn(chatId, [...turnSteps.values()], content);
         // The CLI counts its own prompt; our last provider total is stale.
         clearReportedChatContextUsage(chatId);
         dropRunItems(runKey);
@@ -882,6 +890,7 @@ export function createSubmitPrompt(deps: SubmitDeps) {
         tokens: response.tokensConsumed,
         todos: latestTodos.length > 0 ? latestTodos : undefined,
       });
+      linkPrsOfTurn(chatId, [...turnSteps.values()], response.content);
 
       const finishedId = chatId;
       if (response.usage) recordChatContextUsage(finishedId, response.usage);
@@ -927,6 +936,7 @@ export function createSubmitPrompt(deps: SubmitDeps) {
             model: modelId,
             todos: todos.length > 0 ? todos : undefined,
           });
+          linkPrsOfTurn(chatId, [...turnSteps.values()], reply?.content ?? "");
           clearInterruptedTurn(runKey);
           dropRunItems(runKey);
           notifyRunEvent({ chatId: runKey, kind: "failed", detail: cleanLimitMarker(message).slice(0, 140) });

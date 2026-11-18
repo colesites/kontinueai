@@ -1,12 +1,15 @@
 "use client";
 
-import { Menu, X } from "lucide-react";
+import { Menu, Star, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { appLinks } from "@/data/product";
+
+const REPO_URL = "https://github.com/colesites/kontinueai";
+
 import { getLenis, scrollToTarget } from "@/lib/scroll";
 
 const navLinks = [
@@ -17,7 +20,36 @@ const navLinks = [
 	{ href: "/blog", label: "Blog" },
 ];
 
-export function Header() {
+/** "★ 57k+ GitHub stars", linking to the repo. */
+function GitHubStars({
+	stars,
+	className,
+}: {
+	stars: string;
+	className?: string;
+}) {
+	return (
+		<a
+			href={REPO_URL}
+			target="_blank"
+			rel="noopener noreferrer"
+			aria-label={`${stars} GitHub stars`}
+			className={`inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground ${className ?? ""}`}
+		>
+			<Star
+				className="size-3.5 fill-amber-400 text-amber-400"
+				strokeWidth={1.5}
+			/>
+			<span className="font-semibold text-foreground tabular-nums">
+				{stars}
+			</span>
+			<span className="hidden sm:inline">GitHub stars</span>
+			<span className="sm:hidden">stars</span>
+		</a>
+	);
+}
+
+export function Header({ stars = null }: { stars?: string | null }) {
 	const pathname = usePathname();
 	const [scrolled, setScrolled] = useState(false);
 	const [mobileOpen, setMobileOpen] = useState(false);
@@ -109,6 +141,7 @@ export function Header() {
 				</nav>
 
 				<div className="hidden items-center gap-2 lg:flex">
+					{stars ? <GitHubStars stars={stars} className="mr-3" /> : null}
 					<Button asChild variant="ghost" size="sm">
 						<Link
 							href={appLinks.signIn}
@@ -129,9 +162,14 @@ export function Header() {
 					</Button>
 				</div>
 
+				{/* Phones and tablets: stars sit beside the menu button. */}
+				<div className="ml-auto flex items-center gap-3 lg:hidden">
+					{stars ? <GitHubStars stars={stars} /> : null}
+				</div>
+
 				<button
 					type="button"
-					className={`relative z-10 inline-flex size-10 items-center justify-center rounded-full text-foreground transition-colors lg:hidden ${
+					className={`relative z-10 ml-2 inline-flex size-10 items-center justify-center rounded-full text-foreground transition-colors lg:hidden ${
 						mobileOpen ? "bg-accent" : "hover:bg-accent"
 					}`}
 					aria-expanded={mobileOpen}

@@ -5,7 +5,7 @@
 // - Kode's own export (JSON, `format: "kontinue-session"`)
 // - A JSON array of {role, content} or {messages: [...]} (most chat exports)
 // - Markdown with "## User" / "## Assistant" headings (Kode export, Claude
-//   Code `/export`, Windsurf / Cursor "export chat"), or "> user:" style lines.
+//   Code `/export`, Cursor "export chat"), or "> user:" style lines.
 
 import { hashMessageContent, type CodingSession, type CodingSessionMessage } from "./kode-import";
 

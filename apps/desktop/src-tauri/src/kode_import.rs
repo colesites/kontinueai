@@ -427,6 +427,8 @@ fn internal_block_patterns() -> &'static Vec<Regex> {
             r"(?s)<command-message>.*?</command-message>",
             r"(?s)<command-args>.*?</command-args>",
             r"(?s)<task-notification>.*?</task-notification>",
+            // Kontinue's own working rules, added to prompts it sends to CLI agents.
+            r"(?s)<kontinue-instructions>.*?</kontinue-instructions>",
         ]
         .into_iter()
         .filter_map(|pattern| Regex::new(pattern).ok())

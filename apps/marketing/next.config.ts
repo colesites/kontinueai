@@ -4,6 +4,16 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
 	/* config options here */
 	reactCompiler: true,
+	// The desktop app shipped; old waitlist links go to the download page.
+	async redirects() {
+		return [
+			{
+				source: "/desktop-waitlist",
+				destination: "/download",
+				permanent: true,
+			},
+		];
+	},
 	images: {
 		remotePatterns: [
 			{

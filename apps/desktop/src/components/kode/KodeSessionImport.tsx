@@ -77,8 +77,8 @@ function projectRoleLabel(option: ProjectOption): string {
 }
 
 /**
- * "Import session" pill for the Kode hero. Opens a picker of local Claude Code
- * / Codex sessions, then a short confirm step that imports the transcript as a
+ * "Import session" pill for the Kode hero. Opens a picker of local coding
+ * agent sessions, then a short confirm step that imports the transcript as a
  * Kode chat with a continuation context bundle.
  */
 export default function KodeSessionImport({ projectPath, projectName }: KodeSessionImportProps) {
@@ -360,7 +360,7 @@ export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSe
             <div className="flex items-center justify-between gap-3 px-4 pt-4 pb-3">
               <div>
                 <h2 className="text-lead font-semibold text-foreground">Import a session</h2>
-                <p className="mt-0.5 text-label text-muted-foreground">Continue work from Claude Code, Codex, Cursor, Gemini CLI, OpenCode or Aider.</p>
+                <p className="mt-0.5 text-label text-muted-foreground">Continue work from Claude Code, Codex, Cursor, Gemini CLI, OpenCode, Antigravity or Aider.</p>
               </div>
               <IconButton label="Close" onClick={onClose}>
                 <X size={14} />
@@ -401,7 +401,7 @@ export function ImportSessionModal({ projectPath, projectName, onClose }: KodeSe
                 </EmptyState>
               ) : filtered.length === 0 ? (
                 <EmptyState>
-                  {query ? "No sessions match your search." : !scanAll && projectPath ? `No sessions for ${projectName ?? "this project"} yet.` : "No local sessions found. Start a Claude Code or Codex session, then rescan."}
+                  {query ? "No sessions match your search." : !scanAll && projectPath ? `No sessions for ${projectName ?? "this project"} yet.` : "No local sessions found. Start a session in a coding agent, then rescan."}
                   {!query && !scanAll && projectPath ? (
                     <button type="button" onClick={() => setScanAll(true)} className="mt-2 block w-full cursor-pointer text-purple-500 hover:underline">
                       Show all projects

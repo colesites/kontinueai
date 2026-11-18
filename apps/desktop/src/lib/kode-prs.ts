@@ -171,6 +171,42 @@ export function recordPrLinks(chatId: string, chatTitle: string, texts: string[]
   for (const listener of listeners) listener();
 }
 
+/** A command that publishes work, so the branch's PR belongs to the chat that ran it. */
+const SHIP_COMMAND = /\bgit\s+push\b|\bgh\s+pr\s+(?:create|merge|ready|edit|reopen)\b|\bglab\s+mr\b/;
+/** A merged PR found by branch counts only if it changed this recently (this turn, not an old PR on a reused branch name). */
+const RECENT_MERGE_MS = 60 * 60 * 1000;
+
+type TurnStep = { args?: unknown; result?: string; description?: string };
+
+function stepText(step: TurnStep): string {
+  const args = step.args && typeof step.args === "object" ? JSON.stringify(step.args) : "";
+  return [step.description ?? "", args, step.result ?? ""].join("\n");
+}
+
+/**
+ * Link the PRs a finished turn touched to its chat, whichever agent ran it.
+ * The URL can sit anywhere in a command's output (after `git push`'s own
+ * lines), and saved steps are cut short, so this reads the turn's full steps.
+ * A push to a branch that already has a PR prints no PR URL, so after any
+ * push or `gh pr` command the branch's own PR is looked up too.
+ */
+export async function linkTurnPrs(chatId: string, chatTitle: string, root: string | null, steps: TurnStep[], reply = "") {
+  const texts = [reply, ...steps.map(stepText)];
+  recordPrLinks(chatId, chatTitle, texts);
+  if (!root || !steps.some((step) => SHIP_COMMAND.test(stepText(step)))) return;
+  try {
+    const status = await invoke<{ branch: string | null }>("panel_git_status", { root });
+    if (!status.branch) return;
+    const prs = (await listPullRequests(root, "all")).filter((pr) => pr.headRefName === status.branch);
+    const pr =
+      prs.find((candidate) => candidate.state === "OPEN") ??
+      prs.find((candidate) => candidate.state === "MERGED" && Date.now() - Date.parse(candidate.updatedAt) < RECENT_MERGE_MS);
+    if (pr) recordPrLinks(chatId, chatTitle, [pr.url]);
+  } catch {
+    // No GitHub CLI or not signed in: the URL scan above is all there is.
+  }
+}
+
 export function usePrThreads(): Record<string, PrThread> {
   return useSyncExternalStore(
     (listener) => {

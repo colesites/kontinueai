@@ -875,7 +875,7 @@ async function handleToolCall(
   step.state = "running";
   ctx.onToolStep(step);
   try {
-    const output = await executeFileTool(name, args, ctx.projectRoot, { chatId: ctx.chatId ?? null });
+    const output = await executeFileTool(name, args, ctx.projectRoot, { chatId: ctx.chatId ?? null, mode: ctx.mode });
     step.state = "done";
     step.result = output;
     ctx.onToolStep(step);
