@@ -9,6 +9,7 @@ import { FolderOpen, MessageSquare, Pin, Trash2, X } from "lucide-react-native";
 import { ScreenHeader } from "@/components/screen-header";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
 
 export default function ProjectScreen() {
   const router = useRouter();
@@ -33,7 +34,9 @@ export default function ProjectScreen() {
             void deleteProject({ projectId })
               .then(() => router.replace("/" as Href))
               .catch(() =>
-                Alert.alert("Couldn't delete project", "Please try again."),
+                toast.error("Couldn't delete project", {
+                  description: "Please try again.",
+                }),
               );
           },
         },
@@ -48,7 +51,9 @@ export default function ProjectScreen() {
         text: "Remove",
         onPress: () => {
           assignChatToProject({ chatId, projectId: null }).catch(() =>
-            Alert.alert("Couldn't remove chat", "Please try again."),
+            toast.error("Couldn't remove chat", {
+              description: "Please try again.",
+            }),
           );
         },
       },
@@ -85,7 +90,7 @@ export default function ProjectScreen() {
 
         {project ? (
           <View className="mb-5 flex-row items-center gap-2">
-            <View className="rounded-full border border-border bg-secondary px-2.5 py-1">
+            <View className="rounded-full border border-foreground/8 bg-foreground/5 px-2.5 py-1">
               <Text className="text-[10.5px] font-medium capitalize text-muted-foreground">
                 {project.status.replace("_", " ")}
               </Text>
@@ -107,7 +112,7 @@ export default function ProjectScreen() {
             ))}
           </View>
         ) : chats.length === 0 ? (
-          <View className="items-center rounded-2xl border border-dashed border-border px-4 py-10">
+          <View className="items-center rounded-2xl border border-dashed border-foreground/8 px-4 py-10">
             <Icon as={FolderOpen} size={22} className="text-muted-foreground/60" />
             <Text className="mt-3 text-center text-[13px] leading-5 text-muted-foreground">
               No chats in this project yet. Move chats here from the sidebar
@@ -121,7 +126,7 @@ export default function ProjectScreen() {
               onPress={() => router.push(`/chat/${chat._id}` as Href)}
               className="h-13 flex-row items-center gap-3 rounded-xl px-2 py-2 active:bg-accent"
             >
-              <View className="h-9 w-9 items-center justify-center rounded-full bg-secondary">
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-foreground/5">
                 <Icon as={MessageSquare} size={15} className="text-muted-foreground" />
               </View>
               <Text numberOfLines={1} className="flex-1 text-[14.5px] text-foreground/90">

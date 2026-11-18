@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -11,19 +10,21 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useAuth } from "@clerk/expo";
+import { useAuth, useUser } from "@clerk/expo";
 import { type Href, useRouter } from "expo-router";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
-import type { Id } from "@repo/convex/convex/_generated/dataModel";
+import type { Doc, Id } from "@repo/convex/convex/_generated/dataModel";
 import {
   KODE_WEB_BUILD_CREDIT_RESERVATION,
   KODE_WEB_PLAN_CREDIT_RESERVATION,
 } from "@repo/core/kode-web";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import {
+  ArrowUpRight,
   Code2,
-  ExternalLink,
   FileCode2,
+  LoaderCircle,
   Paperclip,
   Plus,
   Sparkles,
@@ -31,10 +32,16 @@ import {
   X,
 } from "lucide-react-native";
 
+import { KodeAccessGate, KodeComingSoon } from "@/components/kode/kode-gates";
 import { ScreenHeader } from "@/components/screen-header";
 import { useTheme } from "@/components/theme-provider";
+import { FadeInUp } from "@/components/ui/glass";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
+import { useKodeComingSoon } from "@/hooks/use-kode-availability";
+import { usePlanTierState } from "@/hooks/use-plan-tier";
+import { AppError, readApiError, showAppErrorToast } from "@/lib/app-errors";
 import { API_BASE_URL } from "@/lib/chat-api";
 import {
   appendKodeAttachments,
@@ -43,17 +50,37 @@ import {
 } from "@/lib/kode-attachments";
 import { cn } from "@/lib/utils";
 
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  draft: { label: "Draft", color: "#94a3b8" },
-  building: { label: "Building", color: "#f59e0b" },
-  ready: { label: "Ready", color: "#22c55e" },
-  error: { label: "Needs attention", color: "#ef4444" },
-};
+const STARTERS = [
+  "Build a clean client portal for a creative agency",
+  "Create a personal finance dashboard with interactive budgets",
+  "Design a launch page for a developer tool",
+];
 
+/** Same gates as web /kode: availability first, then the Pro plan. */
 export default function KodeScreen() {
-  const { mutedForeground, primaryForeground } = useTheme();
+  const { comingSoon } = useKodeComingSoon();
+  const { tier, isLoaded } = usePlanTierState();
+  if (comingSoon) return <KodeComingSoon />;
+  if (!isLoaded) {
+    return (
+      <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
+        <ScreenHeader title="Kode" />
+        <View className="flex-1 items-center justify-center">
+          <ActivityIndicator />
+        </View>
+      </SafeAreaView>
+    );
+  }
+  if (!canAccessPlanFeature(tier, "kode")) return <KodeAccessGate />;
+  return <KodeDashboard />;
+}
+
+function KodeDashboard() {
+  const { mutedForeground, primaryForeground, primary } = useTheme();
   const router = useRouter();
   const { getToken } = useAuth();
+  const { user } = useUser();
+  const firstName = user?.firstName?.trim() || "there";
   const projects = useQuery(api.kodeWeb.listProjects, { limit: 30 });
   const credits = useQuery(api.kodeWeb.getCredits, {});
   const createProject = useMutation(api.kodeWeb.createProject);
@@ -87,22 +114,14 @@ export default function KodeScreen() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(result.error ?? "Kode could not queue the project.");
-      }
+      if (!response.ok) throw new AppError(await readApiError(response));
 
       setPrompt("");
       setAttachments([]);
       setComposerOpen(false);
       openWorkspace(projectId);
     } catch (error) {
-      const data = (error as { data?: { message?: string } })?.data;
-      Alert.alert(
-        "Couldn't create Kode project",
-        data?.message ??
-          (error instanceof Error ? error.message : "Please try again."),
-      );
+      showAppErrorToast(error);
       if (projectId) openWorkspace(projectId);
     } finally {
       setCreating(false);
@@ -112,7 +131,9 @@ export default function KodeScreen() {
   const attachFiles = async () => {
     const result = await pickKodeAttachments(attachments.length);
     if (result.rejected.length) {
-      Alert.alert("Some files weren't added", result.rejected.join("\n"));
+      toast.error("Some files weren't added", {
+        description: result.rejected.join("\n"),
+      });
     }
     if (result.attachments.length) {
       setAttachments((current) => [...current, ...result.attachments]);
@@ -124,17 +145,24 @@ export default function KodeScreen() {
       <ScreenHeader
         title="Kode"
         right={
-          credits?.isPro ? (
-            <Pressable
-              onPress={() => setComposerOpen(true)}
-              className="min-h-11 flex-row items-center gap-2 rounded-xl bg-primary px-3.5 active:opacity-90"
-            >
-              <Icon as={Plus} size={17} className="text-primary-foreground" />
-              <Text className="text-[13px] font-semibold text-primary-foreground">
-                New
-              </Text>
-            </Pressable>
-          ) : null
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="New Kode project"
+            onPress={() => setComposerOpen(true)}
+            className="h-9 flex-row items-center gap-1.5 rounded-full bg-primary px-3.5 active:opacity-90"
+            style={{
+              shadowColor: primary,
+              shadowOpacity: 0.35,
+              shadowRadius: 10,
+              shadowOffset: { width: 0, height: 4 },
+              elevation: 4,
+            }}
+          >
+            <Icon as={Plus} size={16} className="text-primary-foreground" />
+            <Text className="text-[13px] font-semibold text-primary-foreground">
+              New
+            </Text>
+          </Pressable>
         }
       />
 
@@ -143,165 +171,100 @@ export default function KodeScreen() {
         contentContainerClassName="gap-5 px-4 pb-12"
         showsVerticalScrollIndicator={false}
       >
-        <View className="overflow-hidden rounded-2xl border border-primary/25 bg-primary/8 p-4">
-          <View className="flex-row items-start gap-3">
-            <View className="h-11 w-11 items-center justify-center rounded-xl bg-primary/15">
-              <Icon as={Code2} size={21} className="text-primary" />
+        {/* Hero — web KodeDashboard greeting + starter prompts */}
+        <FadeInUp>
+          <View className="pt-2">
+            <View className="flex-row items-center gap-1.5">
+              <Icon as={Code2} size={13} className="text-primary" />
+              <Text className="text-[11px] font-semibold uppercase tracking-[2.5px] text-primary">
+                Kode
+              </Text>
             </View>
-            <View className="flex-1">
-              <Text className="text-[16px] font-semibold text-foreground">
-                Build with Kode
-              </Text>
-              <Text className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
-                Build, preview, edit, download, and refine complete web projects
-                without leaving the app.
-              </Text>
+            <Text className="mt-2 text-[28px] font-semibold leading-9 tracking-tight text-foreground">
+              What should we build, {firstName}?
+            </Text>
+            <Text className="mt-2 text-[13.5px] leading-5 text-muted-foreground">
+              Describe an app or site. Kode builds it, previews it live and hands
+              you the full source.
+            </Text>
+            <View className="mt-4 gap-2">
+              {STARTERS.map((starter) => (
+                <Pressable
+                  key={starter}
+                  accessibilityRole="button"
+                  onPress={() => {
+                    setPrompt(starter);
+                    setComposerOpen(true);
+                  }}
+                  className="flex-row items-center gap-3 rounded-2xl border border-foreground/8 bg-foreground/3 px-3.5 py-3 active:bg-foreground/7"
+                >
+                  <Icon as={Sparkles} size={14} className="text-primary" />
+                  <Text className="flex-1 text-[13px] leading-[18px] text-foreground/90">
+                    {starter}
+                  </Text>
+                  <Icon as={ArrowUpRight} size={14} className="text-muted-foreground/60" />
+                </Pressable>
+              ))}
             </View>
           </View>
-        </View>
+        </FadeInUp>
 
-        {credits === undefined ? (
-          <View className="h-20 items-center justify-center rounded-2xl bg-foreground/5">
-            <ActivityIndicator size="small" />
-          </View>
-        ) : !credits?.isPro ? (
-          <View className="items-center rounded-2xl border border-border bg-card px-5 py-10">
-            <View className="h-12 w-12 items-center justify-center rounded-2xl bg-primary/10">
-              <Icon as={Sparkles} size={22} className="text-primary" />
-            </View>
-            <Text className="mt-4 text-[16px] font-semibold text-foreground">
-              Kode is on Pro and Max
-            </Text>
-            <Text className="mt-2 text-center text-[12.5px] leading-5 text-muted-foreground">
-              Upgrade to create and iterate on complete web projects with K-AI.
-            </Text>
-            <Pressable
-              onPress={() => router.push("/pricing" as Href)}
-              className="mt-5 min-h-11 flex-row items-center gap-2 rounded-xl bg-primary px-4 active:opacity-90"
-            >
-              <Text className="text-[13px] font-semibold text-primary-foreground">
-                View plans
-              </Text>
-              <Icon
-                as={ExternalLink}
-                size={14}
-                className="text-primary-foreground"
-              />
-            </Pressable>
+        {credits ? (
+          <View className="flex-row gap-2">
+            <Metric label="Credits left" value={credits.remaining} />
+            <Metric
+              label="Builds this month"
+              value={`${credits.buildsUsed}/${credits.buildLimit}`}
+            />
           </View>
         ) : (
-          <>
-            <View className="flex-row gap-2">
-              <Metric label="Credits left" value={credits.remaining} />
-              <Metric
-                label="Builds used"
-                value={`${credits.buildsUsed}/${credits.buildLimit}`}
-              />
-            </View>
-
-            <View>
-              <View className="mb-3 flex-row items-center justify-between">
-                <Text className="text-[15px] font-semibold text-foreground">
-                  Your projects
-                </Text>
-                <Text className="text-[11.5px] text-muted-foreground">
-                  {projects?.length ?? 0} project
-                  {projects?.length === 1 ? "" : "s"}
-                </Text>
-              </View>
-              {projects === undefined ? (
-                <View className="gap-2">
-                  {[1, 2, 3].map((item) => (
-                    <View
-                      key={item}
-                      className="h-24 rounded-2xl bg-foreground/5"
-                    />
-                  ))}
-                </View>
-              ) : projects.length === 0 ? (
-                <Pressable
-                  onPress={() => setComposerOpen(true)}
-                  className="items-center rounded-2xl border border-dashed border-border px-5 py-12 active:bg-accent"
-                >
-                  <Icon
-                    as={FileCode2}
-                    size={23}
-                    className="text-muted-foreground"
-                  />
-                  <Text className="mt-3 text-[14px] font-medium text-foreground">
-                    Create your first project
-                  </Text>
-                  <Text className="mt-1.5 text-center text-[12px] text-muted-foreground">
-                    Describe what you want to build and Kode will prepare the
-                    workspace.
-                  </Text>
-                </Pressable>
-              ) : (
-                <View className="gap-2">
-                  {projects.map((project) => {
-                    const status =
-                      STATUS_META[project.status] ?? STATUS_META.draft!;
-                    return (
-                      <Pressable
-                        key={project._id}
-                        onPress={() => openWorkspace(project._id)}
-                        className="min-h-24 flex-row items-center gap-3 rounded-2xl border border-border bg-card p-3.5 active:bg-accent"
-                      >
-                        <View className="h-11 w-11 items-center justify-center rounded-xl bg-secondary">
-                          <Icon
-                            as={FileCode2}
-                            size={19}
-                            className="text-muted-foreground"
-                          />
-                        </View>
-                        <View className="min-w-0 flex-1">
-                          <View className="flex-row items-center gap-2">
-                            <Text
-                              numberOfLines={1}
-                              className="flex-1 text-[14px] font-semibold text-foreground"
-                            >
-                              {project.title}
-                            </Text>
-                            {project.starred ? (
-                              <Icon
-                                as={Star}
-                                size={13}
-                                className="text-amber-400"
-                              />
-                            ) : null}
-                          </View>
-                          <Text
-                            numberOfLines={2}
-                            className="mt-1 text-[11.5px] leading-4 text-muted-foreground"
-                          >
-                            {project.description}
-                          </Text>
-                          <View className="mt-2 flex-row items-center gap-1.5">
-                            <View
-                              className="h-1.5 w-1.5 rounded-full"
-                              style={{ backgroundColor: status.color }}
-                            />
-                            <Text
-                              className="text-[10.5px] font-medium"
-                              style={{ color: status.color }}
-                            >
-                              {status.label}
-                            </Text>
-                          </View>
-                        </View>
-                        <Icon
-                          as={Code2}
-                          size={16}
-                          className="text-muted-foreground/60"
-                        />
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              )}
-            </View>
-          </>
+          <View className="h-[74px] rounded-2xl bg-foreground/5" />
         )}
+
+        <View>
+          <View className="mb-3 flex-row items-center justify-between">
+            <Text className="text-[15px] font-semibold text-foreground">
+              Your projects
+            </Text>
+            <Text className="text-[11.5px] text-muted-foreground">
+              {projects?.length ?? 0} project{projects?.length === 1 ? "" : "s"}
+            </Text>
+          </View>
+          {projects === undefined ? (
+            <View className="gap-3">
+              {[1, 2].map((item) => (
+                <View key={item} className="h-56 rounded-[22px] bg-foreground/5" />
+              ))}
+            </View>
+          ) : projects.length === 0 ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setComposerOpen(true)}
+              className="items-center rounded-[22px] border border-dashed border-foreground/15 px-5 py-12 active:bg-foreground/4"
+            >
+              <View className="h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10">
+                <Icon as={FileCode2} size={21} className="text-primary" />
+              </View>
+              <Text className="mt-4 text-[15px] font-semibold text-foreground">
+                Create your first project
+              </Text>
+              <Text className="mt-1.5 text-center text-[12.5px] leading-[18px] text-muted-foreground">
+                Describe what you want to build and Kode will prepare the
+                workspace.
+              </Text>
+            </Pressable>
+          ) : (
+            <View className="gap-3">
+              {projects.map((project) => (
+                <KodeProjectCard
+                  key={project._id}
+                  project={project}
+                  onPress={() => openWorkspace(project._id)}
+                />
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
 
       <Modal
@@ -314,7 +277,10 @@ export default function KodeScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           className="flex-1 justify-end bg-black/55"
         >
-          <View className="rounded-t-3xl border-t border-border bg-background px-5 pb-10 pt-4">
+          <View className="rounded-t-[28px] border-t border-foreground/10 bg-popover px-5 pb-10 pt-3">
+            <View className="mb-3 items-center">
+              <View className="h-1 w-10 rounded-full bg-foreground/15" />
+            </View>
             <View className="mb-5 flex-row items-center justify-between">
               <View>
                 <Text className="text-[11px] font-semibold uppercase tracking-widest text-primary">
@@ -326,7 +292,9 @@ export default function KodeScreen() {
               </View>
               <Pressable
                 onPress={() => setComposerOpen(false)}
-                className="h-11 w-11 items-center justify-center rounded-xl bg-secondary"
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                className="h-9 w-9 items-center justify-center rounded-full border border-foreground/8 bg-foreground/5"
               >
                 <Icon as={X} size={18} className="text-muted-foreground" />
               </Pressable>
@@ -338,14 +306,15 @@ export default function KodeScreen() {
               maxLength={8000}
               placeholder="Describe the app or site you want to build…"
               placeholderTextColor={mutedForeground}
-              className="min-h-32 rounded-2xl border border-border bg-secondary px-4 py-3 text-[14px] leading-5 text-foreground"
+              textAlignVertical="top"
+              className="min-h-32 rounded-2xl border border-foreground/5 bg-foreground/4 px-4 py-3 text-[14.5px] leading-[21px] text-foreground"
             />
             <View className="mt-3 flex-row flex-wrap items-center gap-2">
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Attach code or text files"
                 onPress={() => void attachFiles()}
-                className="min-h-11 flex-row items-center gap-2 rounded-xl border border-border bg-secondary px-3"
+                className="min-h-10 flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/5 px-3.5 active:bg-foreground/10"
               >
                 <Icon
                   as={Paperclip}
@@ -399,7 +368,7 @@ export default function KodeScreen() {
                       "min-h-11 flex-1 items-center justify-center rounded-xl border px-3",
                       selected
                         ? "border-primary bg-primary/10"
-                        : "border-border bg-secondary",
+                        : "border-foreground/8 bg-foreground/4",
                     )}
                   >
                     <Text
@@ -418,7 +387,7 @@ export default function KodeScreen() {
               disabled={prompt.trim().length < 3 || creating}
               onPress={() => void create()}
               className={cn(
-                "mt-4 min-h-12 flex-row items-center justify-center gap-2 rounded-xl",
+                "mt-4 min-h-12 flex-row items-center justify-center gap-2 rounded-2xl",
                 prompt.trim().length >= 3 && !creating
                   ? "bg-primary"
                   : "bg-primary/35",
@@ -452,9 +421,108 @@ export default function KodeScreen() {
 
 function Metric({ label, value }: { label: string; value: string | number }) {
   return (
-    <View className="flex-1 rounded-2xl border border-border bg-card p-4">
-      <Text className="text-[19px] font-semibold text-foreground">{value}</Text>
+    <View className="flex-1 rounded-2xl border border-foreground/8 bg-card p-4">
+      <Text className="text-[20px] font-semibold tracking-tight text-foreground">{value}</Text>
       <Text className="mt-1 text-[11.5px] text-muted-foreground">{label}</Text>
     </View>
+  );
+}
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  building: "Building",
+  ready: "Ready",
+  error: "Needs attention",
+};
+
+/** Web KodeProjectCard: mini browser preview, version pill, title, status. */
+function KodeProjectCard({
+  project,
+  onPress,
+}: {
+  project: Doc<"kodeWebProjects">;
+  onPress: () => void;
+}) {
+  const { tokens } = useTheme();
+  const building = project.status === "building";
+  const failed = project.status === "error";
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${project.title}`}
+      onPress={onPress}
+      className="overflow-hidden rounded-[22px] border border-foreground/8 bg-card active:opacity-90"
+    >
+      <View
+        className="h-36 overflow-hidden border-b border-foreground/8"
+        style={{ backgroundColor: tokens.muted }}
+      >
+        <View
+          className="absolute overflow-hidden rounded-lg border border-foreground/10 bg-background"
+          style={{ left: "9%", right: "9%", top: "14%", bottom: "-10%" }}
+        >
+          <View className="h-5 flex-row items-center gap-1 border-b border-foreground/8 px-2">
+            <View className="h-1.5 w-1.5 rounded-full bg-primary/75" />
+            <View className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
+            <View className="h-1.5 w-1.5 rounded-full bg-foreground/20" />
+          </View>
+          <View className="flex-1 flex-row gap-2 p-2">
+            <View className="w-[28%] rounded bg-foreground/4" />
+            <View className="flex-1 gap-2 pt-1">
+              <View className="h-2 w-3/5 rounded-full bg-primary/55" />
+              <View className="h-1.5 w-4/5 rounded-full bg-foreground/10" />
+              <View className="flex-row gap-1.5 pt-1">
+                <View className="h-8 flex-1 rounded bg-foreground/5" />
+                <View className="h-8 flex-1 rounded bg-foreground/5" />
+              </View>
+            </View>
+          </View>
+        </View>
+        <View className="absolute right-3 top-3 flex-row items-center gap-1.5 rounded-full border border-foreground/10 bg-background/80 px-2 py-1">
+          <Icon
+            as={building ? LoaderCircle : Code2}
+            size={11}
+            className={building ? "text-primary" : "text-muted-foreground"}
+          />
+          <Text className="text-[10px] font-medium text-muted-foreground">
+            {building ? "Building" : `v${project.activeVersion}`}
+          </Text>
+        </View>
+      </View>
+      <View className="flex-row items-start gap-3 p-4">
+        <View className="min-w-0 flex-1">
+          <View className="flex-row items-center gap-1.5">
+            <Text numberOfLines={1} className="shrink text-[14.5px] font-semibold tracking-tight text-foreground">
+              {project.title}
+            </Text>
+            {project.starred ? (
+              <Icon as={Star} size={13} className="text-primary" fill={tokens.primary} />
+            ) : null}
+          </View>
+          {project.description ? (
+            <Text numberOfLines={2} className="mt-1 text-[12px] leading-[17px] text-muted-foreground">
+              {project.description}
+            </Text>
+          ) : null}
+          <View className="mt-2.5 flex-row items-center gap-1.5">
+            <View
+              className={cn(
+                "h-1.5 w-1.5 rounded-full",
+                failed ? "bg-destructive" : building ? "bg-primary" : "bg-muted-foreground/60",
+              )}
+            />
+            <Text
+              className={cn(
+                "text-[11px] font-medium",
+                failed ? "text-destructive" : building ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              {STATUS_LABEL[project.status] ?? "Draft"}
+            </Text>
+          </View>
+        </View>
+        <Icon as={ArrowUpRight} size={16} className="text-muted-foreground/60" />
+      </View>
+    </Pressable>
   );
 }

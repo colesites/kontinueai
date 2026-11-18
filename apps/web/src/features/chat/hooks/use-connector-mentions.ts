@@ -36,16 +36,5 @@ export function useConnectorMentions(): MentionItem[] {
 	}, [connectors]);
 }
 
-// Detect an in-progress "@token" immediately before the caret. Returns the
-// query text and the index of the "@" so callers can splice a replacement.
-export function detectMention(
-	text: string,
-	caret: number,
-): { query: string; start: number } | null {
-	const before = text.slice(0, caret);
-	const match = before.match(/(^|\s)@(\w*)$/);
-	if (!match) return null;
-	const query = match[2] ?? "";
-	const start = caret - query.length - 1; // index of '@'
-	return { query, start };
-}
+// Shared with the Expo composer through @repo/core.
+export { detectMention } from "@repo/core/chat-mentions";

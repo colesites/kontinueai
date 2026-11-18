@@ -3,7 +3,13 @@ import { Pressable, View } from "react-native";
 import { Link } from "expo-router";
 import { useSignUp } from "@clerk/expo";
 import * as Sentry from "@sentry/react-native";
-import { LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react-native";
+import {
+  Gift,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  UserRound,
+} from "lucide-react-native";
 
 import { Text } from "@/components/ui/text";
 import {
@@ -15,6 +21,11 @@ import { GoogleButton } from "@/components/auth/google-button";
 import { AuthScaffold } from "@/components/auth/auth-scaffold";
 import { AuthButton, AuthDivider } from "@/components/auth/auth-button";
 import { useGoogleOAuth } from "@/components/auth/use-google-oauth";
+import {
+  normalizeReferralCode,
+  readPendingReferralCode,
+  savePendingReferralCode,
+} from "@/lib/referral";
 
 const RESEND_COOLDOWN_SECONDS = 30;
 
@@ -62,6 +73,9 @@ export default function SignUpScreen() {
   } = useGoogleOAuth();
 
   const [name, setName] = React.useState("");
+  // Invite code: prefilled from an invite deep link, editable, and handed to
+  // the first account sync (web uses the /invite cookie for the same thing).
+  const [inviteCode, setInviteCode] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [code, setCode] = React.useState("");
@@ -72,6 +86,21 @@ export default function SignUpScreen() {
   const [error, setError] = React.useState<string | null>(null);
 
   const isSubmitting = fetchStatus === "fetching";
+
+  React.useEffect(() => {
+    let active = true;
+    void readPendingReferralCode().then((saved) => {
+      if (active && saved) setInviteCode((current) => current || saved);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const rememberInviteCode = () => {
+    const normalized = normalizeReferralCode(inviteCode);
+    if (normalized) void savePendingReferralCode(normalized);
+  };
 
   React.useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -121,6 +150,7 @@ export default function SignUpScreen() {
   };
 
   const handleSignUp = async () => {
+    rememberInviteCode();
     if (isSubmitting) return;
     setError(null);
 
@@ -320,6 +350,17 @@ export default function SignUpScreen() {
         editable={!isSubmitting && !isGoogleLoading}
       />
 
+      <AuthField
+        label="Invite code (optional)"
+        leadingIcon={Gift}
+        value={inviteCode}
+        onChangeText={(value) => setInviteCode(normalizeReferralCode(value))}
+        placeholder="From a friend's invite link"
+        autoCapitalize="characters"
+        autoCorrect={false}
+        editable={!isSubmitting && !isGoogleLoading}
+      />
+
       {error || googleError ? (
         <AuthError message={error ?? googleError ?? "Sign-up failed."} />
       ) : null}
@@ -335,7 +376,10 @@ export default function SignUpScreen() {
 
       <GoogleButton
         label="Continue with Google"
-        onPress={signInWithGoogle}
+        onPress={() => {
+          rememberInviteCode();
+          void signInWithGoogle();
+        }}
         disabled={isSubmitting || isGoogleLoading}
         loading={isGoogleLoading}
       />

@@ -18,6 +18,8 @@ import { api } from "@repo/convex/convex/_generated/api";
 import {
   Bot,
   ArrowUp,
+  Brain,
+  ImageIcon,
   AudioLines,
   Check,
   ChevronLeft,
@@ -29,11 +31,18 @@ import {
   Paperclip,
   Plug,
   Plus,
-  SendHorizontal,
   Square,
   X,
 } from "lucide-react-native";
 import { AGENTS } from "@repo/ai/lib/agents";
+import { AVAILABLE_MODELS } from "@repo/ai/lib/models";
+import { isKaiModel } from "@repo/ai/lib/kai";
+import {
+  getSupportedImageOptions,
+  IMAGE_ASPECT_OPTIONS,
+  IMAGE_SIZE_OPTIONS,
+} from "@repo/core/chat-image-options";
+import { useModelCapabilities } from "@repo/core/use-model-capabilities";
 
 import {
   ModelSelector,
@@ -52,17 +61,13 @@ import {
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
 import type { PendingAttachment } from "@/lib/chat-attachments";
+import { useIsProPlan } from "@/hooks/use-plan-tier";
+import { useReasoningPreference } from "@/hooks/use-reasoning-preference";
+import { ConnectorLogo, connectorDef } from "@/components/connectors/catalog";
+import { applyMention, detectMention } from "@repo/core/chat-mentions";
 
-const CONNECTOR_NAMES: Record<string, string> = {
-  github: "GitHub",
-  notion: "Notion",
-  vercel: "Vercel",
-  gmail: "Gmail",
-  google_calendar: "Google Calendar",
-  google_drive: "Google Drive",
-  google_sheets: "Google Sheets",
-  todoist: "Todoist",
-};
+const connectorName = (provider: string) =>
+  connectorDef(provider)?.name ?? provider;
 
 /* ─── Animated Glow Rail ──────────────────────────────────────────────
    React Native replica of the web's `glow-rail` CSS utility
@@ -201,6 +206,13 @@ type ChatInputProps = {
   /** Agent persona switcher in the "+" menu (drill-in, like web). */
   agentId?: string | null;
   onAgentChange?: (agentId: string | null) => void;
+  /**
+   * Image aspect / size for image-generation models (web
+   * ChatInputImageOptions). Hidden when no handler is passed.
+   */
+  imageAspectRatio?: string;
+  imageSize?: string | null;
+  onImageOptionsChange?: (aspectRatio: string, size: string | null) => void;
 };
 
 /** Composer — mirrors the web ChatInput (glass dock + "+" tools menu). */
@@ -224,6 +236,9 @@ export function ChatInput({
   onWebSearchToggle,
   agentId = null,
   onAgentChange,
+  imageAspectRatio = "auto",
+  imageSize = null,
+  onImageOptionsChange,
 }: ChatInputProps) {
   const { isDark, primary, mutedForeground } = useTheme();
   const router = useRouter();
@@ -235,11 +250,34 @@ export function ChatInput({
     transform: [{ scale: actionScale.value }],
   }));
   // Drill-in navigation inside the "+" menu, mirroring web's ChatInputTools.
-  const [menuView, setMenuView] = useState<"root" | "agents" | "connectors">(
-    "root",
-  );
+  const [menuView, setMenuView] = useState<
+    "root" | "agents" | "connectors" | "image"
+  >("root");
   const plusMenu = useDropdown();
   const connectors = useQuery(api.connectors.listConnectors, {});
+  const isPaidPlan = useIsProPlan();
+  const { getCapabilities } = useModelCapabilities();
+  const { reasoningEnabled, toggleReasoning } = useReasoningPreference();
+  // Same rules as web ChatInput: thinking for reasoning-capable models (and
+  // K-AI), image options for paid plans on image-generation models.
+  const modelKnown = AVAILABLE_MODELS.some((m) => m.id === selectedModel);
+  const capabilities = modelKnown ? getCapabilities(selectedModel) : [];
+  const canReason = isKaiModel(selectedModel) || capabilities.includes("thinking");
+  const canGenerateImage =
+    !!onImageOptionsChange &&
+    isPaidPlan &&
+    capabilities.includes("image-generation");
+  const supportedImage = getSupportedImageOptions(selectedModel);
+  const imageAspectOptions = IMAGE_ASPECT_OPTIONS.filter((o) =>
+    supportedImage.aspectRatios.has(o.value),
+  );
+  const imageSizeOptions = IMAGE_SIZE_OPTIONS.filter((o) =>
+    supportedImage.sizes.has(o.value),
+  );
+  const imageOptionLabel = imageSize
+    ? (IMAGE_SIZE_OPTIONS.find((o) => o.value === imageSize)?.label ?? imageSize)
+    : (IMAGE_ASPECT_OPTIONS.find((o) => o.value === imageAspectRatio)?.label ??
+      "Auto");
 
   const value = controlledValue ?? internalValue;
   const setValue = onChangeText ?? setInternalValue;
@@ -249,8 +287,38 @@ export function ChatInput({
   const activeAgent = AGENTS.find((a) => a.id === agentId) ?? null;
   const connectedConnectors =
     connectors?.filter(
-      (connector) => connector.connected && CONNECTOR_NAMES[connector.provider],
+      (connector) => connector.connected && connectorDef(connector.provider),
     ) ?? [];
+
+  // Inline "@" mentions, like web's MentionMenu: typing "@" (optionally plus a
+  // few letters) right before the caret lists matching connected connectors.
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const [forcedSelection, setForcedSelection] = useState<
+    { start: number; end: number } | undefined
+  >(undefined);
+  const mention =
+    isFocused && selection.start === selection.end
+      ? detectMention(value, selection.start)
+      : null;
+  const mentionQuery = mention?.query.toLowerCase() ?? "";
+  const mentionItems = mention
+    ? connectedConnectors.filter((connector) => {
+        const name = connectorName(connector.provider).toLowerCase();
+        return (
+          !mentionQuery ||
+          connector.provider.includes(mentionQuery) ||
+          name.includes(mentionQuery)
+        );
+      })
+    : [];
+  const selectMention = (provider: string) => {
+    if (!mention) return;
+    const next = applyMention(value, mention, provider);
+    setValue(next.text);
+    const caret = { start: next.caret, end: next.caret };
+    setSelection(caret);
+    setForcedSelection(caret);
+  };
 
   const submit = () => {
     if (!canSend) return;
@@ -291,6 +359,16 @@ export function ChatInput({
         padding: BORDER_WIDTH,
       }}
     >
+      {mentionItems.length > 0 ? (
+        <MentionMenu
+          items={mentionItems.map((connector) => ({
+            provider: connector.provider,
+            name: connectorName(connector.provider),
+            accountLabel: connector.accountLabel ?? undefined,
+          }))}
+          onSelect={selectMention}
+        />
+      ) : null}
       <GlowRail isFocused={isFocused} />
       <GlassView
         intensity={45}
@@ -364,6 +442,11 @@ export function ChatInput({
         <TextInput
           value={value}
           onChangeText={setValue}
+          selection={forcedSelection}
+          onSelectionChange={(event) => {
+            setSelection(event.nativeEvent.selection);
+            if (forcedSelection) setForcedSelection(undefined);
+          }}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder={isListening ? "Listening…" : placeholder}
@@ -522,6 +605,31 @@ export function ChatInput({
                   }}
                 />
               ) : null}
+              {canReason ? (
+                <DropdownItem
+                  icon={Brain}
+                  label={reasoningEnabled ? "Thinking (On)" : "Thinking (Off)"}
+                  active={reasoningEnabled}
+                  onPress={() => {
+                    toggleReasoning();
+                    closeMenu();
+                  }}
+                />
+              ) : null}
+              {canGenerateImage ? (
+                <DropdownItem
+                  icon={ImageIcon}
+                  label={`Image: ${imageOptionLabel}`}
+                  onPress={() => setMenuView("image")}
+                  trailing={
+                    <Icon
+                      as={ChevronRight}
+                      size={14}
+                      className="text-muted-foreground/60"
+                    />
+                  }
+                />
+              ) : null}
               {onAttachFile ? (
                 <DropdownItem
                   icon={Paperclip}
@@ -614,6 +722,65 @@ export function ChatInput({
               ))}
             </>
           ) : null}
+          {plusMenu.visible && menuView === "image" ? (
+            <>
+              <DropdownItem
+                icon={ChevronLeft}
+                label="Back"
+                onPress={() => setMenuView("root")}
+              />
+              <DropdownSeparator />
+              <Text className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                Aspect ratio
+              </Text>
+              {imageAspectOptions.map((option) => {
+                const selected = !imageSize && imageAspectRatio === option.value;
+                return (
+                  <DropdownItem
+                    key={option.value}
+                    label={option.label}
+                    active={selected}
+                    onPress={() => {
+                      onImageOptionsChange?.(option.value, null);
+                      closeMenu();
+                    }}
+                    trailing={
+                      selected ? (
+                        <Icon as={Check} size={14} className="text-primary" />
+                      ) : undefined
+                    }
+                  />
+                );
+              })}
+              {imageSizeOptions.length > 0 ? (
+                <>
+                  <DropdownSeparator />
+                  <Text className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                    Size
+                  </Text>
+                  {imageSizeOptions.map((option) => {
+                    const selected = imageSize === option.value;
+                    return (
+                      <DropdownItem
+                        key={option.value}
+                        label={option.label}
+                        active={selected}
+                        onPress={() => {
+                          onImageOptionsChange?.("auto", option.value);
+                          closeMenu();
+                        }}
+                        trailing={
+                          selected ? (
+                            <Icon as={Check} size={14} className="text-primary" />
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })}
+                </>
+              ) : null}
+            </>
+          ) : null}
           {plusMenu.visible && menuView === "connectors" ? (
             <>
               <DropdownItem
@@ -626,9 +793,7 @@ export function ChatInput({
                 <DropdownItem
                   key={connector.provider}
                   icon={Plug}
-                  label={
-                    CONNECTOR_NAMES[connector.provider] ?? connector.provider
-                  }
+                  label={connectorName(connector.provider)}
                   onPress={() => insertConnectorMention(connector.provider)}
                   trailing={
                     connector.accountLabel ? (
@@ -661,6 +826,73 @@ export function ChatInput({
           selectedModel={selectedModel}
           onSelect={onModelChange}
         />
+      </GlassView>
+    </View>
+  );
+}
+
+/** Web MentionMenu: glass list of connected connectors above the composer. */
+function MentionMenu({
+  items,
+  onSelect,
+}: {
+  items: { provider: string; name: string; accountLabel?: string }[];
+  onSelect: (provider: string) => void;
+}) {
+  const { isDark } = useTheme();
+  return (
+    <View
+      style={{
+        position: "absolute",
+        bottom: "100%",
+        left: 8,
+        width: 260,
+        marginBottom: 8,
+        zIndex: 50,
+        elevation: 12,
+        borderRadius: 14,
+        shadowColor: "#000",
+        shadowOpacity: 0.35,
+        shadowRadius: 18,
+        shadowOffset: { width: 0, height: 8 },
+      }}
+    >
+      <GlassView
+        intensity={50}
+        style={{
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)",
+          backgroundColor: isDark ? "rgba(12,9,12,0.86)" : "rgba(255,251,253,0.9)",
+          padding: 4,
+        }}
+      >
+        <Text className="px-2 pb-1 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+          Connectors
+        </Text>
+        {items.slice(0, 6).map((item) => {
+          const def = connectorDef(item.provider);
+          return (
+            <Pressable
+              key={item.provider}
+              accessibilityRole="button"
+              accessibilityLabel={`Mention ${item.name}`}
+              // onPressIn fires before the composer can blur and hide the menu.
+              onPressIn={() => onSelect(item.provider)}
+              className="min-h-10 flex-row items-center gap-2.5 rounded-lg px-2 active:bg-foreground/8"
+            >
+              {def ? <ConnectorLogo def={def} size={18} /> : null}
+              <Text numberOfLines={1} className="flex-1 text-[13.5px] text-foreground">
+                {item.name}
+              </Text>
+              {item.accountLabel ? (
+                <Text numberOfLines={1} className="max-w-24 text-[11.5px] text-muted-foreground">
+                  @{item.accountLabel}
+                </Text>
+              ) : null}
+            </Pressable>
+          );
+        })}
       </GlassView>
     </View>
   );

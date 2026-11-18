@@ -14,12 +14,14 @@ import { useEffect, useState } from "react";
 
 import { AppErrorBoundary } from "@/components/app-error-boundary";
 import { LoadingScreen } from "@/components/loading-screen";
+import { OfflineBanner } from "@/components/offline-banner";
 import { PushRegistrar } from "@/components/push-registrar";
 import { UserSync } from "@/components/user-sync";
 import { AppDrawer } from "@/components/sidebar/app-drawer";
 import { SidebarProvider } from "@/components/sidebar/sidebar-context";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { ThemeOnboarding } from "@/components/theme-onboarding";
+import { Toaster } from "@/components/ui/toast";
 import { ConvexClientProvider } from "@/lib/convex";
 
 const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
@@ -143,6 +145,7 @@ function AppShell() {
           </Stack.Protected>
 
           <Stack.Screen name="share/[id]" />
+          <Stack.Screen name="invite/[code]" />
         </Stack>
 
         {/* Drawer + first-visit theme picker only matter once authenticated. */}
@@ -150,6 +153,8 @@ function AppShell() {
         {isAppReady ? <PushRegistrar /> : null}
         {isAppReady ? <AppDrawer /> : null}
         {isAppReady ? <ThemeOnboarding /> : null}
+        {isAppReady ? <OfflineBanner /> : null}
+        <Toaster />
       </SidebarProvider>
     </NavThemeProvider>
   );

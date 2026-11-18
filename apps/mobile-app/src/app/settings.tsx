@@ -17,7 +17,8 @@ import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
-import { useRouter, type Href } from "expo-router";
+import { useLocalSearchParams, useRouter, type Href } from "expo-router";
+import { goBackOr } from "@/lib/navigation";
 import { useClerk, useUser } from "@clerk/expo";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
@@ -60,6 +61,7 @@ import { ModeToggle } from "@/components/mode-toggle";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { usePlanTier } from "@/hooks/use-plan-tier";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { getDisplayName, getInitial } from "@/lib/user-display";
 import {
@@ -82,7 +84,15 @@ export default function SettingsScreen() {
   const { user } = useUser();
   const { signOut } = useClerk();
   const planTier = usePlanTier();
-  const [tab, setTab] = useState<SettingsTab>("account");
+  // Deep links like /settings?tab=memory (memory-limit toast) or ?tab=invite
+  // (sidebar CTA) open on that tab, mirroring web's settings page.
+  const { tab: requestedTab } = useLocalSearchParams<{ tab?: string }>();
+  const [tab, setTab] = useState<SettingsTab>(() => {
+    const requested = requestedTab === "referral" ? "invite" : requestedTab;
+    return TABS.some((t) => t.id === requested)
+      ? (requested as SettingsTab)
+      : "account";
+  });
 
   const displayName = getDisplayName(user, "Account");
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
@@ -92,7 +102,7 @@ export default function SettingsScreen() {
     <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
       <View className="flex-row items-center justify-between gap-2 px-4 py-3">
         <Pressable
-          onPress={() => router.back()}
+          onPress={() => goBackOr(router, "/")}
           className="min-h-11 flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/4 px-3.5 active:bg-foreground/8"
         >
           <Icon as={ArrowLeft} size={16} className="text-muted-foreground" />
@@ -121,7 +131,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Profile card */}
-        <View className="relative flex-row items-center gap-4 overflow-hidden rounded-2xl border border-border bg-card px-4 py-5">
+        <View className="relative flex-row items-center gap-4 overflow-hidden rounded-2xl border border-foreground/8 bg-card px-4 py-5">
           <View className="absolute -top-10 left-0 right-0 h-24 bg-primary/8" />
           {user?.imageUrl ? (
             <Image
@@ -155,7 +165,7 @@ export default function SettingsScreen() {
         </View>
 
         {/* Current plan */}
-        <View className="rounded-2xl border border-border bg-card p-4">
+        <View className="rounded-2xl border border-foreground/8 bg-card p-4">
           <Text className="text-[15px] font-semibold text-foreground">
             Current plan
           </Text>
@@ -184,7 +194,7 @@ export default function SettingsScreen() {
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerClassName="gap-1 rounded-xl bg-secondary p-1"
+          contentContainerClassName="gap-1 rounded-2xl border border-foreground/6 bg-foreground/4 p-1"
         >
           {TABS.map((t) => (
             <Pressable
@@ -193,9 +203,20 @@ export default function SettingsScreen() {
               accessibilityState={{ selected: tab === t.id }}
               onPress={() => setTab(t.id)}
               className={cn(
-                "min-h-11 min-w-20 items-center justify-center rounded-lg px-3",
+                "min-h-10 min-w-20 items-center justify-center rounded-xl px-3",
                 tab === t.id && "bg-background",
               )}
+              style={
+                tab === t.id
+                  ? {
+                      shadowColor: "#000",
+                      shadowOpacity: 0.12,
+                      shadowRadius: 6,
+                      shadowOffset: { width: 0, height: 2 },
+                      elevation: 2,
+                    }
+                  : undefined
+              }
             >
               <Text
                 className={cn(
@@ -221,7 +242,7 @@ export default function SettingsScreen() {
         <View>
           <Pressable
             onPress={() => router.push("/connectors" as Href)}
-            className="flex-row items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 active:opacity-80"
+            className="flex-row items-center gap-3 rounded-2xl border border-foreground/8 bg-card px-4 py-3.5 active:opacity-80"
           >
             <Icon as={Plug} size={18} className="text-muted-foreground" />
             <Text className="flex-1 text-[14px] text-foreground">
@@ -247,7 +268,7 @@ export default function SettingsScreen() {
           ) : null}
           <Pressable
             onPress={() => void signOut()}
-            className="mt-2 flex-row items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 active:opacity-80"
+            className="mt-2 flex-row items-center gap-3 rounded-2xl border border-foreground/8 bg-card px-4 py-3.5 active:opacity-80"
           >
             <Icon as={LogOut} size={18} className="text-destructive" />
             <Text className="flex-1 text-[14px] text-destructive">
@@ -285,7 +306,7 @@ function AccountPanel() {
           Track shared AI credits, requests, and imports.
         </Text>
       </View>
-      <View className="gap-5 rounded-2xl border border-border bg-card p-4">
+      <View className="gap-5 rounded-2xl border border-foreground/8 bg-card p-4">
         {usage === undefined || aiUsage === undefined ? (
           <View className="gap-3">
             {[1, 2, 3].map((i) => (
@@ -302,10 +323,14 @@ function AccountPanel() {
               label="AI usage credits"
               used={aiUsage.used}
               limit={aiUsage.limit}
-              note={`${aiUsage.remaining.toLocaleString()} credits remain across chat, search, media, Live, Canvas AI actions, and Kode AI runs.`}
+              note={
+                usage.isPaid
+                  ? `${aiUsage.remaining.toLocaleString()} credits remain across chat, search, media, Live, Canvas AI actions, and Kode AI runs.`
+                  : "Shared by metered search, media, Live, Canvas AI actions, Kode AI runs, and paid-model work. Opening Canvas or Kode uses no credits."
+              }
             />
             <UsageBar
-              label="K-AI 1.0 Requests"
+              label="K-AI 1.0 requests"
               used={usage.kaiUsed}
               limit={usage.kaiLimit}
               note="K-AI 1.0 has its own monthly request budget, separate from other models. Resets at the start of each UTC month."
@@ -313,26 +338,36 @@ function AccountPanel() {
             {usage.isPaid ? (
               <>
                 <UsageBar
-                  label="Premium Model Messages"
-                  used={usage.paidPremiumUsed}
-                  limit={usage.paidPremiumLimit}
+                  label="External model requests"
+                  used={usage.paidTotalUsed}
+                  limit={usage.paidTotalLimit}
                 />
                 <UsageBar
-                  label="Standard Model Messages"
+                  label="Basic-model requests"
                   used={usage.paidStandardUsed}
                   limit={usage.paidStandardLimit}
                 />
+                {usage.paidPremiumLimit > 0 ? (
+                  <UsageBar
+                    label="Pro-model requests"
+                    used={usage.paidPremiumUsed}
+                    limit={usage.paidPremiumLimit}
+                    badge="Pro"
+                    note={`Current plan: ${planLabel(usage.planTier)}.`}
+                  />
+                ) : null}
+                {usage.frontierLimit > 0 ? (
+                  <UsageBar
+                    label="Frontier-model requests"
+                    used={usage.frontierUsed}
+                    limit={usage.frontierLimit}
+                    badge="Frontier"
+                  />
+                ) : null}
               </>
-            ) : (
-              <UsageBar
-                label="Free Model Messages"
-                used={usage.freeMonthlyUsed}
-                limit={usage.freeMonthlyLimit}
-                note="Upgrade to Starter or Pro for higher limits and premium models."
-              />
-            )}
+            ) : null}
             <UsageBar
-              label="Monthly Imports"
+              label="Monthly imports"
               used={usage.monthlyImportUsed}
               limit={usage.monthlyImportLimit}
               note="Monthly import limits reset at the start of each UTC month."
@@ -341,7 +376,7 @@ function AccountPanel() {
         )}
       </View>
 
-      <View className="rounded-2xl border border-border bg-card p-4">
+      <View className="rounded-2xl border border-foreground/8 bg-card p-4">
         <Text className="text-[14px] font-medium text-foreground">
           Voice input language
         </Text>
@@ -351,7 +386,7 @@ function AccountPanel() {
         <Pressable
           accessibilityRole="button"
           onPress={() => setLanguagePickerOpen(true)}
-          className="mt-3 min-h-12 flex-row items-center rounded-xl border border-border bg-secondary px-3.5 active:bg-accent"
+          className="mt-3 min-h-12 flex-row items-center rounded-xl border border-foreground/5 bg-foreground/4 px-3.5 active:bg-accent"
         >
           <Text
             numberOfLines={1}
@@ -371,7 +406,7 @@ function AccountPanel() {
           void setMobileSpeechLanguage(value)
             .then(setLanguage)
             .catch(() =>
-              Alert.alert("Couldn't save language", "Please try again."),
+              toast.error("Couldn't save language", { description: "Please try again." }),
             );
           setLanguagePickerOpen(false);
         }}
@@ -422,7 +457,7 @@ function SpeechLanguagePicker({
       onRequestClose={onClose}
     >
       <View className="flex-1 justify-end bg-black/55">
-        <View className="max-h-[85%] rounded-t-3xl border-t border-border bg-background px-4 pb-8 pt-4">
+        <View className="max-h-[85%] rounded-t-3xl border-t border-foreground/10 bg-popover px-4 pb-8 pt-4">
           <View className="mb-3 flex-row items-center justify-between">
             <Text className="text-[18px] font-semibold text-foreground">
               Voice language
@@ -436,7 +471,7 @@ function SpeechLanguagePicker({
               </Text>
             </Pressable>
           </View>
-          <View className="mb-3 min-h-11 flex-row items-center rounded-xl border border-border bg-secondary px-3">
+          <View className="mb-3 min-h-11 flex-row items-center rounded-xl border border-foreground/5 bg-foreground/4 px-3">
             <Icon as={Search} size={15} className="text-muted-foreground" />
             <TextInput
               value={search}
@@ -496,6 +531,15 @@ function InvitePanel() {
   const ensureCode = useMutation(api.referrals.ensureReferralCode);
   const [creating, setCreating] = useState(false);
   const code = summary?.code ?? null;
+
+  // Like web SettingsReferralPanel: make sure a code exists so the link is
+  // ready to share without an extra tap.
+  useEffect(() => {
+    if (summary === undefined || summary === null || summary.code) return;
+    void ensureCode({}).catch(() => {
+      // The manual "Create invite link" button below stays as a fallback.
+    });
+  }, [summary, ensureCode]);
   const inviteUrl = code ? `${API_BASE_URL}/invite/${code}` : null;
 
   const createCode = async () => {
@@ -503,10 +547,7 @@ function InvitePanel() {
     try {
       await ensureCode({});
     } catch (error) {
-      Alert.alert(
-        "Couldn't create invite",
-        error instanceof Error ? error.message : "Please try again.",
-      );
+      toast.error("Couldn't create invite", { description: error instanceof Error ? error.message : "Please try again." });
     } finally {
       setCreating(false);
     }
@@ -515,10 +556,7 @@ function InvitePanel() {
   const copyInvite = async () => {
     if (!inviteUrl) return;
     await Clipboard.setStringAsync(inviteUrl);
-    Alert.alert(
-      "Invite copied",
-      "Share it with someone you want to bring to Kontinue.",
-    );
+    toast.success("Invite copied", { description: "Share it with someone you want to bring to Kontinue." });
   };
 
   return (
@@ -531,7 +569,7 @@ function InvitePanel() {
           Share Kontinue and track successful invites and bonus credits.
         </Text>
       </View>
-      <View className="rounded-2xl border border-border bg-card p-4">
+      <View className="rounded-2xl border border-foreground/8 bg-card p-4">
         {summary === undefined ? (
           <ActivityIndicator size="small" />
         ) : inviteUrl ? (
@@ -539,7 +577,7 @@ function InvitePanel() {
             <Text className="text-[11px] font-semibold uppercase tracking-widest text-primary">
               Your invite link
             </Text>
-            <View className="mt-3 rounded-xl border border-border bg-secondary p-3">
+            <View className="mt-3 rounded-xl border border-foreground/5 bg-foreground/4 p-3">
               <Text
                 selectable
                 numberOfLines={2}
@@ -607,7 +645,7 @@ function InvitePanel() {
 
 function InviteStat({ label, value }: { label: string; value: number }) {
   return (
-    <View className="flex-1 rounded-2xl border border-border bg-card px-2 py-4">
+    <View className="flex-1 rounded-2xl border border-foreground/8 bg-card px-2 py-4">
       <Text className="text-center text-[18px] font-semibold text-foreground">
         {value}
       </Text>
@@ -648,7 +686,7 @@ function ContactPanel({ onFeedback }: { onFeedback: () => void }) {
           Get help, shape the product, and review policy information.
         </Text>
       </View>
-      <View className="overflow-hidden rounded-2xl border border-border bg-card">
+      <View className="overflow-hidden rounded-2xl border border-foreground/8 bg-card">
         {actions.map((action, index) => (
           <Pressable
             key={action.label}
@@ -705,10 +743,7 @@ function MemoryPanel() {
       await createManualMemory({ type: manualType, content, pinned: true });
       setManualContent("");
     } catch (err) {
-      Alert.alert(
-        "Couldn't save memory",
-        err instanceof Error ? err.message : "Please try again.",
-      );
+      toast.error("Couldn't save memory", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setSaving(false);
     }
@@ -722,7 +757,9 @@ function MemoryPanel() {
         style: "destructive",
         onPress: () => {
           deleteMemory({ memoryId }).catch(() =>
-            Alert.alert("Couldn't delete memory", "Please try again."),
+            toast.error("Couldn't delete memory", {
+              description: "Please try again.",
+            }),
           );
         },
       },
@@ -742,7 +779,7 @@ function MemoryPanel() {
       </View>
 
       {/* Quota */}
-      <View className="rounded-2xl border border-border bg-card p-4">
+      <View className="rounded-2xl border border-foreground/8 bg-card p-4">
         <View className="flex-row items-start justify-between">
           <Text className="text-[14px] font-medium text-foreground">
             Memory Usage
@@ -759,7 +796,7 @@ function MemoryPanel() {
             </View>
           ) : null}
         </View>
-        <View className="mt-3 h-2 overflow-hidden rounded-full bg-secondary">
+        <View className="mt-3 h-2 overflow-hidden rounded-full bg-foreground/8">
           <View
             className="h-full rounded-full bg-primary"
             style={{
@@ -775,7 +812,7 @@ function MemoryPanel() {
       </View>
 
       {/* Manual save */}
-      <View className="rounded-2xl border border-border bg-card p-4">
+      <View className="rounded-2xl border border-foreground/8 bg-card p-4">
         <Text className="text-[14px] font-medium text-foreground">
           Save Memory Manually
         </Text>
@@ -792,7 +829,7 @@ function MemoryPanel() {
                 "rounded-full border px-3 py-1.5",
                 manualType === type
                   ? "border-primary/50 bg-primary/15"
-                  : "border-border bg-secondary",
+                  : "border-foreground/8 bg-foreground/4",
               )}
             >
               <Text
@@ -814,7 +851,7 @@ function MemoryPanel() {
           multiline
           placeholder="Example: My startup is Kontinue AI and I want the assistant to remember that."
           placeholderTextColor={mutedForeground}
-          className="min-h-20 rounded-xl border border-border bg-secondary px-3.5 py-3 text-[14px] text-foreground"
+          className="min-h-20 rounded-xl border border-foreground/5 bg-foreground/4 px-3.5 py-3 text-[14px] text-foreground"
         />
         <Pressable
           disabled={manualContent.trim().length < 8 || saving}
@@ -837,7 +874,7 @@ function MemoryPanel() {
       </View>
 
       {/* Search + list */}
-      <View className="h-11 flex-row items-center gap-2 rounded-xl border border-border bg-secondary px-3">
+      <View className="h-11 flex-row items-center gap-2 rounded-xl border border-foreground/5 bg-foreground/4 px-3">
         <Icon as={Search} size={16} className="text-muted-foreground" />
         <TextInput
           value={search}
@@ -867,7 +904,7 @@ function MemoryPanel() {
           {memories.map((memory) => (
             <View
               key={memory._id}
-              className="rounded-2xl border border-border bg-card p-3.5"
+              className="rounded-2xl border border-foreground/8 bg-card p-3.5"
             >
               <View className="flex-row items-center gap-2">
                 <View className="rounded-full bg-secondary px-2 py-0.5">
@@ -886,7 +923,7 @@ function MemoryPanel() {
                       memoryId: memory._id,
                       pinned: !memory.pinned,
                     }).catch(() =>
-                      Alert.alert("Couldn't update pin", "Please try again."),
+                      toast.error("Couldn't update pin", { description: "Please try again." }),
                     )
                   }
                   className="h-7 w-7 items-center justify-center rounded-md active:bg-accent"
@@ -981,10 +1018,7 @@ function DataPanel() {
       await requestExport({ format: exportFormat });
     } catch (err) {
       const data = (err as { data?: { message?: string } })?.data;
-      Alert.alert(
-        "Couldn't start export",
-        data?.message ?? "Please try again.",
-      );
+      toast.error("Couldn't start export", { description: data?.message ?? "Please try again." });
     } finally {
       setIsExporting(false);
     }
@@ -1007,13 +1041,10 @@ function DataPanel() {
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(result.uri);
       } else {
-        Alert.alert("Downloaded", `Saved to ${result.uri}`);
+        toast.success("Downloaded", { description: `Saved to ${result.uri}` });
       }
     } catch (err) {
-      Alert.alert(
-        "Download failed",
-        err instanceof Error ? err.message : "Please try again.",
-      );
+      toast.error("Download failed", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
       setDownloadingId(null);
     }
@@ -1031,10 +1062,7 @@ function DataPanel() {
       if (!asset) return;
       const size = asset.size ?? 0;
       if (uploadLimit && size > uploadLimit.limitBytes) {
-        Alert.alert(
-          "File too large",
-          `Your plan allows imports up to ${formatBytes(uploadLimit.limitBytes)}.`,
-        );
+        toast.error("File too large", { description: `Your plan allows imports up to ${formatBytes(uploadLimit.limitBytes)}.` });
         return;
       }
 
@@ -1059,11 +1087,8 @@ function DataPanel() {
       await confirmImportUpload({ jobId });
     } catch (err) {
       const data = (err as { data?: { message?: string } })?.data;
-      Alert.alert(
-        "Import failed",
-        data?.message ??
-          (err instanceof Error ? err.message : "Please try again."),
-      );
+      toast.error("Import failed", { description: data?.message ??
+          (err instanceof Error ? err.message : "Please try again.") });
     } finally {
       setIsUploading(false);
     }
@@ -1080,7 +1105,7 @@ function DataPanel() {
       </View>
 
       {/* Export */}
-      <View className="rounded-2xl border border-border bg-card p-4">
+      <View className="rounded-2xl border border-foreground/8 bg-card p-4">
         <Text className="text-[14px] font-medium text-foreground">
           Export your data
         </Text>
@@ -1093,7 +1118,7 @@ function DataPanel() {
                 "flex-1 items-center gap-1 rounded-xl border px-2 py-2.5",
                 exportFormat === option.value
                   ? "border-primary/50 bg-primary/10"
-                  : "border-border bg-secondary",
+                  : "border-foreground/8 bg-foreground/4",
               )}
             >
               <Icon
@@ -1137,7 +1162,7 @@ function DataPanel() {
             {(exports ?? []).map((row) => (
               <View
                 key={row._id}
-                className="flex-row items-center gap-3 rounded-xl border border-border bg-secondary/40 px-3 py-2.5"
+                className="flex-row items-center gap-3 rounded-xl border border-foreground/5 bg-foreground/3 px-3 py-2.5"
               >
                 <View className="flex-1">
                   <Text className="text-[13px] font-medium uppercase text-foreground">
@@ -1180,10 +1205,7 @@ function DataPanel() {
                   hitSlop={8}
                   onPress={() =>
                     void deleteExport({ exportId: row._id }).catch(() =>
-                      Alert.alert(
-                        "Couldn't delete export",
-                        "Please try again.",
-                      ),
+                      toast.error("Couldn't delete export", { description: "Please try again." }),
                     )
                   }
                   className="h-7 w-7 items-center justify-center rounded-md active:bg-accent"
@@ -1201,7 +1223,7 @@ function DataPanel() {
       </View>
 
       {/* Import */}
-      <View className="rounded-2xl border border-border bg-card p-4">
+      <View className="rounded-2xl border border-foreground/8 bg-card p-4">
         <Text className="text-[14px] font-medium text-foreground">
           Import history
         </Text>
@@ -1214,7 +1236,7 @@ function DataPanel() {
                 "rounded-full border px-3.5 py-2",
                 importProvider === provider.value
                   ? "border-primary/50 bg-primary/10"
-                  : "border-border bg-secondary",
+                  : "border-foreground/8 bg-foreground/4",
               )}
             >
               <Text
@@ -1247,7 +1269,7 @@ function DataPanel() {
                 {activeImport.totalConversations || "?"} conversations
               </Text>
             </View>
-            <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
+            <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-foreground/8">
               <View
                 className="h-full rounded-full bg-primary"
                 style={{
@@ -1259,7 +1281,7 @@ function DataPanel() {
               accessibilityLabel="Cancel import"
               onPress={() =>
                 void cancelImport({ jobId: activeImport._id }).catch(() =>
-                  Alert.alert("Couldn't cancel import", "Please try again."),
+                  toast.error("Couldn't cancel import", { description: "Please try again." }),
                 )
               }
               className="mt-2 min-h-10 self-end justify-center px-2"
@@ -1276,7 +1298,7 @@ function DataPanel() {
             className={cn(
               "mt-3 h-10 flex-row items-center justify-center gap-2 rounded-xl border",
               isUploading
-                ? "border-border bg-secondary"
+                ? "border-foreground/8 bg-foreground/4"
                 : "border-border active:bg-accent",
             )}
           >
@@ -1304,23 +1326,25 @@ function DataPanel() {
 }
 
 function ImportJobRow({ jobId }: { jobId: Id<"importJobs"> }) {
+  const { tokens } = useTheme();
   const detail = useQuery(api.imports.getImportJob, { jobId });
   if (!detail) return null;
 
   const { job, phase1, phase2, currentChunk } = detail;
   const active = job.status === "queued" || job.status === "processing";
   const percent = Math.round((job.progress ?? 0) * 100);
+  // Theme tokens, never hand-picked status hex (WEB_PARITY visual contract).
   const statusColor =
     job.status === "completed"
-      ? "#10b981"
+      ? tokens.primary
       : job.status === "failed"
-        ? "#ef4444"
+        ? tokens.destructive
         : job.status === "canceled"
-          ? "#94a3b8"
-          : "#f59e0b";
+          ? tokens["muted-foreground"]
+          : tokens.foreground;
 
   return (
-    <View className="rounded-xl border border-border bg-secondary/40 p-3">
+    <View className="rounded-xl border border-foreground/5 bg-foreground/3 p-3">
       <View className="flex-row items-start justify-between gap-3">
         <View className="min-w-0 flex-1">
           <Text numberOfLines={1} className="text-[12.5px] font-medium text-foreground">
@@ -1368,32 +1392,50 @@ function UsageBar({
   used,
   limit,
   note,
+  badge,
 }: {
   label: string;
   used: number;
   limit: number | null;
   note?: string;
+  /** Model class pill (Pro / Frontier), like web's tinted labels. */
+  badge?: string;
 }) {
   const unlimited = limit == null;
   const pct =
     unlimited || limit === 0
       ? 0
       : Math.min(100, Math.round((used / limit) * 100));
+  const nearLimit = !unlimited && pct >= 90;
   return (
     <View>
-      <View className="mb-1.5 flex-row justify-between">
-        <Text className="text-[13.5px] font-medium text-foreground">
-          {label}
-        </Text>
-        <Text className="text-[13.5px] text-muted-foreground">
-          {used} / {unlimited ? "Unlimited" : limit}
+      <View className="mb-1.5 flex-row items-center justify-between gap-3">
+        <View className="min-w-0 flex-1 flex-row items-center gap-1.5">
+          <Text numberOfLines={1} className="shrink text-[13.5px] font-medium text-foreground">
+            {label}
+          </Text>
+          {badge ? (
+            <View className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5">
+              <Text className="text-[9px] font-bold uppercase tracking-wider text-primary">
+                {badge}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+        <Text
+          className={cn(
+            "text-[13px] tabular-nums",
+            nearLimit ? "font-semibold text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {used.toLocaleString()} / {unlimited ? "Unlimited" : limit.toLocaleString()}
         </Text>
       </View>
       {!unlimited ? (
-        <View className="h-2 overflow-hidden rounded-full bg-secondary">
+        <View className="h-2 overflow-hidden rounded-full bg-foreground/8">
           <View
-            className="h-full rounded-full bg-primary"
-            style={{ width: `${pct}%` }}
+            className={cn("h-full rounded-full", nearLimit ? "bg-destructive" : "bg-primary")}
+            style={{ width: `${Math.max(pct, used > 0 ? 2 : 0)}%` }}
           />
         </View>
       ) : null}

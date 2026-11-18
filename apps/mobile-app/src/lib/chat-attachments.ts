@@ -94,27 +94,6 @@ export async function pickDocumentAttachments(
 }
 
 /** A single reference photo for Canvas img2img, as a compact data URL. */
-export async function pickReferenceImage(): Promise<PendingAttachment | null> {
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ["images"],
-    allowsMultipleSelection: false,
-    // Tighter than chat attachments: this rides inside a JSON body.
-    quality: 0.5,
-    base64: true,
-  });
-  if (result.canceled) return null;
-  const asset = result.assets[0];
-  if (!asset?.base64) return null;
-  const mediaType = asset.mimeType ?? "image/jpeg";
-  return {
-    kind: "image",
-    uri: asset.uri,
-    dataUrl: `data:${mediaType};base64,${asset.base64}`,
-    mediaType,
-    filename: asset.fileName ?? "reference.jpg",
-  };
-}
-
 /** AI SDK v6 file UI parts for sendMessage({ files }). */
 export function toFileUIParts(attachments: PendingAttachment[]) {
   return attachments.map((attachment) => ({

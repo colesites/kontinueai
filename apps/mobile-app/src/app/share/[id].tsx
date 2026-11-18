@@ -33,7 +33,7 @@ export default function SharedConversationScreen() {
   if (conversation === null) {
     return (
       <SafeAreaView className="flex-1 items-center justify-center bg-background px-6">
-        <View className="h-12 w-12 items-center justify-center rounded-2xl bg-secondary">
+        <View className="h-12 w-12 items-center justify-center rounded-2xl bg-foreground/5">
           <Icon as={MessageSquareOff} size={21} className="text-muted-foreground" />
         </View>
         <Text className="mt-4 text-[18px] font-semibold text-foreground">
@@ -60,7 +60,7 @@ export default function SharedConversationScreen() {
         contentContainerClassName="gap-3 px-4 pb-12 pt-5"
         showsVerticalScrollIndicator={false}
       >
-        <View className="mb-3 rounded-2xl border border-border bg-card p-4">
+        <View className="mb-3 rounded-2xl border border-foreground/8 bg-card p-4">
           <View className="flex-row items-center gap-2">
             <View className="h-9 w-9 items-center justify-center rounded-xl bg-primary/12">
               <Icon as={Bot} size={18} className="text-primary" />
@@ -88,7 +88,7 @@ export default function SharedConversationScreen() {
                 "max-w-[88%] rounded-2xl px-3.5 py-2.5",
                 user
                   ? "ml-auto bg-primary"
-                  : "mr-auto border border-border bg-card",
+                  : "mr-auto border border-foreground/8 bg-card",
               )}
             >
               {user ? (
@@ -103,7 +103,7 @@ export default function SharedConversationScreen() {
         })}
 
         {!conversation.messages.length ? (
-          <View className="items-center rounded-2xl border border-dashed border-border px-4 py-10">
+          <View className="items-center rounded-2xl border border-dashed border-foreground/8 px-4 py-10">
             <Text className="text-[13px] text-muted-foreground">
               This conversation has no messages yet.
             </Text>

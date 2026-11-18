@@ -1,0 +1,65 @@
+name: Mobile checks
+
+# Typecheck, lint and test the Expo app plus the shared packages it consumes
+# (@repo/core, @repo/ai) on every PR that can change mobile behaviour. Native
+# builds stay on EAS; this only guards the JS/TS surface.
+on:
+  pull_request:
+    paths:
+      - "apps/mobile-app/**"
+      - "packages/core/**"
+      - "packages/ai/**"
+      - "packages/backend/convex/convex/**"
+      - "packages/tailwind-config/shared-styles.css"
+      - ".github/workflows/mobile-checks.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/mobile-app/**"
+      - "packages/core/**"
+      - "packages/ai/**"
+
+concurrency:
+  group: mobile-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same bun that writes bun.lock locally; older ones rewrite it and fail --frozen-lockfile.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Shared core tests
+        working-directory: packages/core
+        run: bun test
+
+      - name: Theme tokens are in sync with the web stylesheet
+        working-directory: apps/mobile-app
+        run: |
+          bun run theme:sync
+          git diff --exit-code -- src/theme
+
+      - name: Typecheck
+        working-directory: apps/mobile-app
+        run: bun run typecheck
+
+      - name: Lint
+        working-directory: apps/mobile-app
+        run: bun run lint
+
+      - name: Test
+        working-directory: apps/mobile-app
+        run: bun run test

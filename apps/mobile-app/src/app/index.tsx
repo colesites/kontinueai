@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -8,14 +8,16 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import Svg, { Circle, Defs, RadialGradient, Stop } from "react-native-svg";
 import { useRouter } from "expo-router";
-import { useUser } from "@clerk/expo";
+import { useAuth, useUser } from "@clerk/expo";
 import { useAction, useMutation } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import { isKaiModel } from "@repo/ai/lib/kai";
+import { getModelById } from "@repo/ai/lib/models";
+import { getImportStrategy } from "@repo/core/import-strategy";
 import { ArrowUpRight, Link2 } from "lucide-react-native";
 
 import { ChatInput } from "@/components/chat/chat-input";
@@ -31,12 +33,22 @@ import { cn } from "@/lib/utils";
 import { KontinueLogo } from "@/components/ui/kontinue-logo";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
 import { useSelectedModel } from "@/hooks/use-selected-model";
+import { useVoiceInput } from "@/hooks/use-voice-input";
 import { useWebSearchPreference } from "@/hooks/use-web-search-preference";
 import {
   pickDocumentAttachments,
   type PendingAttachment,
 } from "@/lib/chat-attachments";
+import { errorMessage } from "@/lib/app-errors";
+import { API_BASE_URL } from "@/lib/chat-api";
+import {
+  detectProvider,
+  MODEL_PROVIDER_MAP,
+  PROVIDER_CONFIG,
+} from "@/lib/import-providers";
 import { savePendingChatDraft } from "@/lib/pending-chat-draft";
 import { getFirstName } from "@/lib/user-display";
 
@@ -55,37 +67,10 @@ const STEPS = [
   },
 ];
 
-// Mirrors @repo/utils PROVIDER_CONFIG for the detected-provider pill.
-const PROVIDER_META: Record<string, { name: string; color: string }> = {
-  chatgpt: { name: "ChatGPT", color: "#10a37f" },
-  claude: { name: "Claude", color: "#cc785c" },
-  gemini: { name: "Gemini", color: "#4285f4" },
-  t3chat: { name: "T3Chat", color: "#f8e6f4" },
-  perplexity: { name: "Perplexity", color: "#20b8cd" },
-  mistral: { name: "Mistral", color: "#9ca3af" },
-  unknown: { name: "Unknown", color: "#6b7280" },
-};
-
-// Mirrors @repo/utils detectProvider for the few hosts we badge in the
-// sidebar (that package's exports map doesn't resolve under Metro).
-function detectProvider(url: string): string {
-  try {
-    const host = new URL(url).hostname;
-    if (host.includes("chatgpt.com") || host.includes("openai.com"))
-      return "chatgpt";
-    if (host.includes("claude.ai")) return "claude";
-    if (host.includes("gemini.google.com")) return "gemini";
-    if (host.includes("perplexity.ai")) return "perplexity";
-    if (host.includes("t3.chat")) return "t3chat";
-    if (host.includes("mistral.ai")) return "mistral";
-    return "unknown";
-  } catch {
-    return "unknown";
-  }
-}
-
 export default function HomeScreen() {
   const { width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const keyboardOpen = useKeyboardOpen();
   const router = useRouter();
   const { user } = useUser();
   const firstName = getFirstName(user);
@@ -93,13 +78,18 @@ export default function HomeScreen() {
   const { selectedModel, setSelectedModel, isPaidPlan } = useSelectedModel();
   const createChat = useMutation(api.chats.createChat);
   const importViaFirecrawl = useAction(api.firecrawl.importIntoChat);
+  const appendImportedMessages = useMutation(api.chats.appendImportedMessagesToChat);
+  const appendImportFailure = useMutation(api.chats.appendImportFailureMessageToChat);
+  const { getToken } = useAuth();
 
   const [howOpen, setHowOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [isImporting, setIsImporting] = useState(false);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
-  const [errorText, setErrorText] = useState<string | null>(null);
+  const [composerValue, setComposerValue] = useState("");
+  const [imageAspectRatio, setImageAspectRatio] = useState("auto");
+  const [imageSize, setImageSize] = useState<string | null>(null);
   // Persisted on the account so it carries into the chat this screen starts,
   // into the next session, and across devices.
   const { webSearchEnabled, toggleWebSearch } = useWebSearchPreference();
@@ -111,8 +101,21 @@ export default function HomeScreen() {
     ? detectProvider(importUrl.trim())
     : "unknown";
   const importProviderMeta = {
-    ...(PROVIDER_META[detectedProvider] ?? PROVIDER_META.unknown!),
+    ...PROVIDER_CONFIG[detectedProvider],
     detected: detectedProvider !== "unknown",
+  };
+
+  // Dictation fills the composer, same as the chat screen: interim results
+  // replace everything after the text present when the mic opened.
+  const voicePrefixRef = useRef("");
+  const handleVoiceTranscript = useCallback((transcript: string) => {
+    const prefix = voicePrefixRef.current;
+    setComposerValue(prefix ? `${prefix} ${transcript}` : transcript);
+  }, []);
+  const voice = useVoiceInput(handleVoiceTranscript);
+  const handleMicPress = () => {
+    if (!voice.isListening) voicePrefixRef.current = composerValue.trim();
+    void voice.toggle();
   };
 
   const startChatFromPrompt = useCallback(
@@ -120,15 +123,18 @@ export default function HomeScreen() {
       if (isCreatingChat || (!prompt.trim() && attachments.length === 0))
         return;
       setIsCreatingChat(true);
-      setErrorText(null);
+      if (voice.isListening) void voice.toggle();
       try {
         const title =
           prompt.trim().slice(0, 60) ||
           attachments[0]?.filename ||
           "New Conversation";
+        const model = getModelById(selectedModel);
         const chatId = await createChat({
           title,
-          provider: "kontinue",
+          provider: model
+            ? (MODEL_PROVIDER_MAP[model.provider] ?? "unknown")
+            : "unknown",
           importMethod: "manual",
           messages: [],
         });
@@ -137,6 +143,8 @@ export default function HomeScreen() {
           model: selectedModel,
           webSearchEnabled: webSearchEnabled && webSearchAvailable,
           attachments,
+          imageAspectRatio,
+          imageSize,
         });
         setAttachments([]);
         // Carry the selected agent into the new chat, mirroring web.
@@ -144,11 +152,9 @@ export default function HomeScreen() {
           agentId ? `/chat/${chatId}?agent=${agentId}` : `/chat/${chatId}`,
         );
       } catch (err) {
-        const data = (err as { data?: { message?: string } })?.data;
-        setErrorText(
-          data?.message ??
-            (err instanceof Error ? err.message : "Failed to start chat"),
-        );
+        toast.error("Couldn't start the chat", {
+          description: errorMessage(err, "Please try again."),
+        });
       } finally {
         setIsCreatingChat(false);
       }
@@ -157,9 +163,12 @@ export default function HomeScreen() {
       agentId,
       attachments,
       createChat,
+      imageAspectRatio,
+      imageSize,
       isCreatingChat,
       router,
       selectedModel,
+      voice,
       webSearchAvailable,
       webSearchEnabled,
     ],
@@ -170,13 +179,15 @@ export default function HomeScreen() {
       .then(({ attachments: picked, rejected }) => {
         if (picked.length > 0) setAttachments((prev) => [...prev, ...picked]);
         if (rejected.length > 0) {
-          setErrorText(`Some files were skipped: ${rejected.join(", ")}`);
+          toast.error("Some files were skipped", {
+            description: rejected.join("\n"),
+          });
         }
       })
       .catch((err) => {
-        setErrorText(
-          err instanceof Error ? err.message : "Couldn't attach file.",
-        );
+        toast.error("Couldn't attach file", {
+          description: errorMessage(err, "Please try again."),
+        });
       });
   }, [attachments.length]);
 
@@ -186,16 +197,17 @@ export default function HomeScreen() {
     try {
       const parsed = new URL(sourceUrl);
       if (!["http:", "https:"].includes(parsed.protocol)) {
-        setErrorText("Please enter a valid HTTP/HTTPS URL.");
+        toast.error("Invalid link", {
+          description: "Please enter a valid HTTP/HTTPS URL.",
+        });
         return;
       }
     } catch {
-      setErrorText("Please enter a valid URL.");
+      toast.error("Invalid link", { description: "Please enter a valid URL." });
       return;
     }
 
     setIsImporting(true);
-    setErrorText(null);
     try {
       const chatId = await createChat({
         title: "Importing conversation...",
@@ -210,24 +222,80 @@ export default function HomeScreen() {
 
       // Fire-and-forget: the action appends imported messages (or a failure
       // notice) to the chat itself, which streams in live via Convex.
-      void importViaFirecrawl({ chatId, url: sourceUrl }).catch((err) => {
-        console.warn("import failed", err);
-      });
+      // Same routing as web's scrapeAndAppendImport: the shared strategy picks
+      // the self-hosted scraper or Firecrawl (the scraper kill-switch lives in
+      // @repo/core/import-strategy). Fire-and-forget: messages, or a failure
+      // notice, land in the chat live via Convex; the toast covers the case
+      // where the person has already left the chat.
+      const failImport = async (message: string) => {
+        await appendImportFailure({ chatId, errorMessage: message }).catch(() => {});
+        toast.error("Import failed", { description: message });
+      };
+      if (getImportStrategy(sourceUrl) === "firecrawl") {
+        void importViaFirecrawl({ chatId, url: sourceUrl })
+          .then((result) => {
+            if (result && !result.success) {
+              toast.error("Import failed", {
+                description: result.error || "We couldn't import that chat.",
+              });
+            }
+          })
+          .catch((err) =>
+            failImport(errorMessage(err, "We couldn't import that chat.")),
+          );
+      } else {
+        void (async () => {
+          try {
+            const token = await getToken();
+            const response = await fetch(`${API_BASE_URL}/api/import/scrape`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ url: sourceUrl }),
+            });
+            const data = (await response.json().catch(() => ({}))) as {
+              success?: boolean;
+              title?: string;
+              messages?: Parameters<typeof appendImportedMessages>[0]["messages"];
+              message?: string;
+              error?: string;
+            };
+            if (!response.ok || !data.success || !data.messages) {
+              throw new Error(data.message || data.error || "Failed to import chat");
+            }
+            await appendImportedMessages({
+              chatId,
+              title: data.title || "Imported Chat",
+              messages: data.messages,
+            });
+          } catch (err) {
+            await failImport(errorMessage(err, "Failed to import chat"));
+          }
+        })();
+      }
 
       router.push(`/chat/${chatId}`);
     } catch (err) {
-      const data = (err as { data?: { message?: string } })?.data;
-      setErrorText(
-        data?.message ??
-          (err instanceof Error ? err.message : "Failed to import chat"),
-      );
+      toast.error("Import failed", {
+        description: errorMessage(err, "Failed to import chat"),
+      });
     } finally {
       setIsImporting(false);
     }
-  }, [createChat, importUrl, importViaFirecrawl, router]);
+  }, [
+    appendImportFailure,
+    appendImportedMessages,
+    createChat,
+    getToken,
+    importUrl,
+    importViaFirecrawl,
+    router,
+  ]);
 
   return (
-    <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
+    <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={[]}>
       {/* Ambient background glows matching web */}
       <View
         className="absolute inset-0 pointer-events-none overflow-hidden"
@@ -287,14 +355,23 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <TopToolbar />
+      {/* Floating header pills (web AppShell), above the hero glow */}
+      <View
+        pointerEvents="box-none"
+        style={{ position: "absolute", top: 0, left: 0, right: 0, paddingTop: insets.top, zIndex: 30 }}
+      >
+        <TopToolbar />
+      </View>
 
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
         {/* Centered hero */}
-        <View className="items-center justify-center px-6" style={{ flex: 1, zIndex: 10 }}>
+        <View
+          className="items-center justify-center px-6"
+          style={{ flex: 1, zIndex: 10, paddingTop: insets.top + 56 }}
+        >
           <View
             style={{
               shadowColor: primary,
@@ -370,17 +447,16 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          {errorText ? (
-            <View className="mt-5 rounded-xl border border-destructive/40 bg-destructive/10 px-3.5 py-2.5">
-              <Text className="text-[13px] leading-5 text-destructive">
-                {errorText}
-              </Text>
-            </View>
-          ) : null}
         </View>
 
         {/* Composer pinned to the bottom */}
-        <View className="px-4 pb-3" style={{ zIndex: 20 }}>
+        <View
+          className="px-4"
+          style={{
+            zIndex: 20,
+            paddingBottom: keyboardOpen ? 8 : Math.max(insets.bottom, 12),
+          }}
+        >
 
           {isCreatingChat ? (
             <View className="mb-2 flex-row items-center justify-center gap-2">
@@ -407,6 +483,16 @@ export default function HomeScreen() {
             onRemoveAttachment={(index) =>
               setAttachments((prev) => prev.filter((_, i) => i !== index))
             }
+            value={composerValue}
+            onChangeText={setComposerValue}
+            isListening={voice.isListening}
+            onMicPress={handleMicPress}
+            imageAspectRatio={imageAspectRatio}
+            imageSize={imageSize}
+            onImageOptionsChange={(aspect, size) => {
+              setImageAspectRatio(aspect);
+              setImageSize(size);
+            }}
           />
         </View>
       </KeyboardAvoidingView>

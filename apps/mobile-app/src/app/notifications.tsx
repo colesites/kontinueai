@@ -53,7 +53,7 @@ export default function NotificationsScreen() {
           unreadCount ? (
             <Pressable
               onPress={() => void markAllRead({}).catch(() => {})}
-              className="rounded-full border border-border px-3 py-1.5 active:bg-accent"
+              className="rounded-full border border-foreground/8 px-3 py-1.5 active:bg-accent"
             >
               <Text className="text-[12px] font-medium text-muted-foreground">
                 Mark all read
@@ -75,7 +75,7 @@ export default function NotificationsScreen() {
           </View>
         ) : notifications.length === 0 ? (
           <View className="items-center py-20">
-            <View className="h-13 w-13 items-center justify-center rounded-2xl bg-secondary" style={{ width: 52, height: 52 }}>
+            <View className="h-13 w-13 items-center justify-center rounded-2xl bg-foreground/5" style={{ width: 52, height: 52 }}>
               <Icon as={BellOff} size={22} className="text-muted-foreground/60" />
             </View>
             <Text className="mt-4 text-[15px] font-semibold text-foreground">
@@ -95,14 +95,14 @@ export default function NotificationsScreen() {
                 className={cn(
                   "mb-2 flex-row items-start gap-3 rounded-2xl border px-3.5 py-3 active:opacity-80",
                   notification.read
-                    ? "border-border bg-card"
+                    ? "border-foreground/8 bg-card"
                     : "border-primary/30 bg-primary/5",
                 )}
               >
                 <View
                   className={cn(
                     "mt-0.5 h-9 w-9 items-center justify-center rounded-full",
-                    notification.read ? "bg-secondary" : "bg-primary/15",
+                    notification.read ? "bg-foreground/5" : "bg-primary/15",
                   )}
                 >
                   <Icon

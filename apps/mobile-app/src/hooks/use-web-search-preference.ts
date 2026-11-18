@@ -1,6 +1,6 @@
 import { api } from "@repo/convex/convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 /**
  * The Web Search toggle, persisted on the user's account (mirrors
@@ -15,25 +15,29 @@ export function useWebSearchPreference() {
 	const persisted = useQuery(api.users.getWebSearchEnabled, {});
 	const save = useMutation(api.users.setWebSearchEnabled);
 
-	// Optimistic value so the toggle responds instantly; cleared once the server
-	// confirms, leaving Convex as the source of truth.
-	const [pending, setPending] = useState<boolean | null>(null);
+	// Optimistic value so the toggle responds instantly. It only applies while
+	// the server still reports the value it had when the toggle was pressed;
+	// once Convex confirms (or another device changes it), Convex wins. Derived
+	// in render rather than cleared from an effect.
+	const [pending, setPending] = useState<{
+		value: boolean;
+		from: boolean | null | undefined;
+	} | null>(null);
+	const optimistic =
+		pending && pending.from === persisted ? pending.value : null;
 
-	useEffect(() => {
-		if (persisted === undefined || persisted === null) return;
-		setPending((p) => (p === persisted ? null : p));
-	}, [persisted]);
-
-	const webSearchEnabled = pending ?? persisted ?? false;
+	const webSearchEnabled = optimistic ?? persisted ?? false;
 
 	const setWebSearchEnabled = useCallback(
 		(next: boolean) => {
-			setPending(next);
+			setPending({ value: next, from: persisted });
 			void save({ enabled: next }).catch((error) => {
+				// Drop the optimistic value so the toggle shows the real state.
+				setPending(null);
 				console.warn("Failed to persist web search toggle:", error);
 			});
 		},
-		[save],
+		[persisted, save],
 	);
 
 	const toggleWebSearch = useCallback(() => {

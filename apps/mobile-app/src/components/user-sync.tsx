@@ -5,6 +5,10 @@ import { api } from "@repo/convex/convex/_generated/api";
 import { persistedPlanForTier } from "@repo/core/plan-tier";
 
 import { usePlanTier } from "@/hooks/use-plan-tier";
+import {
+  clearPendingReferralCode,
+  readPendingReferralCode,
+} from "@/lib/referral";
 import { getDisplayName } from "@/lib/user-display";
 
 /**
@@ -21,15 +25,25 @@ export function UserSync() {
   useEffect(() => {
     if (!isLoaded || !isAuthLoaded || !user) return;
 
-    void getOrCreateUser({
-      email: user.primaryEmailAddress?.emailAddress ?? "",
-      name: getDisplayName(user, "") || undefined,
-      imageUrl: user.imageUrl ?? undefined,
-      subscriptionStatus: planTier === "free" ? "inactive" : "active",
-      plan: persistedPlanForTier(planTier),
-    }).catch((error) => {
-      console.warn("[user-sync] failed to sync user", error);
-    });
+    void (async () => {
+      // Web reads the `kontinue_ref` cookie here; mobile keeps the code from
+      // an invite link or the sign-up form. The server only attributes on the
+      // very first sync, so it's cleared after one successful send.
+      const referralCode = await readPendingReferralCode();
+      try {
+        await getOrCreateUser({
+          email: user.primaryEmailAddress?.emailAddress ?? "",
+          name: getDisplayName(user, "") || undefined,
+          imageUrl: user.imageUrl ?? undefined,
+          subscriptionStatus: planTier === "free" ? "inactive" : "active",
+          plan: persistedPlanForTier(planTier),
+          ...(referralCode ? { referralCode } : {}),
+        });
+        if (referralCode) await clearPendingReferralCode();
+      } catch (error) {
+        console.warn("[user-sync] failed to sync user", error);
+      }
+    })();
   }, [getOrCreateUser, isAuthLoaded, isLoaded, planTier, user]);
 
   return null;
