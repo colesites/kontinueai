@@ -14,6 +14,7 @@ import { runKodeAgent, type KodeExtraTool } from "./kode-agent";
 import { getProvider, parseCliModelId, runCliTurn, saveCliSession } from "./kode-cli";
 import type { KodeAgentMode, KodeTodo } from "./kode-tools";
 import { addWorktree, branchPrefix, slugify } from "./kode-branches";
+import { linkSubagentChat } from "./kode-subagent-links";
 
 export type FanOutRunStatus = "queued" | "starting" | "running" | "done" | "error" | "stopped";
 
@@ -209,7 +210,7 @@ export function startFanOut(input: {
       const run = runs[next++];
       const current = fanOuts.find((f) => f.id === id)?.runs.find((r) => r.id === run.id);
       if (current?.status === "stopped" || input.signal?.aborted) continue;
-      await runOne(id, run, root, prompt, mode, deps);
+      await runOne(id, run, root, prompt, mode, deps, input.parentChatId ?? null);
     }
   };
   const workers = Array.from({ length: Math.min(MAX_PARALLEL, runs.length) }, worker);
@@ -224,6 +225,7 @@ async function runOne(
   prompt: string,
   mode: KodeAgentMode,
   deps: FanOutDeps,
+  parentChatId: string | null,
 ) {
   const controller = new AbortController();
   controllers.set(run.id, controller);
@@ -232,12 +234,22 @@ async function runOne(
   let todos: KodeTodo[] = [];
   const declined: string[] = [];
   try {
+    // Runs that can edit get their own worktree so they can't trample each
+    // other or the parent's checkout. Read-only ("plan") runs only look, so
+    // they work in the project itself: no branch, no full checkout on disk.
     // Sub-agents branch from where their parent is, not the new-thread base.
-    const worktree = await addWorktree(root, run.branch, null);
+    const readOnly = mode === "plan";
+    const worktree = readOnly ? root : await addWorktree(root, run.branch, null);
     const projectId = deps.ensureFolder(worktree);
     const title = `${prompt.replace(/\s+/g, " ").trim().slice(0, 48)} · ${run.modelName}`;
     const chatId = await deps.createChatRecord({ title, projectId });
-    patchRun(fanOutId, run.id, { worktree, chatId, status: "running" });
+    // Shown nested under the chat that started it, not as a new project.
+    linkSubagentChat(chatId, { parentChatId, model: run.modelName, root: worktree });
+    patchRun(fanOutId, run.id, {
+      worktree: readOnly ? null : worktree,
+      chatId,
+      status: "running",
+    });
 
     const onText = (delta: string) => {
       text += delta;
@@ -302,7 +314,9 @@ async function runOne(
       model: run.modelId,
       todos: todos.length ? todos : undefined,
     });
-    const git = await gitStatus(worktree).catch(() => null);
+    // A read-only run shares the project's checkout, so its git status would
+    // report the parent's own uncommitted work as this run's changes.
+    const git = readOnly ? null : await gitStatus(worktree).catch(() => null);
     patchRun(fanOutId, run.id, {
       status: stopped ? "stopped" : "done",
       preview: previewOf(text),
@@ -360,9 +374,14 @@ export function reportRuns(runs: FanOutRun[]): string {
   return runs
     .map((run) => {
       const head = `### ${run.modelName}: ${run.status}`;
-      const where = run.worktree ? `Branch ${run.branch}, worktree ${run.worktree}` : `Branch ${run.branch}`;
-      const changes =
-        run.files !== null ? `${run.files} file(s) changed, +${run.additions} -${run.deletions}` : "No change summary";
+      const where = run.worktree
+        ? `Branch ${run.branch}, worktree ${run.worktree}`
+        : "Read-only, in the project folder";
+      const changes = !run.worktree
+        ? ""
+        : run.files !== null
+          ? `${run.files} file(s) changed, +${run.additions} -${run.deletions}`
+          : "No change summary";
       const body = run.error ? `Error: ${run.error}` : run.reply ? `Reply:\n${run.reply}` : "";
       return [head, where, changes, body].filter(Boolean).join("\n");
     })

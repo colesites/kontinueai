@@ -1523,6 +1523,22 @@ impl Parser {
         out.push(CliEvent::Text { delta });
     }
 
+    /// Claude: the context size of the latest main-agent model call, forwarded
+    /// as soon as it is known so the meter moves during a turn (as in Claude
+    /// Code itself) instead of only when the turn's `result` arrives.
+    fn report_context(&mut self, usage: &Value, out: &mut Vec<CliEvent>) {
+        let n = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+        let total = n("input_tokens")
+            + n("cache_read_input_tokens")
+            + n("cache_creation_input_tokens")
+            + n("output_tokens");
+        if total == 0 || self.context_used == Some(total) {
+            return;
+        }
+        self.context_used = Some(total);
+        out.push(CliEvent::Usage { used: Some(total), window: None });
+    }
+
     fn set_session(&mut self, id: Option<&str>, model: Option<&str>, out: &mut Vec<CliEvent>) {
         if let Some(id) = id.filter(|id| !id.is_empty()) {
             if self.session_id.as_deref() != Some(id) {
@@ -1555,6 +1571,13 @@ impl Parser {
                         .and_then(Value::as_str)
                         .unwrap_or_default()
                         .to_string();
+                    // The prompt size of this call is known before it streams.
+                    // Sub-agent calls carry their own context, not this chat's.
+                    let from_subagent = event.get("parent_tool_use_id").is_some_and(|id| !id.is_null());
+                    if let Some(usage) = inner.pointer("/message/usage").filter(|_| !from_subagent) {
+                        let usage = usage.clone();
+                        self.report_context(&usage, &mut out);
+                    }
                 }
                 if inner.get("type").and_then(Value::as_str) == Some("content_block_delta") {
                     let delta = inner.get("delta").cloned().unwrap_or(Value::Null);
@@ -1597,14 +1620,8 @@ impl Parser {
                     self.streamed_thinking.insert(message_id.clone());
                 }
                 if let Some(usage) = event.pointer("/message/usage").filter(|_| !from_subagent) {
-                    let n = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
-                    let total = n("input_tokens")
-                        + n("cache_read_input_tokens")
-                        + n("cache_creation_input_tokens")
-                        + n("output_tokens");
-                    if total > 0 {
-                        self.context_used = Some(total);
-                    }
+                    let usage = usage.clone();
+                    self.report_context(&usage, &mut out);
                 }
                 let blocks = event
                     .pointer("/message/content")
@@ -2048,6 +2065,20 @@ mod tests {
         assert!(out.iter().any(|e| matches!(e, CliEvent::ToolStart { id, .. } if id == "toolu_task:toolu_read")));
         let out = parser.handle(&json!({"type":"user","parent_tool_use_id":"toolu_task","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_read","content":"ok"}]}}));
         assert!(out.iter().any(|e| matches!(e, CliEvent::ToolEnd { id, .. } if id == "toolu_task:toolu_read")));
+    }
+
+    #[test]
+    fn claude_context_is_reported_live_during_the_turn() {
+        let mut parser = Parser::new(CliProvider::Claude, None);
+        // Before the call streams, message_start already carries its prompt size.
+        let start = parser.handle(&json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start","message":{"id":"m1","usage":{"input_tokens":5,"cache_read_input_tokens":600000,"cache_creation_input_tokens":1000,"output_tokens":1}}}}));
+        assert!(start.iter().any(|e| matches!(e, CliEvent::Usage { used: Some(601006), window: None })));
+        // A sub-agent's call never moves this chat's meter.
+        let sub = parser.handle(&json!({"type":"stream_event","parent_tool_use_id":"toolu_9","event":{"type":"message_start","message":{"id":"m2","usage":{"input_tokens":90000}}}}));
+        assert!(!sub.iter().any(|e| matches!(e, CliEvent::Usage { .. })));
+        // The finished message updates it again with the reply included.
+        let done = parser.handle(&json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m1","content":[],"usage":{"input_tokens":5,"cache_read_input_tokens":600000,"cache_creation_input_tokens":1000,"output_tokens":2000}}}));
+        assert!(done.iter().any(|e| matches!(e, CliEvent::Usage { used: Some(603005), window: None })));
     }
 
     #[test]
