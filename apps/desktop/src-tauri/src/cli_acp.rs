@@ -625,12 +625,70 @@ pub(super) async fn probe_models(config: &CliConfig) -> Result<Vec<CliModel>, St
     })
     .await;
     conn.stop();
+    // The test session is now an empty chat in the agent's own history; clear
+    // it (and any left by earlier versions) in the background.
+    let (binary, config, probe_dir) = (binary.clone(), config.clone(), dir.clone());
+    tokio::spawn(async move { forget_probe_sessions(&binary, &config, &probe_dir).await });
     match result {
         Ok(Ok(setup)) => Ok(models_from(&setup)),
         Ok(Err(error)) => Err(error.into_message()),
         Err(_) => Err(
             "The agent didn't answer within 45 seconds, so its models couldn't load. Press Update to get its newest version. If it still doesn't answer, the agent itself isn't starting on this computer.".to_string(),
         ),
+    }
+}
+
+/// Deletes the sessions model probes left in the agent's history. Only
+/// sessions in the probe's own temp folder are touched, and only for agents
+/// whose storage Kontinue knows (OpenCode, Gemini CLI); others keep them.
+async fn forget_probe_sessions(binary: &Path, config: &CliConfig, probe_dir: &Path) {
+    let probe = std::fs::canonicalize(probe_dir).unwrap_or_else(|_| probe_dir.to_path_buf());
+    let same_dir = |dir: &str| {
+        let dir = Path::new(dir.trim());
+        dir == probe_dir || std::fs::canonicalize(dir).map(|d| d == probe).unwrap_or(false)
+    };
+    match config.preset.as_str() {
+        "opencode" => {
+            // `session list` covers the project of the folder it runs in.
+            let Ok(out) = cli_command(CliProvider::Acp, binary, config)
+                .args(["session", "list", "--format", "json", "--max-count", "1000"])
+                .current_dir(probe_dir)
+                .stdin(Stdio::null())
+                .output()
+                .await
+            else {
+                return;
+            };
+            let sessions: Vec<Value> = serde_json::from_slice(&out.stdout).unwrap_or_default();
+            for session in sessions {
+                let (Some(id), Some(dir)) = (
+                    session.get("id").and_then(Value::as_str),
+                    session.get("directory").and_then(Value::as_str),
+                ) else {
+                    continue;
+                };
+                if same_dir(dir) {
+                    let _ = cli_command(CliProvider::Acp, binary, config)
+                        .args(["session", "delete", id])
+                        .current_dir(probe_dir)
+                        .stdin(Stdio::null())
+                        .output()
+                        .await;
+                }
+            }
+        }
+        "gemini" => {
+            // ~/.gemini/tmp/<project>/ with a `.project_root` naming the folder.
+            let Some(home) = std::env::var_os("HOME") else { return };
+            let Ok(projects) = std::fs::read_dir(Path::new(&home).join(".gemini").join("tmp")) else { return };
+            for project in projects.flatten() {
+                let root = std::fs::read_to_string(project.path().join(".project_root")).unwrap_or_default();
+                if !root.trim().is_empty() && same_dir(&root) {
+                    let _ = std::fs::remove_dir_all(project.path().join("chats"));
+                }
+            }
+        }
+        _ => {}
     }
 }
 

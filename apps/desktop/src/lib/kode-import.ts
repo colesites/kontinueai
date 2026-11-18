@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Local coding-session import (Claude Code / OpenAI Codex)
+// Local coding-session import (Claude Code, Codex, Cursor, Gemini CLI,
+// OpenCode, Antigravity, Aider)
 //
 // The Tauri layer discovers and parses the on-disk transcripts and returns a
 // provider-independent "normalized" session. This module wraps those commands,
@@ -17,6 +18,7 @@ export type CodingProvider =
   | "cursor"
   | "opencode"
   | "aider"
+  | "antigravity"
   | "file";
 
 export const CODING_PROVIDER_META: Record<
@@ -62,6 +64,12 @@ export const CODING_PROVIDER_META: Record<
     label: "Aider",
     shortLabel: "Aider",
     description: "Aider chat history in the project",
+    icon: "/kontinueai.svg",
+  },
+  antigravity: {
+    label: "Antigravity",
+    shortLabel: "Antigravity",
+    description: "Google's agent IDE",
     icon: "/kontinueai.svg",
   },
   file: {

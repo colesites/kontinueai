@@ -936,6 +936,14 @@ fn claude_mcp_config(servers: &[ResolvedMcp]) -> Value {
 }
 
 /// Codex `-c mcp_servers.<name>.…` overrides, plus env vars holding tokens.
+/// Kontinue's own MCP server (sub-agents, threads) by name.
+const KONTINUE_MCP: &str = "kontinue";
+/// How long one wait_for_subagents call may block for Claude Code and Codex.
+/// Others keep the server's 45 seconds, since their tool timeouts are unknown.
+const SUBAGENT_WAIT_SECS: u64 = 900;
+/// The tool timeout given to those two: the wait plus room to answer.
+const MCP_TOOL_TIMEOUT_SECS: u64 = SUBAGENT_WAIT_SECS + 60;
+
 fn codex_mcp_overrides(servers: &[ResolvedMcp]) -> (Vec<String>, Vec<(String, String)>) {
     let quote = |text: &str| serde_json::to_string(text).unwrap_or_else(|_| "\"\"".into());
     let mut args = Vec::new();
@@ -943,6 +951,11 @@ fn codex_mcp_overrides(servers: &[ResolvedMcp]) -> (Vec<String>, Vec<(String, St
     for (index, server) in servers.iter().enumerate() {
         let spec = &server.spec;
         let key = format!("mcp_servers.{}", mcp_key(&spec.name));
+        if spec.name == KONTINUE_MCP {
+            // Codex gives up on a tool after 60 seconds by default.
+            args.push("-c".into());
+            args.push(format!("{key}.tool_timeout_sec={MCP_TOOL_TIMEOUT_SECS}"));
+        }
         if let Some(url) = spec.url.as_deref() {
             args.push("-c".into());
             args.push(format!("{key}.url={}", quote(url)));
@@ -1012,9 +1025,44 @@ pub struct CliRunState {
     stopped: Mutex<std::collections::HashSet<u32>>,
 }
 
-fn claude_args(req: &CliRunRequest, mcp: &[ResolvedMcp], plugin_dirs: &[String]) -> Vec<String> {
+/// Whether this Claude Code takes `--permission-mode auto` (its classifier
+/// that runs routine actions and refuses risky ones; Claude Code 2.1+).
+/// Checked once per binary.
+async fn claude_has_auto_mode(binary: &Path, config: &CliConfig) -> bool {
+    static KNOWN: OnceLock<Mutex<HashMap<PathBuf, bool>>> = OnceLock::new();
+    let known = KNOWN.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(answer) = known.lock().ok().and_then(|k| k.get(binary).copied()) {
+        return answer;
+    }
+    let help = cli_command(CliProvider::Claude, binary, config)
+        .arg("--help")
+        .stdin(Stdio::null())
+        .output()
+        .await
+        .map(|out| String::from_utf8_lossy(&out.stdout).to_string())
+        .unwrap_or_default();
+    let answer = help_lists_auto_mode(&help);
+    if let Ok(mut known) = known.lock() {
+        known.insert(binary.to_path_buf(), answer);
+    }
+    answer
+}
+
+fn help_lists_auto_mode(help: &str) -> bool {
+    help.split("--permission-mode")
+        .nth(1)
+        .and_then(|rest| rest.split(')').next())
+        .map(|choices| choices.contains("\"auto\""))
+        .unwrap_or(false)
+}
+
+fn claude_args(req: &CliRunRequest, mcp: &[ResolvedMcp], plugin_dirs: &[String], auto_mode: bool) -> Vec<String> {
     let permission = match req.mode.as_str() {
         "plan" => "plan",
+        // Kode's Auto runs routine commands and holds back risky ones, which is
+        // what Claude Code's own auto mode does. Older versions only have
+        // acceptEdits, where every command that needs approval is refused.
+        "auto" if auto_mode => "auto",
         "auto_edits" | "design" | "auto" => "acceptEdits",
         "full_access" => "bypassPermissions",
         // Supervised: Claude Code's own default rules (no edits or commands
@@ -1057,7 +1105,7 @@ fn claude_args(req: &CliRunRequest, mcp: &[ResolvedMcp], plugin_dirs: &[String])
     // Print mode can't ask about MCP tools, so it would refuse Kontinue's own.
     // Allow them as Kode's own agent would: starting sub-agents only where
     // edits run without asking; reading threads and models in any mode.
-    if mcp.iter().any(|server| server.spec.name == "kontinue") {
+    if mcp.iter().any(|server| server.spec.name == KONTINUE_MCP) {
         args.push("--allowedTools".to_string());
         args.push(kontinue_allowed_tools(&req.mode));
     }
@@ -1233,11 +1281,20 @@ pub async fn kode_cli_run(
         return acp::run(&state, run_id, &binary, &request, on_event).await;
     }
 
-    let mcp = resolve_mcp(&request.mcp_servers).await;
+    let mut mcp = resolve_mcp(&request.mcp_servers).await;
+    let long_waits = matches!(request.provider, CliProvider::Claude | CliProvider::Codex);
+    if long_waits {
+        for server in mcp.iter_mut().filter(|s| s.spec.name == KONTINUE_MCP) {
+            server.spec.env.insert("KODE_MAX_WAIT_SECS".into(), SUBAGENT_WAIT_SECS.to_string());
+        }
+    }
     let plugin_dirs = valid_plugin_dirs(&request.plugin_dirs);
     let (codex_overrides, extra_env) = codex_mcp_overrides(&mcp);
+    let claude_auto = request.provider == CliProvider::Claude
+        && request.mode == "auto"
+        && claude_has_auto_mode(&binary, &request.config).await;
     let args = match request.provider {
-        CliProvider::Claude => claude_args(&request, &mcp, &plugin_dirs),
+        CliProvider::Claude => claude_args(&request, &mcp, &plugin_dirs, claude_auto),
         CliProvider::Codex => codex_args(&request, &codex_overrides),
         CliProvider::Cursor => cursor_args(&request),
         CliProvider::Acp => unreachable!(),
@@ -1245,6 +1302,11 @@ pub async fn kode_cli_run(
     let mut cmd = cli_command(request.provider, &binary, &request.config);
     if request.provider == CliProvider::Codex {
         cmd.envs(extra_env);
+    }
+    // Claude Code's MCP tool timeout, so a long sub-agent wait isn't cut off
+    // (unless you set your own in this provider's environment).
+    if request.provider == CliProvider::Claude && !request.config.env.contains_key("MCP_TOOL_TIMEOUT") {
+        cmd.env("MCP_TOOL_TIMEOUT", (MCP_TOOL_TIMEOUT_SECS * 1000).to_string());
     }
     cmd.args(&args)
         .current_dir(root)
@@ -1853,6 +1915,31 @@ fn claude_todos(input: &Value) -> Option<Vec<CliTodo>> {
 mod tests {
 
     #[test]
+    fn codex_waits_longer_on_kontinue_tools() {
+        let server = |name: &str| ResolvedMcp {
+            spec: McpSpec { name: name.into(), command: Some("kode-mcp".into()), args: vec![], env: HashMap::new(), url: None },
+            token: None,
+        };
+        let (args, _) = codex_mcp_overrides(&[server("kontinue"), server("other")]);
+        assert!(args.contains(&format!("mcp_servers.kontinue.tool_timeout_sec={MCP_TOOL_TIMEOUT_SECS}")));
+        assert!(!args.iter().any(|a| a.starts_with("mcp_servers.other.tool_timeout_sec")));
+    }
+
+    #[test]
+    fn detects_claude_auto_permission_mode() {
+        let new_help = "  --permission-mode <mode>              Permission mode to use for the session\n                                        (choices: \"acceptEdits\", \"auto\",\n                                        \"bypassPermissions\", \"manual\",\n                                        \"dontAsk\", \"plan\")\n  --plugin-dir <path>";
+        let old_help = "  --permission-mode <mode>  Permission mode (choices: \"acceptEdits\", \"bypassPermissions\", \"default\", \"plan\")\n  --model <model> e.g. \"auto\"";
+        assert!(help_lists_auto_mode(new_help));
+        assert!(!help_lists_auto_mode(old_help));
+        let req: CliRunRequest = serde_json::from_value(serde_json::json!({
+            "provider": "claude", "root": "/tmp", "prompt": "hi", "sessionId": null, "model": null, "mode": "auto"
+        }))
+        .unwrap();
+        assert!(claude_args(&req, &[], &[], true).windows(2).any(|w| w == ["--permission-mode", "auto"]));
+        assert!(claude_args(&req, &[], &[], false).windows(2).any(|w| w == ["--permission-mode", "acceptEdits"]));
+    }
+
+    #[test]
     fn resumes_or_forks_a_session() {
         let request = |provider: &str, fork: bool| -> CliRunRequest {
             serde_json::from_value(serde_json::json!({
@@ -1861,11 +1948,11 @@ mod tests {
             }))
             .unwrap()
         };
-        let claude = claude_args(&request("claude", true), &[], &[]);
+        let claude = claude_args(&request("claude", true), &[], &[], false);
         let at = claude.iter().position(|a| a == "--resume").unwrap();
         assert_eq!(claude[at + 1], "abc");
         assert!(claude.contains(&"--fork-session".to_string()));
-        assert!(!claude_args(&request("claude", false), &[], &[]).contains(&"--fork-session".to_string()));
+        assert!(!claude_args(&request("claude", false), &[], &[], false).contains(&"--fork-session".to_string()));
         let codex = codex_args(&request("codex", true), &[]);
         let at = codex.iter().position(|a| a == "fork").unwrap();
         assert_eq!(codex[at + 1], "abc");
@@ -1881,16 +1968,16 @@ mod tests {
             }))
             .unwrap()
         };
-        let claude = claude_args(&request("claude", Some("xhigh")), &[], &[]);
+        let claude = claude_args(&request("claude", Some("xhigh")), &[], &[], false);
         let at = claude.iter().position(|a| a == "--effort").unwrap();
         assert_eq!(claude[at + 1], "xhigh");
-        assert!(!claude_args(&request("claude", None), &[], &[]).contains(&"--effort".to_string()));
+        assert!(!claude_args(&request("claude", None), &[], &[], false).contains(&"--effort".to_string()));
         // Codex has no "max": it gets its highest level.
         let codex = codex_args(&request("codex", Some("max")), &[]);
         assert!(codex.contains(&"model_reasoning_effort=\"xhigh\"".to_string()));
         assert!(!codex_args(&request("codex", None), &[]).contains(&"-c".to_string()));
         // Unknown values are dropped, not passed through.
-        assert!(!claude_args(&request("claude", Some("--evil")), &[], &[]).contains(&"--effort".to_string()));
+        assert!(!claude_args(&request("claude", Some("--evil")), &[], &[], false).contains(&"--effort".to_string()));
     }
 
     #[test]
