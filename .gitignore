@@ -46,3 +46,7 @@ web_scraper_research.md
 memory-feature.md
 CLAUDE.md
 chatgpt-scraper-research.md
+
+# Local-only Remotion video tool (not part of the product, not shipped).
+# Kept on disk for generating marketing video; never committed.
+apps/launch-video/
