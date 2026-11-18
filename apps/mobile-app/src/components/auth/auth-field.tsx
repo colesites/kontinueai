@@ -129,23 +129,13 @@ export function AuthError({ message }: { message: string }) {
 }
 
 export function AuthNotice({ message }: { message: string }) {
-  const { isDark } = useTheme();
-
   return (
     <View
       accessibilityRole="alert"
-      className="flex-row items-start gap-2.5 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3.5 py-3"
+      className="flex-row items-start gap-2.5 rounded-xl border border-primary/25 bg-primary/10 px-3.5 py-3"
     >
-      <Icon
-        as={CheckCircle2}
-        size={17}
-        color={isDark ? "#6ee7b7" : "#059669"}
-        className="mt-0.5"
-      />
-      <Text
-        className="min-w-0 flex-1 text-[12.5px] leading-5"
-        style={{ color: isDark ? "#a7f3d0" : "#047857" }}
-      >
+      <Icon as={CheckCircle2} size={17} className="mt-0.5 text-primary" />
+      <Text className="min-w-0 flex-1 text-[12.5px] leading-5 text-foreground">
         {message}
       </Text>
     </View>

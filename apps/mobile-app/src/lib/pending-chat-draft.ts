@@ -11,6 +11,9 @@ export interface PendingChatDraft {
   model?: string;
   webSearchEnabled?: boolean;
   attachments?: PendingAttachment[];
+  /** Image options picked on the home composer, applied to the first send. */
+  imageAspectRatio?: string;
+  imageSize?: string | null;
 }
 
 const drafts = new Map<string, PendingChatDraft>();

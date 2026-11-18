@@ -34,7 +34,14 @@ export const formatWhen = (timestamp: number) => {
   return `${Math.floor(diff / year)}y`;
 };
 
-const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
+const SidebarChatRow = ({
+  chat,
+  subagentModel,
+}: {
+  chat: KodeChat;
+  /** Shown as a sub-agent run of its parent chat: the model leads the label. */
+  subagentModel?: string;
+}) => {
   const {
     activeTab,
     setActiveTab,
@@ -110,7 +117,14 @@ const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
           className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
         >
           <ChatStatusIndicator chatId={chat.id} isPinned={isPinned} />
-          <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+          {subagentModel ? (
+            <span className="min-w-0 flex-1 truncate" title={chat.title}>
+              <span className="text-foreground/85">{subagentModel}</span>
+              <span className="text-foreground/40"> · sub-agent</span>
+            </span>
+          ) : (
+            <span className="min-w-0 flex-1 truncate">{chat.title}</span>
+          )}
         </button>
       )}
 

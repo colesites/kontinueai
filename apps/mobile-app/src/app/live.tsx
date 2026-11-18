@@ -677,7 +677,7 @@ export default function LiveVoiceScreen() {
           </Text>
 
           {status === "connected" && messages.length > 0 ? (
-            <View className="mt-6 w-full max-w-md gap-2 rounded-2xl border border-border bg-card/70 p-4">
+            <View className="mt-6 w-full max-w-md gap-2 rounded-2xl border border-foreground/8 bg-card/70 p-4">
               {messages.slice(-3).map((message) => (
                 <Text
                   key={message.id}
@@ -695,7 +695,7 @@ export default function LiveVoiceScreen() {
         </View>
 
         {!canUseLive ? (
-          <View className="rounded-2xl border border-border bg-card p-5">
+          <View className="rounded-2xl border border-foreground/8 bg-card p-5">
             <View className="flex-row items-center gap-2">
               <Icon as={Sparkles} size={18} className="text-primary" />
               <Text className="text-[16px] font-semibold text-foreground">
@@ -737,14 +737,14 @@ export default function LiveVoiceScreen() {
             </Text>
           </View>
         ) : status === "connecting" ? (
-          <View className="min-h-14 w-full max-w-md self-center items-center justify-center rounded-full border border-border bg-card">
+          <View className="min-h-14 w-full max-w-md self-center items-center justify-center rounded-full border border-foreground/8 bg-card">
             <Text className="text-[13px] font-medium text-muted-foreground">
               Connecting securely…
             </Text>
           </View>
         ) : (
           <View className="items-center">
-            <View className="flex-row items-center gap-3 rounded-full border border-border bg-card p-2">
+            <View className="flex-row items-center gap-3 rounded-full border border-foreground/8 bg-card p-2">
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={
@@ -753,7 +753,7 @@ export default function LiveVoiceScreen() {
                 onPress={toggleMute}
                 className={cn(
                   "h-12 w-12 items-center justify-center rounded-full",
-                  isMuted ? "bg-destructive/15" : "bg-secondary",
+                  isMuted ? "bg-destructive/15" : "bg-foreground/5",
                 )}
               >
                 <Icon
@@ -766,7 +766,7 @@ export default function LiveVoiceScreen() {
                 accessibilityRole="button"
                 accessibilityLabel="Stop Kontinue speaking"
                 onPress={stopSpeaking}
-                className="h-12 w-12 items-center justify-center rounded-full bg-secondary"
+                className="h-12 w-12 items-center justify-center rounded-full bg-foreground/5"
               >
                 <Icon as={Volume2} size={19} className="text-foreground" />
               </Pressable>

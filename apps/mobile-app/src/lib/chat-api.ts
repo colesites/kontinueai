@@ -20,35 +20,11 @@ export const CHAT_API_URL = `${API_BASE_URL}/api/chat`;
  */
 export const streamingFetch = expoFetch as unknown as typeof globalThis.fetch;
 
-export type ChatRequestBody = {
-  chatId: string;
-  model: string;
-  webSearchEnabled: boolean;
-  imageAspectRatio: string;
-  imageSize: string | null;
-  userTimezone: string | null;
-  agentId: string | null;
-};
-
-export function toChatRequestBody(args: {
-  chatId: string;
-  model: string;
-  webSearchEnabled?: boolean;
-  agentId?: string | null;
-}): ChatRequestBody {
-  let timezone: string | null = null;
-  try {
-    timezone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
-  } catch {
-    timezone = null;
-  }
-  return {
-    chatId: args.chatId,
-    model: args.model,
-    webSearchEnabled: args.webSearchEnabled ?? false,
-    imageAspectRatio: "auto",
-    imageSize: null,
-    userTimezone: timezone,
-    agentId: args.agentId ?? null,
-  };
-}
+// The request body is built by the same function the web client uses, so the
+// two cannot drift (reasoning, image options, timezone, agent).
+export {
+  type ChatRequestBody,
+  type ChatRequestBodyState,
+  toChatRequestBody,
+  trimMessagesToRetryTarget,
+} from "@repo/core/chat-request";

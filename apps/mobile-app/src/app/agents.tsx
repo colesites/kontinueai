@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Alert, Pressable, ScrollView, View } from "react-native";
+import { Pressable, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useMutation } from "convex/react";
@@ -19,6 +19,7 @@ import { ScreenHeader } from "@/components/screen-header";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
 import { savePendingChatDraft } from "@/lib/pending-chat-draft";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -52,10 +53,10 @@ export default function AgentsScreen() {
       router.push(`/chat/${chatId}?agent=${agent.id}`);
     } catch (err) {
       const data = (err as { data?: { message?: string } })?.data;
-      Alert.alert(
-        "Couldn't start chat",
-        data?.message ?? (err instanceof Error ? err.message : "Please try again."),
-      );
+      toast.error("Couldn't start chat", {
+        description:
+          data?.message ?? (err instanceof Error ? err.message : "Please try again."),
+      });
     } finally {
       setStartingAgentId(null);
     }

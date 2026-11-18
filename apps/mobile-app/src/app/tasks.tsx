@@ -21,6 +21,7 @@ import {
   CalendarClock,
   CalendarDays,
   Check,
+  ChevronLeft,
   ChevronRight,
   Columns3,
   Flag,
@@ -37,6 +38,8 @@ import { ScreenHeader } from "@/components/screen-header";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
+import { errorMessage } from "@/lib/app-errors";
 import { isPushEnabled, requestPushPermission } from "@/lib/push-notifications";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +51,7 @@ type TaskStatus = Task["status"];
 const VIEWS: { id: TaskView; label: string; icon: typeof List }[] = [
   { id: "list", label: "List", icon: List },
   { id: "kanban", label: "Board", icon: Columns3 },
-  { id: "calendar", label: "Dates", icon: CalendarDays },
+  { id: "calendar", label: "Calendar", icon: CalendarDays },
 ];
 
 const KANBAN_COLUMNS: { status: TaskStatus; label: string }[] = [
@@ -58,27 +61,36 @@ const KANBAN_COLUMNS: { status: TaskStatus; label: string }[] = [
 ];
 
 const PRIORITIES: TaskPriority[] = ["low", "medium", "high", "urgent"];
-const PRIORITY_META: Record<TaskPriority, { label: string; color: string }> = {
-  urgent: { label: "Urgent", color: "#ef4444" },
-  high: { label: "High", color: "#f97316" },
-  medium: { label: "Medium", color: "#f59e0b" },
-  low: { label: "Low", color: "#9ca3af" },
+// Same class names as web task-shared PRIORITY_META (no hand-written hex).
+const PRIORITY_META: Record<TaskPriority, { label: string; className: string }> = {
+  urgent: { label: "Urgent", className: "text-red-500" },
+  high: { label: "High", className: "text-orange-500" },
+  medium: { label: "Medium", className: "text-amber-500" },
+  low: { label: "Low", className: "text-muted-foreground" },
 };
 
-const RECURRENCE_OPTIONS = [
-  { value: null, label: "No repeat" },
+// Mirrors web task-shared RECURRENCE_OPTIONS.
+const RECURRENCE_OPTIONS: { value: string | null; label: string }[] = [
+  { value: null, label: "Does not repeat" },
   { value: "FREQ=DAILY", label: "Daily" },
   { value: "FREQ=WEEKLY", label: "Weekly" },
   { value: "FREQ=MONTHLY", label: "Monthly" },
-] as const;
+  { value: "FREQ=YEARLY", label: "Yearly" },
+];
 
-const REMINDER_OPTIONS = [
+// Mirrors web task-shared REMINDER_OPTIONS (plus "Custom time…" below).
+const REMINDER_OPTIONS: { value: number | null; label: string }[] = [
   { value: null, label: "No reminder" },
-  { value: 0, label: "At time" },
-  { value: 10, label: "10 min before" },
+  { value: 5, label: "5 min before" },
+  { value: 15, label: "15 min before" },
   { value: 60, label: "1 hour before" },
   { value: 1440, label: "1 day before" },
-] as const;
+];
+const PRESET_REMINDERS = REMINDER_OPTIONS.map((o) => o.value).filter(
+  (m): m is number => m != null,
+);
+
+const WEEKDAYS = ["S", "M", "T", "W", "T", "F", "S"];
 
 function formatDue(dueDate: number): string {
   const due = new Date(dueDate);
@@ -142,14 +154,18 @@ export default function TasksScreen() {
   };
 
   const handleToggle = (task: Task) => {
-    void toggleTaskComplete({ taskId: task._id }).catch(() =>
-      Alert.alert("Couldn't update task", "Please try again."),
+    void toggleTaskComplete({ taskId: task._id }).catch((error) =>
+      toast.error("Couldn't update task", {
+        description: errorMessage(error, "Please try again."),
+      }),
     );
   };
 
   const handleStatus = (task: Task, status: TaskStatus) => {
-    void updateTask({ taskId: task._id, status }).catch(() =>
-      Alert.alert("Couldn't move task", "Please try again."),
+    void updateTask({ taskId: task._id, status }).catch((error) =>
+      toast.error("Couldn't move task", {
+        description: errorMessage(error, "Please try again."),
+      }),
     );
   };
 
@@ -163,8 +179,10 @@ export default function TasksScreen() {
           text: "Delete",
           style: "destructive",
           onPress: () => {
-            void deleteTask({ taskId: task._id }).catch(() =>
-              Alert.alert("Couldn't delete task", "Please try again."),
+            void deleteTask({ taskId: task._id }).catch((error) =>
+              toast.error("Couldn't delete task", {
+                description: errorMessage(error, "Please try again."),
+              }),
             );
           },
         },
@@ -176,17 +194,19 @@ export default function TasksScreen() {
     try {
       const enabled = await requestPushPermission();
       setPushEnabled(enabled);
-      Alert.alert(
-        enabled ? "Reminders enabled" : "Notifications are off",
-        enabled
-          ? "Task reminders can now reach this device."
-          : "Enable notifications in system settings to receive reminders.",
-      );
+      if (enabled) {
+        toast.success("Reminders enabled", {
+          description: "Task reminders can now reach this device.",
+        });
+      } else {
+        toast.info("Notifications are off", {
+          description: "Enable notifications in system settings to receive reminders.",
+        });
+      }
     } catch (error) {
-      Alert.alert(
-        "Couldn't enable reminders",
-        error instanceof Error ? error.message : "Please try again.",
-      );
+      toast.error("Couldn't enable reminders", {
+        description: errorMessage(error, "Please try again."),
+      });
     }
   };
 
@@ -274,7 +294,7 @@ export default function TasksScreen() {
           {counts.open} open · {counts.completed} completed
         </Text>
 
-        <View className="mt-4 flex-row gap-1 rounded-xl border border-border bg-secondary p-1">
+        <View className="mt-4 flex-row gap-1 rounded-xl border border-foreground/5 bg-foreground/4 p-1">
           {VIEWS.map((item) => (
             <Pressable
               key={item.id}
@@ -325,9 +345,14 @@ export default function TasksScreen() {
             onDelete={handleDelete}
           />
         ) : view === "kanban" ? (
-          <KanbanView tasks={tasks} onEdit={openEdit} onStatus={handleStatus} />
+          <KanbanView
+            tasks={tasks}
+            onEdit={openEdit}
+            onStatus={handleStatus}
+            onDelete={handleDelete}
+          />
         ) : (
-          <CalendarView tasks={tasks} onEdit={openEdit} />
+          <CalendarView tasks={tasks} onEdit={openEdit} onToggle={handleToggle} />
         )}
       </ScrollView>
 
@@ -495,7 +520,7 @@ function TaskCard({
             <TaskMeta
               icon={Flag}
               label={priority.label}
-              color={priority.color}
+              className={priority.className}
             />
           ) : null}
           {task.recurring ? <TaskMeta icon={Repeat} label="Repeats" /> : null}
@@ -521,21 +546,20 @@ function TaskMeta({
   icon,
   label,
   color,
+  className,
 }: {
   icon: typeof Flag;
   label: string;
   color?: string;
+  /** Text-color class (priority tones, mirroring web). */
+  className?: string;
 }) {
+  const tone = className ?? (color ? undefined : "text-muted-foreground");
   return (
     <View className="flex-row items-center gap-1">
-      <Icon
-        as={icon}
-        size={11}
-        color={color}
-        className={color ? undefined : "text-muted-foreground"}
-      />
+      <Icon as={icon} size={11} color={color} className={tone} />
       <Text
-        className="text-[11px] text-muted-foreground"
+        className={cn("text-[11px]", tone ?? "text-muted-foreground")}
         style={color ? { color } : undefined}
       >
         {label}
@@ -548,10 +572,12 @@ function KanbanView({
   tasks,
   onEdit,
   onStatus,
+  onDelete,
 }: {
   tasks: Task[];
   onEdit: (task: Task) => void;
   onStatus: (task: Task, status: TaskStatus) => void;
+  onDelete: (task: Task) => void;
 }) {
   return (
     <View className="gap-5">
@@ -562,7 +588,7 @@ function KanbanView({
         return (
           <View
             key={column.status}
-            className="rounded-2xl border border-border bg-card p-3"
+            className="rounded-[20px] border border-foreground/6 bg-foreground/3 p-3"
           >
             <View className="mb-3 flex-row items-center justify-between">
               <Text className="text-[13px] font-semibold text-foreground">
@@ -584,11 +610,25 @@ function KanbanView({
                   <Pressable
                     key={task._id}
                     onPress={() => onEdit(task)}
-                    className="rounded-xl border border-border bg-secondary/40 p-3 active:bg-accent"
+                    className="rounded-2xl border border-foreground/8 bg-card p-3 active:opacity-90"
                   >
-                    <Text className="text-[13.5px] font-medium text-foreground">
-                      {task.title}
-                    </Text>
+                    <View className="flex-row items-start gap-2">
+                      <Text className="flex-1 text-[13.5px] font-medium leading-5 text-foreground">
+                        {task.title}
+                      </Text>
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${task.title}`}
+                        hitSlop={8}
+                        onPress={(event) => {
+                          event.stopPropagation();
+                          onDelete(task);
+                        }}
+                        className="-mr-1 -mt-1 h-8 w-8 items-center justify-center rounded-full active:bg-destructive/10"
+                      >
+                        <Icon as={Trash2} size={14} className="text-muted-foreground" />
+                      </Pressable>
+                    </View>
                     {task.dueDate ? (
                       <Text className="mt-1 text-[11px] text-muted-foreground">
                         {formatDue(task.dueDate)}
@@ -646,7 +686,7 @@ function StatusButton({
         event.stopPropagation();
         onPress();
       }}
-      className="min-h-10 flex-row items-center gap-1 rounded-lg border border-border px-3 active:bg-accent"
+      className="min-h-9 flex-row items-center gap-1 rounded-full border border-foreground/8 bg-foreground/4 px-3 active:bg-foreground/8"
     >
       <Text className="text-[11.5px] font-medium text-muted-foreground">
         {label}
@@ -658,64 +698,237 @@ function StatusButton({
   );
 }
 
+function startOfDay(ms: number): number {
+  const d = new Date(ms);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Web TaskCalendar: month grid with task dots, then the chosen day's tasks. */
 function CalendarView({
   tasks,
   onEdit,
+  onToggle,
 }: {
   tasks: Task[];
   onEdit: (task: Task) => void;
+  onToggle: (task: Task) => void;
 }) {
-  const sections = useMemo(() => {
-    const dated = tasks.filter(
-      (task) => task.dueDate != null && task.status !== "done",
-    );
-    const grouped = new Map<string, Task[]>();
-    for (const task of dated) {
-      const key = dateKey(task.dueDate!);
-      grouped.set(key, [...(grouped.get(key) ?? []), task]);
+  // Captured once (React Compiler forbids reading the clock during render).
+  const [today] = useState(() => startOfDay(Date.now()));
+  const [month, setMonth] = useState(() => {
+    const d = new Date(today);
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [selectedDay, setSelectedDay] = useState(today);
+
+  const byDay = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const task of tasks) {
+      if (task.dueDate == null) continue;
+      const key = dateKey(startOfDay(task.dueDate));
+      map.set(key, [...(map.get(key) ?? []), task]);
     }
-    return [...grouped.entries()].sort(([a], [b]) => a.localeCompare(b));
+    for (const list of map.values()) {
+      list.sort((a, b) => (a.dueDate ?? 0) - (b.dueDate ?? 0));
+    }
+    return map;
   }, [tasks]);
 
-  if (sections.length === 0) {
-    return (
-      <View className="items-center rounded-2xl border border-dashed border-border px-5 py-12">
-        <Icon as={CalendarDays} size={22} className="text-muted-foreground" />
-        <Text className="mt-3 text-center text-[13px] text-muted-foreground">
-          Add a due date to see tasks in the date view.
-        </Text>
-      </View>
-    );
-  }
+  const first = new Date(month.year, month.month, 1);
+  const daysInMonth = new Date(month.year, month.month + 1, 0).getDate();
+  const leading = first.getDay();
+  const cells: (number | null)[] = [
+    ...Array.from({ length: leading }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, index) =>
+      new Date(month.year, month.month, index + 1).getTime(),
+    ),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const selectedTasks = byDay.get(dateKey(selectedDay)) ?? [];
+  const undated = tasks.filter((task) => task.dueDate == null && task.status !== "done").length;
+  const shiftMonth = (delta: number) =>
+    setMonth((current) => {
+      const d = new Date(current.year, current.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
 
   return (
-    <View className="gap-5">
-      {sections.map(([key, sectionTasks]) => (
-        <View key={key}>
-          <Text className="mb-2 text-[12px] font-semibold text-foreground">
-            {dateLabel(key)}
+    <View className="gap-4">
+      <View className="rounded-[22px] border border-foreground/8 bg-card p-3">
+        <View className="mb-2 flex-row items-center gap-1 px-1">
+          <Text className="flex-1 text-[15px] font-semibold tracking-tight text-foreground">
+            {first.toLocaleDateString([], { month: "long", year: "numeric" })}
           </Text>
-          <View className="gap-2 border-l-2 border-primary/25 pl-3">
-            {sectionTasks.map((task) => (
-              <Pressable
-                key={task._id}
-                onPress={() => onEdit(task)}
-                className="min-h-14 justify-center rounded-xl border border-border bg-card px-3.5 py-2.5 active:bg-accent"
-              >
-                <Text className="text-[13.5px] font-medium text-foreground">
-                  {task.title}
-                </Text>
-                <Text className="mt-1 text-[11px] text-muted-foreground">
-                  {new Date(task.dueDate!).toLocaleTimeString([], {
-                    hour: "numeric",
-                    minute: "2-digit",
-                  })}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => {
+              const d = new Date(today);
+              setMonth({ year: d.getFullYear(), month: d.getMonth() });
+              setSelectedDay(today);
+            }}
+            className="h-8 justify-center rounded-full border border-foreground/8 bg-foreground/4 px-3 active:bg-foreground/8"
+          >
+            <Text className="text-[11.5px] font-semibold text-foreground">Today</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Previous month"
+            onPress={() => shiftMonth(-1)}
+            className="h-8 w-8 items-center justify-center rounded-full active:bg-foreground/8"
+          >
+            <Icon as={ChevronLeft} size={16} className="text-muted-foreground" />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Next month"
+            onPress={() => shiftMonth(1)}
+            className="h-8 w-8 items-center justify-center rounded-full active:bg-foreground/8"
+          >
+            <Icon as={ChevronRight} size={16} className="text-muted-foreground" />
+          </Pressable>
         </View>
-      ))}
+        <View className="flex-row">
+          {WEEKDAYS.map((day, index) => (
+            <Text
+              key={`${day}-${index}`}
+              className="flex-1 py-1.5 text-center text-[10.5px] font-semibold uppercase text-muted-foreground/70"
+            >
+              {day}
+            </Text>
+          ))}
+        </View>
+        <View className="flex-row flex-wrap">
+          {cells.map((cell, index) => {
+            if (cell == null) {
+              return <View key={`blank-${index}`} style={{ width: `${100 / 7}%`, height: 46 }} />;
+            }
+            const dayTasks = byDay.get(dateKey(cell)) ?? [];
+            const open = dayTasks.filter((task) => task.status !== "done");
+            const selected = cell === selectedDay;
+            const isToday = cell === today;
+            const overdue = cell < today && open.length > 0;
+            return (
+              <Pressable
+                key={cell}
+                accessibilityRole="button"
+                accessibilityLabel={`${new Date(cell).toDateString()}, ${dayTasks.length} tasks`}
+                accessibilityState={{ selected }}
+                onPress={() => setSelectedDay(cell)}
+                style={{ width: `${100 / 7}%`, height: 46 }}
+                className="items-center justify-center"
+              >
+                <View
+                  className={cn(
+                    "h-9 w-9 items-center justify-center rounded-full",
+                    selected
+                      ? "bg-primary"
+                      : isToday
+                        ? "border border-primary/60"
+                        : "",
+                  )}
+                >
+                  <Text
+                    className={cn(
+                      "text-[13px] tabular-nums",
+                      selected
+                        ? "font-semibold text-primary-foreground"
+                        : isToday
+                          ? "font-semibold text-primary"
+                          : "text-foreground",
+                    )}
+                  >
+                    {new Date(cell).getDate()}
+                  </Text>
+                </View>
+                {dayTasks.length > 0 ? (
+                  <View className="absolute bottom-0.5 flex-row gap-0.5">
+                    {dayTasks.slice(0, 3).map((task) => (
+                      <View
+                        key={task._id}
+                        className={cn(
+                          "h-1 w-1 rounded-full",
+                          task.status === "done"
+                            ? "bg-muted-foreground/40"
+                            : overdue
+                              ? "bg-destructive"
+                              : "bg-primary",
+                        )}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View>
+        <Text className="mb-2 text-[12.5px] font-semibold text-foreground">
+          {selectedDay === today ? "Today" : dateLabel(dateKey(selectedDay))}
+        </Text>
+        {selectedTasks.length === 0 ? (
+          <View className="items-center rounded-2xl border border-dashed border-foreground/15 px-5 py-8">
+            <Text className="text-[12.5px] text-muted-foreground">Nothing due this day.</Text>
+          </View>
+        ) : (
+          <View className="gap-2">
+            {selectedTasks.map((task) => {
+              const done = task.status === "done";
+              return (
+                <Pressable
+                  key={task._id}
+                  onPress={() => onEdit(task)}
+                  className="min-h-14 flex-row items-center gap-3 rounded-2xl border border-foreground/8 bg-card px-3.5 py-2.5 active:opacity-90"
+                >
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: done }}
+                    accessibilityLabel={done ? "Mark incomplete" : "Mark complete"}
+                    hitSlop={8}
+                    onPress={(event) => {
+                      event.stopPropagation();
+                      onToggle(task);
+                    }}
+                    className={cn(
+                      "h-5 w-5 items-center justify-center rounded-full border",
+                      done ? "border-primary bg-primary" : "border-foreground/25",
+                    )}
+                  >
+                    {done ? (
+                      <Icon as={Check} size={11} strokeWidth={3} className="text-primary-foreground" />
+                    ) : null}
+                  </Pressable>
+                  <View className="flex-1">
+                    <Text
+                      className={cn(
+                        "text-[13.5px] font-medium",
+                        done ? "text-muted-foreground line-through" : "text-foreground",
+                      )}
+                    >
+                      {task.title}
+                    </Text>
+                    <Text className="mt-0.5 text-[11px] text-muted-foreground">
+                      {new Date(task.dueDate!).toLocaleTimeString([], {
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+        {undated > 0 ? (
+          <Text className="mt-3 text-[11.5px] text-muted-foreground">
+            {undated} open task{undated === 1 ? "" : "s"} without a date. Find
+            {undated === 1 ? " it" : " them"} in List.
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -777,7 +990,14 @@ function TaskComposerForm({
   );
   const [isAgentTask, setIsAgentTask] = useState(task?.isAgentTask ?? false);
   const [aiInstruction, setAiInstruction] = useState(task?.aiInstruction ?? "");
-  const [picker, setPicker] = useState<"date" | "time" | null>(null);
+  const [picker, setPicker] = useState<"date" | "time" | "reminder" | null>(null);
+  // Web ReminderField's "Custom time…": tracked explicitly because a custom
+  // pick of exactly 60 min collides with the "1 hour before" preset.
+  const [customReminder, setCustomReminder] = useState(
+    () =>
+      task?.reminderMinutesBefore != null &&
+      !PRESET_REMINDERS.includes(task.reminderMinutesBefore),
+  );
   const [saving, setSaving] = useState(false);
   const [defaultDueDate] = useState(() => Date.now() + 60 * 60 * 1000);
 
@@ -785,14 +1005,15 @@ function TaskComposerForm({
     const trimmed = title.trim();
     if (!trimmed || saving) return;
     if (isAgentTask && dueDate == null) {
-      Alert.alert(
-        "Schedule required",
-        "Choose a date and time for K-AI to run this task.",
-      );
+      toast.error("Schedule required", {
+        description: "Choose a date and time for K-AI to run this task.",
+      });
       return;
     }
     if (isAgentTask && !aiInstruction.trim()) {
-      Alert.alert("Instruction required", "Tell K-AI what it should do.");
+      toast.error("Instruction required", {
+        description: "Tell K-AI what it should do.",
+      });
       return;
     }
     setSaving(true);
@@ -809,18 +1030,19 @@ function TaskComposerForm({
       });
       onClose();
     } catch (error) {
-      const data = (error as { data?: { message?: string } })?.data;
-      Alert.alert(
-        "Couldn't save task",
-        data?.message ??
-          (error instanceof Error ? error.message : "Please try again."),
-      );
+      toast.error("Couldn't save task", {
+        description: errorMessage(error, "Please try again."),
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  const pickerValue = new Date(dueDate ?? defaultDueDate);
+  const pickerValue = new Date(
+    picker === "reminder" && dueDate != null && reminder != null
+      ? dueDate - reminder * 60_000
+      : (dueDate ?? defaultDueDate),
+  );
 
   return (
     <Modal
@@ -834,7 +1056,7 @@ function TaskComposerForm({
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         className="flex-1 justify-end bg-black/55"
       >
-        <View className="max-h-[92%] rounded-t-3xl border-t border-border bg-background">
+        <View className="max-h-[92%] rounded-t-[28px] border-t border-foreground/10 bg-popover">
           <View className="flex-row items-center justify-between border-b border-border px-5 py-3">
             <View>
               <Text className="text-[11px] font-semibold uppercase tracking-widest text-primary">
@@ -848,7 +1070,7 @@ function TaskComposerForm({
               accessibilityRole="button"
               accessibilityLabel="Close task editor"
               onPress={onClose}
-              className="h-11 w-11 items-center justify-center rounded-xl bg-secondary active:bg-accent"
+              className="h-9 w-9 items-center justify-center rounded-full border border-foreground/8 bg-foreground/5 active:bg-foreground/10"
             >
               <Icon as={X} size={18} className="text-muted-foreground" />
             </Pressable>
@@ -870,7 +1092,7 @@ function TaskComposerForm({
                 maxLength={200}
                 placeholder="What needs to happen?"
                 placeholderTextColor={mutedForeground}
-                className="min-h-12 rounded-xl border border-border bg-secondary px-3.5 text-[15px] text-foreground"
+                className="min-h-12 rounded-xl border border-foreground/5 bg-foreground/4 px-3.5 text-[15px] text-foreground"
               />
             </View>
 
@@ -885,7 +1107,7 @@ function TaskComposerForm({
                 maxLength={2000}
                 placeholder="Add context (optional)"
                 placeholderTextColor={mutedForeground}
-                className="min-h-24 rounded-xl border border-border bg-secondary px-3.5 py-3 text-[14px] leading-5 text-foreground"
+                className="min-h-24 rounded-xl border border-foreground/5 bg-foreground/4 px-3.5 py-3 text-[14px] leading-5 text-foreground"
               />
             </View>
 
@@ -932,26 +1154,37 @@ function TaskComposerForm({
                       onPress={() => {
                         setDueDate(null);
                         setReminder(null);
+                        setCustomReminder(false);
                       }}
                     />
                   </>
                 ) : null}
               </View>
               {picker ? (
-                <View className="mt-3 overflow-hidden rounded-xl border border-border bg-secondary p-2">
+                <View className="mt-3 overflow-hidden rounded-xl border border-foreground/5 bg-foreground/4 p-2">
                   <ExpoDateTimePicker
                     value={pickerValue}
-                    mode={picker}
+                    mode={picker === "reminder" ? "time" : picker}
                     display="default"
                     accentColor={primary}
                     themeVariant={isDark ? "dark" : "light"}
-                    minimumDate={picker === "date" ? new Date() : undefined}
+                    minimumDate={picker === "date" ? new Date(defaultDueDate - 60 * 60 * 1000) : undefined}
                     onChange={(event, selected) => {
                       if (event.type === "dismissed") {
                         setPicker(null);
                         return;
                       }
-                      if (selected) setDueDate(selected.getTime());
+                      if (selected && picker === "reminder" && dueDate != null) {
+                        // Reminder moment on the due day → minutes before due.
+                        const due = new Date(dueDate);
+                        const at = new Date(due);
+                        at.setHours(selected.getHours(), selected.getMinutes(), 0, 0);
+                        setReminder(
+                          Math.max(0, Math.round((due.getTime() - at.getTime()) / 60_000)),
+                        );
+                      } else if (selected) {
+                        setDueDate(selected.getTime());
+                      }
                       if (Platform.OS === "android") setPicker(null);
                     }}
                   />
@@ -966,10 +1199,30 @@ function TaskComposerForm({
                     <ChoiceChip
                       key={option.label}
                       label={option.label}
-                      selected={reminder === option.value}
-                      onPress={() => setReminder(option.value)}
+                      selected={!customReminder && reminder === option.value}
+                      onPress={() => {
+                        setCustomReminder(false);
+                        setReminder(option.value);
+                      }}
                     />
                   ))}
+                  <ChoiceChip
+                    label={
+                      customReminder && reminder != null
+                        ? `At ${new Date(dueDate - reminder * 60_000).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}`
+                        : "Custom time…"
+                    }
+                    selected={customReminder}
+                    icon={Bell}
+                    onPress={() => {
+                      setCustomReminder(true);
+                      if (reminder == null) setReminder(30);
+                      setPicker("reminder");
+                    }}
+                  />
                 </OptionGroup>
                 <OptionGroup label="Repeat">
                   {RECURRENCE_OPTIONS.map((option) => (

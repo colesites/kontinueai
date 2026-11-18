@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
+import { goBackOr } from "@/lib/navigation";
 import { ChevronLeft, PanelLeft } from "lucide-react-native";
 
 import { Icon } from "@/components/ui/icon";
@@ -23,7 +24,7 @@ export function ScreenHeader({
   const { openSidebar } = useSidebar();
 
   const onLeading = () => {
-    if (leading === "back") router.back();
+    if (leading === "back") goBackOr(router);
     else openSidebar();
   };
 

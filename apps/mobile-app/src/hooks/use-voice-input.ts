@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
+import { requireOptionalNativeModule } from "expo";
 
 import { getMobileSpeechLanguage } from "@/lib/speech-settings";
 
@@ -8,9 +9,18 @@ type SpeechModule = typeof import("expo-speech-recognition");
 // Lazy-load so the app still runs in Expo Go (the native module only exists
 // in development/production builds). The hook degrades to an explanatory
 // alert when the module is unavailable.
+//
+// Ask whether the native side exists BEFORE requiring the package: the package
+// calls requireNativeModule() while it loads, and in a build without it that
+// throw surfaced as a red "Cannot find native module 'ExpoSpeechRecognition'"
+// screen even though the require sat inside try/catch.
 let speechModule: SpeechModule | null | undefined;
 function getSpeechModule(): SpeechModule | null {
   if (speechModule !== undefined) return speechModule;
+  if (!requireOptionalNativeModule("ExpoSpeechRecognition")) {
+    speechModule = null;
+    return speechModule;
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     speechModule = require("expo-speech-recognition") as SpeechModule;

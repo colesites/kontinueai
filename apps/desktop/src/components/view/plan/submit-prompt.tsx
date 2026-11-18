@@ -29,7 +29,7 @@ import type { KodeContentPart, KodeToolDefinition } from "@/lib/kode-chat";
 import { createDeltaBatcher, liveModes, runAborts, useRunSlot } from "@/lib/kode-run-state";
 import { interruptedReply } from "@/lib/kode-turn-notes";
 import { clearCheckpoint } from "@/lib/kode-turn-checkpoint";
-import { clearReportedChatContextUsage, recordChatContextUsage } from "@/lib/kode-context-usage";
+import { recordChatContextUsage } from "@/lib/kode-context-usage";
 import {
   cliLoginCommand,
   cliPickerModels,
@@ -621,11 +621,15 @@ export function createSubmitPrompt(deps: SubmitDeps) {
               case "usage":
                 if (event.window) rememberModelWindow(modelId, event.window);
                 if (event.used) {
-                  recordChatContextUsage(cliChatId, {
-                    inputTokens: event.used,
-                    outputTokens: 0,
-                    totalTokens: event.used,
-                  } as Parameters<typeof recordChatContextUsage>[1]);
+                  recordChatContextUsage(
+                    cliChatId,
+                    {
+                      inputTokens: event.used,
+                      outputTokens: 0,
+                      totalTokens: event.used,
+                    } as Parameters<typeof recordChatContextUsage>[1],
+                    "cli",
+                  );
                 }
                 break;
               case "session":
@@ -709,8 +713,10 @@ export function createSubmitPrompt(deps: SubmitDeps) {
           todos: latestTodos.length > 0 ? latestTodos : undefined,
         });
         linkPrsOfTurn(chatId, [...turnSteps.values()], content);
-        // The CLI counts its own prompt; our last provider total is stale.
-        clearReportedChatContextUsage(chatId);
+        // Keep the CLI's own count: it is the real size of this chat's session
+        // (tool output, files read, system prompt). Clearing it here made the
+        // meter fall back to a text-only estimate and drop to ~1% after every
+        // reply.
         dropRunItems(runKey);
         return;
       }
@@ -893,7 +899,7 @@ export function createSubmitPrompt(deps: SubmitDeps) {
       linkPrsOfTurn(chatId, [...turnSteps.values()], response.content);
 
       const finishedId = chatId;
-      if (response.usage) recordChatContextUsage(finishedId, response.usage);
+      if (response.usage) recordChatContextUsage(finishedId, response.usage, "api");
       clearInterruptedTurn(runKey);
       // Convex now renders the persisted turns (with sources/todos).
       dropRunItems(runKey);

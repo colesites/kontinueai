@@ -49,6 +49,21 @@ number.
 
 ## Current release
 
+- User-visible version: `1.3.0`
+- Scope: web-parity release. Chat gains thinking, retry with another model,
+  read-aloud, image viewer, generated-file cards, code highlighting, `@`
+  mentions, image options and a floating header/composer; Canvas, Kode,
+  Feedback, Settings, Pricing, Tasks and Connectors follow web's rules and
+  layouts; toasts replace error alerts; offline banner; referral invite codes.
+  Fixes Canvas double-charging video credits, Canvas reference images, the
+  connector OAuth sign-in handoff, "Back to chat" and the new-chat button.
+- New native module: `expo-speech` (read-aloud). Speech features are probed
+  with `requireOptionalNativeModule`, so builds without them don't crash.
+- Previous recorded Android remote build number before this release: `12`.
+- Submitted Android preview build number: `13` (EAS auto-increment).
+
+### Previous releases
+
 - User-visible version: `1.2.4`
 - Scope: reverts the root `BlurTargetProvider` added in 1.2.3, which wrapped
   the whole app in expo-blur's native `BlurTargetView` and crashed the app on

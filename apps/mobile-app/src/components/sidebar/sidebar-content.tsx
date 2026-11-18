@@ -26,6 +26,7 @@ import {
   Code2,
   Folder,
   FolderInput,
+  Gift,
   FolderMinus,
   ListChecks,
   LogOut,
@@ -59,20 +60,31 @@ import {
 } from "@/components/ui/dropdown";
 import { useTheme } from "@/components/theme-provider";
 import { usePlanTier } from "@/hooks/use-plan-tier";
+import { toast } from "@/components/ui/toast";
+import { GlassDialog, DialogClosePill, Eyebrow } from "@/components/ui/glass";
 import { API_BASE_URL } from "@/lib/chat-api";
+import { PROVIDER_CONFIG, type Provider } from "@/lib/import-providers";
 import { getDisplayName, getInitial } from "@/lib/user-display";
 
-// Kept in sync with @repo/utils url-safety PROVIDER_CONFIG (that package's
-// exports map doesn't resolve under Metro, so the colors live here too).
-const PROVIDER_COLORS: Record<string, string> = {
-  chatgpt: "#10a37f",
-  claude: "#cc785c",
-  gemini: "#4285f4",
-  t3chat: "#f8e6f4",
-  perplexity: "#20b8cd",
-  mistral: "#9ca3af",
-  kontinue: "#34d399",
-};
+// Same swatches as web ProjectCreateDialog (project identity colors are user
+// data, like provider brand colors, not theme tokens).
+const PROJECT_COLORS = [
+  "#6366f1",
+  "#ec4899",
+  "#f59e0b",
+  "#10b981",
+  "#06b6d4",
+  "#ef4444",
+];
+
+/** Provider badge color: brand color from the shared config, theme for Kontinue. */
+function providerColor(provider: string, primary: string): string | undefined {
+  if (provider === "kontinue") return primary;
+  if (provider in PROVIDER_CONFIG && provider !== "unknown") {
+    return PROVIDER_CONFIG[provider as Provider].color;
+  }
+  return undefined;
+}
 
 type SidebarContentProps = {
   onNavigate?: () => void;
@@ -119,6 +131,8 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
     { mode: "create" } | { mode: "rename"; projectId: Id<"projects"> } | null
   >(null);
   const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [projectColor, setProjectColor] = useState<string>(PROJECT_COLORS[0]!);
   const [menuProjectId, setMenuProjectId] = useState<Id<"projects"> | null>(
     null,
   );
@@ -154,7 +168,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
     try {
       await toggleChatPin({ chatId: menuChat._id, pinned });
     } catch {
-      Alert.alert("Couldn't update pin", "Please try again.");
+      toast.error("Couldn't update pin", { description: "Please try again." });
     }
   };
 
@@ -163,7 +177,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
     const url = `${API_BASE_URL}/share/${menuChat._id}`;
     closeChatMenu();
     void Clipboard.setStringAsync(url);
-    Alert.alert("Link copied", "The share link is on your clipboard.");
+    toast.success("Link copied", { description: "The share link is on your clipboard." });
   };
 
   const handleDelete = () => {
@@ -178,7 +192,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         style: "destructive",
         onPress: () => {
           deleteChat({ chatId }).catch(() =>
-            Alert.alert("Couldn't delete chat", "Please try again."),
+            toast.error("Couldn't delete chat", { description: "Please try again." }),
           );
         },
       },
@@ -200,24 +214,32 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
     try {
       await updateChatTitle({ chatId, title });
     } catch {
-      Alert.alert("Couldn't rename chat", "Please try again.");
+      toast.error("Couldn't rename chat", { description: "Please try again." });
     }
   };
 
   const handleProjectSave = async () => {
     const name = projectName.trim();
     const modal = projectModal;
+    const description = projectDescription.trim();
+    const color = projectColor;
     setProjectModal(null);
     setProjectName("");
+    setProjectDescription("");
     if (!name || !modal) return;
     try {
       if (modal.mode === "create") {
-        await createProject({ name });
+        await createProject({
+          name,
+          color,
+          ...(description ? { description } : {}),
+        });
+        toast.success("Project created");
       } else {
         await updateProject({ projectId: modal.projectId, name });
       }
     } catch {
-      Alert.alert("Couldn't save project", "Please try again.");
+      toast.error("Couldn't save project", { description: "Please try again." });
     }
   };
 
@@ -236,7 +258,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           style: "destructive",
           onPress: () => {
             deleteProject({ projectId }).catch(() =>
-              Alert.alert("Couldn't delete project", "Please try again."),
+              toast.error("Couldn't delete project", { description: "Please try again." }),
             );
           },
         },
@@ -249,7 +271,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
     closeChatMenu();
     if (!chatId) return;
     assignChatToProject({ chatId, projectId }).catch(() =>
-      Alert.alert("Couldn't move chat", "Please try again."),
+      toast.error("Couldn't move chat", { description: "Please try again." }),
     );
   };
 
@@ -330,16 +352,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
               className="text-muted-foreground/70"
             />
           </Pressable>
-        ) : (
-          <View
-            className="h-5 items-center justify-center border border-foreground/8 bg-foreground/5 px-1.5"
-            style={{ borderRadius: 6 }}
-          >
-            <Text className="font-mono text-[10px] font-medium text-muted-foreground/60">
-              ⌘K
-            </Text>
-          </View>
-        )}
+        ) : null}
       </View>
 
       {/* Row 1: primary New chat (gradient + glow) + Canvas palette button */}
@@ -524,7 +537,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           </View>
         ) : (
           filteredChats.map((c) => {
-            const color = PROVIDER_COLORS[c.source.provider] ?? undefined;
+            const color = providerColor(c.source.provider, primary);
             const pinned = !!c.pinnedAt && c.pinnedAt > 0;
             const openMenu = (e: Parameters<typeof chatMenu.open>[0]) => {
               setMenuChatId(c._id);
@@ -578,6 +591,27 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
 
       {/* Footer: account — mirrors SidebarAccountSection (real avatar) */}
       <View className="border-t border-foreground/6 px-3 pb-2 pt-2.5">
+        {/* Invite & earn — web SidebarAccountSection's persistent CTA, deep-
+            linked to the Invite tab. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Invite and earn 100 free video credits"
+          onPress={() => go("/settings?tab=invite")}
+          className="mb-1.5 flex-row items-center gap-2.5 rounded-xl border border-primary/15 bg-primary/8 px-2 py-1.5 active:bg-primary/12"
+        >
+          <View className="h-7 w-7 items-center justify-center rounded-full border border-primary/25 bg-primary/15">
+            <Icon as={Gift} size={13} className="text-primary" />
+          </View>
+          <View className="min-w-0 flex-1">
+            <Text numberOfLines={1} className="text-[12.5px] font-semibold leading-4 text-primary">
+              Invite &amp; earn
+            </Text>
+            <Text numberOfLines={1} className="text-[10.5px] leading-4 text-muted-foreground">
+              100 free video credits
+            </Text>
+          </View>
+          <Icon as={ChevronRight} size={14} className="text-primary/60" />
+        </Pressable>
         <Pressable
           onPress={accountMenu.open}
           className="flex-row items-center gap-2.5 rounded-xl px-2 py-1.5 active:bg-foreground/5"
@@ -719,61 +753,94 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         />
       </Dropdown>
 
-      {/* Create / rename project dialog */}
-      <Modal
-        visible={projectModal !== null}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setProjectModal(null)}
-      >
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/50 px-6"
-          onPress={() => setProjectModal(null)}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-border bg-popover p-5"
-          >
-            <Text className="mb-3 text-[16px] font-semibold text-foreground">
-              {projectModal?.mode === "rename"
-                ? "Rename project"
-                : "New project"}
-            </Text>
-            <TextInput
-              value={projectName}
-              onChangeText={setProjectName}
-              autoFocus
-              placeholder="Project name"
-              placeholderTextColor={mutedForeground}
-              className="rounded-xl border border-border bg-secondary px-3.5 py-3 text-[14px] text-foreground"
-            />
-            <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable
-                onPress={() => setProjectModal(null)}
-                className="rounded-full px-4 py-2.5 active:bg-accent"
-              >
-                <Text className="text-[13px] font-medium text-muted-foreground">
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                disabled={!projectName.trim()}
-                onPress={() => void handleProjectSave()}
-                className={
-                  projectName.trim()
-                    ? "rounded-full bg-primary px-4 py-2.5 active:opacity-90"
-                    : "rounded-full bg-primary/40 px-4 py-2.5"
-                }
-              >
-                <Text className="text-[13px] font-semibold text-primary-foreground">
-                  {projectModal?.mode === "rename" ? "Save" : "Create"}
-                </Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
+      {/* Create / rename project dialog — web ProjectCreateDialog (glass,
+          description, color swatches, glow Create) */}
+      <GlassDialog visible={projectModal !== null} onClose={() => setProjectModal(null)}>
+        <DialogClosePill onPress={() => setProjectModal(null)} />
+        <View className="px-5 pb-5 pt-6">
+          <Eyebrow>Project</Eyebrow>
+          <Text className="mt-1.5 text-[20px] font-semibold tracking-tight text-foreground">
+            {projectModal?.mode === "rename" ? "Rename project" : "New project"}
+          </Text>
+          <TextInput
+            value={projectName}
+            onChangeText={setProjectName}
+            autoFocus
+            maxLength={80}
+            placeholder="Project name"
+            placeholderTextColor={mutedForeground}
+            className="mt-4 rounded-xl border border-foreground/5 bg-foreground/4 px-3.5 py-3 text-[14.5px] text-foreground"
+          />
+          {projectModal?.mode === "create" ? (
+            <>
+              <TextInput
+                value={projectDescription}
+                onChangeText={setProjectDescription}
+                multiline
+                maxLength={280}
+                placeholder="What's it for? (optional)"
+                placeholderTextColor={mutedForeground}
+                textAlignVertical="top"
+                className="mt-2.5 min-h-20 rounded-xl border border-foreground/5 bg-foreground/4 px-3.5 py-3 text-[14px] leading-5 text-foreground"
+              />
+              <Text className="mb-2 mt-4 text-[10.5px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                Color
+              </Text>
+              <View className="flex-row gap-2.5">
+                {PROJECT_COLORS.map((swatch) => {
+                  const selected = projectColor === swatch;
+                  return (
+                    <Pressable
+                      key={swatch}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`Color ${swatch}`}
+                      onPress={() => setProjectColor(swatch)}
+                      className="h-9 w-9 items-center justify-center rounded-full"
+                      style={{
+                        borderWidth: 2,
+                        borderColor: selected ? swatch : "transparent",
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 24,
+                          height: 24,
+                          borderRadius: 12,
+                          backgroundColor: swatch,
+                        }}
+                      />
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          ) : null}
+          <View className="mt-5 flex-row justify-end gap-2">
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setProjectModal(null)}
+              className="rounded-full px-4 py-2.5 active:bg-foreground/5"
+            >
+              <Text className="text-[13px] font-medium text-muted-foreground">Cancel</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={!projectName.trim()}
+              onPress={() => void handleProjectSave()}
+              className={
+                projectName.trim()
+                  ? "rounded-full bg-primary px-5 py-2.5 active:opacity-90"
+                  : "rounded-full bg-primary/40 px-5 py-2.5"
+              }
+            >
+              <Text className="text-[13px] font-semibold text-primary-foreground">
+                {projectModal?.mode === "rename" ? "Save" : "Create"}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </GlassDialog>
 
       {/* Rename chat dialog */}
       <Modal

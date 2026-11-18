@@ -7,20 +7,21 @@ import {
   useState,
 } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
   Share as NativeShare,
   TextInput,
   View,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Image } from "expo-image";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import * as Clipboard from "expo-clipboard";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { type Href, useLocalSearchParams, useRouter } from "expo-router";
 import { useAuth } from "@clerk/expo";
 import { useMutation, useQuery } from "convex/react";
 import { useChat } from "@ai-sdk/react";
@@ -29,39 +30,67 @@ import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
 import { isKaiModel } from "@repo/ai/lib/kai";
 import {
+  collectAttachmentsFromParts,
+  collectClockDataFromParts,
+  collectEmailDraftFromParts,
+  collectGeneratedFilesFromParts,
+  collectImageUrlsFromParts,
+  collectTextFromParts,
+  mapImportedFlags,
+  mapStoredGeneratedImages,
+  pickGeneratedImages,
+  splitReasoningFromParts,
+} from "@repo/core/chat-message-parts";
+import {
+  buildSearchFallbackContent,
+  collectPerplexitySearchResults,
+} from "@repo/core/chat-search-results";
+import {
+  type ChatErrorKind,
+  getChatErrorKind,
+  getChatErrorToast,
+} from "@repo/core/chat-request";
+import {
+  ArrowDown,
   Check,
+  CircleAlert,
   Copy,
-  FileText,
-  PanelLeft,
-  Pencil,
-  Plus,
-  RefreshCw,
-  Search,
+  ListTree,
   Share as ShareIcon,
   Share2,
-  type LucideIcon,
-  X,
+  Sparkles,
 } from "lucide-react-native";
 
 import { ChatInput } from "@/components/chat/chat-input";
-import { ClockWidget } from "@/components/chat/clock-widget";
 import {
-  EmailComposer,
-  type EmailDraft,
-} from "@/components/chat/email-composer";
-import { Markdown } from "@/components/chat/markdown";
-import { ModeToggle } from "@/components/mode-toggle";
-import { useSidebar } from "@/components/sidebar/sidebar-context";
+  ChatMessage,
+  type DisplayMessage,
+} from "@/components/chat/chat-message";
+import { ModelSelector } from "@/components/chat/model-selector";
+import { withAlpha } from "@/components/chat/markdown";
+import { useTheme } from "@/components/theme-provider";
+import { ToolbarButton, TopToolbar } from "@/components/top-toolbar";
+import {
+  DialogClosePill,
+  Eyebrow,
+  GlassDialog,
+  GlassView,
+} from "@/components/ui/glass";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { toast } from "@/components/ui/toast";
+import { useKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { useReasoningPreference } from "@/hooks/use-reasoning-preference";
 import { useSelectedModel } from "@/hooks/use-selected-model";
-import { useWebSearchPreference } from "@/hooks/use-web-search-preference";
 import { useVoiceInput } from "@/hooks/use-voice-input";
+import { useWebSearchPreference } from "@/hooks/use-web-search-preference";
+import { errorMessage } from "@/lib/app-errors";
 import {
   API_BASE_URL,
   CHAT_API_URL,
   streamingFetch,
   toChatRequestBody,
+  trimMessagesToRetryTarget,
 } from "@/lib/chat-api";
 import {
   pickDocumentAttachments,
@@ -71,124 +100,69 @@ import {
 import { consumePendingChatDraft } from "@/lib/pending-chat-draft";
 import { cn } from "@/lib/utils";
 
-function uiMessageText(message: UIMessage): string {
-  return message.parts
-    .filter(
-      (part): part is { type: "text"; text: string } => part.type === "text",
-    )
-    .map((part) => part.text)
-    .join("");
-}
+const EMPTY_STREAMING_MESSAGE: DisplayMessage = {
+  id: "streaming-placeholder",
+  role: "assistant",
+  content: "",
+  images: [],
+  attachments: [],
+  isImported: false,
+  clockData: null,
+  emailDraft: null,
+  generatedFiles: [],
+};
 
-function uiMessageImages(message: UIMessage): string[] {
-  const images: string[] = [];
-  for (const part of message.parts) {
-    if (
-      part.type === "file" &&
-      part.mediaType?.startsWith("image/") &&
-      part.url
-    ) {
-      images.push(part.url);
-      continue;
-    }
-    const toolPart = part as unknown as {
-      type: string;
-      toolName?: string;
-      output?: {
-        result?: string;
-        images?: (string | { base64?: string })[];
-      };
-      result?: string;
-    };
-    if (
-      toolPart.type === "tool-image_generation" ||
-      (toolPart.type === "tool-result" &&
-        toolPart.toolName === "image_generation")
-    ) {
-      const first = toolPart.output?.images?.[0];
-      const base64 =
-        toolPart.output?.result ??
-        toolPart.result ??
-        (typeof first === "string" ? first : first?.base64);
-      if (base64) images.push(`data:image/webp;base64,${base64}`);
+// Shown once per app session, like web's once-per-browser memory alert.
+let memoryAlertShown = false;
+
+function toDisplayMessage(
+  message: UIMessage,
+  importedById: Record<string, boolean>,
+  storedImagesById: Record<string, string[]>,
+): DisplayMessage {
+  const isUser = message.role === "user";
+  const split = splitReasoningFromParts(message.parts);
+  let content = split.content;
+  if (!isUser && !content.trim()) {
+    const searchResults = collectPerplexitySearchResults(message.parts);
+    if (searchResults.length > 0) {
+      content = buildSearchFallbackContent(searchResults);
     }
   }
-  return images;
+  return {
+    id: message.id,
+    role: isUser ? "user" : "assistant",
+    content,
+    reasoningText: isUser ? undefined : split.reasoningText,
+    images: isUser
+      ? []
+      : pickGeneratedImages(
+          collectImageUrlsFromParts(message.parts),
+          [],
+          storedImagesById[message.id] ?? [],
+        ),
+    attachments: isUser ? collectAttachmentsFromParts(message.parts) : [],
+    isImported: importedById[message.id] ?? false,
+    clockData: isUser ? null : collectClockDataFromParts(message.parts),
+    emailDraft: isUser ? null : collectEmailDraftFromParts(message.parts),
+    generatedFiles: isUser ? [] : collectGeneratedFilesFromParts(message.parts),
+  };
 }
 
-function uiMessageClockTimezone(message: UIMessage): string | null | undefined {
-  for (const part of message.parts) {
-    const toolPart = part as unknown as {
-      type: string;
-      output?: { timezone?: string | null };
-    };
-    if (toolPart.type === "tool-get_current_time" && toolPart.output) {
-      return toolPart.output.timezone ?? null;
-    }
-  }
-  return undefined;
-}
+type ChatErrorState = {
+  title: string;
+  description: string;
+  kind: ChatErrorKind;
+};
 
-function uiMessageEmailDraft(message: UIMessage): EmailDraft | null {
-  let draft: EmailDraft | null = null;
-  for (const part of message.parts) {
-    const toolPart = part as unknown as {
-      type: string;
-      output?: Partial<EmailDraft>;
-    };
-    if (
-      toolPart.type === "tool-compose_email" &&
-      typeof toolPart.output?.subject === "string"
-    ) {
-      draft = {
-        to: toolPart.output.to ?? "",
-        cc: toolPart.output.cc ?? "",
-        subject: toolPart.output.subject,
-        body: toolPart.output.body ?? "",
-      };
-    }
-  }
-  return draft;
-}
-
-function uiMessageDocuments(message: UIMessage): {
-  filename: string;
-  url: string;
-}[] {
-  return message.parts
-    .filter(
-      (
-        part,
-      ): part is {
-        type: "file";
-        mediaType: string;
-        url: string;
-        filename?: string;
-      } => part.type === "file" && !part.mediaType?.startsWith("image/"),
-    )
-    .map((part) => ({
-      filename: part.filename ?? "Attachment",
-      url: part.url,
-    }));
-}
-
-/** Mirrors trimMessagesToRetryTarget in apps/web chat-messaging.ts. */
-function trimMessagesToRetryTarget(
-  messages: UIMessage[],
-  retryMessageId: string,
-): UIMessage[] {
-  const targetIndex = messages.findIndex((m) => m.id === retryMessageId);
-  const userIndex = messages
-    .slice(0, targetIndex)
-    .findLastIndex((m) => m.role === "user");
-  return userIndex === -1 ? messages : messages.slice(0, userIndex + 1);
+function toChatError(message: string): ChatErrorState {
+  return { ...getChatErrorToast(message), kind: getChatErrorKind(message) };
 }
 
 export default function ConversationScreen() {
   const { id, agent } = useLocalSearchParams<{ id: string; agent?: string }>();
   const chatId = id as Id<"chats">;
   const router = useRouter();
-  const { openSidebar } = useSidebar();
   // Agent persona for this chat (arrived from /agents or picked in the "+"
   // menu) — sent with every request, mirroring ChatClient on web.
   const [agentId, setAgentId] = useState<string | null>(() =>
@@ -196,6 +170,7 @@ export default function ConversationScreen() {
   );
   const { getToken } = useAuth();
   const { selectedModel, setSelectedModel, isPaidPlan } = useSelectedModel();
+  const { reasoningEnabled } = useReasoningPreference();
 
   const chat = useQuery(api.chats.getChat, chatId ? { chatId } : "skip");
   const dbMessages = useQuery(
@@ -206,26 +181,57 @@ export default function ConversationScreen() {
     api.files.listByChat,
     chatId ? { chatId } : "skip",
   );
+  const memoryStatus = useQuery(api.memories.getMemoryStatus, {});
   const addMessage = useMutation(api.messages.addMessage);
   const createFileRecord = useMutation(api.files.createFileRecord);
   const updateMessageContent = useMutation(api.messages.updateMessageContent);
   const deleteMessagesAfter = useMutation(api.messages.deleteMessagesAfter);
 
-  const [sendError, setSendError] = useState<string | null>(null);
+  const [chatError, setChatError] = useState<ChatErrorState | null>(null);
   // Persisted on the account: survives leaving the chat, force-quitting the
   // app, and follows the user to their other devices.
   const { webSearchEnabled, toggleWebSearch } = useWebSearchPreference();
   // Mirrors web gating: paid plans use the gateway search tool; K-AI has its
   // own server-side search pipeline so it's available on every tier.
   const webSearchAvailable = isPaidPlan || isKaiModel(selectedModel);
+  const [imageAspectRatio, setImageAspectRatio] = useState("auto");
+  const [imageSize, setImageSize] = useState<string | null>(null);
   const [composerValue, setComposerValue] = useState("");
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const [actionTarget, setActionTarget] = useState<UIMessage | null>(null);
-  const [editTarget, setEditTarget] = useState<UIMessage | null>(null);
+  const [editTarget, setEditTarget] = useState<DisplayMessage | null>(null);
   const [editValue, setEditValue] = useState("");
+  const [switchTarget, setSwitchTarget] = useState<DisplayMessage | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const [turnsOpen, setTurnsOpen] = useState(false);
   const [copySuccess, setCopySuccess] = useState(false);
+  const [showJumpControls, setShowJumpControls] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  // Header pills and the composer float over the conversation (web parity):
+  // the list scrolls underneath them and pads itself by their measured size.
+  const insets = useSafeAreaInsets();
+  const { tokens } = useTheme();
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 56);
+  const [composerHeight, setComposerHeight] = useState(140);
+  const keyboardOpen = useKeyboardOpen();
+  // Follow the stream only while the reader is already at the bottom; once
+  // they scroll up to read, new tokens must not yank them back down.
+  const followBottomRef = useRef(true);
+  const turnOffsetsRef = useRef(new Map<string, number>());
+
+  // Web shows this once as a toast linking to the memory settings.
+  useEffect(() => {
+    if (!memoryStatus?.warning || memoryAlertShown) return;
+    memoryAlertShown = true;
+    toast.error("Memory limit reached", {
+      id: "memory-limit-warning",
+      description: memoryStatus.warning,
+      duration: 8000,
+      action: {
+        label: "Manage memory",
+        onPress: () => router.push("/settings?tab=memory" as Href),
+      },
+    });
+  }, [memoryStatus, router]);
 
   // Voice input writes into the composer: interim results replace everything
   // after the text that was present when the mic was opened.
@@ -272,10 +278,12 @@ export default function ConversationScreen() {
     experimental_throttle: 80,
     onError: (err) => {
       console.error("AI chat error:", err);
-      setSendError(
-        err instanceof Error && err.message
-          ? err.message
-          : "Something went wrong. Please try again.",
+      setChatError(
+        toChatError(
+          err instanceof Error && err.message
+            ? err.message
+            : "Something went wrong on our end.",
+        ),
       );
     },
   });
@@ -313,19 +321,47 @@ export default function ConversationScreen() {
     }
   }, [dbMessages, chatFiles, aiMessages.length, setMessages]);
 
+  const requestBody = useCallback(
+    (
+      model: string,
+      search: boolean,
+      imageOptions?: { aspectRatio: string; size: string | null },
+    ) =>
+      toChatRequestBody(
+        {
+          selectedModel: model,
+          webSearchEnabled: search,
+          reasoningEnabled,
+          imageAspectRatio: imageOptions?.aspectRatio ?? imageAspectRatio,
+          imageSize: imageOptions ? imageOptions.size : imageSize,
+          agentId,
+        },
+        chatId,
+      ),
+    [agentId, chatId, imageAspectRatio, imageSize, reasoningEnabled],
+  );
+
+  const scrollToBottom = useCallback((animated = true) => {
+    followBottomRef.current = true;
+    setShowJumpControls(false);
+    scrollRef.current?.scrollToEnd({ animated });
+  }, []);
+
   const handleSend = useCallback(
     async (
       content: string,
       modelOverride?: string,
       webSearchOverride?: boolean,
       attachmentsOverride?: PendingAttachment[],
+      imageOptions?: { aspectRatio: string; size: string | null },
     ) => {
       const model = modelOverride ?? selectedModel;
       const files = toFileUIParts(attachmentsOverride ?? attachments);
       const search =
         (webSearchOverride ?? webSearchEnabled) && webSearchAvailable;
-      setSendError(null);
+      setChatError(null);
       setAttachments([]);
+      scrollToBottom();
       try {
         await addMessage({
           chatId,
@@ -337,28 +373,18 @@ export default function ConversationScreen() {
           files.length > 0
             ? { text: content || "Please look at the attached file(s).", files }
             : { text: content },
-          {
-            body: toChatRequestBody({
-              chatId,
-              model,
-              agentId,
-              webSearchEnabled: search,
-            }),
-          },
+          { body: requestBody(model, search, imageOptions) },
         );
       } catch (err) {
-        const data = (err as { data?: { message?: string } })?.data;
-        setSendError(
-          data?.message ??
-            (err instanceof Error ? err.message : "Failed to send message"),
-        );
+        setChatError(toChatError(errorMessage(err, "Failed to send message")));
       }
     },
     [
       addMessage,
-      agentId,
       attachments,
       chatId,
+      requestBody,
+      scrollToBottom,
       selectedModel,
       sendMessage,
       webSearchAvailable,
@@ -366,43 +392,74 @@ export default function ConversationScreen() {
     ],
   );
 
-  const attachFail = (err: unknown) =>
-    Alert.alert(
-      "Couldn't attach file",
-      err instanceof Error ? err.message : "Please try again.",
-    );
-
   const handleAttachFile = useCallback(() => {
     pickDocumentAttachments(attachments.length)
       .then(({ attachments: picked, rejected }) => {
         if (picked.length > 0) setAttachments((prev) => [...prev, ...picked]);
         if (rejected.length > 0) {
-          Alert.alert("Some files were skipped", rejected.join("\n"));
+          toast.error("Some files were skipped", {
+            description: rejected.join("\n"),
+          });
         }
       })
-      .catch(attachFail);
+      .catch((err) =>
+        toast.error("Couldn't attach file", {
+          description: errorMessage(err, "Please try again."),
+        }),
+      );
   }, [attachments.length]);
 
   // Retry an assistant turn: trim local state back to the originating user
-  // message and regenerate (mirrors handleRetry on web).
+  // message and regenerate (mirrors handleRetry on web). Passing a model
+  // switches to it first, like web's "Switch model" retry option.
   const handleRetry = useCallback(
-    (messageId: string) => {
+    (messageId: string, modelOverride?: string) => {
+      const model = modelOverride ?? selectedModel;
+      if (modelOverride) setSelectedModel(modelOverride);
+      setChatError(null);
       setMessages((prev) => trimMessagesToRetryTarget(prev, messageId));
-      regenerate({
-        body: toChatRequestBody({
-          chatId,
-          model: selectedModel,
-          agentId,
-          webSearchEnabled: webSearchEnabled && webSearchAvailable,
-        }),
+      scrollToBottom();
+      void regenerate({
+        body: requestBody(model, webSearchEnabled && webSearchAvailable),
       });
     },
     [
-      agentId,
-      chatId,
       regenerate,
+      requestBody,
+      scrollToBottom,
       selectedModel,
       setMessages,
+      setSelectedModel,
+      webSearchAvailable,
+      webSearchEnabled,
+    ],
+  );
+
+  // Retry the turn that just failed (no assistant message may exist yet).
+  const handleRetryLast = useCallback(
+    (modelOverride?: string) => {
+      const lastAssistant = [...aiMessages]
+        .reverse()
+        .find((m) => m.role === "assistant");
+      const lastUserIndex = aiMessages.findLastIndex((m) => m.role === "user");
+      if (lastAssistant && aiMessages.indexOf(lastAssistant) > lastUserIndex) {
+        handleRetry(lastAssistant.id, modelOverride);
+        return;
+      }
+      const model = modelOverride ?? selectedModel;
+      if (modelOverride) setSelectedModel(modelOverride);
+      setChatError(null);
+      void regenerate({
+        body: requestBody(model, webSearchEnabled && webSearchAvailable),
+      });
+    },
+    [
+      aiMessages,
+      handleRetry,
+      regenerate,
+      requestBody,
+      selectedModel,
+      setSelectedModel,
       webSearchAvailable,
       webSearchEnabled,
     ],
@@ -414,24 +471,26 @@ export default function ConversationScreen() {
     const target = editTarget;
     const trimmed = editValue.trim();
     setEditTarget(null);
-    if (!target || !trimmed) return;
+    if (!target || !trimmed || trimmed === target.content.trim()) return;
 
     const index = aiMessages.findIndex((m) => m.id === target.id);
     if (index === -1) return;
-    // aiMessages and dbMessages stay 1:1 after hydration, so resolve the
-    // Convex doc by position.
-    const convexId = dbMessages?.[index]?._id;
+    // Hydrated messages carry their Convex id; fresh ones stay 1:1 with
+    // dbMessages after hydration, so resolve those by position.
+    const convexId =
+      dbMessages?.find((m) => m._id === target.id)?._id ??
+      dbMessages?.[index]?._id;
     try {
       if (convexId) {
         await updateMessageContent({ messageId: convexId, content: trimmed });
         await deleteMessagesAfter({ messageId: convexId, inclusive: false });
       }
     } catch (err) {
-      const data = (err as { data?: { message?: string } })?.data;
-      setSendError(data?.message ?? "Failed to save edit");
+      setChatError(toChatError(errorMessage(err, "Failed to save edit")));
       return;
     }
 
+    setChatError(null);
     setMessages((prev) => {
       const at = prev.findIndex((m) => m.id === target.id);
       if (at === -1) return prev;
@@ -447,23 +506,19 @@ export default function ConversationScreen() {
       };
       return [...prev.slice(0, at), updated];
     });
-    regenerate({
-      body: toChatRequestBody({
-        chatId,
-        model: selectedModel,
-        agentId,
-        webSearchEnabled: webSearchEnabled && webSearchAvailable,
-      }),
+    scrollToBottom();
+    void regenerate({
+      body: requestBody(selectedModel, webSearchEnabled && webSearchAvailable),
     });
   }, [
-    agentId,
     aiMessages,
-    chatId,
     dbMessages,
     deleteMessagesAfter,
     editTarget,
     editValue,
     regenerate,
+    requestBody,
+    scrollToBottom,
     selectedModel,
     setMessages,
     updateMessageContent,
@@ -474,14 +529,24 @@ export default function ConversationScreen() {
   const sendPendingDraft = useEffectEvent(
     (draft: ReturnType<typeof consumePendingChatDraft>) => {
       if (!draft) return;
-      // No need to set the toggle from the draft any more — the preference is
-      // persisted on the account, so this screen already reads the same value
-      // the home screen wrote. The draft still carries it for the send itself.
+      // The preference is persisted on the account, so this screen already
+      // reads the value the home screen wrote. The draft still carries it for
+      // the send itself.
+      // Image options chosen on the home composer carry into this chat.
+      const imageOptions =
+        draft.imageAspectRatio !== undefined
+          ? { aspectRatio: draft.imageAspectRatio, size: draft.imageSize ?? null }
+          : undefined;
+      if (imageOptions) {
+        setImageAspectRatio(imageOptions.aspectRatio);
+        setImageSize(imageOptions.size);
+      }
       void handleSend(
         draft.text,
         draft.model,
         draft.webSearchEnabled,
         draft.attachments,
+        imageOptions,
       );
     },
   );
@@ -494,16 +559,27 @@ export default function ConversationScreen() {
     const draft = consumePendingChatDraft(chatId);
     draftConsumedRef.current = true;
     if (draft) {
-      // The home screen already persisted draft.model as the default, so
-      // selectedModel converges on its own — just send with the override.
       // Deferred so the send (and its state updates) runs outside the effect.
       const timer = setTimeout(() => sendPendingDraft(draft), 0);
       return () => clearTimeout(timer);
     }
   }, [chatId, status, dbMessages]);
 
+  const importedById = useMemo(() => mapImportedFlags(dbMessages), [dbMessages]);
+  const storedImagesById = useMemo(
+    () => mapStoredGeneratedImages(chatFiles),
+    [chatFiles],
+  );
+  const displayMessages = useMemo(
+    () =>
+      aiMessages
+        .filter((m) => m.role === "user" || m.role === "assistant")
+        .map((m) => toDisplayMessage(m, importedById, storedImagesById)),
+    [aiMessages, importedById, storedImagesById],
+  );
+
   // Persist the assistant reply to Convex when a stream completes (mirrors
-  // useChatPersistence on web, text only). dbMessages check skips imported /
+  // useChatPersistence on web). The dbMessages check skips imported /
   // already-stored history that was hydrated above.
   const lastSavedAssistantIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -515,10 +591,18 @@ export default function ConversationScreen() {
       lastSavedAssistantIdRef.current = last.id;
       return;
     }
-    const content = uiMessageText(last).trim();
+    const display = toDisplayMessage(last, importedById, storedImagesById);
+    const generatedImages = display.images.filter((uri) =>
+      uri.startsWith("data:"),
+    );
+    // Same fallbacks as web: an image-only or search-only turn still saves,
+    // otherwise it vanishes on reload.
+    const content =
+      collectTextFromParts(last.parts).trim() ||
+      display.content.trim() ||
+      (generatedImages.length ? "Generated image." : "");
     if (!content) return;
     lastSavedAssistantIdRef.current = last.id;
-    const generatedImages = uiMessageImages(last);
     addMessage({
       chatId,
       role: "assistant",
@@ -533,7 +617,12 @@ export default function ConversationScreen() {
               if (!token) return;
               const sourceResponse = await fetch(source);
               const blob = await sourceResponse.blob();
-              const filename = `generated-${messageId}-${index}.${blob.type.includes("png") ? "png" : "webp"}`;
+              const extension = blob.type.includes("png")
+                ? "png"
+                : blob.type.includes("jpeg")
+                  ? "jpg"
+                  : "webp";
+              const filename = `generated-${messageId}-${index}.${extension}`;
               const uploadResponse = await fetch(
                 `${API_BASE_URL}/api/files/upload?filename=${encodeURIComponent(filename)}`,
                 {
@@ -584,10 +673,30 @@ export default function ConversationScreen() {
     chatId,
     createFileRecord,
     getToken,
+    importedById,
     selectedModel,
+    storedImagesById,
   ]);
 
   const isStreaming = status === "submitted" || status === "streaming";
+  const lastMessage = displayMessages[displayMessages.length - 1];
+  const streamingMessageId =
+    status === "streaming" && lastMessage?.role === "assistant"
+      ? lastMessage.id
+      : null;
+  const showPendingBubble =
+    status === "submitted" ||
+    (status === "streaming" && lastMessage?.role !== "assistant");
+
+  const turns = displayMessages
+    .filter((m) => m.role === "user")
+    .map((m) => ({
+      id: m.id,
+      preview:
+        m.content.replace(/\s+/g, " ").trim().slice(0, 90) ||
+        (m.attachments[0]?.filename ?? "Attachment"),
+    }));
+
   const importFailure =
     dbMessages
       ?.find(
@@ -611,10 +720,30 @@ export default function ConversationScreen() {
   const isBackgroundImporting = !!importProgress && !importFailure;
   const shareUrl = `${API_BASE_URL}/share/${chatId}`;
   const shareTitle = chat?.title?.trim() || "Conversation";
+  const isEmptyChat =
+    chat !== null &&
+    dbMessages !== undefined &&
+    displayMessages.length === 0 &&
+    !isStreaming &&
+    !isBackgroundImporting;
 
-  const openActions = (message: UIMessage) => {
-    if (isStreaming) return;
-    setActionTarget(message);
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    const distanceFromBottom =
+      contentSize.height - contentOffset.y - layoutMeasurement.height;
+    const nearBottom = distanceFromBottom < 96;
+    followBottomRef.current = nearBottom;
+    const shouldShow =
+      !nearBottom && contentSize.height > layoutMeasurement.height * 1.25;
+    if (shouldShow !== showJumpControls) setShowJumpControls(shouldShow);
+  };
+
+  const jumpToTurn = (turnId: string) => {
+    setTurnsOpen(false);
+    const y = turnOffsetsRef.current.get(turnId);
+    if (y === undefined) return;
+    followBottomRef.current = false;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 12), animated: true });
   };
 
   const handleCopyShareLink = async () => {
@@ -636,209 +765,201 @@ export default function ConversationScreen() {
   };
 
   return (
-    <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
-      <ChatFloatingHeader
-        onOpenSidebar={openSidebar}
-        onSearch={openSidebar}
-        onNewChat={() => router.push("/")}
-        onShare={() => setShareOpen(true)}
-        canShare={Boolean(chat)}
-      />
-      {isBackgroundImporting ? (
-        <View className="mx-3 mt-2 rounded-xl border border-primary/25 bg-primary/8 px-3 py-2.5">
-          <View className="flex-row items-center justify-between gap-3">
-            <Text className="text-[12px] font-semibold text-primary">
-              Import in progress ({importProgress.percent}%)
-            </Text>
-            <Text className="text-[10.5px] text-primary/80">
-              {importProgress.stage}
-            </Text>
-          </View>
-          <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15">
-            <View
-              className="h-full rounded-full bg-primary"
-              style={{ width: `${importProgress.percent}%` }}
-            />
-          </View>
-        </View>
-      ) : importFailure ? (
-        <View className="mx-3 mt-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2.5">
-          <Text className="text-[12px] leading-5 text-destructive">
-            Import failed: {importFailure}
-          </Text>
-        </View>
-      ) : null}
+    <View className="bg-background" style={{ flex: 1 }}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
-        <ScrollView
-          ref={scrollRef}
-          style={{ flex: 1 }}
-          contentContainerClassName="px-4 py-3 gap-3"
-          showsVerticalScrollIndicator={false}
-          onContentSizeChange={() =>
-            scrollRef.current?.scrollToEnd({ animated: true })
-          }
-        >
-          {chat === null ? (
-            <View className="items-center py-16">
-              <Text className="text-[14px] text-muted-foreground">
-                This chat doesn&apos;t exist or you don&apos;t have access to
-                it.
-              </Text>
-            </View>
-          ) : (
-            aiMessages.map((m) => {
-              const text = uiMessageText(m);
-              const images = uiMessageImages(m);
-              const documents = uiMessageDocuments(m);
-              const clockTimezone = uiMessageClockTimezone(m);
-              const emailDraft = uiMessageEmailDraft(m);
-              if (
-                !text.trim() &&
-                images.length === 0 &&
-                documents.length === 0 &&
-                clockTimezone === undefined &&
-                !emailDraft
-              )
-                return null;
-              const isUser = m.role === "user";
-              return (
-                <Pressable
-                  key={m.id}
-                  onLongPress={() => openActions(m)}
-                  delayLongPress={350}
-                  className={cn(
-                    "max-w-[85%] rounded-2xl px-3.5 py-2.5",
-                    isUser
-                      ? "self-end bg-primary"
-                      : "self-start border border-border bg-card",
-                  )}
+        {/* The composer is absolutely placed in this flex child (not in the
+            KeyboardAvoidingView itself), so it rides up with the keyboard. */}
+        <View style={{ flex: 1 }}>
+          <ScrollView
+            ref={scrollRef}
+            style={{ flex: 1 }}
+            contentContainerClassName="px-4"
+            contentContainerStyle={{
+              paddingTop: headerHeight + 4,
+              paddingBottom: composerHeight + 20,
+            }}
+            scrollIndicatorInsets={{ top: headerHeight, bottom: composerHeight }}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="interactive"
+            onScroll={handleScroll}
+            scrollEventThrottle={64}
+            onContentSizeChange={() => {
+              if (followBottomRef.current) {
+                scrollRef.current?.scrollToEnd({ animated: true });
+              }
+            }}
+          >
+            {chat === null ? (
+              <ChatNotFound onHome={() => router.replace("/")} />
+            ) : isEmptyChat ? (
+              <View className="items-center px-6 py-20">
+                <View className="h-12 w-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/12">
+                  <Icon as={Sparkles} size={20} className="text-primary" />
+                </View>
+                <Text className="mt-4 text-center text-[17px] font-semibold text-foreground">
+                  {shareTitle}
+                </Text>
+                <Text className="mt-1.5 text-center text-[13px] leading-5 text-muted-foreground">
+                  Ask anything below to start this conversation.
+                </Text>
+              </View>
+            ) : (
+              displayMessages.map((message) => (
+                <View
+                  key={message.id}
+                  onLayout={(event) => {
+                    turnOffsetsRef.current.set(
+                      message.id,
+                      event.nativeEvent.layout.y,
+                    );
+                  }}
                 >
-                  {images.length > 0 ? (
-                    <View className="mb-2 flex-row flex-wrap gap-2">
-                      {images.map((uri) => (
-                        <Image
-                          key={uri.slice(0, 64)}
-                          source={{ uri }}
-                          style={{ width: 140, height: 140, borderRadius: 12 }}
-                          contentFit="cover"
-                        />
-                      ))}
-                    </View>
-                  ) : null}
-                  {documents.length > 0 ? (
-                    <View className="mb-1.5 gap-1.5">
-                      {documents.map((document) => (
-                        <View
-                          key={document.url}
-                          className={cn(
-                            "flex-row items-center gap-2 rounded-lg px-2.5 py-1.5",
-                            isUser
-                              ? "bg-primary-foreground/15"
-                              : "bg-secondary",
-                          )}
-                        >
-                          <Icon
-                            as={FileText}
-                            size={13}
-                            className={
-                              isUser
-                                ? "text-primary-foreground"
-                                : "text-muted-foreground"
-                            }
-                          />
-                          <Text
-                            numberOfLines={1}
-                            className={cn(
-                              "flex-1 text-[12px]",
-                              isUser
-                                ? "text-primary-foreground"
-                                : "text-foreground",
-                            )}
-                          >
-                            {document.filename}
-                          </Text>
-                        </View>
-                      ))}
-                    </View>
-                  ) : null}
-                  {isUser ? (
-                    text.trim() ? (
-                      <Text className="text-[15px] leading-6 text-primary-foreground">
-                        {text}
-                      </Text>
-                    ) : null
-                  ) : (
-                    <>
-                      {text.trim() ? <Markdown>{text}</Markdown> : null}
-                      {clockTimezone !== undefined ? (
-                        <ClockWidget timezone={clockTimezone} />
-                      ) : null}
-                      {emailDraft ? <EmailComposer draft={emailDraft} /> : null}
-                    </>
-                  )}
-                </Pressable>
-              );
-            })
-          )}
+                  <ChatMessage
+                    message={message}
+                    isStreaming={message.id === streamingMessageId}
+                    actionsHidden={isStreaming}
+                    reasoningEnabled={reasoningEnabled}
+                    onEdit={(target) => {
+                      setEditValue(target.content);
+                      setEditTarget(target);
+                    }}
+                    onRetry={(target) => handleRetry(target.id)}
+                    onSwitchModel={(target) => setSwitchTarget(target)}
+                  />
+                </View>
+              ))
+            )}
 
-          {status === "submitted" ? (
-            <View className="max-w-[85%] self-start rounded-2xl border border-border bg-card px-3.5 py-2.5">
-              <Text className="text-[15px] leading-6 text-muted-foreground">
-                …
-              </Text>
-            </View>
+            {showPendingBubble ? (
+              <ChatMessage
+                message={EMPTY_STREAMING_MESSAGE}
+                isStreaming
+                actionsHidden
+                reasoningEnabled={reasoningEnabled}
+              />
+            ) : null}
+
+            {chatError ? (
+              <ChatErrorCard
+                error={chatError}
+                onDismiss={() => setChatError(null)}
+                onRetry={() => handleRetryLast()}
+                onSwitchModel={() =>
+                  setSwitchTarget({ ...EMPTY_STREAMING_MESSAGE, id: "__last__" })
+                }
+                onUpgrade={() => router.push("/pricing" as Href)}
+              />
+            ) : null}
+          </ScrollView>
+
+          {showJumpControls && turns.length > 0 ? (
+            <JumpControls
+              bottom={composerHeight + 10}
+              turnCount={turns.length}
+              onOpenTurns={() => setTurnsOpen(true)}
+              onScrollToBottom={() => scrollToBottom()}
+            />
           ) : null}
 
-          {sendError ? (
-            <View className="self-stretch rounded-xl border border-destructive/40 bg-destructive/10 px-3.5 py-2.5">
-              <Text className="text-[13px] leading-5 text-destructive">
-                {sendError}
-              </Text>
-            </View>
-          ) : null}
-        </ScrollView>
-
-        <View className="px-3 pb-2 pt-1">
-          {isStreaming ? (
-            <Pressable
-              onPress={() => stop()}
-              className="mb-2 self-center rounded-full border border-border bg-card px-4 py-1.5 active:opacity-80"
-            >
-              <Text className="text-[12px] font-medium text-muted-foreground">
-                Stop generating
-              </Text>
-            </Pressable>
-          ) : null}
-          <ChatInput
-            placeholder="Reply…"
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            onSend={(text) => void handleSend(text)}
-            disabled={isStreaming || isBackgroundImporting || chat === null}
-            isLoading={isStreaming}
-            onStop={() => stop()}
-            value={composerValue}
-            onChangeText={setComposerValue}
-            attachments={attachments}
-            onAttachFile={handleAttachFile}
-            onRemoveAttachment={(index) =>
-              setAttachments((prev) => prev.filter((_, i) => i !== index))
-            }
-            isListening={voice.isListening}
-            onMicPress={handleMicPress}
-            webSearchAvailable={webSearchAvailable}
-            webSearchEnabled={webSearchEnabled}
-            onWebSearchToggle={toggleWebSearch}
-            agentId={agentId}
-            onAgentChange={setAgentId}
-          />
+          {/* Floating composer over a soft fade, like web's docked glass input */}
+          <View
+            pointerEvents="box-none"
+            onLayout={(event) => setComposerHeight(event.nativeEvent.layout.height)}
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              paddingHorizontal: 12,
+              paddingTop: 10,
+              paddingBottom: keyboardOpen ? 8 : Math.max(insets.bottom, 10),
+            }}
+          >
+            <LinearGradient
+              pointerEvents="none"
+              colors={[
+                withAlpha(tokens.background, 0),
+                withAlpha(tokens.background, 0.85),
+                tokens.background,
+              ]}
+              locations={[0, 0.45, 1]}
+              style={{ position: "absolute", left: 0, right: 0, top: -24, bottom: 0 }}
+            />
+            <ChatInput
+              placeholder="Reply…"
+              selectedModel={selectedModel}
+              onModelChange={setSelectedModel}
+              onSend={(text) => void handleSend(text)}
+              disabled={isStreaming || isBackgroundImporting || chat === null}
+              isLoading={isStreaming}
+              onStop={() => stop()}
+              value={composerValue}
+              onChangeText={setComposerValue}
+              attachments={attachments}
+              onAttachFile={handleAttachFile}
+              onRemoveAttachment={(index) =>
+                setAttachments((prev) => prev.filter((_, i) => i !== index))
+              }
+              isListening={voice.isListening}
+              onMicPress={handleMicPress}
+              webSearchAvailable={webSearchAvailable}
+              webSearchEnabled={webSearchEnabled}
+              onWebSearchToggle={toggleWebSearch}
+              agentId={agentId}
+              onAgentChange={setAgentId}
+              imageAspectRatio={imageAspectRatio}
+              imageSize={imageSize}
+              onImageOptionsChange={(aspect, size) => {
+                setImageAspectRatio(aspect);
+                setImageSize(size);
+              }}
+            />
+          </View>
         </View>
       </KeyboardAvoidingView>
 
-      <ShareChatModal
+      {/* Floating header: glass pills over a fade, content scrolls beneath */}
+      <View
+        pointerEvents="box-none"
+        onLayout={(event) => setHeaderHeight(event.nativeEvent.layout.height)}
+        style={{ position: "absolute", top: 0, left: 0, right: 0, paddingTop: insets.top }}
+      >
+        <LinearGradient
+          pointerEvents="none"
+          colors={[tokens.background, withAlpha(tokens.background, 0.8), withAlpha(tokens.background, 0)]}
+          locations={[0, 0.55, 1]}
+          style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: -16 }}
+        />
+        <TopToolbar
+          rightSlot={
+            <ToolbarButton
+              label="Share chat"
+              icon={ShareIcon}
+              onPress={() => setShareOpen(true)}
+              disabled={!chat}
+            />
+          }
+        />
+        {isBackgroundImporting ? (
+          <ImportProgressBanner
+            percent={importProgress.percent}
+            stage={importProgress.stage}
+          />
+        ) : importFailure ? (
+          <View className="mx-4 mt-1 flex-row items-start gap-2.5 rounded-2xl border border-destructive/30 bg-destructive/10 px-3.5 py-3">
+            <Icon as={CircleAlert} size={16} className="mt-0.5 text-destructive" />
+            <Text className="flex-1 text-[12.5px] leading-5 text-destructive">
+              Import failed: {importFailure}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+
+      <ShareChatDialog
         visible={shareOpen}
         title={shareTitle}
         url={shareUrl}
@@ -848,196 +969,386 @@ export default function ConversationScreen() {
         onNativeShare={() => void handleNativeShare()}
       />
 
-      {/* Message actions */}
-      <Modal
-        visible={actionTarget !== null}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setActionTarget(null)}
-      >
-        <Pressable
-          className="flex-1 justify-end bg-black/50"
-          onPress={() => setActionTarget(null)}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="rounded-t-3xl border border-b-0 border-border bg-popover px-3 pb-8 pt-3"
-          >
-            <ActionRow
-              icon={Copy}
-              label="Copy"
-              onPress={() => {
-                const target = actionTarget;
-                setActionTarget(null);
-                if (target)
-                  void Clipboard.setStringAsync(uiMessageText(target));
-              }}
-            />
-            {actionTarget?.role === "user" ? (
-              <ActionRow
-                icon={Pencil}
-                label="Edit message"
-                onPress={() => {
-                  const target = actionTarget;
-                  setActionTarget(null);
-                  if (target) {
-                    setEditValue(uiMessageText(target));
-                    setEditTarget(target);
-                  }
-                }}
-              />
-            ) : null}
-            {actionTarget?.role === "assistant" ? (
-              <ActionRow
-                icon={RefreshCw}
-                label="Retry"
-                onPress={() => {
-                  const target = actionTarget;
-                  setActionTarget(null);
-                  if (target) handleRetry(target.id);
-                }}
-              />
-            ) : null}
-          </Pressable>
-        </Pressable>
-      </Modal>
+      <TurnsDialog
+        visible={turnsOpen}
+        turns={turns}
+        onClose={() => setTurnsOpen(false)}
+        onJump={jumpToTurn}
+        onTop={() => {
+          setTurnsOpen(false);
+          followBottomRef.current = false;
+          scrollRef.current?.scrollTo({ y: 0, animated: true });
+        }}
+        onBottom={() => {
+          setTurnsOpen(false);
+          scrollToBottom();
+        }}
+      />
 
-      {/* Edit message dialog */}
-      <Modal
+      {/* "Switch model" retry — web opens the shared model selector. */}
+      <ModelSelector
+        visible={switchTarget !== null}
+        onClose={() => setSwitchTarget(null)}
+        selectedModel={selectedModel}
+        onSelect={(modelId) => {
+          const target = switchTarget;
+          setSwitchTarget(null);
+          if (!target) return;
+          if (target.id === "__last__") handleRetryLast(modelId);
+          else handleRetry(target.id, modelId);
+        }}
+      />
+
+      <EditMessageDialog
         visible={editTarget !== null}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={() => setEditTarget(null)}
-      >
-        <Pressable
-          className="flex-1 items-center justify-center bg-black/50 px-6"
-          onPress={() => setEditTarget(null)}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            className="w-full max-w-md rounded-2xl border border-border bg-popover p-5"
-          >
-            <Text className="mb-3 text-[16px] font-semibold text-foreground">
-              Edit message
-            </Text>
-            <TextInput
-              value={editValue}
-              onChangeText={setEditValue}
-              multiline
-              autoFocus
-              className="max-h-48 min-h-20 rounded-xl border border-border bg-secondary px-3.5 py-3 text-[14px] leading-5 text-foreground"
-            />
-            <Text className="mt-2 text-[11.5px] leading-4 text-muted-foreground">
-              Messages after this one will be removed and the response
-              regenerated.
-            </Text>
-            <View className="mt-4 flex-row justify-end gap-2">
-              <Pressable
-                onPress={() => setEditTarget(null)}
-                className="rounded-full px-4 py-2.5 active:bg-accent"
-              >
-                <Text className="text-[13px] font-medium text-muted-foreground">
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                disabled={!editValue.trim()}
-                onPress={() => void handleEditSave()}
-                className={
-                  editValue.trim()
-                    ? "rounded-full bg-primary px-4 py-2.5 active:opacity-90"
-                    : "rounded-full bg-primary/40 px-4 py-2.5"
-                }
-              >
-                <Text className="text-[13px] font-semibold text-primary-foreground">
-                  Save & regenerate
-                </Text>
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </SafeAreaView>
+        value={editValue}
+        original={editTarget?.content ?? ""}
+        onChange={setEditValue}
+        onClose={() => setEditTarget(null)}
+        onSave={() => void handleEditSave()}
+      />
+    </View>
   );
 }
 
-function ChatFloatingHeader({
-  onOpenSidebar,
-  onSearch,
-  onNewChat,
-  onShare,
-  canShare,
+/* ─── Pieces ───────────────────────────────────────────────────────────── */
+
+function ImportProgressBanner({
+  percent,
+  stage,
 }: {
-  onOpenSidebar: () => void;
-  onSearch: () => void;
-  onNewChat: () => void;
-  onShare: () => void;
-  canShare: boolean;
+  percent: number;
+  stage: string;
 }) {
   return (
-    <View className="flex-row items-center justify-between px-3 py-2">
-      <View className="flex-row items-center gap-1 rounded-2xl border border-border bg-background/40 p-1">
-        <FloatingHeaderButton
-          label="Open sidebar"
-          icon={PanelLeft}
-          onPress={onOpenSidebar}
-        />
-        <FloatingHeaderButton
-          label="Search chats"
-          icon={Search}
-          onPress={onSearch}
-        />
-        <FloatingHeaderButton
-          label="Start new chat"
-          icon={Plus}
-          onPress={onNewChat}
-        />
+    <View className="mx-4 mt-1 rounded-2xl border border-primary/25 bg-primary/8 px-3.5 py-3">
+      <View className="flex-row items-center justify-between gap-3">
+        <Text className="text-[12.5px] font-semibold text-primary">
+          Importing conversation · {percent}%
+        </Text>
+        <Text numberOfLines={1} className="flex-1 text-right text-[11px] text-primary/80">
+          {stage}
+        </Text>
       </View>
-
-      <View className="flex-row items-center gap-1 rounded-2xl border border-border bg-background/40 p-1">
-        <FloatingHeaderButton
-          label="Share chat"
-          icon={ShareIcon}
-          onPress={onShare}
-          disabled={!canShare}
+      <View className="mt-2 h-1.5 overflow-hidden rounded-full bg-primary/15">
+        <View
+          className="h-full rounded-full bg-primary"
+          style={{ width: `${percent}%` }}
         />
-        <ModeToggle />
       </View>
     </View>
   );
 }
 
-function FloatingHeaderButton({
+function ChatNotFound({ onHome }: { onHome: () => void }) {
+  return (
+    <View className="items-center px-6 py-20">
+      <View className="h-12 w-12 items-center justify-center rounded-2xl border border-foreground/10 bg-foreground/5">
+        <Icon as={CircleAlert} size={20} className="text-muted-foreground" />
+      </View>
+      <Text className="mt-4 text-center text-[16px] font-semibold text-foreground">
+        Chat not found
+      </Text>
+      <Text className="mt-1.5 text-center text-[13px] leading-5 text-muted-foreground">
+        This chat doesn&apos;t exist or you don&apos;t have access to it.
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={onHome}
+        className="mt-5 rounded-full bg-primary px-5 py-2.5 active:opacity-90"
+      >
+        <Text className="text-[13px] font-semibold text-primary-foreground">
+          Start a new chat
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
+/** Web shows these as toasts; inline keeps the fix next to the failed turn. */
+function ChatErrorCard({
+  error,
+  onDismiss,
+  onRetry,
+  onSwitchModel,
+  onUpgrade,
+}: {
+  error: ChatErrorState;
+  onDismiss: () => void;
+  onRetry: () => void;
+  onSwitchModel: () => void;
+  onUpgrade: () => void;
+}) {
+  const upgrade = error.kind === "plan" || error.kind === "limit";
+  const switchModel =
+    error.kind === "model" || error.kind === "busy" || error.kind === "plan";
+  const retry = !upgrade && error.kind !== "too-long" && error.kind !== "auth";
+  return (
+    <Animated.View
+      entering={FadeIn.duration(180)}
+      exiting={FadeOut.duration(140)}
+      className="mt-2 rounded-2xl border border-destructive/30 bg-destructive/8 px-4 py-3.5"
+    >
+      <View className="flex-row items-start gap-2.5">
+        <Icon as={CircleAlert} size={16} className="mt-0.5 text-destructive" />
+        <View className="flex-1">
+          <Text className="text-[13.5px] font-semibold text-foreground">
+            {error.title}
+          </Text>
+          <Text className="mt-0.5 text-[12.5px] leading-[18px] text-muted-foreground">
+            {error.description}
+          </Text>
+        </View>
+      </View>
+      <View className="mt-3 flex-row flex-wrap items-center gap-2 pl-6">
+        {upgrade ? (
+          <ErrorAction label="View plans" primary onPress={onUpgrade} />
+        ) : null}
+        {retry ? <ErrorAction label="Try again" primary={!upgrade} onPress={onRetry} /> : null}
+        {switchModel ? (
+          <ErrorAction label="Switch model" onPress={onSwitchModel} />
+        ) : null}
+        <ErrorAction label="Dismiss" subtle onPress={onDismiss} />
+      </View>
+    </Animated.View>
+  );
+}
+
+function ErrorAction({
   label,
-  icon,
   onPress,
-  disabled = false,
+  primary = false,
+  subtle = false,
 }: {
   label: string;
-  icon: LucideIcon;
   onPress: () => void;
-  disabled?: boolean;
+  primary?: boolean;
+  subtle?: boolean;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
-      disabled={disabled}
       onPress={onPress}
-      hitSlop={4}
       className={cn(
-        "h-9 w-9 items-center justify-center rounded-full active:bg-foreground/8",
-        disabled && "opacity-40",
+        "min-h-8 items-center justify-center rounded-full px-3.5",
+        primary
+          ? "bg-primary active:opacity-90"
+          : subtle
+            ? "active:bg-foreground/6"
+            : "border border-foreground/10 bg-foreground/5 active:bg-foreground/10",
       )}
     >
-      <Icon as={icon} size={18} className="text-muted-foreground" />
+      <Text
+        className={cn(
+          "text-[12px] font-semibold",
+          primary
+            ? "text-primary-foreground"
+            : subtle
+              ? "text-muted-foreground"
+              : "text-foreground",
+        )}
+      >
+        {label}
+      </Text>
     </Pressable>
   );
 }
 
-function ShareChatModal({
+/** Native MobileChatTurnNavigator: prompt list + jump to latest. */
+function JumpControls({
+  bottom,
+  turnCount,
+  onOpenTurns,
+  onScrollToBottom,
+}: {
+  bottom: number;
+  turnCount: number;
+  onOpenTurns: () => void;
+  onScrollToBottom: () => void;
+}) {
+  const { isDark } = useTheme();
+  return (
+    <Animated.View
+      entering={FadeIn.duration(160)}
+      exiting={FadeOut.duration(120)}
+      pointerEvents="box-none"
+      className="absolute left-0 right-0 items-center"
+      style={{ bottom }}
+    >
+      <GlassView
+        intensity={45}
+        style={{
+          borderRadius: 999,
+          borderWidth: 1,
+          borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.08)",
+          backgroundColor: isDark ? "rgba(12,9,12,0.72)" : "rgba(255,251,253,0.85)",
+        }}
+        className="flex-row items-center p-1"
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Jump to a prompt (${turnCount})`}
+          onPress={onOpenTurns}
+          className="h-9 flex-row items-center gap-1.5 rounded-full px-3 active:bg-foreground/8"
+        >
+          <Icon as={ListTree} size={14} className="text-muted-foreground" />
+          <Text className="text-[12px] font-medium text-foreground">
+            {turnCount} {turnCount === 1 ? "prompt" : "prompts"}
+          </Text>
+        </Pressable>
+        <View className="h-5 w-px bg-foreground/10" />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Scroll to latest"
+          onPress={onScrollToBottom}
+          className="h-9 w-9 items-center justify-center rounded-full active:bg-foreground/8"
+        >
+          <Icon as={ArrowDown} size={16} className="text-foreground" />
+        </Pressable>
+      </GlassView>
+    </Animated.View>
+  );
+}
+
+function TurnsDialog({
+  visible,
+  turns,
+  onClose,
+  onJump,
+  onTop,
+  onBottom,
+}: {
+  visible: boolean;
+  turns: { id: string; preview: string }[];
+  onClose: () => void;
+  onJump: (id: string) => void;
+  onTop: () => void;
+  onBottom: () => void;
+}) {
+  return (
+    <GlassDialog visible={visible} onClose={onClose}>
+      <DialogClosePill onPress={onClose} />
+      <View className="px-5 pb-5 pt-6">
+        <Eyebrow>Navigate</Eyebrow>
+        <Text className="mt-1.5 text-[20px] font-semibold tracking-tight text-foreground">
+          Jump to a prompt
+        </Text>
+        <ScrollView className="mt-4" style={{ maxHeight: 360 }}>
+          <View className="gap-1">
+            {turns.map((turn, index) => (
+              <Pressable
+                key={turn.id}
+                accessibilityRole="button"
+                onPress={() => onJump(turn.id)}
+                className="flex-row items-start gap-3 rounded-xl px-2.5 py-2.5 active:bg-foreground/6"
+              >
+                <View className="h-6 min-w-6 items-center justify-center rounded-full bg-primary/12 px-1.5">
+                  <Text className="text-[11px] font-semibold text-primary">
+                    {index + 1}
+                  </Text>
+                </View>
+                <Text
+                  numberOfLines={2}
+                  className="flex-1 text-[13.5px] leading-5 text-foreground"
+                >
+                  {turn.preview}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        </ScrollView>
+        <View className="mt-4 flex-row gap-2">
+          <Pressable
+            accessibilityRole="button"
+            onPress={onTop}
+            className="h-10 flex-1 items-center justify-center rounded-xl border border-foreground/8 bg-foreground/4 active:bg-foreground/8"
+          >
+            <Text className="text-[13px] font-medium text-foreground">Top</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={onBottom}
+            className="h-10 flex-1 items-center justify-center rounded-xl bg-primary active:opacity-90"
+          >
+            <Text className="text-[13px] font-semibold text-primary-foreground">
+              Latest
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </GlassDialog>
+  );
+}
+
+function EditMessageDialog({
+  visible,
+  value,
+  original,
+  onChange,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  value: string;
+  original: string;
+  onChange: (value: string) => void;
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const { mutedForeground } = useTheme();
+  const canSave = value.trim().length > 0 && value.trim() !== original.trim();
+  return (
+    <GlassDialog visible={visible} onClose={onClose}>
+      <DialogClosePill onPress={onClose} />
+      <View className="px-5 pb-5 pt-6">
+        <Eyebrow>Edit</Eyebrow>
+        <Text className="mt-1.5 text-[20px] font-semibold tracking-tight text-foreground">
+          Edit message
+        </Text>
+        <TextInput
+          value={value}
+          onChangeText={onChange}
+          multiline
+          autoFocus
+          placeholder="Edit your message…"
+          placeholderTextColor={mutedForeground}
+          className="mt-4 max-h-56 min-h-24 rounded-xl border border-foreground/5 bg-foreground/4 px-3.5 py-3 text-[15px] leading-[22px] text-foreground"
+          textAlignVertical="top"
+        />
+        <Text className="mt-2 text-[11.5px] leading-4 text-muted-foreground">
+          Messages after this one are removed and the reply is regenerated.
+        </Text>
+        <View className="mt-5 flex-row justify-end gap-2">
+          <Pressable
+            accessibilityRole="button"
+            onPress={onClose}
+            className="rounded-full px-4 py-2.5 active:bg-foreground/5"
+          >
+            <Text className="text-[13px] font-medium text-muted-foreground">
+              Cancel
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            disabled={!canSave}
+            onPress={onSave}
+            className={cn(
+              "rounded-full px-4 py-2.5",
+              canSave ? "bg-primary active:opacity-90" : "bg-primary/40",
+            )}
+          >
+            <Text className="text-[13px] font-semibold text-primary-foreground">
+              Save & regenerate
+            </Text>
+          </Pressable>
+        </View>
+      </View>
+    </GlassDialog>
+  );
+}
+
+/** Web ShareModal: glass panel, inset link field, glowing copy button. */
+function ShareChatDialog({
   visible,
   title,
   url,
@@ -1054,97 +1365,62 @@ function ShareChatModal({
   onCopy: () => void;
   onNativeShare: () => void;
 }) {
+  const { primary } = useTheme();
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={onClose}
-    >
-      <Pressable
-        className="flex-1 items-center justify-center bg-black/55 px-6"
-        onPress={onClose}
-      >
-        <Pressable
-          onPress={(e) => e.stopPropagation()}
-          className="w-full max-w-md rounded-2xl border border-border bg-popover p-5 shadow-xl"
+    <GlassDialog visible={visible} onClose={onClose}>
+      <DialogClosePill onPress={onClose} />
+      <View className="px-5 pb-5 pt-6">
+        <Eyebrow>Share</Eyebrow>
+        <Text
+          numberOfLines={2}
+          className="mt-1.5 pr-10 text-[20px] font-semibold leading-7 tracking-tight text-foreground"
         >
-          <View className="mb-4 flex-row items-start justify-between gap-3">
-            <Text
-              numberOfLines={2}
-              className="flex-1 text-[18px] font-semibold leading-6 text-foreground"
-            >
-              Share {title}
-            </Text>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Close share dialog"
-              hitSlop={6}
-              onPress={onClose}
-              className="h-8 w-8 items-center justify-center rounded-full active:bg-accent"
-            >
-              <Icon as={X} size={18} className="text-muted-foreground" />
-            </Pressable>
-          </View>
+          {title}
+        </Text>
+        <Text className="mt-1 text-[12.5px] leading-[18px] text-muted-foreground">
+          Anyone with the link can read this conversation.
+        </Text>
 
-          <View className="flex-row gap-2">
-            <TextInput
-              value={url}
-              editable={false}
-              selectTextOnFocus
-              className="h-12 min-w-0 flex-1 rounded-xl border border-border bg-secondary px-3 text-[14px] text-foreground"
-            />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={copied ? "Copied link" : "Copy link"}
-              onPress={onCopy}
-              className="h-12 flex-row items-center gap-2 rounded-xl bg-secondary px-3 active:opacity-85"
-            >
-              <Icon
-                as={copied ? Check : Copy}
-                size={17}
-                className="text-foreground"
-              />
-              <Text className="text-[14px] font-semibold text-foreground">
-                {copied ? "Copied!" : "Copy Link"}
-              </Text>
-            </Pressable>
-          </View>
-
+        <View className="mt-4 flex-row items-center gap-2 rounded-xl border border-foreground/5 bg-foreground/4 p-1.5 pl-3">
+          <Text numberOfLines={1} className="flex-1 text-[13px] text-foreground/80">
+            {url}
+          </Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Share via"
-            onPress={onNativeShare}
-            className="mt-3 h-12 flex-row items-center justify-center gap-2 rounded-xl border border-border bg-background/40 active:bg-accent"
+            accessibilityLabel={copied ? "Copied link" : "Copy link"}
+            onPress={onCopy}
+            className="h-9 flex-row items-center gap-1.5 rounded-lg bg-primary px-3 active:opacity-90"
+            style={{
+              shadowColor: primary,
+              shadowOpacity: 0.35,
+              shadowRadius: 8,
+              shadowOffset: { width: 0, height: 3 },
+              elevation: 3,
+            }}
           >
-            <Icon as={Share2} size={17} className="text-foreground" />
-            <Text className="text-[14px] font-semibold text-foreground">
-              Share via...
+            <Icon
+              as={copied ? Check : Copy}
+              size={14}
+              className="text-primary-foreground"
+            />
+            <Text className="text-[12.5px] font-semibold text-primary-foreground">
+              {copied ? "Copied" : "Copy"}
             </Text>
           </Pressable>
-        </Pressable>
-      </Pressable>
-    </Modal>
-  );
-}
+        </View>
 
-function ActionRow({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: typeof Copy;
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      className="flex-row items-center gap-3 rounded-xl px-3 py-3.5 active:bg-accent"
-    >
-      <Icon as={icon} size={17} className="text-muted-foreground" />
-      <Text className="text-[14.5px] font-medium text-foreground">{label}</Text>
-    </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Share via"
+          onPress={onNativeShare}
+          className="mt-3 h-11 flex-row items-center justify-center gap-2 rounded-xl border border-foreground/8 bg-foreground/3 active:bg-foreground/8"
+        >
+          <Icon as={Share2} size={16} className="text-foreground" />
+          <Text className="text-[13.5px] font-semibold text-foreground">
+            Share via…
+          </Text>
+        </Pressable>
+      </View>
+    </GlassDialog>
   );
 }

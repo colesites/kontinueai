@@ -15,6 +15,14 @@ import {
 
 /** Mirrors apps/web/src/lib/use-plan-tier.ts for the Expo Clerk client. */
 export function usePlanTier(): PlanTier {
+	return usePlanTierState().tier;
+}
+
+/**
+ * Tier plus whether the billing signals have loaded, so gated screens can
+ * wait instead of flashing an upgrade wall at a paying member.
+ */
+export function usePlanTierState(): { tier: PlanTier; isLoaded: boolean } {
 	const { user } = useUser();
 	const { isLoaded: isAuthLoaded, has } = useAuth();
 	const currentUser = useQuery(api.users.getCurrentUser, {});
@@ -36,7 +44,7 @@ export function usePlanTier(): PlanTier {
 			? has({ plan: MAX_PLAN_ID })
 			: false;
 
-	return resolvePlanTierFromBillingSignals({
+	const tier = resolvePlanTierFromBillingSignals({
 		hasStarterPlan,
 		hasPlusPlan,
 		hasProPlan,
@@ -44,6 +52,7 @@ export function usePlanTier(): PlanTier {
 		billingUser: user as unknown as BillingUserLike | null | undefined,
 		persistedPlan: currentUser?.plan,
 	});
+	return { tier, isLoaded: isAuthLoaded && currentUser !== undefined };
 }
 
 export function useIsProPlan(): boolean {

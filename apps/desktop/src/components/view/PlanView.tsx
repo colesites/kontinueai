@@ -1017,7 +1017,10 @@ const PlanView = () => {
   const usedTokens =
     messages.length === 0 && !contextUsage
       ? 0
-      : contextTokensFor(contextUsage) || estimate;
+      : contextTokensFor(
+          contextUsage,
+          parseCliModelId(selectedModelId) ? "cli" : "api",
+        ) || estimate;
   // Keep the estimate warm per chat, so switching back shows a number before
   // Convex answers and an emptied history clears it.
   useEffect(() => {

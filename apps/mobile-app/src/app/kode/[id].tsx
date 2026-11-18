@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "@clerk/expo";
 import { type Href, useLocalSearchParams, useRouter } from "expo-router";
+import { goBackOr } from "@/lib/navigation";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
 import type { Id } from "@repo/convex/convex/_generated/dataModel";
@@ -23,6 +24,7 @@ import {
   buildKodePreviewDocument,
   kodeDownloadFilename,
 } from "@repo/core/kode-preview";
+import { canAccessPlanFeature } from "@repo/core/plan-access";
 import { File, Paths } from "expo-file-system";
 import * as Sharing from "expo-sharing";
 import { WebView } from "react-native-webview";
@@ -43,9 +45,14 @@ import {
   X,
 } from "lucide-react-native";
 
+import { KodeAccessGate, KodeComingSoon } from "@/components/kode/kode-gates";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { useTheme } from "@/components/theme-provider";
+import { toast } from "@/components/ui/toast";
+import { useKodeComingSoon } from "@/hooks/use-kode-availability";
+import { usePlanTierState } from "@/hooks/use-plan-tier";
+import { AppError, readApiError, showAppErrorToast } from "@/lib/app-errors";
 import { API_BASE_URL } from "@/lib/chat-api";
 import {
   appendKodeAttachments,
@@ -67,7 +74,18 @@ function errorText(error: unknown, fallback: string) {
   return data?.message ?? (error instanceof Error ? error.message : fallback);
 }
 
+/** Same gates as web /kode/[projectId]: availability, then the Pro plan. */
 export default function KodeWorkspaceScreen() {
+  const { comingSoon } = useKodeComingSoon();
+  const { tier, isLoaded } = usePlanTierState();
+  if (comingSoon) return <KodeComingSoon leading="back" />;
+  if (isLoaded && !canAccessPlanFeature(tier, "kode")) {
+    return <KodeAccessGate leading="back" />;
+  }
+  return <KodeWorkspace />;
+}
+
+function KodeWorkspace() {
   const { primary, mutedForeground, primaryForeground } = useTheme();
   const { id } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
@@ -130,7 +148,9 @@ export default function KodeWorkspaceScreen() {
       });
       return true;
     } catch (error) {
-      Alert.alert("Couldn't save file", errorText(error, "Please try again."));
+      toast.error("Couldn't save file", {
+        description: errorText(error, "Please try again."),
+      });
       return false;
     } finally {
       setSaving(false);
@@ -164,15 +184,12 @@ export default function KodeWorkspaceScreen() {
         headers: { Authorization: `Bearer ${token}` },
         body: formData,
       });
-      const result = (await response.json()) as { error?: string };
-      if (!response.ok) {
-        throw new Error(result.error ?? "Kode could not queue this request.");
-      }
+      if (!response.ok) throw new AppError(await readApiError(response));
       setPrompt("");
       setAttachments([]);
       if (mode === "build") setTab("preview");
     } catch (error) {
-      Alert.alert("Couldn't start Kode", errorText(error, "Please try again."));
+      showAppErrorToast(error);
     } finally {
       setQueueing(false);
     }
@@ -181,7 +198,9 @@ export default function KodeWorkspaceScreen() {
   const attachFiles = async () => {
     const result = await pickKodeAttachments(attachments.length);
     if (result.rejected.length) {
-      Alert.alert("Some files weren't added", result.rejected.join("\n"));
+      toast.error("Some files weren't added", {
+        description: result.rejected.join("\n"),
+      });
     }
     if (result.attachments.length) {
       setAttachments((current) => [...current, ...result.attachments]);
@@ -200,10 +219,9 @@ export default function KodeWorkspaceScreen() {
       setTitleDraft(null);
     } catch (error) {
       setTitleDraft(null);
-      Alert.alert(
-        "Couldn't rename project",
-        errorText(error, "Please try again."),
-      );
+      toast.error("Couldn't rename project", {
+        description: errorText(error, "Please try again."),
+      });
     }
   };
 
@@ -225,10 +243,9 @@ export default function KodeWorkspaceScreen() {
         UTI: "public.html",
       });
     } catch (error) {
-      Alert.alert(
-        "Couldn't export project",
-        errorText(error, "Please try again."),
-      );
+      toast.error("Couldn't export project", {
+        description: errorText(error, "Please try again."),
+      });
     }
   };
 
@@ -246,10 +263,9 @@ export default function KodeWorkspaceScreen() {
             void deleteProject({ projectId })
               .then(() => router.replace("/kode" as Href))
               .catch((error) =>
-                Alert.alert(
-                  "Couldn't delete project",
-                  errorText(error, "Please try again."),
-                ),
+                toast.error("Couldn't delete project", {
+                  description: errorText(error, "Please try again."),
+                }),
               );
           },
         },
@@ -289,10 +305,10 @@ export default function KodeWorkspaceScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={["top"]}>
-      <View className="min-h-14 flex-row items-center gap-2 border-b border-border px-3">
+      <View className="min-h-14 flex-row items-center gap-2 border-b border-foreground/8 px-3">
         <Pressable
           accessibilityLabel="Back to Kode projects"
-          onPress={() => router.back()}
+          onPress={() => goBackOr(router, "/kode")}
           className="h-11 w-11 items-center justify-center rounded-xl active:bg-accent"
         >
           <Icon as={ArrowLeft} size={20} className="text-foreground" />
@@ -337,7 +353,7 @@ export default function KodeWorkspaceScreen() {
         </Pressable>
       </View>
 
-      <View className="flex-row border-b border-border px-3 py-2">
+      <View className="flex-row border-b border-foreground/8 px-3 py-2">
         <WorkspaceTabButton
           label="Chat"
           icon={MessageSquare}
@@ -406,7 +422,7 @@ export default function KodeWorkspaceScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                className="max-h-12 border-b border-border"
+                className="max-h-12 border-b border-foreground/8"
                 contentContainerClassName="items-end px-2 pt-2"
               >
                 {workspace.files.map((file) => (
@@ -416,7 +432,7 @@ export default function KodeWorkspaceScreen() {
                     className={cn(
                       "h-10 flex-row items-center gap-1.5 rounded-t-lg border-x border-t px-3",
                       selectedPath === file.path
-                        ? "border-border bg-secondary"
+                        ? "border-foreground/8 bg-foreground/5"
                         : "border-transparent",
                     )}
                   >
@@ -431,7 +447,7 @@ export default function KodeWorkspaceScreen() {
                   </Pressable>
                 ))}
               </ScrollView>
-              <View className="min-h-11 flex-row items-center justify-between border-b border-border px-3">
+              <View className="min-h-11 flex-row items-center justify-between border-b border-foreground/8 px-3">
                 <Text className="text-[10.5px] text-muted-foreground">
                   {dirty ? "Unsaved changes" : "Saved"}
                 </Text>
@@ -465,7 +481,7 @@ export default function KodeWorkspaceScreen() {
                 autoCorrect={false}
                 spellCheck={false}
                 textAlignVertical="top"
-                className="flex-1 bg-[#151216] p-4 font-mono text-[12px] leading-5 text-[#eadce5]"
+                className="flex-1 bg-foreground/4 p-4 font-mono text-[12px] leading-5 text-foreground"
               />
             </>
           ) : (
@@ -480,7 +496,7 @@ export default function KodeWorkspaceScreen() {
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View className="border-t border-border bg-background px-3 pb-3 pt-2">
+        <View className="border-t border-foreground/8 bg-background px-3 pb-3 pt-2">
           <View className="mb-2 flex-row items-center gap-2">
             {(["build", "plan"] as const).map((option) => (
               <Pressable
@@ -491,7 +507,7 @@ export default function KodeWorkspaceScreen() {
                 onPress={() => setMode(option)}
                 className={cn(
                   "min-h-9 justify-center rounded-lg px-3",
-                  mode === option ? "bg-primary/12" : "bg-secondary",
+                  mode === option ? "bg-primary/12" : "bg-foreground/5",
                 )}
               >
                 <Text
@@ -542,7 +558,7 @@ export default function KodeWorkspaceScreen() {
               ))}
             </ScrollView>
           ) : null}
-          <View className="flex-row items-end gap-2 rounded-2xl border border-border bg-secondary p-2">
+          <View className="flex-row items-end gap-2 rounded-2xl border border-foreground/8 bg-foreground/5 p-2">
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Attach code or text files"
@@ -615,7 +631,7 @@ function WorkspaceTabButton({
       onPress={onPress}
       className={cn(
         "min-h-10 flex-1 flex-row items-center justify-center gap-1.5 rounded-xl",
-        active ? "bg-secondary" : "bg-transparent",
+        active ? "bg-foreground/5" : "bg-transparent",
       )}
     >
       <Icon
@@ -659,7 +675,7 @@ function ConversationPanel({
               "max-w-[88%] rounded-2xl px-3.5 py-3",
               message.role === "user"
                 ? "ml-auto bg-primary"
-                : "mr-auto border border-border bg-card",
+                : "mr-auto border border-foreground/8 bg-card",
             )}
           >
             <Text
@@ -686,7 +702,7 @@ function ConversationPanel({
           </View>
         ))
       ) : (
-        <View className="items-center rounded-2xl border border-dashed border-border px-5 py-10">
+        <View className="items-center rounded-2xl border border-dashed border-foreground/8 px-5 py-10">
           <Icon
             as={MessageSquare}
             size={24}

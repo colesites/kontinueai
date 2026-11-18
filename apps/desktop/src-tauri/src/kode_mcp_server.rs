@@ -86,11 +86,11 @@ pub(crate) fn tool_list() -> Value {
         ),
         tool(
             "run_subagents",
-            &format!("Send one task to several models at once. Each works in its own git branch and worktree with its own Kontinue chat, and the user sees them live. Use it when the user asks for sub-agents, several models, or to compare models. Each sub-agent starts fresh, so write a complete, self-contained task. Returns within about {}: the results if they finished, or an id to pass to wait_for_subagents.", wait_label(max_wait_secs())),
+            &format!("Send one task to several models at once. Each gets its own Kontinue chat, shown under this chat, and the user sees them live. Runs that may edit work in their own git branch and worktree; plan (read-only) runs work in the project folder and need no worktree, so use plan for research, reviews and audits. Use it when the user asks for sub-agents, several models, or to compare models. Each sub-agent starts fresh, so write a complete, self-contained task. Returns within about {}: the results if they finished, or an id to pass to wait_for_subagents.", wait_label(max_wait_secs())),
             json!({
                 "task": s("The full task each sub-agent should do."),
                 "models": { "type": "array", "items": { "type": "string" }, "description": "Model names or ids from list_models, as many as the user asked for." },
-                "mode": { "type": "string", "enum": ["auto_edits", "full_access", "plan"], "description": "auto_edits (default): edits applied, risky commands skipped. full_access: commands run too. plan: read-only." },
+                "mode": { "type": "string", "enum": ["auto_edits", "full_access", "plan"], "description": "auto_edits (default): edits applied, risky commands skipped, own worktree. full_access: commands run too, own worktree. plan: read-only, no worktree (use for analysis, audits and reviews)." },
                 "project_path": s("Folder to work in. Defaults to this session's project."),
             }),
             &["task", "models"],

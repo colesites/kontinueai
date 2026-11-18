@@ -1,6 +1,7 @@
 // The context section of the composer's context popover.
 
 import { UsageBar } from "@/components/usage/KodeUsageCard";
+import { formatContextPercent } from "@/lib/kode-context-usage";
 
 export function ChatContextSummary({ used, max }: { used: number; max: number }) {
   const pct = max > 0 ? Math.min(100, (used / max) * 100) : 0;
@@ -11,8 +12,10 @@ export function ChatContextSummary({ used, max }: { used: number; max: number })
         <span className="text-foreground/90">Context · this chat</span>
         <span className="font-mono text-caption text-muted-foreground">
           {compact.format(used)} / {compact.format(max)}
+          {/* Same formatter as the composer footer, so the two never disagree
+              (it showed "1%" here beside "1.3%" there). */}
           <span className="ml-2 font-sans tabular-nums text-foreground/75">
-            {pct < 1 && pct > 0 ? pct.toFixed(1) : Math.round(pct)}%
+            {formatContextPercent(used, max)}
           </span>
         </span>
       </div>

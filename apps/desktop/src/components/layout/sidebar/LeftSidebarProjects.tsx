@@ -10,6 +10,13 @@ import { Dialog, DialogBody, DialogContent, DialogFooter, fieldClassName } from 
 import { useAppSettings } from "@/lib/app-settings";
 import { orderProjects } from "@/lib/kode-project-order";
 import { useKodeWorkspace, type KodeChat } from "@/lib/kode-workspace";
+import { isWorktreePath } from "@/lib/kode-branches";
+import {
+  isLegacySubagentFolder,
+  legacySubagentModel,
+  useSubagentLinks,
+  worktreeRepoName,
+} from "@/lib/kode-subagent-links";
 import { cn } from "@/lib/utils";
 import {
   ChevronRight,
@@ -22,7 +29,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import { ArrowRightLeft } from "lucide-react";
+import { ArrowRightLeft, Bot } from "lucide-react";
 import { MoveProjectDialog } from "@/components/kode/ProjectMove";
 import SidebarChatRow from "./SidebarChatRow";
 import { ProjectStatusRollup } from "./ProjectStatusRollup";
@@ -131,9 +138,15 @@ const LeftSidebarProjects = () => {
     useKodeWorkspace();
   // Settings → General → Project order.
   const { projectOrder } = useAppSettings();
-  const projects = useMemo(
+  const orderedProjects = useMemo(
     () => orderProjects(unorderedProjects, chats, projectOrder),
     [unorderedProjects, chats, projectOrder],
+  );
+  const subagents = useSubagentTree(orderedProjects, chats);
+  // Sub-agent worktrees are working folders, not projects someone opened.
+  const projects = useMemo(
+    () => orderedProjects.filter((project) => !subagents.hiddenProjectIds.has(project.id)),
+    [orderedProjects, subagents.hiddenProjectIds],
   );
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [moving, setMoving] = useState<{ name: string; path: string; chatIds: string[] } | null>(null);
@@ -222,8 +235,12 @@ const LeftSidebarProjects = () => {
           {projects.map((project) => {
             const isCollapsed = collapsed[project.id] ?? false;
             const projectChats = chats
-              .filter((chat) => chat.projectId === project.id)
+              .filter(
+                (chat) =>
+                  chat.projectId === project.id && !subagents.subagentChatIds.has(chat.id),
+              )
               .sort(sortChats);
+            const orphanRuns = subagents.orphansByProject.get(project.id) ?? [];
             const limit = visible[project.id] ?? PAGE_SIZE;
             const shownChats = projectChats.slice(0, limit);
             const isDraftTarget = draftProjectId === project.id;
@@ -336,15 +353,21 @@ const LeftSidebarProjects = () => {
 
                 {!isCollapsed && (
                   <div className="ml-[15px] flex flex-col gap-px border-l border-border pl-1.5">
-                    {projectChats.length === 0 ? (
+                    {projectChats.length === 0 && orphanRuns.length === 0 ? (
                       <p className="px-2.5 py-1.5 text-label text-muted-foreground/70">
                         No chats yet
                       </p>
                     ) : (
                       <>
                         {shownChats.map((chat) => (
-                          <SidebarChatRow key={chat.id} chat={chat} />
+                          <div key={chat.id}>
+                            <SidebarChatRow chat={chat} />
+                            <SubagentRows runs={subagents.childrenByChat.get(chat.id)} />
+                          </div>
                         ))}
+                        {orphanRuns.length > 0 ? (
+                          <SubagentGroup runs={orphanRuns} />
+                        ) : null}
                         {projectChats.length > limit && (
                           <button
                             type="button"
@@ -382,5 +405,110 @@ const LeftSidebarProjects = () => {
     </section>
   );
 };
+
+type SubagentRun = { chat: KodeChat; model: string };
+
+/**
+ * Sub-agent chats nested where they belong, the way Claude Code shows a
+ * session's sub-agents inside it: under the chat that started them, or (for
+ * runs from before links were recorded) in a "Sub-agents" list inside the
+ * project they were made from. Their worktree folders stay out of Projects.
+ */
+function useSubagentTree(projects: { id: string; name: string; path: string }[], chats: KodeChat[]) {
+  const links = useSubagentLinks();
+  return useMemo(() => {
+    const chatById = new Map(chats.map((chat) => [chat.id, chat]));
+    const projectByPath = new Map(projects.map((project) => [project.path, project]));
+    const subagentChatIds = new Set<string>();
+    const hiddenProjectIds = new Set<string>();
+    const childrenByChat = new Map<string, SubagentRun[]>();
+    const orphansByProject = new Map<string, SubagentRun[]>();
+
+    // The project a worktree was made from: the non-worktree project named
+    // like the repo folder in `<base>/<repo>/<branch>`.
+    const parentProjectOf = (path: string) => {
+      const repo = worktreeRepoName(path);
+      return projects.find((p) => p.name === repo && !isWorktreePath(p.path)) ?? null;
+    };
+    const addOrphan = (projectId: string, run: SubagentRun) => {
+      orphansByProject.set(projectId, [...(orphansByProject.get(projectId) ?? []), run]);
+    };
+
+    for (const [chatId, link] of Object.entries(links)) {
+      const chat = chatById.get(chatId);
+      if (!chat) continue;
+      subagentChatIds.add(chatId);
+      const run = { chat, model: link.model || chat.title.split(" · ").pop() || chat.title };
+      const folder = projectByPath.get(link.root);
+      if (folder && isWorktreePath(folder.path)) hiddenProjectIds.add(folder.id);
+      if (link.parentChatId && chatById.has(link.parentChatId)) {
+        childrenByChat.set(link.parentChatId, [...(childrenByChat.get(link.parentChatId) ?? []), run]);
+        continue;
+      }
+      const home = folder && !isWorktreePath(folder.path) ? folder : parentProjectOf(link.root);
+      if (home) addOrphan(home.id, run);
+      else subagentChatIds.delete(chatId); // nowhere better to show it
+    }
+
+    // Runs from before links existed: recognise their worktree folders.
+    for (const project of projects) {
+      if (hiddenProjectIds.has(project.id)) continue;
+      const projectChats = chats.filter((chat) => chat.projectId === project.id);
+      const titles = projectChats.map((chat) => chat.title);
+      if (!isLegacySubagentFolder(project.path, titles)) continue;
+      const home = parentProjectOf(project.path);
+      if (!home) continue;
+      hiddenProjectIds.add(project.id);
+      for (const chat of projectChats) {
+        if (subagentChatIds.has(chat.id)) continue;
+        subagentChatIds.add(chat.id);
+        addOrphan(home.id, {
+          chat,
+          model: legacySubagentModel(project.path, chat.title) ?? chat.title,
+        });
+      }
+    }
+
+    const byRecent = (a: SubagentRun, b: SubagentRun) => b.chat.updatedAt - a.chat.updatedAt;
+    for (const runs of childrenByChat.values()) runs.sort(byRecent);
+    for (const runs of orphansByProject.values()) runs.sort(byRecent);
+    return { subagentChatIds, hiddenProjectIds, childrenByChat, orphansByProject };
+  }, [links, chats, projects]);
+}
+
+function SubagentRows({ runs }: { runs: SubagentRun[] | undefined }) {
+  if (!runs?.length) return null;
+  return (
+    <div className="ml-3 flex flex-col gap-px border-l border-border/70 pl-1.5">
+      {runs.map((run) => (
+        <SidebarChatRow key={run.chat.id} chat={run.chat} subagentModel={run.model} />
+      ))}
+    </div>
+  );
+}
+
+function SubagentGroup({ runs }: { runs: SubagentRun[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        className="flex h-7 w-full items-center gap-1.5 rounded-full px-2.5 text-left text-label text-muted-foreground transition-colors kontinue-hover hover:text-foreground"
+      >
+        <ChevronRight
+          size={12}
+          strokeWidth={1.75}
+          className={cn("shrink-0 transition-transform duration-150", open && "rotate-90")}
+        />
+        <Bot size={12} strokeWidth={1.5} className="shrink-0" />
+        Sub-agents
+        <span className="tabular-nums text-foreground/35">{runs.length}</span>
+      </button>
+      {open ? <SubagentRows runs={runs} /> : null}
+    </div>
+  );
+}
 
 export default LeftSidebarProjects;
