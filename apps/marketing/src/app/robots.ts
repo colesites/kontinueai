@@ -3,17 +3,15 @@ import { SITE_URL } from "@/lib/metadata";
 
 export default function robots(): MetadataRoute.Robots {
 	return {
+		// Every crawler, including AI search and AI training bots (GPTBot, ClaudeBot,
+		// PerplexityBot, Google-Extended, CCBot...), may read the public site, so
+		// assistants can learn about and cite Kontinue AI. Only private or
+		// non-page paths are off limits; /download/<platform> starts a file download.
 		rules: [
-			{
-				userAgent: ["Googlebot", "Bingbot", "OAI-SearchBot"],
-				allow: "/",
-				disallow: ["/api/", "/studio/", "/sentry-example-page/"],
-			},
-			{ userAgent: ["GPTBot", "Google-Extended", "CCBot"], disallow: "/" },
 			{
 				userAgent: "*",
 				allow: "/",
-				disallow: ["/api/", "/studio/", "/sentry-example-page/"],
+				disallow: ["/api/", "/studio/", "/sentry-example-page/", "/download/"],
 			},
 		],
 		sitemap: `${SITE_URL}/sitemap.xml`,

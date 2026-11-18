@@ -1,22 +1,25 @@
 "use client";
 
-import { track } from "@vercel/analytics";
-import { ArrowDown } from "lucide-react";
 import Image from "next/image";
 import { useRef } from "react";
+import { DesktopDownloadButton } from "@/components/marketing/DesktopDownloadButton";
+import { ParticleLogos } from "@/components/marketing/ParticleLogos";
 import { TrackedLink } from "@/components/marketing/TrackedLink";
-import { Button } from "@/components/ui/button";
 import { modelLogos } from "@/data/models";
 import { appLinks } from "@/data/product";
 import { gsap, useGSAP } from "@/lib/gsap";
-import { scrollToTarget } from "@/lib/scroll";
 
 const DEMO_SRC =
 	"https://res.cloudinary.com/djsskkp4r/video/upload/q_auto/f_auto/v1784125732/Kontinue_AI_Demo_lqp7s6.mp4";
 const DEMO_POSTER =
 	"https://res.cloudinary.com/djsskkp4r/video/upload/so_2,q_auto/v1784125732/Kontinue_AI_Demo_lqp7s6.jpg";
 
-export function HeroSection() {
+export function HeroSection({
+	desktop = { version: null, downloads: null },
+}: {
+	/** Latest desktop release, for the download button. */
+	desktop?: { version: string | null; downloads: string | null };
+}) {
 	const root = useRef<HTMLElement>(null);
 	const stage = useRef<HTMLDivElement>(null);
 
@@ -70,12 +73,16 @@ export function HeroSection() {
 	return (
 		<section
 			ref={root}
-			className="relative overflow-hidden pt-28 sm:pt-36 lg:pt-36"
+			className="relative overflow-hidden pt-40 sm:pt-48 xl:pt-36"
 		>
 			<div
 				aria-hidden
 				className="bg-grid mask-fade-edges pointer-events-none absolute inset-0 opacity-70"
 			/>
+			{/* The models and agents Kontinue works with, around the headline. */}
+			<div className="pointer-events-none absolute inset-x-0 top-0 h-[42rem]">
+				<ParticleLogos />
+			</div>
 
 			<div className="relative mx-auto max-w-6xl px-5 lg:px-8">
 				<div className="mx-auto max-w-4xl text-center">
@@ -85,6 +92,7 @@ export function HeroSection() {
 								Hit your AI limit?
 							</span>
 						</span>
+						{/* Keeps a space between the lines in the text search engines read. */}{" "}
 						<span className="block overflow-hidden pb-[0.14em]">
 							<span data-h="line" data-anim className="block text-brand">
 								Keep going.
@@ -101,53 +109,27 @@ export function HeroSection() {
 						up where you left off, on the model you choose.
 					</p>
 
-					<div
-						data-h="fade"
-						data-anim
-						className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row"
-					>
-						<TrackedLink
-							href={appLinks.signUp}
-							target="_blank"
-							rel="noopener noreferrer"
-							eventName="hero_start_free_clicked"
-							eventProperties={{ location: "homepage_hero" }}
-							size="lg"
-							className="w-full sm:w-auto"
-						>
-							Continue a chat
-						</TrackedLink>
-						<Button
-							type="button"
-							variant="outline"
-							size="lg"
-							className="w-full sm:w-auto"
-							onClick={() => {
-								track("hero_import_demo_clicked", {
-									location: "homepage_hero",
-								});
-								scrollToTarget("#how-it-works");
-							}}
-						>
-							<ArrowDown className="size-4" />
-							See how it works
-						</Button>
+					<div data-h="fade" data-anim className="mt-9">
+						<DesktopDownloadButton
+							location="homepage_hero"
+							version={desktop.version}
+							downloads={desktop.downloads}
+							secondary={
+								<TrackedLink
+									href={appLinks.signUp}
+									target="_blank"
+									rel="noopener noreferrer"
+									eventName="hero_start_free_clicked"
+									eventProperties={{ location: "homepage_hero" }}
+									variant="outline"
+									size="lg"
+									className="w-full sm:w-auto"
+								>
+									Continue a chat on the web
+								</TrackedLink>
+							}
+						/>
 					</div>
-
-					<p
-						data-h="fade"
-						data-anim
-						className="mt-6 text-sm text-muted-foreground"
-					>
-						Free to start. On the web today,{" "}
-						<a
-							href="#apps"
-							className="font-medium text-foreground underline decoration-border-strong underline-offset-4 transition-colors hover:decoration-foreground"
-						>
-							desktop and mobile coming soon
-						</a>
-						.
-					</p>
 				</div>
 
 				{/* Product stage */}

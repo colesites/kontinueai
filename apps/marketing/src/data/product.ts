@@ -113,6 +113,11 @@ export const product = {
 				icon: "/tiktok-icon-light.svg",
 			},
 		],
+		/** Other official profiles, for search engines to tell this Kontinue AI apart. */
+		profiles: [
+			"https://www.producthunt.com/products/kontinue-ai",
+			"https://github.com/colesites/kontinueai",
+		],
 	},
 	positioning: {
 		short:

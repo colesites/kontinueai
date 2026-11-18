@@ -1,14 +1,16 @@
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
+import { formatStars, getGitHubStars } from "@/lib/desktop-release";
 
-export default function LegalLayout({
+export default async function LegalLayout({
 	children,
 }: Readonly<{
 	children: React.ReactNode;
 }>) {
+	const stars = await getGitHubStars();
 	return (
 		<>
-			<Header />
+			<Header stars={stars === null ? null : formatStars(stars)} />
 			<main className="min-h-screen">{children}</main>
 			<Footer />
 		</>

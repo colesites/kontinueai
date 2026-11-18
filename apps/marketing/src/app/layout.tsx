@@ -37,9 +37,11 @@ const mono = JetBrains_Mono({
 	display: "swap",
 });
 
-const siteTitle = "Kontinue AI | Hit your AI limit? Keep going.";
+// Defaults for pages without their own; matches the homepage.
+const siteTitle =
+	"Continue ChatGPT, Claude and Claude Code After a Limit | Kontinue AI";
 const siteDescription =
-	"Out of messages on Claude or ChatGPT? Bring the conversation to Kontinue AI and continue with the full context on K-AI 1.0 or any leading model.";
+	"Out of messages in ChatGPT, Claude or Gemini, or rate-limited in Claude Code or Codex? Paste the share link and keep going with the full context.";
 
 export const metadata: Metadata = {
 	metadataBase: new URL(SITE_URL),
