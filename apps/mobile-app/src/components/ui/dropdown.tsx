@@ -1,6 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import {
+  BackHandler,
   Dimensions,
+  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -11,6 +13,7 @@ import {
 
 import { withAlpha } from "@/components/chat/markdown";
 import { GlassView } from "@/components/ui/glass";
+import { Portal } from "@/components/ui/portal";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
@@ -40,6 +43,7 @@ export function Dropdown({
   placement = "auto",
   width = MENU_WIDTH,
   left: leftOverride,
+  keepKeyboard = false,
   children,
 }: {
   visible: boolean;
@@ -50,9 +54,15 @@ export function Dropdown({
   width?: number;
   /** Pin the horizontal position (e.g. full-width sidebar menus). */
   left?: number;
+  /**
+   * Draw in the app's own window instead of a Modal, so an open keyboard
+   * stays open (menus opened from a focused composer).
+   */
+  keepKeyboard?: boolean;
   children: ReactNode;
 }) {
   const { tokens } = useTheme();
+  const portalName = useId();
   const screen = Dimensions.get("window");
 
   const left =
@@ -61,9 +71,82 @@ export function Dropdown({
       Math.max(SCREEN_MARGIN, (anchor?.x ?? SCREEN_MARGIN) - width + 24),
       screen.width - width - SCREEN_MARGIN,
     );
+  // With the keyboard up, only the space above it counts.
+  const visibleBottom = Keyboard.isVisible()
+    ? (Keyboard.metrics()?.screenY ?? screen.height)
+    : screen.height;
   const openAbove =
     placement === "above" ||
-    (anchor ? anchor.y > screen.height * 0.6 : false);
+    (anchor ? anchor.y > visibleBottom * 0.6 : false);
+  const maxHeight = Math.max(
+    160,
+    Math.min(
+      screen.height * 0.5,
+      openAbove ? (anchor?.y ?? 0) - 64 : visibleBottom - (anchor?.y ?? 0) - 24,
+    ),
+  );
+
+  // Android back closes an in-window menu, as it does a Modal.
+  useEffect(() => {
+    if (!keepKeyboard || !visible) return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      onClose();
+      return true;
+    });
+    return () => sub.remove();
+  }, [keepKeyboard, visible, onClose]);
+
+  const content = (
+    <Pressable className="flex-1" onPress={onClose}>
+      <View
+        style={{
+          position: "absolute",
+          width,
+          left,
+          ...(openAbove
+            ? { bottom: screen.height - (anchor?.y ?? 0) + 8 }
+            : { top: (anchor?.y ?? 0) + 8 }),
+          borderRadius: 16,
+          ...softShadow({ color: "#000", opacity: 0.4, radius: 24, offsetY: 8 }),
+        }}
+      >
+        {/* Web menus: `glass bg-background/40 backdrop-blur-3xl rounded-2xl
+            border-foreground/10`. iOS gets that heavy blur through a thin
+            tint; Android can't blur the app behind (see WEB_PARITY.md), so
+            it keeps the glass nearly opaque to stay readable. */}
+        <GlassView
+          intensity={Platform.OS === "ios" ? 90 : 50}
+          style={{
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: withAlpha(tokens.foreground, 0.1),
+            backgroundColor: withAlpha(
+              tokens.background,
+              Platform.OS === "ios" ? 0.4 : 0.94,
+            ),
+            padding: 4,
+          }}
+        >
+          <ScrollView
+            style={{ maxHeight }}
+            showsVerticalScrollIndicator={false}
+            // First tap picks the item even with the keyboard up.
+            keyboardShouldPersistTaps="handled"
+          >
+            {children}
+          </ScrollView>
+        </GlassView>
+      </View>
+    </Pressable>
+  );
+
+  if (keepKeyboard) {
+    return visible ? (
+      <Portal name={portalName}>
+        <View style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0 }}>{content}</View>
+      </Portal>
+    ) : null;
+  }
 
   return (
     <Modal
@@ -73,45 +156,7 @@ export function Dropdown({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable className="flex-1" onPress={onClose}>
-        <View
-          style={{
-            position: "absolute",
-            width,
-            left,
-            ...(openAbove
-              ? { bottom: screen.height - (anchor?.y ?? 0) + 8 }
-              : { top: (anchor?.y ?? 0) + 8 }),
-            borderRadius: 16,
-            ...softShadow({ color: "#000", opacity: 0.4, radius: 24, offsetY: 8 }),
-          }}
-        >
-          {/* Web menus: `glass bg-background/40 backdrop-blur-3xl rounded-2xl
-              border-foreground/10`. iOS gets that heavy blur through a thin
-              tint; Android can't blur the app behind (see WEB_PARITY.md), so
-              it keeps the glass nearly opaque to stay readable. */}
-          <GlassView
-            intensity={Platform.OS === "ios" ? 90 : 50}
-            style={{
-              borderRadius: 16,
-              borderWidth: 1,
-              borderColor: withAlpha(tokens.foreground, 0.1),
-              backgroundColor: withAlpha(
-                tokens.background,
-                Platform.OS === "ios" ? 0.4 : 0.94,
-              ),
-              padding: 4,
-            }}
-          >
-            <ScrollView
-              style={{ maxHeight: screen.height * 0.5 }}
-              showsVerticalScrollIndicator={false}
-            >
-              {children}
-            </ScrollView>
-          </GlassView>
-        </View>
-      </Pressable>
+      {content}
     </Modal>
   );
 }

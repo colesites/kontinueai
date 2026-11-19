@@ -86,6 +86,7 @@ import { API_BASE_URL } from "@/lib/chat-api";
 import { shareMediaFile } from "@/lib/media-share";
 import { cn } from "@/lib/utils";
 import { softShadow } from "@/lib/shadow";
+import { composerBottomInset } from "@/lib/composer-inset";
 
 type Creation = Doc<"canvasCreations">;
 type Mode = "image" | "video";
@@ -554,7 +555,7 @@ export default function CanvasScreen() {
             bottom: 0,
             paddingHorizontal: 12,
             paddingTop: 10,
-            paddingBottom: keyboardOpen ? 8 : Math.max(insets.bottom, 14),
+            paddingBottom: composerBottomInset(insets.bottom, keyboardOpen),
           }}
         >
           <LinearGradient

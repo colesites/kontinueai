@@ -54,6 +54,7 @@ import {
 import { savePendingChatDraft } from "@/lib/pending-chat-draft";
 import { getFirstName } from "@/lib/user-display";
 import { softShadow } from "@/lib/shadow";
+import { composerBottomInset } from "@/lib/composer-inset";
 
 const STEPS = [
   {
@@ -378,10 +379,14 @@ export default function HomeScreen() {
           className="items-center justify-center px-6"
           style={{ flex: 1, zIndex: 10, paddingTop: insets.top + 56 }}
         >
+          {/* iOS glows around the logo's own shape. Android's boxShadow can
+              only draw the view's box, which showed as a solid rectangle. */}
           <View
-            style={{
-              ...softShadow({ color: primary, opacity: 0.35, radius: 28, offsetY: 8 }),
-            }}
+            style={
+              Platform.OS === "ios"
+                ? softShadow({ color: primary, opacity: 0.35, radius: 28, offsetY: 8 })
+                : undefined
+            }
           >
             <KontinueLogo height={44} />
           </View>
@@ -474,7 +479,7 @@ export default function HomeScreen() {
           className="px-4"
           style={{
             zIndex: 20,
-            paddingBottom: keyboardOpen ? 8 : Math.max(insets.bottom, 12),
+            paddingBottom: composerBottomInset(insets.bottom, keyboardOpen),
           }}
         >
 
