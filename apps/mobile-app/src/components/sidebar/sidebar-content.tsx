@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Alert,
   Modal,
@@ -59,6 +59,7 @@ import {
   useDropdown,
 } from "@/components/ui/dropdown";
 import { useTheme } from "@/components/theme-provider";
+import { GlowRail } from "@/components/ui/glow-rail";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { toast } from "@/components/ui/toast";
 import { GlassDialog, DialogClosePill, Eyebrow } from "@/components/ui/glass";
@@ -96,7 +97,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const planTier = usePlanTier();
-  const { primary, mutedForeground } = useTheme();
+  const { primary, mutedForeground, tokens } = useTheme();
 
   const chats = useQuery(api.chats.getUserChats, {});
   const projects = useQuery(api.projects.listProjects, {});
@@ -119,6 +120,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
 
   // Anchored dropdowns — mirror the web's DropdownMenu (no bottom sheets).
   const accountMenu = useDropdown();
+  const accountRowRef = useRef<View>(null);
   const productMenu = useDropdown();
   const chatMenu = useDropdown();
   const projectMenu = useDropdown();
@@ -311,23 +313,13 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         </View>
       </View>
 
-      {/* Search — surface-inset, mirrors SidebarHeaderSection */}
+      {/* Search — web SidebarHeaderSection: surface-inset with a focus-only
+          glow rail. The style never swaps classes on focus: changing the
+          parent's className remounted the TextInput, which dropped focus the
+          moment the keyboard opened ("it just closes"). */}
       <View
-        className={
-          searchFocused
-            ? "mx-3 mb-3 h-10 flex-row items-center gap-2 rounded-xl border border-primary/30 bg-foreground/6 px-3"
-            : "mx-3 mb-3 h-10 flex-row items-center gap-2 rounded-xl border border-foreground/8 bg-foreground/4 px-3"
-        }
-        style={
-          searchFocused
-            ? {
-                shadowColor: primary,
-                shadowOpacity: 0.28,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 0 },
-              }
-            : undefined
-        }
+        className="mx-3 mb-3 flex-row items-center gap-2 rounded-xl border border-foreground/5 bg-foreground/4 px-3"
+        style={{ height: 40 }}
       >
         <Icon as={Search} size={14} className="text-muted-foreground/70" />
         <TextInput
@@ -337,10 +329,24 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           onBlur={() => setSearchFocused(false)}
           placeholder="Search threads…"
           placeholderTextColor={mutedForeground}
-          className="h-full min-w-0 flex-1 text-[13px] text-foreground"
+          returnKeyType="search"
+          autoCorrect={false}
+          underlineColorAndroid="transparent"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            height: 40,
+            paddingVertical: 0,
+            fontSize: 13.5,
+            color: tokens.foreground,
+            includeFontPadding: false,
+            textAlignVertical: "center",
+          }}
         />
         {search.length > 0 ? (
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Clear search"
             hitSlop={8}
             onPress={() => setSearch("")}
             className="h-6 w-6 items-center justify-center rounded-full active:bg-foreground/8"
@@ -353,6 +359,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
             />
           </Pressable>
         ) : null}
+        <GlowRail radius={12} focused={searchFocused} variant="focus" />
       </View>
 
       {/* Row 1: primary New chat (gradient + glow) + Canvas palette button */}
@@ -613,7 +620,16 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
           <Icon as={ChevronRight} size={14} className="text-primary/60" />
         </Pressable>
         <Pressable
-          onPress={accountMenu.open}
+          ref={accountRowRef}
+          accessibilityRole="button"
+          accessibilityLabel="Account menu"
+          onPress={() =>
+            // Web opens the account menu upward from the footer; anchor to the
+            // row's top edge so the menu sits above it, not over it.
+            accountRowRef.current?.measureInWindow((x, y, width) =>
+              accountMenu.openAt({ x: x + width, y: y - 4 }),
+            )
+          }
           className="flex-row items-center gap-2.5 rounded-xl px-2 py-1.5 active:bg-foreground/5"
         >
           {user?.imageUrl ? (

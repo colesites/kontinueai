@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Animated, Modal, Pressable, type ViewStyle, View } from "react-native";
+import { Animated, Modal, Platform, Pressable, type ViewStyle, View } from "react-native";
 import { BlurView } from "expo-blur";
 import { X } from "lucide-react-native";
 import { LinearGradient } from "expo-linear-gradient";
@@ -97,7 +97,7 @@ export function GlassDialog({
   onClose: () => void;
   children: ReactNode;
 }) {
-  const { isDark } = useTheme();
+  const { isDark, background, foreground } = useTheme();
   // Lazy useState (not useRef) so the animated value is created once without
   // reading a ref during render, which React Compiler forbids.
   const [progress] = useState(() => new Animated.Value(0));
@@ -122,10 +122,23 @@ export function GlassDialog({
       statusBarTranslucent
       onRequestClose={onClose}
     >
-      <Pressable
-        onPress={onClose}
-        className="flex-1 items-center justify-center bg-black/50 px-5"
-      >
+      <Pressable onPress={onClose} className="flex-1 items-center justify-center px-5">
+        {/* Web DialogOverlay: `bg-black/10 backdrop-blur-xs`. iOS blurs the
+            page behind; Android can't blur it (WEB_PARITY.md), so it dims more
+            to keep the dialog separated from the content. */}
+        <BlurView
+          pointerEvents="none"
+          intensity={Platform.OS === "ios" ? 18 : 0}
+          tint={isDark ? "dark" : "light"}
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: Platform.OS === "ios" ? "rgba(0,0,0,0.10)" : "rgba(0,0,0,0.45)",
+          }}
+        />
         <Animated.View
           style={{
             width: "100%",
@@ -149,15 +162,13 @@ export function GlassDialog({
         >
           <Pressable onPress={(e) => e.stopPropagation()}>
             <GlassView
-              intensity={50}
+              intensity={Platform.OS === "ios" ? 80 : 50}
               style={{
                 borderRadius: 16,
                 borderWidth: 1,
-                borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)",
-                // glass-strong keeps ~78% of the background color
-                backgroundColor: isDark
-                  ? "rgba(12,9,12,0.78)"
-                  : "rgba(255,251,253,0.78)",
+                borderColor: `${foreground}1a`,
+                // glass-strong: background 78% + blur(40px) saturate(160%)
+                backgroundColor: `${background}${Platform.OS === "ios" ? "c7" : "f5"}`,
               }}
             >
               <AccentBar />

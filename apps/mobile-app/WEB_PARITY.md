@@ -155,6 +155,16 @@ distributable build also run the release bundle locally:
   view, which its own source notes breaks react-native-gesture-handler's
   attached-view walk. Reverted in v1.2.4. Do NOT re-attempt this without a
   captured crash log (`adb logcat`) and a scope narrower than the whole tree.
+- Where Android can't blur (above), glass surfaces stay legible instead:
+  dropdowns and menus use ~94% background, dialog backdrops dim to 45% black.
+  iOS keeps web's values (menus `bg-background/40` + heavy blur, dialog
+  overlay `bg-black/10` + light blur).
+- The chat and Canvas "live wire" border (`src/components/ui/glow-rail.tsx`)
+  reproduces web's conic-gradient ring exactly: the same stops, 7s / 4.5s
+  spins and 0.4 / 1 opacity, mapped from angle to border position per frame
+  (`src/lib/glow-geometry.ts`).
+- Full pages (Agents, Tasks, Canvas) use the floating AppShell toolbar
+  (`src/components/floating-toolbar.tsx`) with content scrolling beneath.
 - Design tokens are GENERATED from `packages/tailwind-config/shared-styles.css`
   into `src/theme/tokens.generated.{css,ts}` by `bun run theme:sync`. The web
   stylesheet is the only place a Kontinue color is authored; the generated

@@ -46,6 +46,7 @@ import { nextPlanWithMore, PLAN_DEFINITIONS } from "@repo/core/plan-config";
 import {
   ArrowUp,
   Check,
+  ChevronDown,
   Clapperboard,
   Coins,
   Download,
@@ -55,10 +56,7 @@ import {
   ImageIcon,
   Lock,
   Paperclip,
-  PanelLeft,
   Play,
-  Plus,
-  Search,
   Share2,
   SlidersHorizontal,
   Sparkles,
@@ -66,10 +64,11 @@ import {
   X,
 } from "lucide-react-native";
 
-import { ModeToggle } from "@/components/mode-toggle";
 import { withAlpha } from "@/components/chat/markdown";
 import { useTheme } from "@/components/theme-provider";
-import { GlassPill, ToolbarButton } from "@/components/top-toolbar";
+import { GlassPill, TopToolbar } from "@/components/top-toolbar";
+import { GlowButton } from "@/components/ui/glow-button";
+import { GlowRail } from "@/components/ui/glow-rail";
 import {
   Dropdown,
   DropdownItem,
@@ -114,7 +113,7 @@ function videoCostMultiplier(
 export default function CanvasScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { getToken } = useAuth();
-  const { openSidebar } = useSidebar();
+  const { open: sidebarOpen } = useSidebar();
   const router = useRouter();
   const { isDark, primary, mutedForeground, primaryForeground, tokens } = useTheme();
   const planTier = usePlanTier();
@@ -136,7 +135,8 @@ export default function CanvasScreen() {
   const [quality, setQuality] = useState<"standard" | "pro">("standard");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const modeMenu = useDropdown();
+  const tabMenu = useDropdown();
+  const [inputFocused, setInputFocused] = useState(false);
   const modelMenu = useDropdown();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [expanded, setExpanded] = useState<Creation | null>(null);
@@ -466,6 +466,8 @@ export default function CanvasScreen() {
   return (
     <View className="bg-background" style={{ flex: 1 }}>
       <KeyboardAvoidingView
+        // The drawer's search field must not shove this screen around.
+        enabled={!sidebarOpen}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
@@ -566,21 +568,23 @@ export default function CanvasScreen() {
           />
           <View
             style={{
-              borderRadius: 28,
-              shadowColor: "#000",
-              shadowOpacity: isDark ? 0.4 : 0.12,
-              shadowRadius: 22,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 10,
+              borderRadius: 24,
+              shadowColor: inputFocused ? primary : "#000000",
+              shadowOpacity: inputFocused ? 0.45 : isDark ? 0.5 : 0.15,
+              shadowRadius: 24,
+              shadowOffset: { width: 0, height: 12 },
+              elevation: 12,
             }}
           >
+            {/* Web: `glow-rail rounded-3xl border border-border/40
+                bg-background/45 shadow-2xl backdrop-blur-3xl` */}
             <GlassView
-              intensity={40}
+              intensity={60}
               style={{
-                borderRadius: 28,
+                borderRadius: 24,
                 borderWidth: 1,
-                borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)",
-                backgroundColor: isDark ? "rgba(12,9,12,0.55)" : "rgba(255,251,253,0.6)",
+                borderColor: inputFocused ? withAlpha(primary, 0.32) : withAlpha(tokens.border, 0.4),
+                backgroundColor: withAlpha(tokens.background, isDark ? 0.45 : 0.6),
               }}
             >
               {modeLocked ? (
@@ -633,52 +637,53 @@ export default function CanvasScreen() {
                 </View>
               ) : null}
 
-              {/* Prompt row: paperclip · textarea · round submit */}
-              <View className="flex-row items-end gap-2 px-3 pb-1 pt-2">
+              {/* Prompt row (web CanvasInputPrompt): 40px paperclip circle,
+                  bold prompt, 40px glow-button generate */}
+              <View className="flex-row items-end gap-2 px-3 pt-4">
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Attach reference image"
                   onPress={() => void handlePickReferences()}
-                  className="mb-1 h-10 w-10 items-center justify-center rounded-full active:bg-foreground/8"
+                  disabled={isUploading}
+                  className="mb-1 h-10 w-10 items-center justify-center rounded-full border border-foreground/10 bg-foreground/4 active:bg-foreground/10"
                 >
-                  <Icon
-                    as={Paperclip}
-                    size={19}
-                    className={visibleReferences.length ? "text-primary" : "text-muted-foreground"}
-                  />
+                  {isUploading ? (
+                    <ActivityIndicator size="small" color={primary} />
+                  ) : (
+                    <Icon
+                      as={Paperclip}
+                      size={19}
+                      color={visibleReferences.length ? primary : withAlpha(tokens.foreground, 0.45)}
+                    />
+                  )}
                 </Pressable>
                 <TextInput
                   value={prompt}
                   onChangeText={setPrompt}
-                  placeholder={
-                    mode === "image" ? "Describe an image to create…" : "Describe a scene to animate…"
-                  }
-                  placeholderTextColor={mutedForeground}
+                  onFocus={() => setInputFocused(true)}
+                  onBlur={() => setInputFocused(false)}
+                  placeholder="What do you want to create?"
+                  placeholderTextColor={withAlpha(mutedForeground, 0.45)}
                   multiline
-                  className="max-h-28 min-h-12 flex-1 py-3 text-[15.5px] leading-5 text-foreground"
+                  textAlignVertical="top"
+                  style={{
+                    flex: 1,
+                    minHeight: 44,
+                    maxHeight: 160,
+                    paddingTop: 10,
+                    paddingBottom: 8,
+                    fontSize: 16,
+                    lineHeight: 22,
+                    fontWeight: "600",
+                    color: tokens.foreground,
+                  }}
                 />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={mode === "image" ? "Generate image" : "Generate video"}
+                <GlowButton
+                  flat={!canSubmit}
                   disabled={!canSubmit}
+                  accessibilityLabel={mode === "image" ? "Generate image" : "Generate video"}
                   onPress={() => void handleGenerate()}
-                  className={cn(
-                    "mb-1 h-11 w-11 items-center justify-center rounded-full",
-                    canSubmit ? "bg-primary active:opacity-90" : "bg-foreground/8",
-                  )}
-                  style={
-                    canSubmit
-                      ? {
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.22)",
-                          shadowColor: primary,
-                          shadowOpacity: 0.4,
-                          shadowRadius: 10,
-                          shadowOffset: { width: 0, height: 4 },
-                          elevation: 4,
-                        }
-                      : undefined
-                  }
+                  style={{ width: 40, height: 40, marginBottom: 4 }}
                 >
                   {isGenerating ? (
                     <ActivityIndicator size="small" color={primaryForeground} />
@@ -686,11 +691,11 @@ export default function CanvasScreen() {
                     <Icon
                       as={ArrowUp}
                       size={22}
-                      strokeWidth={2.75}
-                      className={canSubmit ? "text-primary-foreground" : "text-muted-foreground"}
+                      strokeWidth={2.5}
+                      color={canSubmit ? primaryForeground : withAlpha(tokens.foreground, 0.2)}
                     />
                   )}
-                </Pressable>
+                </GlowButton>
               </View>
               {promptOverLimit ? (
                 <Text className="px-5 pb-1 text-[11px] text-destructive">
@@ -698,36 +703,58 @@ export default function CanvasScreen() {
                 </Text>
               ) : null}
 
-              {/* Controls row: mode · settings | model · credits */}
-              <View className="flex-row items-center gap-1.5 border-t border-foreground/6 px-3 py-2.5">
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Mode: ${mode}`}
-                  onPress={modeMenu.open}
-                  className="h-9 flex-row items-center gap-1.5 rounded-full border border-primary/25 bg-primary/12 px-3 active:opacity-80"
-                >
-                  <Icon
-                    as={mode === "image" ? ImageIcon : Clapperboard}
-                    size={13}
-                    className="text-primary"
-                  />
-                  <Text className="text-[11px] font-bold uppercase tracking-wide text-primary">
-                    {mode}
-                  </Text>
-                </Pressable>
+              {/* Controls row (web CanvasInputControls, mobile layout):
+                  glowing IMAGE/VIDEO toggle, settings circle, divider, model */}
+              <View className="flex-row flex-wrap items-center gap-1.5 px-3 pb-4 pt-1">
+                <View className="h-9 flex-row items-center gap-1 rounded-full border border-border/40 bg-secondary/15 p-1">
+                  {(["image", "video"] as const).map((value) => {
+                    const active = mode === value;
+                    const ModeIcon = value === "image" ? ImageIcon : Clapperboard;
+                    const label = value === "image" ? "Image" : "Video";
+                    return active ? (
+                      <GlowButton
+                        key={value}
+                        accessibilityLabel={`${label} generation`}
+                        onPress={() => setMode(value)}
+                        style={{ height: 28 }}
+                      >
+                        <View className="flex-row items-center gap-1.5 px-3">
+                          <Icon as={ModeIcon} size={14} className="text-primary-foreground" />
+                          <Text className="text-[12px] font-bold uppercase tracking-tight text-primary-foreground">
+                            {label}
+                          </Text>
+                        </View>
+                      </GlowButton>
+                    ) : (
+                      <Pressable
+                        key={value}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${label} generation`}
+                        onPress={() => setMode(value)}
+                        className="h-7 flex-row items-center gap-1.5 rounded-full px-3 active:bg-foreground/8"
+                      >
+                        <Icon as={ModeIcon} size={14} color={withAlpha(tokens.foreground, 0.55)} />
+                        <Text
+                          className="text-[12px] font-bold uppercase tracking-tight"
+                          style={{ color: withAlpha(tokens.foreground, 0.55) }}
+                        >
+                          {label}
+                        </Text>
+                        {value === "video" && !canGenerateVideos ? (
+                          <Icon as={Lock} size={10} color={withAlpha(tokens.foreground, 0.4)} />
+                        ) : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
 
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Generation settings"
                   onPress={() => setSettingsOpen(true)}
-                  className="h-9 flex-row items-center gap-1.5 rounded-full border border-foreground/8 bg-foreground/5 px-3 active:opacity-80"
+                  className="h-9 w-9 items-center justify-center rounded-full border border-border/40 bg-secondary/20 active:bg-secondary/40"
                 >
-                  <Icon as={SlidersHorizontal} size={13} className="text-muted-foreground" />
-                  <Text className="text-[11px] font-semibold text-muted-foreground">
-                    {mode === "image"
-                      ? aspectRatio
-                      : `${formatDuration(duration)} · ${aspectRatio}`}
-                  </Text>
+                  <Icon as={SlidersHorizontal} size={16} color={withAlpha(tokens.foreground, 0.7)} />
                 </Pressable>
 
                 <View className="mx-0.5 h-5 w-px bg-foreground/10" />
@@ -736,20 +763,19 @@ export default function CanvasScreen() {
                   accessibilityRole="button"
                   accessibilityLabel={`Model: ${selectedModel?.name ?? "Model"}`}
                   onPress={modelMenu.open}
-                  className="h-9 min-w-0 shrink flex-row items-center gap-1.5 rounded-full border border-foreground/8 bg-foreground/5 px-3 active:opacity-80"
+                  className="h-9 flex-row items-center gap-1.5 rounded-full border border-foreground/10 bg-foreground/4 px-3.5 active:bg-foreground/8"
                 >
                   <Text
                     numberOfLines={1}
-                    className="shrink text-[11px] font-bold uppercase tracking-wide text-foreground"
+                    className="max-w-40 text-[12px] font-bold uppercase tracking-tight"
+                    style={{ color: withAlpha(tokens.foreground, 0.7) }}
                   >
                     {selectedModel?.name ?? "Model"}
                   </Text>
                 </Pressable>
 
-                <View className="flex-1" />
-
                 {mode === "video" && !isFreeModel ? (
-                  <View className="flex-row items-center gap-1">
+                  <View className="h-9 flex-row items-center gap-1 px-1">
                     <Icon as={Coins} size={12} className="text-muted-foreground" />
                     <Text className="text-[11px] font-medium text-muted-foreground">
                       {credits ? creditsAvailable : "…"}
@@ -758,6 +784,7 @@ export default function CanvasScreen() {
                 ) : null}
               </View>
             </GlassView>
+            <GlowRail radius={24} focused={inputFocused} />
           </View>
         </View>
         </View>
@@ -775,57 +802,26 @@ export default function CanvasScreen() {
           locations={[0, 0.6, 1]}
           style={{ position: "absolute", left: 0, right: 0, top: 0, bottom: -18 }}
         />
-      {/* Floating top controls — mirrors web AppShell on /canvas */}
-      <View className="mt-2 flex-row items-center justify-between px-4 py-2">
-        <View className="flex-row items-center gap-2">
-          <GlassPill className="flex-row items-center gap-1 p-1">
-            <ToolbarButton label="Open sidebar" icon={PanelLeft} onPress={openSidebar} />
-            <ToolbarButton label="Search" icon={Search} onPress={openSidebar} />
-            <ToolbarButton label="New chat" icon={Plus} onPress={() => router.push("/")} />
-          </GlassPill>
-        </View>
-        <GlassPill className="p-1">
-          <ModeToggle />
-        </GlassPill>
-      </View>
-
-      {/* Community / My Creations — web's segmented pill */}
-      <View className="items-center pb-2">
-        <View className="flex-row items-center gap-1 rounded-full border border-foreground/8 bg-foreground/4 p-1">
-          {(["community", "mine"] as const).map((t) => (
-            <Pressable
-              key={t}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: tab === t }}
-              onPress={() => setTab(t)}
-              className={cn(
-                "min-h-9 justify-center rounded-full px-4",
-                tab === t ? "bg-background" : "active:bg-foreground/5",
-              )}
-              style={
-                tab === t
-                  ? {
-                      shadowColor: "#000",
-                      shadowOpacity: isDark ? 0.35 : 0.08,
-                      shadowRadius: 6,
-                      shadowOffset: { width: 0, height: 2 },
-                      elevation: 2,
-                    }
-                  : undefined
-              }
-            >
-              <Text
-                className={cn(
-                  "text-[12.5px] font-semibold",
-                  tab === t ? "text-foreground" : "text-muted-foreground",
-                )}
+        {/* Web AppShell on /canvas (mobile): the icons pill plus a
+            "Community ▾" select pill beside it */}
+        <TopToolbar
+          centerSlot={
+            <GlassPill className="p-1">
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Gallery: ${tab === "community" ? "Community" : "My Creations"}`}
+                onPress={tabMenu.open}
+                className="h-8 flex-row items-center gap-1.5 rounded-xl px-3 active:bg-foreground/4"
               >
-                {t === "community" ? "Community" : "My Creations"}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </View>
+                <Text className="text-[12px] font-semibold text-foreground">
+                  {tab === "community" ? "Community" : "My Creations"}
+                </Text>
+                <Icon as={ChevronDown} size={14} className="text-muted-foreground" />
+              </Pressable>
+            </GlassPill>
+          }
+        />
+        <View style={{ height: 10 }} />
 
         {/* Async video job banner */}
         {activeVideoJobId && activeJob && !jobDone ? (
@@ -885,6 +881,22 @@ export default function CanvasScreen() {
         }
       />
 
+      {/* Community / My Creations select (web AppShell mobile Select) */}
+      <Dropdown visible={tabMenu.visible} anchor={tabMenu.anchor} onClose={tabMenu.close} width={180}>
+        {(["community", "mine"] as const).map((value) => (
+          <DropdownItem
+            key={value}
+            label={value === "community" ? "Community" : "My Creations"}
+            active={tab === value}
+            onPress={() => {
+              setTab(value);
+              tabMenu.close();
+            }}
+            trailing={tab === value ? <Icon as={Check} size={14} className="text-primary" /> : undefined}
+          />
+        ))}
+      </Dropdown>
+
       {/* Model dropdown — mirrors web PillSelect */}
       <Dropdown
         visible={modelMenu.visible}
@@ -926,41 +938,6 @@ export default function CanvasScreen() {
         })}
       </Dropdown>
 
-      {/* Mode dropdown (Image / Video) — mirrors web's Type PillSelect */}
-      <Dropdown
-        visible={modeMenu.visible}
-        anchor={modeMenu.anchor}
-        onClose={modeMenu.close}
-        placement="above"
-        width={168}
-      >
-        <DropdownItem
-          icon={ImageIcon}
-          label="Image"
-          active={mode === "image"}
-          onPress={() => {
-            setMode("image");
-            modeMenu.close();
-          }}
-          trailing={mode === "image" ? <Icon as={Check} size={14} className="text-primary" /> : undefined}
-        />
-        <DropdownItem
-          icon={Clapperboard}
-          label="Video"
-          active={mode === "video"}
-          onPress={() => {
-            setMode("video");
-            modeMenu.close();
-          }}
-          trailing={
-            mode === "video" ? (
-              <Icon as={Check} size={14} className="text-primary" />
-            ) : !canGenerateVideos ? (
-              <Icon as={Lock} size={12} className="text-muted-foreground" />
-            ) : undefined
-          }
-        />
-      </Dropdown>
 
       <CreationLightbox
         creation={expanded}

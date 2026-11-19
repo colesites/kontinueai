@@ -68,6 +68,7 @@ import {
 } from "@/components/chat/chat-message";
 import { ModelSelector } from "@/components/chat/model-selector";
 import { withAlpha } from "@/components/chat/markdown";
+import { useSidebar } from "@/components/sidebar/sidebar-context";
 import { useTheme } from "@/components/theme-provider";
 import { ToolbarButton, TopToolbar } from "@/components/top-toolbar";
 import {
@@ -163,6 +164,7 @@ export default function ConversationScreen() {
   const { id, agent } = useLocalSearchParams<{ id: string; agent?: string }>();
   const chatId = id as Id<"chats">;
   const router = useRouter();
+  const { open: sidebarOpen } = useSidebar();
   // Agent persona for this chat (arrived from /agents or picked in the "+"
   // menu) — sent with every request, mirroring ChatClient on web.
   const [agentId, setAgentId] = useState<string | null>(() =>
@@ -767,6 +769,8 @@ export default function ConversationScreen() {
   return (
     <View className="bg-background" style={{ flex: 1 }}>
       <KeyboardAvoidingView
+        // The drawer's search field must not shove this screen around.
+        enabled={!sidebarOpen}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >

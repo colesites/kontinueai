@@ -1,36 +1,43 @@
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { useRouter } from "expo-router";
 import { PanelLeft, Plus, Search } from "lucide-react-native";
 
-import { Icon } from "@/components/ui/icon";
+import { withAlpha } from "@/components/chat/markdown";
 import { ModeToggle } from "@/components/mode-toggle";
 import { useSidebar } from "@/components/sidebar/sidebar-context";
-import { GlassView } from "@/components/ui/glass";
 import { useTheme } from "@/components/theme-provider";
+import { GlassView } from "@/components/ui/glass";
+import { Icon } from "@/components/ui/icon";
 
 /**
- * Floating top controls — mirrors web AppShell. The group "pill" is `rounded-2xl`
- * (not fully round); only the individual icon buttons inside are `rounded-full`.
+ * Floating top controls — mirrors web AppShell (`fixed top-3 px-3`). The group
+ * "pill" is `rounded-2xl` (not fully round); only the 32px icon buttons inside
+ * are `rounded-full`.
  */
 export function TopToolbar({
   rightSlot,
+  centerSlot,
 }: {
   /** Extra controls placed before the theme toggle (e.g. Share on a chat). */
   rightSlot?: ReactNode;
+  /** A second pill beside the icons (e.g. Canvas's Community switcher). */
+  centerSlot?: ReactNode;
 } = {}) {
   const { openSidebar } = useSidebar();
   const router = useRouter();
 
   return (
-    <View className="flex-row items-center justify-between px-4 py-2 mt-2">
-      <GlassPill className="flex-row items-center gap-1.5 p-1">
-        <ToolbarButton label="Open sidebar" icon={PanelLeft} onPress={openSidebar} />
-        <ToolbarButton label="Search" icon={Search} onPress={openSidebar} />
-        {/* Home is the new-chat composer (web routes New chat to "/" too).
-            "/chat/new" mounted the conversation screen with an invalid id. */}
-        <ToolbarButton label="New chat" icon={Plus} onPress={() => router.push("/")} />
-      </GlassPill>
+    <View className="flex-row items-start justify-between px-3 pt-3">
+      <View className="flex-row items-start gap-3">
+        <GlassPill className="flex-row items-center gap-1 p-1">
+          <ToolbarButton label="Open sidebar" icon={PanelLeft} onPress={openSidebar} />
+          <ToolbarButton label="Search" icon={Search} onPress={openSidebar} />
+          {/* Home is the new-chat composer (web routes New chat to "/" too). */}
+          <ToolbarButton label="New chat" icon={Plus} onPress={() => router.push("/")} />
+        </GlassPill>
+        {centerSlot}
+      </View>
 
       <GlassPill className="flex-row items-center gap-1 p-1">
         {rightSlot}
@@ -41,14 +48,10 @@ export function TopToolbar({
 }
 
 /**
- * Liquid-glass pill. A single flat border reads as a printed outline, so the
- * rim is built the way the web one is: a translucent hairline all round, a
- * brighter LIT TOP edge, and a thinner, darker bottom edge. That top-light /
- * bottom-dark split is what gives the pill its raised 3D look.
- *
- * React Native has no per-side border radius + width combination that keeps
- * the rounded corners intact, so the top and bottom edges are drawn as inset
- * hairline overlays inside the pill instead (see GlassRim).
+ * Web `glass bg-background/40 backdrop-blur-3xl rounded-2xl`: a 7% foreground
+ * hairline all round, the glass utility's `inset 0 1px 0 foreground 9%` top
+ * highlight (drawn as a top border that follows the corner curve), and
+ * `0 10px 32px -12px black 35%` underneath.
  */
 export function GlassPill({
   children,
@@ -59,67 +62,49 @@ export function GlassPill({
   className?: string;
   radius?: number;
 }) {
-  const { isDark } = useTheme();
+  const { isDark, tokens } = useTheme();
   return (
-    <GlassView
-      intensity={40}
-      className={className}
+    <View
       style={{
         borderRadius: radius,
-        borderWidth: 1,
-        borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.06)",
         shadowColor: "#000000",
         shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: isDark ? 0.42 : 0.14,
-        shadowRadius: 18,
-        elevation: 10,
+        shadowOpacity: isDark ? 0.35 : 0.12,
+        shadowRadius: 14,
+        elevation: 6,
       }}
     >
-      <GlassRim isDark={isDark} />
-      {children}
-    </GlassView>
+      <GlassView
+        intensity={64}
+        className={className}
+        style={{
+          borderRadius: radius,
+          borderWidth: 1,
+          borderColor: withAlpha(tokens.foreground, 0.07),
+          backgroundColor: withAlpha(tokens.background, isDark ? 0.4 : 0.55),
+        }}
+      >
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: radius,
+            borderTopLeftRadius: radius,
+            borderTopRightRadius: radius,
+            borderTopWidth: 1,
+            borderColor: withAlpha(tokens.foreground, 0.09),
+          }}
+        />
+        {children}
+      </GlassView>
+    </View>
   );
 }
 
-/**
- * The lit top edge and thinner, darker bottom edge that make the pill read as
- * a raised piece of glass rather than a flat outlined box. Sits inside the
- * GlassView's clip, so it follows the rounded corners.
- */
-function GlassRim({ isDark }: { isDark: boolean }) {
-  return (
-    <>
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 12,
-          right: 12,
-          height: 1,
-          backgroundColor: isDark
-            ? "rgba(255,255,255,0.22)"
-            : "rgba(255,255,255,0.85)",
-        }}
-      />
-      <View
-        pointerEvents="none"
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 20,
-          right: 20,
-          // Thinner than the top edge: the underside catches less light.
-          height: StyleSheet.hairlineWidth,
-          backgroundColor: isDark
-            ? "rgba(0,0,0,0.35)"
-            : "rgba(0,0,0,0.10)",
-        }}
-      />
-    </>
-  );
-}
-
+/** Web `toolbarButtonClasses`: 32px round, muted icon, foreground/8 press. */
 export function ToolbarButton({
   label,
   icon,
@@ -141,11 +126,11 @@ export function ToolbarButton({
       hitSlop={4}
       className={
         disabled
-          ? "h-9 w-9 items-center justify-center rounded-full opacity-40"
-          : "h-9 w-9 items-center justify-center rounded-full active:bg-accent"
+          ? "h-8 w-8 items-center justify-center rounded-full opacity-40"
+          : "h-8 w-8 items-center justify-center rounded-full active:bg-foreground/8"
       }
     >
-      <Icon as={icon} size={18} className="text-muted-foreground" />
+      <Icon as={icon} size={16} className="text-muted-foreground" />
     </Pressable>
   );
 }
