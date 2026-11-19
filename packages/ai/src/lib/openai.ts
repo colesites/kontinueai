@@ -33,6 +33,20 @@ export const OPENAI_MODELS: ModelOption[] = [
 		modality: "realtime",
 	},
 	{
+		id: "openai/gpt-6.2-sol",
+		name: "GPT-6.2 Sol",
+		provider: "openai",
+		description:
+			"OpenAI's newest flagship, near-Astra quality at a fraction of the cost",
+	},
+	{
+		id: "openai/gpt-6.2-sol-fast",
+		name: "GPT-6.2 Sol Fast",
+		provider: "openai",
+		description:
+			"High-speed edition of GPT-6.2 Sol for rapid agentic execution",
+	},
+	{
 		id: "openai/gpt-6.1-sol",
 		name: "GPT 6.1 Sol",
 		provider: "openai",
@@ -52,6 +66,20 @@ export const OPENAI_MODELS: ModelOption[] = [
 		provider: "openai",
 		description:
 			"High-efficiency GPT-6 intelligence designed for responsive agent workflows",
+	},
+	{
+		id: "openai/gpt-6.2-astra",
+		name: "GPT-6.2 Astra",
+		provider: "openai",
+		description:
+			"OpenAI's most powerful model for deep reasoning, coding, and research",
+	},
+	{
+		id: "openai/gpt-6.2-astra-fast",
+		name: "GPT-6.2 Astra Fast",
+		provider: "openai",
+		description:
+			"High-speed edition of GPT-6.2 Astra for time-critical deep reasoning",
 	},
 	{
 		id: "openai/gpt-6-astra",

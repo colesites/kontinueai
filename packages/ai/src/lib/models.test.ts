@@ -25,6 +25,37 @@ describe("AI model catalog", () => {
 		);
 	});
 
+	test("includes the GPT-6.2 generation and Gemini 4 Neon", () => {
+		expect(OPENAI_MODELS.map((model) => model.id)).toEqual(
+			expect.arrayContaining([
+				"openai/gpt-6.2-sol",
+				"openai/gpt-6.2-astra",
+				"openai/gpt-6.2-sol-fast",
+				"openai/gpt-6.2-astra-fast",
+			]),
+		);
+		expect(GOOGLE_MODELS.map((model) => model.id)).toEqual(
+			expect.arrayContaining(["google/gemini-4-neon"]),
+		);
+	});
+
+	test("every newest model is pickable in both catalogue surfaces", () => {
+		// The main catalogue and Kode must not drift: anything added to one is
+		// expected to be pickable in the other. Fast variants are separate
+		// entries in the main catalogue but a `fast` field in Kode.
+		const mainIds = new Set(AVAILABLE_MODELS.map((model) => model.id));
+		for (const id of [
+			"google/gemini-4-neon",
+			"openai/gpt-6.2-sol",
+			"openai/gpt-6.2-sol-fast",
+			"openai/gpt-6.2-astra",
+			"openai/gpt-6.2-astra-fast",
+		]) {
+			expect(mainIds).toContain(id);
+			expect(getKodeModelById(id) ?? getKodeModelById(id.replace(/-fast$/, ""))).toBeDefined();
+		}
+	});
+
 	test("registers realtime voice models outside the text-chat surface", () => {
 		expect(OPENAI_MODELS).toEqual(
 			expect.arrayContaining([
