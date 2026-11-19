@@ -60,6 +60,9 @@ number.
   instead of a Modal, so the keyboard stays open.
 - Previous recorded Android remote build number before this release: `16`.
 - Profile: `production`.
+- Submitted Android production build number: `17` (EAS auto-increment).
+- EAS build ID: `87490213-e78e-413f-b7fe-4a6af710f7d2` (submitted with
+  `--no-wait`; do not poll it from an AI task).
 
 ### Previous releases
 
