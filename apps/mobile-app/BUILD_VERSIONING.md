@@ -59,6 +59,9 @@ number.
   stays outside the view.
 - Previous recorded Android remote build number before this release: `15`.
 - Profile: `production`.
+- Submitted Android production build number: `16` (EAS auto-increment).
+- EAS build ID: `04b2ef23-802e-4c8d-80df-7dfd7a4a62cc` (submitted with
+  `--no-wait`; do not poll it from an AI task).
 
 ### Previous releases
 
