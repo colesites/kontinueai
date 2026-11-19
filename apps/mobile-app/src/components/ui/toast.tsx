@@ -15,6 +15,7 @@ import { GlassView } from "@/components/ui/glass";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 /**
  * Native counterpart of the web app's sonner toasts: a glass card that drops
@@ -149,11 +150,7 @@ function ToastCard({ item }: { item: ToastItem }) {
       layout={LinearTransition.springify().damping(20)}
       style={{
         borderRadius: 18,
-        shadowColor: "#000",
-        shadowOpacity: isDark ? 0.45 : 0.16,
-        shadowRadius: 20,
-        shadowOffset: { width: 0, height: 10 },
-        elevation: 12,
+        ...softShadow({ color: "#000", opacity: isDark ? 0.45 : 0.16, radius: 20, offsetY: 10 }),
       }}
     >
       <GlassView
@@ -210,11 +207,7 @@ function ToastCard({ item }: { item: ToastItem }) {
                 }}
                 className="mt-2 self-start rounded-full bg-primary px-3.5 py-1.5 active:opacity-85"
                 style={{
-                  shadowColor: primary,
-                  shadowOpacity: 0.35,
-                  shadowRadius: 8,
-                  shadowOffset: { width: 0, height: 3 },
-                  elevation: 3,
+                  ...softShadow({ color: primary, opacity: 0.35, radius: 8, offsetY: 3 }),
                 }}
               >
                 <Text className="text-[12px] font-semibold text-primary-foreground">

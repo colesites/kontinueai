@@ -411,6 +411,51 @@ fn update_command_for(provider: CliProvider, binary: &Path) -> (PathBuf, Vec<Str
     }
 }
 
+/// First "1.2.3"-looking word of a `--version` / `npm view` answer.
+fn version_word(text: &str) -> Option<String> {
+    text.split_whitespace()
+        .find(|part| part.chars().next().is_some_and(|c| c.is_ascii_digit()))
+        .map(|part| part.trim_end_matches(|c: char| !c.is_ascii_alphanumeric()).to_string())
+}
+
+/// When the update would be `npm install -g <pkg>@latest` and the installed
+/// version already is npm's latest, the "you're up to date" message.
+async fn npm_up_to_date(
+    provider: CliProvider,
+    binary: &Path,
+    config: &CliConfig,
+    program: &Path,
+    args: &[String],
+) -> Option<String> {
+    let is_npm = program.file_stem().is_some_and(|n| n == "npm") && args.first().is_some_and(|a| a == "install");
+    let spec = args.last().filter(|_| is_npm)?;
+    // "@scope/name@latest" → "@scope/name"
+    let package = match spec.rfind('@') {
+        Some(at) if at > 0 => &spec[..at],
+        _ => spec.as_str(),
+    };
+    let timeout = std::time::Duration::from_secs(20);
+    let latest = tokio::time::timeout(
+        timeout,
+        base_command(program).args(["view", package, "version"]).stdin(Stdio::null()).output(),
+    )
+    .await
+    .ok()?
+    .ok()
+    .filter(|out| out.status.success())
+    .and_then(|out| version_word(&String::from_utf8_lossy(&out.stdout)))?;
+    let installed = tokio::time::timeout(
+        timeout,
+        cli_command(provider, binary, config).arg("--version").stdin(Stdio::null()).output(),
+    )
+    .await
+    .ok()?
+    .ok()
+    .filter(|out| out.status.success())
+    .and_then(|out| version_word(&String::from_utf8_lossy(&out.stdout)))?;
+    (installed == latest).then(|| format!("{installed} is the latest version. You're up to date."))
+}
+
 fn describe(program: &Path, args: &[String]) -> String {
     let name = program
         .file_name()
@@ -736,10 +781,15 @@ pub async fn kode_cli_update(
     let binary = resolve_binary(provider, &config)
         .ok_or_else(|| format!("`{}` is not installed.", provider.binary()))?;
     if let Some(agent_id) = registry::managed_id(&binary) {
-        return registry::install(&state, run_id, &agent_id, on_line).await;
+        return registry::install(&state, run_id, &agent_id, true, on_line).await;
     }
     let (program, args) = update_command(provider, &binary, &config)
         .ok_or_else(|| "Update this agent with its own installer.".to_string())?;
+    // `npm install -g` reinstalls even when nothing changed, so ask npm first.
+    if let Some(message) = npm_up_to_date(provider, &binary, &config, &program, &args).await {
+        let _ = on_line.send(message.clone());
+        return Ok(CliTaskResult { success: true, stopped: false, output: message });
+    }
     let _ = on_line.send(format!("$ {}", describe(&program, &args)));
     let mut cmd = base_command(&program);
     cmd.args(&args);
@@ -1264,7 +1314,7 @@ pub async fn kode_acp_install(
     agent_id: String,
     on_line: Channel<String>,
 ) -> Result<CliTaskResult, String> {
-    registry::install(&state, run_id, &agent_id, on_line).await
+    registry::install(&state, run_id, &agent_id, false, on_line).await
 }
 
 /// Stop a running turn (the Stop button).

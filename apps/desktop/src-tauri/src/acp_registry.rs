@@ -72,14 +72,17 @@ fn was_stopped(state: &CliRunState, run_id: u32) -> bool {
     state.stopped.lock().map(|set| set.contains(&run_id)).unwrap_or(false)
 }
 
-/// Download (or update) a registry agent's binary for this computer.
+/// Download (or update) a registry agent's binary for this computer. With
+/// `only_if_newer` (the Update button) nothing is downloaded when the installed
+/// version already matches the registry's.
 pub(super) async fn install(
     state: &CliRunState,
     run_id: u32,
     agent_id: &str,
+    only_if_newer: bool,
     on_line: Channel<String>,
 ) -> Result<CliTaskResult, String> {
-    let result = install_inner(state, run_id, agent_id, &on_line).await;
+    let result = install_inner(state, run_id, agent_id, only_if_newer, &on_line).await;
     let stopped = state.stopped.lock().map(|mut set| set.remove(&run_id)).unwrap_or(false);
     let (success, output) = match result {
         Ok(message) => (true, message),
@@ -93,6 +96,7 @@ async fn install_inner(
     state: &CliRunState,
     run_id: u32,
     agent_id: &str,
+    only_if_newer: bool,
     on_line: &Channel<String>,
 ) -> Result<String, String> {
     if agent_id.is_empty() || agent_id.contains(['/', '\\', '.']) {
@@ -119,6 +123,13 @@ async fn install_inner(
 
     let root = agents_dir().ok_or("Could not find your home folder.")?;
     let dest = root.join(agent_id);
+    if only_if_newer && !version.is_empty() {
+        let program = dest.join(cmd.trim_start_matches("./"));
+        let installed = std::fs::read_to_string(dest.join(VERSION_FILE)).unwrap_or_default();
+        if program.is_file() && installed.trim() == version {
+            return Ok(format!("{name} {version} is the latest version. You're up to date."));
+        }
+    }
     let work = root.join(format!(".{agent_id}-download"));
     let _ = std::fs::remove_dir_all(&work);
     std::fs::create_dir_all(&work).map_err(|e| format!("Could not create {}: {e}", work.display()))?;
@@ -258,7 +269,7 @@ mod tests {
             }
             Ok(())
         });
-        let result = install(&state, 1, "antigravity-acp", channel).await.unwrap();
+        let result = install(&state, 1, "antigravity-acp", false, channel).await.unwrap();
         assert!(result.success, "{}", result.output);
         let program = agents_dir().unwrap().join("antigravity-acp/agy_acp_server.par");
         assert!(program.is_file());

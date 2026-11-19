@@ -32,6 +32,7 @@ import { Text } from "@/components/ui/text";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { API_BASE_URL } from "@/lib/chat-api";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 type VoiceSessionId = Id<"realtimeVoiceSessions">;
 type LiveStatus = "idle" | "connecting" | "connected" | "error";
@@ -653,11 +654,7 @@ export default function LiveVoiceScreen() {
               end={{ x: 0.9, y: 1 }}
               className="h-32 w-64 items-center justify-center rounded-full"
               style={{
-                shadowColor: primary,
-                shadowOpacity: status === "connected" ? 0.55 : 0.3,
-                shadowRadius: 28,
-                shadowOffset: { width: 0, height: 10 },
-                elevation: 12,
+                ...softShadow({ color: primary, opacity: status === "connected" ? 0.55 : 0.3, radius: 28, offsetY: 10 }),
               }}
             >
               <View className="h-[118px] w-[246px] items-center justify-center rounded-full border border-white/20 bg-black/20">

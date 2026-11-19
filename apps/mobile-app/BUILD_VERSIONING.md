@@ -49,6 +49,22 @@ number.
 
 ## Current release
 
+- User-visible version: `1.3.2`
+- Scope: fixes the stray rectangle drawn inside glass surfaces on Android
+  (chat composer, header pills, Canvas pill, empty state, Canvas input bar,
+  menus, toasts). Shadow wrappers used Android `elevation`, which casts from
+  the wrapper's rectangular outline and showed through the translucent glass.
+  All of them now go through `softShadow()` (src/lib/shadow.ts): iOS keeps
+  the shadow* props, Android draws a `boxShadow` that follows the radius and
+  stays outside the view.
+- Previous recorded Android remote build number before this release: `15`.
+- Profile: `production`.
+- Submitted Android production build number: `16` (EAS auto-increment).
+- EAS build ID: `04b2ef23-802e-4c8d-80df-7dfd7a4a62cc` (submitted with
+  `--no-wait`; do not poll it from an AI task).
+
+### Previous releases
+
 - User-visible version: `1.3.1`
 - Scope: web-parity polish on top of 1.3.0. Composer matches web (52px
   input, 32px tools, divider + inline image size select, gradient glow

@@ -8,6 +8,7 @@ import { Dropdown, DropdownSeparator, useDropdown } from "@/components/ui/dropdo
 import { useTheme } from "@/components/theme-provider";
 import { THEMES, THEME_LABELS, themeSwatch, type Mode } from "@/lib/theme";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 const MODES: { value: Mode; label: string }[] = [
   { value: "light", label: "Light" },
@@ -44,11 +45,7 @@ export function GlossySwatch({ id, color }: { id: string; color: string }) {
         width: 24,
         height: 24,
         borderRadius: 12,
-        shadowColor: color,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.35,
-        shadowRadius: 3,
-        elevation: 2,
+        ...softShadow({ color: color, opacity: 0.35, radius: 3, offsetY: 2 }),
         borderWidth: 1,
         borderColor: "rgba(255, 255, 255, 0.08)",
         alignItems: "center",
@@ -79,11 +76,7 @@ function CheckPill({ active }: { active: boolean }) {
       style={{
         width: 20,
         height: 20,
-        shadowColor: primary,
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.3,
-        shadowRadius: 2,
-        elevation: 2,
+        ...softShadow({ color: primary, opacity: 0.3, radius: 2, offsetY: 2 }),
       }}
     >
       <Icon as={Check} size={12} strokeWidth={3} className="text-primary-foreground" />

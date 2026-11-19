@@ -22,6 +22,7 @@ import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { savePendingChatDraft } from "@/lib/pending-chat-draft";
+import { softShadow } from "@/lib/shadow";
 
 const ICONS: Record<string, LucideIcon> = {
   Telescope,
@@ -84,11 +85,7 @@ export default function AgentsScreen() {
                 width: 40,
                 height: 40,
                 borderRadius: 12,
-                shadowColor: primary,
-                shadowOpacity: 0.55,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 4,
+                ...softShadow({ color: primary, opacity: 0.55, radius: 10, offsetY: 4 }),
               }}
             >
               <Icon as={Bot} size={19} className="text-primary" />
@@ -113,11 +110,7 @@ export default function AgentsScreen() {
                 key={agent.id}
                 className="rounded-2xl border border-border/70 bg-card p-5"
                 style={{
-                  shadowColor: "#000000",
-                  shadowOpacity: 0.2,
-                  shadowRadius: 2,
-                  shadowOffset: { width: 0, height: 1 },
-                  elevation: 1,
+                  ...softShadow({ color: "#000000", opacity: 0.2, radius: 2, offsetY: 1 }),
                 }}
               >
                 <View className="flex-row items-start gap-3">

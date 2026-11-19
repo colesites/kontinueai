@@ -8,6 +8,12 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
     description: "Anthropic's latest and most capable model for complex reasoning and deep knowledge work",
   },
   {
+    id: "anthropic/claude-opus-5.5-fast",
+    name: "Claude Opus 5.5 Fast",
+    provider: "anthropic",
+    description: "High-speed edition of Claude Opus 5.5 with about 2x faster output",
+  },
+  {
     id: "anthropic/claude-sonnet-5.5",
     name: "Claude Sonnet 5.5",
     provider: "anthropic",
@@ -26,6 +32,12 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
     description: "Anthropic's newest frontier model for the hardest coding and research work",
   },
   {
+    id: "anthropic/claude-fable-5.2-fast",
+    name: "Claude Fable 5.2 Fast",
+    provider: "anthropic",
+    description: "High-speed edition of Claude Fable 5.2 with about 2x faster output",
+  },
+  {
     id: "anthropic/claude-fable-5.1",
     name: "Claude Fable 5.1",
     provider: "anthropic",
@@ -36,6 +48,12 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
     name: "Claude Opus 5",
     provider: "anthropic",
     description: "Step-change over Opus 4.8 for agentic and knowledge work",
+  },
+  {
+    id: "anthropic/claude-opus-5-fast",
+    name: "Claude Opus 5 Fast",
+    provider: "anthropic",
+    description: "High-speed edition of Claude Opus 5 with about 2x faster output",
   },
   {
     id: "anthropic/claude-sonnet-5",
@@ -54,6 +72,12 @@ export const ANTHROPIC_MODELS: ModelOption[] = [
     name: "Claude Opus 4.8",
     provider: "anthropic",
     description: "Builds on Opus 4.7 with sharper judgment",
+  },
+  {
+    id: "anthropic/claude-opus-4.8-fast",
+    name: "Claude Opus 4.8 Fast",
+    provider: "anthropic",
+    description: "High-speed edition of Claude Opus 4.8 with about 2x faster output",
   },
   {
     id: "anthropic/claude-opus-4.7",

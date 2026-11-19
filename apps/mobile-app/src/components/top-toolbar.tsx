@@ -9,6 +9,7 @@ import { useSidebar } from "@/components/sidebar/sidebar-context";
 import { useTheme } from "@/components/theme-provider";
 import { GlassView } from "@/components/ui/glass";
 import { Icon } from "@/components/ui/icon";
+import { softShadow } from "@/lib/shadow";
 
 /**
  * Floating top controls — mirrors web AppShell (`fixed top-3 px-3`). The group
@@ -67,11 +68,7 @@ export function GlassPill({
     <View
       style={{
         borderRadius: radius,
-        shadowColor: "#000000",
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: isDark ? 0.35 : 0.12,
-        shadowRadius: 14,
-        elevation: 6,
+        ...softShadow({ color: "#000000", opacity: isDark ? 0.35 : 0.12, radius: 14, offsetY: 10 }),
       }}
     >
       <GlassView

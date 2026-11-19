@@ -351,6 +351,7 @@ export const KODE_MODELS: KodeModelOption[] = [
 		reasoning: { efforts: ["low", "medium", "high", "xhigh", "max"], canDisable: false },
 		gatewayId: "anthropic/claude-fable-5.2",
 		price: p(10.0, 50.0, 0.25),
+		fast: { gatewayId: "anthropic/claude-fable-5.2-fast", price: p(20.0, 100.0, 0.5) },
 		contextWindow: 1_000_000,
 	},
 	{

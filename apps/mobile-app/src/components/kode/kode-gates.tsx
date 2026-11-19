@@ -8,6 +8,7 @@ import { useTheme } from "@/components/theme-provider";
 import { FadeInUp } from "@/components/ui/glass";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
+import { softShadow } from "@/lib/shadow";
 
 /** Web KodeComingSoon: shown while the deployment has Kode switched off. */
 export function KodeComingSoon({ leading = "menu" }: { leading?: "menu" | "back" }) {
@@ -64,11 +65,7 @@ export function KodeAccessGate({ leading = "menu" }: { leading?: "menu" | "back"
             <View
               className="h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10"
               style={{
-                shadowColor: primary,
-                shadowOpacity: 0.45,
-                shadowRadius: 22,
-                shadowOffset: { width: 0, height: 0 },
-                elevation: 8,
+                ...softShadow({ color: primary, opacity: 0.45, radius: 22 }),
               }}
             >
               <Icon as={LockKeyhole} size={24} className="text-primary" />
@@ -103,11 +100,7 @@ export function KodeAccessGate({ leading = "menu" }: { leading?: "menu" | "back"
               onPress={() => router.push("/pricing" as Href)}
               className="mt-7 h-12 flex-row items-center justify-center gap-2 self-stretch rounded-xl bg-primary active:opacity-90"
               style={{
-                shadowColor: primary,
-                shadowOpacity: 0.35,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 6,
+                ...softShadow({ color: primary, opacity: 0.35, radius: 14, offsetY: 6 }),
               }}
             >
               <Icon as={Braces} size={16} className="text-primary-foreground" />

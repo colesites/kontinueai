@@ -3,6 +3,7 @@ import { type GestureResponderEvent, Pressable, StyleSheet, View, type ViewStyle
 import { LinearGradient } from "expo-linear-gradient";
 
 import { useTheme } from "@/components/theme-provider";
+import { softShadow } from "@/lib/shadow";
 
 /** `#rrggbb` mixed toward white (web `color-mix(in oklch, x, white n%)`). */
 export function mixWhite(hex: string, amount: number): string {
@@ -47,11 +48,7 @@ export function GlowButton({
         {
           borderRadius: radius,
           // `0 8px 24px -6px primary 55%` + `0 2px 6px -2px primary 50%`
-          shadowColor: flat ? "transparent" : primary,
-          shadowOpacity: flat ? 0 : 0.55,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 5 },
-          elevation: flat ? 0 : 5,
+          ...softShadow({ color: flat ? "transparent" : primary, opacity: flat ? 0 : 0.55, radius: 10, offsetY: 5 }),
         },
         style,
       ]}

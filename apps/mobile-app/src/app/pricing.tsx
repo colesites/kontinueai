@@ -23,6 +23,7 @@ import { Text } from "@/components/ui/text";
 import { usePlanTier } from "@/hooks/use-plan-tier";
 import { API_BASE_URL } from "@/lib/chat-api";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 type Audience = "personal" | "professional";
 
@@ -298,11 +299,7 @@ export default function PricingScreen() {
               onPress={() => openCheckout(compareTier, annual)}
               className="mt-4 h-12 flex-row items-center justify-center gap-2 rounded-2xl bg-primary active:opacity-90"
               style={{
-                shadowColor: primary,
-                shadowOpacity: 0.35,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 6,
+                ...softShadow({ color: primary, opacity: 0.35, radius: 14, offsetY: 6 }),
               }}
             >
               <Text className="text-[14px] font-semibold text-primary-foreground">
@@ -386,11 +383,7 @@ function PlanCard({
       style={
         highlighted
           ? {
-              shadowColor: primary,
-              shadowOpacity: 0.28,
-              shadowRadius: 22,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 8,
+              ...softShadow({ color: primary, opacity: 0.28, radius: 22, offsetY: 8 }),
             }
           : undefined
       }
