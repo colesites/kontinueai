@@ -2,12 +2,14 @@ import { useState, type ReactNode } from "react";
 import {
   Dimensions,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   View,
   type GestureResponderEvent,
 } from "react-native";
 
+import { withAlpha } from "@/components/chat/markdown";
 import { GlassView } from "@/components/ui/glass";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
@@ -49,7 +51,7 @@ export function Dropdown({
   left?: number;
   children: ReactNode;
 }) {
-  const { isDark } = useTheme();
+  const { tokens } = useTheme();
   const screen = Dimensions.get("window");
 
   const left =
@@ -87,14 +89,20 @@ export function Dropdown({
             elevation: 16,
           }}
         >
-          {/* Glass panel — mirrors the web dropdown's bg-background/80 blur */}
+          {/* Web menus: `glass bg-background/40 backdrop-blur-3xl rounded-2xl
+              border-foreground/10`. iOS gets that heavy blur through a thin
+              tint; Android can't blur the app behind (see WEB_PARITY.md), so
+              it keeps the glass nearly opaque to stay readable. */}
           <GlassView
-            intensity={50}
+            intensity={Platform.OS === "ios" ? 90 : 50}
             style={{
               borderRadius: 16,
               borderWidth: 1,
-              borderColor: isDark ? "rgba(255,255,255,0.10)" : "rgba(0,0,0,0.10)",
-              backgroundColor: isDark ? "rgba(12,9,12,0.80)" : "rgba(255,251,253,0.80)",
+              borderColor: withAlpha(tokens.foreground, 0.1),
+              backgroundColor: withAlpha(
+                tokens.background,
+                Platform.OS === "ios" ? 0.4 : 0.94,
+              ),
               padding: 4,
             }}
           >
@@ -184,6 +192,8 @@ export function useDropdown() {
     anchor: state.anchor,
     open: (event: GestureResponderEvent) =>
       setState({ visible: true, anchor: anchorFromEvent(event) }),
+    /** Open at a measured point (e.g. the top edge of a footer row). */
+    openAt: (anchor: DropdownAnchor) => setState({ visible: true, anchor }),
     close: () => setState((current) => ({ ...current, visible: false })),
   };
 }

@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import Animated, {
-  useAnimatedProps,
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withSequence,
   withSpring,
   withTiming,
-  Easing,
 } from "react-native-reanimated";
-import Svg, { Rect } from "react-native-svg";
 import { Image } from "expo-image";
 import { useRouter, type Href } from "expo-router";
 import { useQuery } from "convex/react";
@@ -22,6 +18,7 @@ import {
   ImageIcon,
   AudioLines,
   Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -49,9 +46,11 @@ import {
   ModelSelectorTrigger,
 } from "@/components/chat/model-selector";
 import { GlassView } from "@/components/ui/glass";
+import { GlowButton } from "@/components/ui/glow-button";
+import { GlowRail } from "@/components/ui/glow-rail";
+import { withAlpha } from "@/components/chat/markdown";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
-import { LinearGradient } from "expo-linear-gradient";
 import {
   Dropdown,
   DropdownItem,
@@ -68,120 +67,6 @@ import { applyMention, detectMention } from "@repo/core/chat-mentions";
 
 const connectorName = (provider: string) =>
   connectorDef(provider)?.name ?? provider;
-
-/* ─── Animated Glow Rail ──────────────────────────────────────────────
-   React Native replica of the web's `glow-rail` CSS utility
-   (shared-styles.css lines 518-556).
-
-   Web CSS technique:
-   ─ A ::before pseudo-element with a conic-gradient rotates around
-     the container border at 7s per lap (4.5s on :focus-within).
-   ─ The gradient arc spans 30°→122° (92° total / 25.5% of perimeter):
-       transparent → color-mix(primary 78%, white 22%) → primary → lighter → transparent
-   ─ mask-composite: exclude crops it to a 1.5px border ring.
-   ─ At rest: opacity 0.4.  On focus-within: opacity 1 + box-shadow.
-
-   Native replica:
-   CSS conic-gradient with mask-composite is not available in React Native.
-   We use react-native-svg animated <Rect> strokes instead:
-   ─ One 1.5px stroke at full opacity for the bright core (~9% of perimeter,
-     matching the 58°→90° bright zone = 32°/360°).
-   ─ One 1.5px stroke at 30% opacity for the full comet arc (~25.5%),
-     creating the soft leading/trailing fade.
-   ─ One wider 4px stroke at 10% opacity behind both for subtle glow halo.
-   All three share the same animated dashOffset so they look like a single
-   comet with a bright center and soft edges — not stacked lines.
-   ─────────────────────────────────────────────────────────────────── */
-
-const AnimatedRect = Animated.createAnimatedComponent(Rect);
-
-const BORDER_RADIUS = 24.5;
-const BORDER_WIDTH = 1.5;
-
-function calcPerimeter(w: number, h: number, r: number) {
-  return 2 * (w - 2 * r) + 2 * (h - 2 * r) + 2 * Math.PI * r;
-}
-
-// Web gradient arc: 30°→122° = 92°/360° ≈ 25.5% of perimeter (full comet).
-// Bright zone:      58°→ 90° = 32°/360° ≈  8.9% of perimeter (core).
-const ARC_FULL = 0.255;
-const ARC_CORE = 0.089;
-
-function GlowRail({ isFocused }: { isFocused: boolean }) {
-  const { primary } = useTheme();
-  const [dims, setDims] = useState({ w: 0, h: 0, p: 0 });
-  const progress = useSharedValue(0);
-  const started = useRef(false);
-
-  useEffect(() => {
-    if (started.current || dims.p === 0) return;
-    started.current = true;
-    // 7s matches the web's `animation: glow-rail-spin 7s linear infinite`
-    progress.value = withRepeat(
-      withTiming(1, { duration: 7000, easing: Easing.linear }),
-      -1,
-      false,
-    );
-  }, [dims.p, progress]);
-
-  // Web: opacity 0.4 at rest, 1 on :focus-within, transition 350ms ease.
-  const opacityStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(isFocused ? 1 : 0.4, { duration: 350 }),
-  }));
-
-  const onLayout = useCallback(
-    (e: { nativeEvent: { layout: { width: number; height: number } } }) => {
-      const { width, height } = e.nativeEvent.layout;
-      const iw = width - BORDER_WIDTH * 2;
-      const ih = height - BORDER_WIDTH * 2;
-      setDims({ w: width, h: height, p: calcPerimeter(iw, ih, BORDER_RADIUS) });
-    },
-    [],
-  );
-
-  // All layers share the same offset — they overlap, not stack.
-  const animProps = useAnimatedProps(() => ({
-    strokeDashoffset: -(progress.value * dims.p),
-  }));
-
-  if (dims.p === 0) {
-    return <View className="absolute inset-0" pointerEvents="none" onLayout={onLayout} />;
-  }
-
-  const x = BORDER_WIDTH;
-  const y = BORDER_WIDTH;
-  const w = dims.w - BORDER_WIDTH * 2;
-  const h = dims.h - BORDER_WIDTH * 2;
-  const shared = { x, y, width: w, height: h, rx: BORDER_RADIUS, ry: BORDER_RADIUS, fill: "none" as const, strokeLinecap: "round" as const };
-
-  return (
-    <Animated.View className="absolute inset-0" pointerEvents="none" onLayout={onLayout} style={opacityStyle}>
-      <Svg width={dims.w} height={dims.h}>
-        {/* Subtle glow halo behind the comet */}
-        <AnimatedRect
-          {...shared}
-          stroke={primary} strokeWidth={4} opacity={0.10}
-          strokeDasharray={`${dims.p * ARC_FULL} ${dims.p * (1 - ARC_FULL)}`}
-          animatedProps={animProps}
-        />
-        {/* Full comet arc — 25.5%, lower opacity = soft fade edges */}
-        <AnimatedRect
-          {...shared}
-          stroke={primary} strokeWidth={BORDER_WIDTH} opacity={0.35}
-          strokeDasharray={`${dims.p * ARC_FULL} ${dims.p * (1 - ARC_FULL)}`}
-          animatedProps={animProps}
-        />
-        {/* Bright core — 8.9%, full opacity = crisp center */}
-        <AnimatedRect
-          {...shared}
-          stroke={primary} strokeWidth={BORDER_WIDTH} opacity={1}
-          strokeDasharray={`${dims.p * ARC_CORE} ${dims.p * (1 - ARC_CORE)}`}
-          animatedProps={animProps}
-        />
-      </Svg>
-    </Animated.View>
-  );
-}
 
 type ChatInputProps = {
   placeholder?: string;
@@ -240,7 +125,7 @@ export function ChatInput({
   imageSize = null,
   onImageOptionsChange,
 }: ChatInputProps) {
-  const { isDark, primary, mutedForeground } = useTheme();
+  const { isDark, primary, mutedForeground, tokens } = useTheme();
   const router = useRouter();
   const [internalValue, setInternalValue] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -250,10 +135,11 @@ export function ChatInput({
     transform: [{ scale: actionScale.value }],
   }));
   // Drill-in navigation inside the "+" menu, mirroring web's ChatInputTools.
-  const [menuView, setMenuView] = useState<
-    "root" | "agents" | "connectors" | "image"
-  >("root");
+  const [menuView, setMenuView] = useState<"root" | "agents" | "connectors">(
+    "root",
+  );
   const plusMenu = useDropdown();
+  const imageMenu = useDropdown();
   const connectors = useQuery(api.connectors.listConnectors, {});
   const isPaidPlan = useIsProPlan();
   const { getCapabilities } = useModelCapabilities();
@@ -350,13 +236,20 @@ export function ChatInput({
     closeMenu();
   };
 
+  const dockBorder = withAlpha(tokens.foreground, 0.07);
+  const filled = showSubmitAction ? canSend || isLoading : true;
+
   return (
-    // Mirrors the web dock: `glow-rail glass bg-background/45 backdrop-blur-3xl
-    // rounded-[26px] p-2.5 transition-shadow duration-300`.
+    // Web dock: `glow-rail glass bg-background/45 backdrop-blur-3xl
+    // rounded-[26px] p-2.5`, blooming with a primary ring + shadow on focus.
     <View
       style={{
         borderRadius: 26,
-        padding: BORDER_WIDTH,
+        shadowColor: isFocused ? primary : "#000000",
+        shadowOpacity: isFocused ? 0.45 : isDark ? 0.35 : 0.12,
+        shadowRadius: isFocused ? 24 : 16,
+        shadowOffset: { width: 0, height: isFocused ? 12 : 10 },
+        elevation: 8,
       }}
     >
       {mentionItems.length > 0 ? (
@@ -369,19 +262,31 @@ export function ChatInput({
           onSelect={selectMention}
         />
       ) : null}
-      <GlowRail isFocused={isFocused} />
       <GlassView
-        intensity={45}
+        intensity={60}
         style={{
-          borderRadius: 24.5,
+          borderRadius: 26,
           borderWidth: 1,
-          borderColor: isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)",
-          backgroundColor: isDark
-            ? "rgba(12,9,12,0.45)"
-            : "rgba(255,251,253,0.45)",
-          padding: 8.5,
+          borderColor: isFocused ? withAlpha(primary, 0.32) : dockBorder,
+          backgroundColor: withAlpha(tokens.background, isDark ? 0.45 : 0.6),
+          padding: 10,
         }}
       >
+        {/* glass: inset 0 1px 0 foreground 9% */}
+        <View
+          pointerEvents="none"
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 26,
+            borderTopLeftRadius: 26,
+            borderTopRightRadius: 26,
+            borderTopWidth: 1,
+            borderColor: withAlpha(tokens.foreground, 0.09),
+          }}
+        />
         {attachments.length > 0 ? (
           <View className="mb-2 flex-row flex-wrap gap-2 px-1">
             {attachments.map((attachment, index) => (
@@ -450,19 +355,29 @@ export function ChatInput({
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           placeholder={isListening ? "Listening…" : placeholder}
-          placeholderTextColor={mutedForeground}
+          placeholderTextColor={withAlpha(mutedForeground, 0.85)}
           multiline
-          className="max-h-40 min-h-16 px-2 py-2.5 text-[16px] leading-6 text-foreground"
+          textAlignVertical="top"
+          style={{
+            minHeight: 44,
+            maxHeight: 200,
+            paddingHorizontal: 10,
+            paddingTop: 8,
+            paddingBottom: 6,
+            fontSize: 16,
+            lineHeight: 24,
+            color: tokens.foreground,
+          }}
         />
 
-        <View className="mt-1 flex-row items-center justify-between">
-          {/* Left tools: "+" menu + model selector (mirrors ChatInputTools) */}
-          <View className="flex-1 flex-row items-center gap-1.5">
+        {/* Footer: tools left, actions right (web PromptInputFooter px-1 pt-1) */}
+        <View className="flex-row items-center justify-between gap-2 px-1 pt-1">
+          <View className="min-w-0 flex-1 flex-row items-center gap-1">
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Add attachment or tools"
               onPress={plusMenu.open}
-              className="h-9 w-9 items-center justify-center rounded-full border border-foreground/10 bg-foreground/5 active:bg-foreground/10"
+              className="h-8 w-8 items-center justify-center rounded-full border border-foreground/10 bg-foreground/4 active:bg-foreground/10"
             >
               <Icon as={Plus} size={16} className="text-muted-foreground" />
             </Pressable>
@@ -471,6 +386,22 @@ export function ChatInput({
               modelId={selectedModel}
               onPress={() => setModelSelectorOpen(true)}
             />
+
+            {/* Web ChatInputImageOptions: divider, image glyph, aspect/size select */}
+            {canGenerateImage ? (
+              <View className="flex-row items-center gap-1 border-l border-foreground/10 pl-1.5">
+                <Icon as={ImageIcon} size={14} className="text-muted-foreground" />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Image aspect or size: ${imageOptionLabel}`}
+                  onPress={imageMenu.open}
+                  className="h-8 min-w-16 flex-row items-center justify-between gap-1 rounded-lg border border-foreground/5 bg-foreground/4 px-2.5 active:bg-foreground/8"
+                >
+                  <Text className="text-[12px] text-muted-foreground">{imageOptionLabel}</Text>
+                  <Icon as={ChevronDown} size={12} className="text-muted-foreground/70" />
+                </Pressable>
+              </View>
+            ) : null}
           </View>
 
           {/* Web parity: Live is the default action. It morphs into the
@@ -482,17 +413,11 @@ export function ChatInput({
                 accessibilityLabel={isListening ? "Stop voice input" : "Start voice input"}
                 onPress={onMicPress}
                 className={cn(
-                  "h-9 w-9 items-center justify-center rounded-full transition-all duration-200",
+                  "h-8 w-8 items-center justify-center rounded-full",
                   isListening
-                    ? "bg-primary/15 active:bg-primary/25"
+                    ? "border border-primary/30 bg-primary/15 active:bg-primary/25"
                     : "active:bg-foreground/5",
                 )}
-                style={isListening ? {
-                  shadowColor: primary,
-                  shadowOpacity: 0.3,
-                  shadowRadius: 8,
-                  elevation: 2,
-                } : undefined}
               >
                 <Icon
                   as={isListening ? MicOff : Mic}
@@ -503,8 +428,9 @@ export function ChatInput({
             ) : null}
 
             <Animated.View style={actionStyle}>
-              <Pressable
-                accessibilityRole="button"
+              <GlowButton
+                flat={!filled}
+                disabled={showSubmitAction && !isLoading && !canSend}
                 accessibilityLabel={
                   showSubmitAction
                     ? isLoading
@@ -512,7 +438,6 @@ export function ChatInput({
                       : "Send message"
                     : "Start Kontinue Live"
                 }
-                disabled={showSubmitAction && !isLoading && !canSend}
                 onPress={
                   showSubmitAction
                     ? isLoading
@@ -520,65 +445,15 @@ export function ChatInput({
                       : submit
                     : () => router.push("/live" as Href)
                 }
-                className={cn(
-                  "h-9 w-9 overflow-hidden items-center justify-center rounded-full",
-                  showSubmitAction
-                    ? canSend || isLoading
-                      ? "bg-primary active:opacity-90"
-                      : "bg-foreground/8"
-                    : "active:opacity-90",
-                )}
-                style={
-                  (showSubmitAction && (canSend || isLoading)) || !showSubmitAction
-                    ? {
-                        // Web `glow-button`: a hairline rim plus a SOFT bloom
-                        // (0 2px 6px -2px / 0 8px 24px -6px at ~50% primary).
-                        // The old 0.4 opacity + elevation 4 bloomed so hard it
-                        // swallowed the rim entirely.
-                        borderWidth: 1,
-                        borderColor: "rgba(255,255,255,0.22)",
-                        shadowColor: primary,
-                        shadowOpacity: 0.18,
-                        shadowRadius: 6,
-                        shadowOffset: { width: 0, height: 2 },
-                        elevation: 2,
-                      }
-                    : undefined
-                }
+                style={{ width: 36, height: 36 }}
               >
-                {!showSubmitAction && (
-                  <View className="absolute inset-0 bg-primary" />
-                )}
-                {/* glow-button's `inset 0 1px 0 white 30%` top highlight, which
-                    is what gives the pill its lit upper rim. Only on the filled
-                    states — the disabled pill stays flat. */}
-                {(showSubmitAction && (canSend || isLoading)) || !showSubmitAction ? (
-                  <LinearGradient
-                    colors={["rgba(255,255,255,0.30)", "rgba(255,255,255,0.04)", "transparent"]}
-                    locations={[0, 0.45, 1]}
-                    className="absolute inset-0"
-                    pointerEvents="none"
-                  />
-                ) : null}
                 <Icon
-                  as={
-                    showSubmitAction
-                      ? isLoading
-                        ? Square
-                        : ArrowUp
-                      : AudioLines
-                  }
-                  size={20}
-                  strokeWidth={showSubmitAction && !isLoading ? 3 : 2.5}
-                  className={
-                    showSubmitAction
-                      ? canSend || isLoading
-                        ? "text-primary-foreground"
-                        : "text-muted-foreground"
-                      : "text-primary-foreground"
-                  }
+                  as={showSubmitAction ? (isLoading ? Square : ArrowUp) : AudioLines}
+                  size={showSubmitAction ? 18 : 17}
+                  strokeWidth={showSubmitAction && !isLoading ? 2.75 : 2.25}
+                  className={filled ? "text-primary-foreground" : "text-muted-foreground"}
                 />
-              </Pressable>
+              </GlowButton>
             </Animated.View>
           </View>
         </View>
@@ -614,20 +489,6 @@ export function ChatInput({
                     toggleReasoning();
                     closeMenu();
                   }}
-                />
-              ) : null}
-              {canGenerateImage ? (
-                <DropdownItem
-                  icon={ImageIcon}
-                  label={`Image: ${imageOptionLabel}`}
-                  onPress={() => setMenuView("image")}
-                  trailing={
-                    <Icon
-                      as={ChevronRight}
-                      size={14}
-                      className="text-muted-foreground/60"
-                    />
-                  }
                 />
               ) : null}
               {onAttachFile ? (
@@ -722,65 +583,6 @@ export function ChatInput({
               ))}
             </>
           ) : null}
-          {plusMenu.visible && menuView === "image" ? (
-            <>
-              <DropdownItem
-                icon={ChevronLeft}
-                label="Back"
-                onPress={() => setMenuView("root")}
-              />
-              <DropdownSeparator />
-              <Text className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-                Aspect ratio
-              </Text>
-              {imageAspectOptions.map((option) => {
-                const selected = !imageSize && imageAspectRatio === option.value;
-                return (
-                  <DropdownItem
-                    key={option.value}
-                    label={option.label}
-                    active={selected}
-                    onPress={() => {
-                      onImageOptionsChange?.(option.value, null);
-                      closeMenu();
-                    }}
-                    trailing={
-                      selected ? (
-                        <Icon as={Check} size={14} className="text-primary" />
-                      ) : undefined
-                    }
-                  />
-                );
-              })}
-              {imageSizeOptions.length > 0 ? (
-                <>
-                  <DropdownSeparator />
-                  <Text className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-                    Size
-                  </Text>
-                  {imageSizeOptions.map((option) => {
-                    const selected = imageSize === option.value;
-                    return (
-                      <DropdownItem
-                        key={option.value}
-                        label={option.label}
-                        active={selected}
-                        onPress={() => {
-                          onImageOptionsChange?.("auto", option.value);
-                          closeMenu();
-                        }}
-                        trailing={
-                          selected ? (
-                            <Icon as={Check} size={14} className="text-primary" />
-                          ) : undefined
-                        }
-                      />
-                    );
-                  })}
-                </>
-              ) : null}
-            </>
-          ) : null}
           {plusMenu.visible && menuView === "connectors" ? (
             <>
               <DropdownItem
@@ -820,6 +622,69 @@ export function ChatInput({
           ) : null}
         </Dropdown>
 
+        {/* Image aspect / size select (web ChatInputImageOptions) */}
+        <Dropdown
+          visible={imageMenu.visible}
+          anchor={imageMenu.anchor}
+          onClose={imageMenu.close}
+          placement="above"
+          width={188}
+        >
+          {imageMenu.visible ? (
+            <>
+              <Text className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                Aspect ratio
+              </Text>
+              {imageAspectOptions.map((option) => {
+                const selected = !imageSize && imageAspectRatio === option.value;
+                return (
+                  <DropdownItem
+                    key={option.value}
+                    label={option.label}
+                    active={selected}
+                    onPress={() => {
+                      onImageOptionsChange?.(option.value, null);
+                      imageMenu.close();
+                    }}
+                    trailing={
+                      selected ? (
+                        <Icon as={Check} size={14} className="text-primary" />
+                      ) : undefined
+                    }
+                  />
+                );
+              })}
+              {imageSizeOptions.length > 0 ? (
+                <>
+                  <DropdownSeparator />
+                  <Text className="px-2.5 pb-1 pt-1.5 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/70">
+                    Size
+                  </Text>
+                  {imageSizeOptions.map((option) => {
+                    const selected = imageSize === option.value;
+                    return (
+                      <DropdownItem
+                        key={option.value}
+                        label={option.label}
+                        active={selected}
+                        onPress={() => {
+                          onImageOptionsChange?.("auto", option.value);
+                          imageMenu.close();
+                        }}
+                        trailing={
+                          selected ? (
+                            <Icon as={Check} size={14} className="text-primary" />
+                          ) : undefined
+                        }
+                      />
+                    );
+                  })}
+                </>
+              ) : null}
+            </>
+          ) : null}
+        </Dropdown>
+
         <ModelSelector
           visible={modelSelectorOpen}
           onClose={() => setModelSelectorOpen(false)}
@@ -827,6 +692,8 @@ export function ChatInput({
           onSelect={onModelChange}
         />
       </GlassView>
+      {/* The live wire rides the dock's own border, like web's ::before ring */}
+      <GlowRail radius={26} focused={isFocused} />
     </View>
   );
 }

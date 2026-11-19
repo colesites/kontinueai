@@ -49,6 +49,21 @@ number.
 
 ## Current release
 
+- User-visible version: `1.3.1`
+- Scope: web-parity polish on top of 1.3.0. Composer matches web (52px
+  input, 32px tools, divider + inline image size select, gradient glow
+  send/Live button) with a true conic "live wire" border; Canvas header and
+  input bar, Agents and Tasks rebuilt to the web layouts; header pills use
+  web's glass recipe; Import button and How-it-works badges fixed; dialogs and
+  menus get web's blur on iOS (near-opaque glass on Android, see
+  WEB_PARITY.md); the drawer stays mounted (no reload on every open), its
+  search field no longer drops focus, and the account menu opens above the
+  footer.
+- Previous recorded Android remote build number before this release: `14`.
+- Submitted Android preview build number: `15` (EAS auto-increment).
+
+### Previous releases
+
 - User-visible version: `1.3.0`
 - Scope: web-parity release. Chat gains thinking, retry with another model,
   read-aloud, image viewer, generated-file cards, code highlighting, `@`
@@ -60,7 +75,10 @@ number.
 - New native module: `expo-speech` (read-aloud). Speech features are probed
   with `requireOptionalNativeModule`, so builds without them don't crash.
 - Previous recorded Android remote build number before this release: `12`.
-- Submitted Android preview build number: `13` (EAS auto-increment).
+- Android preview build `13` (commit 2d5dcc7) ERRORED at install: EAS used
+  bun 1.3.13 against a 1.4.4 lockfile. Fixed in 65c559d (bun pinned to 1.4.4).
+- Android preview build `14` finished: EAS build ID
+  `036b6694-0e1d-4069-88c2-3ae534c9ddad` (commit 65c559d).
 
 ### Previous releases
 

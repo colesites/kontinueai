@@ -214,9 +214,9 @@ export function ModeToggle() {
           accessibilityRole="button"
           accessibilityLabel="Toggle theme"
           onPress={open}
-          className="h-9 w-9 items-center justify-center rounded-full active:bg-foreground/8"
+          className="h-8 w-8 items-center justify-center rounded-full active:bg-foreground/8"
         >
-          <Icon as={isDark ? Moon : Sun} size={17} className="text-muted-foreground" />
+          <Icon as={isDark ? Moon : Sun} size={16} className="text-muted-foreground" />
         </Pressable>
       )}
     />

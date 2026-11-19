@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useMutation } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
@@ -15,7 +15,8 @@ import {
 } from "lucide-react-native";
 import { AGENTS, type AgentDefinition } from "@repo/ai/lib/agents";
 
-import { ScreenHeader } from "@/components/screen-header";
+import { FloatingToolbar, useFloatingToolbarInset } from "@/components/floating-toolbar";
+import { GlowButton } from "@/components/ui/glow-button";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
@@ -32,6 +33,8 @@ const ICONS: Record<string, LucideIcon> = {
 
 export default function AgentsScreen() {
   const { primary } = useTheme();
+  const insets = useSafeAreaInsets();
+  const toolbarInset = useFloatingToolbarInset();
   const router = useRouter();
   const createChat = useMutation(api.chats.createChat);
   const [startingAgentId, setStartingAgentId] = useState<string | null>(null);
@@ -63,24 +66,34 @@ export default function AgentsScreen() {
   };
 
   return (
-    <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
-      <ScreenHeader title="" />
+    <View className="bg-background" style={{ flex: 1 }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerClassName="px-4 pb-10"
+        contentContainerClassName="px-4"
+        contentContainerStyle={{ paddingTop: toolbarInset + 8, paddingBottom: insets.bottom + 32 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Header — mirrors AgentsClient */}
         <View className="mb-8">
-          <Text className="text-[10.5px] font-semibold uppercase tracking-[2.5px] text-primary">Agents</Text>
+          <Text className="text-[11px] font-semibold uppercase tracking-[2.5px] text-primary">Agents</Text>
           <View className="mt-2 flex-row items-center gap-3">
+            {/* bg-primary/12 ring-primary/20 + 0 4px 18px -6px primary 55% */}
             <View
-              className="h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/12"
-              style={{ boxShadow: `0 4px 10px ${primary}59` }}
+              className="items-center justify-center border border-primary/20 bg-primary/12"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                shadowColor: primary,
+                shadowOpacity: 0.55,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 4,
+              }}
             >
-              <Icon as={Bot} size={18} className="text-primary" />
+              <Icon as={Bot} size={19} className="text-primary" />
             </View>
-            <Text className="text-[27px] font-semibold tracking-tight text-foreground">
+            <Text className="text-[30px] font-semibold tracking-tight text-foreground">
               Agents
             </Text>
           </View>
@@ -95,9 +108,17 @@ export default function AgentsScreen() {
             const AgentIcon = ICONS[agent.icon] ?? Bot;
             const starting = startingAgentId === agent.id;
             return (
+              // surface-card: solid card, border/70 hairline, small shadow
               <View
                 key={agent.id}
-                className="rounded-2xl border border-foreground/8 bg-foreground/2 p-5"
+                className="rounded-2xl border border-border/70 bg-card p-5"
+                style={{
+                  shadowColor: "#000000",
+                  shadowOpacity: 0.2,
+                  shadowRadius: 2,
+                  shadowOffset: { width: 0, height: 1 },
+                  elevation: 1,
+                }}
               >
                 <View className="flex-row items-start gap-3">
                   <View
@@ -142,25 +163,23 @@ export default function AgentsScreen() {
                   ))}
                 </View>
 
-                <Pressable
+                <GlowButton
                   disabled={starting}
+                  radius={12}
+                  accessibilityLabel={`Chat with ${agent.name}`}
                   onPress={() => void startAgentChat(agent)}
-                  style={({ pressed }) => [{ transform: [{ scale: pressed ? 0.98 : 1 }] }]}
-                  className={
-                    starting
-                      ? "mt-4 items-center justify-center rounded-xl bg-primary/60 px-4 py-2.5"
-                      : "mt-4 items-center justify-center rounded-xl bg-primary px-4 py-2.5"
-                  }
+                  style={{ marginTop: 16, height: 42, opacity: starting ? 0.6 : 1 }}
                 >
                   <Text className="text-[13px] font-semibold text-primary-foreground">
                     {starting ? "Starting…" : `Chat with ${agent.name}`}
                   </Text>
-                </Pressable>
+                </GlowButton>
               </View>
             );
           })}
         </View>
       </ScrollView>
-    </SafeAreaView>
+      <FloatingToolbar />
+    </View>
   );
 }

@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ExpoDateTimePicker from "@expo/ui/community/datetime-picker";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@repo/convex/convex/_generated/api";
@@ -30,11 +30,13 @@ import {
   Pencil,
   Plus,
   Repeat,
+  SlidersHorizontal,
   Trash2,
   X,
 } from "lucide-react-native";
 
-import { ScreenHeader } from "@/components/screen-header";
+import { FloatingToolbar, useFloatingToolbarInset } from "@/components/floating-toolbar";
+import { GlowButton } from "@/components/ui/glow-button";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
@@ -128,6 +130,11 @@ export default function TasksScreen() {
 
   const [view, setView] = useState<TaskView>("list");
   const [composerOpen, setComposerOpen] = useState(false);
+  const [quickTitle, setQuickTitle] = useState("");
+  const [adding, setAdding] = useState(false);
+  const insets = useSafeAreaInsets();
+  const toolbarInset = useFloatingToolbarInset();
+  const { primary: themePrimary, mutedForeground: themeMuted, tokens: themeTokens } = useTheme();
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [pushEnabled, setPushEnabled] = useState(false);
 
@@ -247,92 +254,149 @@ export default function TasksScreen() {
     });
   };
 
+  // Web TasksClient quick add: Enter / + creates a plain task right away.
+  const quickAdd = async () => {
+    const title = quickTitle.trim();
+    if (!title || adding) return;
+    setAdding(true);
+    try {
+      await createTask({ title, priority: "medium", recurring: false, isAgentTask: false });
+      setQuickTitle("");
+    } catch (error) {
+      toast.error("Couldn't add task", {
+        description: errorMessage(error, "Please try again."),
+      });
+    } finally {
+      setAdding(false);
+    }
+  };
+
   return (
-    <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
-      <ScreenHeader
-        title="Tasks"
-        right={
+    <View className="bg-background" style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerClassName="px-5"
+        contentContainerStyle={{ paddingTop: toolbarInset + 8, paddingBottom: insets.bottom + 32 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Header — web TasksClient: icon chip, title + counts, reminders
+            toggle and the surface-inset view switcher */}
+        <View className="mb-5 flex-row items-center justify-between gap-3">
+          <View className="flex-row items-center gap-3">
+            <View
+              className="items-center justify-center border border-primary/20 bg-primary/12"
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                shadowColor: themePrimary,
+                shadowOpacity: 0.55,
+                shadowRadius: 10,
+                shadowOffset: { width: 0, height: 4 },
+                elevation: 4,
+              }}
+            >
+              <Icon as={ListChecks} size={19} className="text-primary" />
+            </View>
+            <View>
+              <Text className="text-[24px] font-semibold tracking-tight text-foreground">Tasks</Text>
+              <Text className="text-[12px] text-muted-foreground">
+                {counts.open} open · {counts.completed} completed
+              </Text>
+            </View>
+          </View>
           <View className="flex-row items-center gap-2">
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={
-                pushEnabled ? "Task reminders enabled" : "Enable task reminders"
-              }
+              accessibilityLabel={pushEnabled ? "Task reminders enabled" : "Enable task reminders"}
               onPress={() => void enableNotifications()}
               className={cn(
-                "h-11 w-11 items-center justify-center rounded-xl border",
-                pushEnabled
-                  ? "border-primary/35 bg-primary/12"
-                  : "border-border bg-secondary",
+                "h-9 w-9 items-center justify-center rounded-full",
+                pushEnabled ? "bg-primary/12" : "bg-foreground/5",
               )}
             >
               <Icon
                 as={Bell}
-                size={18}
-                className={
-                  pushEnabled ? "text-primary" : "text-muted-foreground"
-                }
+                size={16}
+                className={pushEnabled ? "text-primary" : "text-muted-foreground"}
               />
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Create task"
-              onPress={openNewTask}
-              className="h-11 flex-row items-center gap-2 rounded-xl bg-primary px-3.5 active:opacity-90"
-            >
-              <Icon as={Plus} size={18} className="text-primary-foreground" />
-              <Text className="text-[13px] font-semibold text-primary-foreground">
-                New
-              </Text>
-            </Pressable>
+            <View className="flex-row items-center gap-0.5 rounded-xl border border-foreground/5 bg-foreground/4 p-0.5">
+              {VIEWS.map((item) => {
+                const selected = view === item.id;
+                return (
+                  <Pressable
+                    key={item.id}
+                    accessibilityRole="tab"
+                    accessibilityLabel={item.label}
+                    accessibilityState={{ selected }}
+                    onPress={() => setView(item.id)}
+                    className={cn(
+                      "h-8 w-9 items-center justify-center rounded-lg",
+                      selected ? "border border-foreground/10 bg-card" : "active:bg-foreground/5",
+                    )}
+                  >
+                    <Icon
+                      as={item.icon}
+                      size={14}
+                      className={selected ? "text-foreground" : "text-muted-foreground"}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
           </View>
-        }
-      />
-
-      <View className="px-4">
-        <Text className="text-[12px] text-muted-foreground">
-          {counts.open} open · {counts.completed} completed
-        </Text>
-
-        <View className="mt-4 flex-row gap-1 rounded-xl border border-foreground/5 bg-foreground/4 p-1">
-          {VIEWS.map((item) => (
-            <Pressable
-              key={item.id}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: view === item.id }}
-              onPress={() => setView(item.id)}
-              className={cn(
-                "min-h-11 flex-1 flex-row items-center justify-center gap-2 rounded-lg",
-                view === item.id ? "bg-card" : "active:bg-foreground/5",
-              )}
-            >
-              <Icon
-                as={item.icon}
-                size={15}
-                className={
-                  view === item.id ? "text-foreground" : "text-muted-foreground"
-                }
-              />
-              <Text
-                className={cn(
-                  "text-[12.5px] font-medium",
-                  view === item.id
-                    ? "text-foreground"
-                    : "text-muted-foreground",
-                )}
-              >
-                {item.label}
-              </Text>
-            </Pressable>
-          ))}
         </View>
-      </View>
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerClassName="px-4 pb-12 pt-5"
-        showsVerticalScrollIndicator={false}
-      >
+        {/* Quick add — web surface-card with details toggle and glow + */}
+        <View
+          className="mb-6 flex-row items-center gap-2 rounded-2xl border border-border/70 bg-card p-2.5"
+          style={{
+            shadowColor: "#000000",
+            shadowOpacity: 0.2,
+            shadowRadius: 2,
+            shadowOffset: { width: 0, height: 1 },
+            elevation: 1,
+          }}
+        >
+          <TextInput
+            value={quickTitle}
+            onChangeText={setQuickTitle}
+            onSubmitEditing={() => void quickAdd()}
+            returnKeyType="done"
+            maxLength={200}
+            placeholder="Add a task…"
+            placeholderTextColor={themeMuted}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: 40,
+              paddingHorizontal: 10,
+              paddingVertical: 0,
+              fontSize: 15,
+              color: themeTokens.foreground,
+              includeFontPadding: false,
+            }}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add details"
+            onPress={openNewTask}
+            className="h-9 w-9 items-center justify-center rounded-md active:bg-foreground/5"
+          >
+            <Icon as={SlidersHorizontal} size={15} className="text-muted-foreground" />
+          </Pressable>
+          <GlowButton
+            accessibilityLabel="Add task"
+            disabled={adding || !quickTitle.trim()}
+            onPress={() => void quickAdd()}
+            style={{ width: 36, height: 36, opacity: adding || !quickTitle.trim() ? 0.5 : 1 }}
+          >
+            <Icon as={Plus} size={16} className="text-primary-foreground" />
+          </GlowButton>
+        </View>
+
         {tasks === undefined ? (
           <TaskSkeleton />
         ) : tasks.length === 0 ? (
@@ -362,7 +426,8 @@ export default function TasksScreen() {
         onClose={() => setComposerOpen(false)}
         onSave={saveTask}
       />
-    </SafeAreaView>
+      <FloatingToolbar />
+    </View>
   );
 }
 
@@ -415,20 +480,23 @@ function ListView({
 }) {
   const [renderedAt] = useState(() => Date.now());
   const groups = useMemo(() => {
+    // Web bucketFor: overdue (due before today), today, upcoming (incl. no
+    // date), completed.
     const result: { label: string; tasks: Task[] }[] = [
       { label: "Overdue", tasks: [] },
       { label: "Today", tasks: [] },
       { label: "Upcoming", tasks: [] },
-      { label: "No date", tasks: [] },
       { label: "Completed", tasks: [] },
     ];
-    const today = new Date(renderedAt).toDateString();
+    const start = new Date(renderedAt);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(renderedAt);
+    end.setHours(23, 59, 59, 999);
     for (const task of tasks) {
-      if (task.status === "done") result[4]!.tasks.push(task);
-      else if (task.dueDate == null) result[3]!.tasks.push(task);
-      else if (task.dueDate < renderedAt) result[0]!.tasks.push(task);
-      else if (new Date(task.dueDate).toDateString() === today)
-        result[1]!.tasks.push(task);
+      if (task.status === "done") result[3]!.tasks.push(task);
+      else if (task.dueDate == null) result[2]!.tasks.push(task);
+      else if (task.dueDate < start.getTime()) result[0]!.tasks.push(task);
+      else if (task.dueDate <= end.getTime()) result[1]!.tasks.push(task);
       else result[2]!.tasks.push(task);
     }
     return result.filter((group) => group.tasks.length > 0);
@@ -438,10 +506,20 @@ function ListView({
     <View className="gap-6">
       {groups.map((group) => (
         <View key={group.label}>
-          <Text className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/70">
-            {group.label} · {group.tasks.length}
-          </Text>
-          <View className="gap-2">
+          <View className="mb-2 flex-row items-center gap-2 px-1">
+            <Text
+              className={cn(
+                "text-[11px] font-semibold uppercase tracking-[2.5px]",
+                group.label === "Overdue" ? "text-destructive" : "text-primary",
+              )}
+            >
+              {group.label}
+            </Text>
+            <Text className="text-[11px] font-semibold text-muted-foreground/60">
+              {group.tasks.length}
+            </Text>
+          </View>
+          <View className="gap-1">
             {group.tasks.map((task) => (
               <TaskCard
                 key={task._id}
@@ -472,73 +550,67 @@ function TaskCard({
   const { primary } = useTheme();
   const done = task.status === "done";
   const priority = PRIORITY_META[task.priority];
+  const [renderedAt] = useState(() => Date.now());
+  const startOfToday = new Date(renderedAt);
+  startOfToday.setHours(0, 0, 0, 0);
+  const overdue = !done && task.dueDate != null && task.dueDate < startOfToday.getTime();
+  // Web TaskRow: a plain row (no card), round check, title, meta line. Delete
+  // is a hover action on web; here it's a long-press.
   return (
-    <View className="flex-row items-center gap-2 rounded-2xl border border-border bg-card p-2">
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Edit ${task.title}`}
+      accessibilityHint="Long-press to delete"
+      onPress={() => onEdit(task)}
+      onLongPress={() => onDelete(task)}
+      delayLongPress={400}
+      className="min-h-12 flex-row items-center gap-3 rounded-xl px-2 py-2 active:bg-foreground/5"
+    >
       <Pressable
         accessibilityRole="checkbox"
         accessibilityState={{ checked: done }}
+        accessibilityLabel={done ? "Mark incomplete" : "Mark complete"}
+        hitSlop={10}
         onPress={() => onToggle(task)}
-        className="h-11 w-11 items-center justify-center"
+        className={cn(
+          "h-5 w-5 items-center justify-center rounded-full border",
+          done ? "border-primary bg-primary" : "border-foreground/30",
+        )}
       >
-        <View
-          className={cn(
-            "h-6 w-6 items-center justify-center rounded-full border",
-            done ? "border-primary bg-primary" : "border-muted-foreground/40",
-          )}
-        >
-          {done ? (
-            <Icon
-              as={Check}
-              size={13}
-              strokeWidth={3}
-              className="text-primary-foreground"
-            />
-          ) : null}
-        </View>
+        {done ? (
+          <Icon as={Check} size={11} strokeWidth={3} className="text-primary-foreground" />
+        ) : null}
       </Pressable>
 
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Edit ${task.title}`}
-        onPress={() => onEdit(task)}
-        className="min-h-14 min-w-0 flex-1 justify-center py-1"
-      >
+      <View className="min-w-0 flex-1">
         <Text
-          numberOfLines={2}
+          numberOfLines={1}
           className={cn(
-            "text-[14px] font-medium leading-5 text-foreground",
+            "text-[14.5px] leading-5 text-foreground",
             done && "text-muted-foreground line-through",
           )}
         >
           {task.title}
         </Text>
-        <View className="mt-1.5 flex-row flex-wrap items-center gap-x-3 gap-y-1">
-          {task.dueDate != null ? (
-            <TaskMeta icon={CalendarClock} label={formatDue(task.dueDate)} />
-          ) : null}
-          {task.priority !== "medium" ? (
-            <TaskMeta
-              icon={Flag}
-              label={priority.label}
-              className={priority.className}
-            />
-          ) : null}
-          {task.recurring ? <TaskMeta icon={Repeat} label="Repeats" /> : null}
-          {task.isAgentTask ? (
-            <TaskMeta icon={Bot} label="K-AI" color={primary} />
-          ) : null}
-        </View>
-      </Pressable>
-
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Delete ${task.title}`}
-        onPress={() => onDelete(task)}
-        className="h-11 w-11 items-center justify-center rounded-xl active:bg-destructive/10"
-      >
-        <Icon as={Trash2} size={16} className="text-muted-foreground" />
-      </Pressable>
-    </View>
+        {task.dueDate != null || task.priority !== "medium" || task.recurring || task.isAgentTask ? (
+          <View className="mt-1 flex-row flex-wrap items-center gap-x-3 gap-y-1">
+            {task.dueDate != null ? (
+              <TaskMeta
+                icon={CalendarClock}
+                label={formatDue(task.dueDate)}
+                className={overdue ? "text-destructive" : undefined}
+              />
+            ) : null}
+            {task.priority !== "medium" ? (
+              <TaskMeta icon={Flag} label={priority.label} className={priority.className} />
+            ) : null}
+            {task.reminderMinutesBefore != null ? <TaskMeta icon={Bell} label="" /> : null}
+            {task.recurring ? <TaskMeta icon={Repeat} label="Repeats" /> : null}
+            {task.isAgentTask ? <TaskMeta icon={Bot} label="K-AI" color={primary} /> : null}
+          </View>
+        ) : null}
+      </View>
+    </Pressable>
   );
 }
 

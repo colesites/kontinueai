@@ -21,6 +21,8 @@ import { getImportStrategy } from "@repo/core/import-strategy";
 import { ArrowUpRight, Link2 } from "lucide-react-native";
 
 import { ChatInput } from "@/components/chat/chat-input";
+import { useSidebar } from "@/components/sidebar/sidebar-context";
+import { withAlpha } from "@/components/chat/markdown";
 import { useTheme } from "@/components/theme-provider";
 import { TopToolbar } from "@/components/top-toolbar";
 import {
@@ -72,6 +74,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const keyboardOpen = useKeyboardOpen();
   const router = useRouter();
+  const { open: sidebarOpen } = useSidebar();
   const { user } = useUser();
   const firstName = getFirstName(user);
 
@@ -95,7 +98,7 @@ export default function HomeScreen() {
   const { webSearchEnabled, toggleWebSearch } = useWebSearchPreference();
   const [agentId, setAgentId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
-  const { isDark, primary, mutedForeground, primaryForeground } = useTheme();
+  const { isDark, primary, mutedForeground, primaryForeground, tokens } = useTheme();
   const webSearchAvailable = isPaidPlan || isKaiModel(selectedModel);
   const detectedProvider = importUrl.trim()
     ? detectProvider(importUrl.trim())
@@ -364,6 +367,8 @@ export default function HomeScreen() {
       </View>
 
       <KeyboardAvoidingView
+        // The drawer's search field must not shove this screen around.
+        enabled={!sidebarOpen}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={{ flex: 1 }}
       >
@@ -418,32 +423,54 @@ export default function HomeScreen() {
              * a solid frosted button and hid the ring entirely.
              */}
             <Pressable
+              accessibilityRole="button"
               onPress={() => setImportOpen(true)}
-              style={({ pressed }) => [
-                {
+              style={({ pressed }) => ({
+                borderRadius: 999,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+                // 0 2px 8px -2px primary 35% + 0 0 28px -10px primary 60%
+                shadowColor: primary,
+                shadowOpacity: 0.5,
+                shadowRadius: 12,
+                shadowOffset: { width: 0, height: 3 },
+                elevation: 4,
+              })}
+            >
+              {/* Web HomeImportDialog trigger: from-primary/18 to-primary/8,
+                  ring-1 ring-primary/25, inset top highlight foreground 8% */}
+              <LinearGradient
+                colors={[withAlpha(primary, 0.18), withAlpha(primary, 0.08)]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={{
                   borderRadius: 999,
                   borderWidth: 1,
-                  borderColor: `${primary}59`,
+                  borderColor: withAlpha(primary, 0.25),
                   flexDirection: "row",
                   alignItems: "center",
                   gap: 8,
                   paddingHorizontal: 16,
                   paddingVertical: 9,
-                  backgroundColor: "transparent",
-                  transform: [{ scale: pressed ? 0.98 : 1 }],
-                  // Tight bloom hugging the ring, not a wide halo behind a fill.
-                  shadowColor: primary,
-                  shadowOpacity: pressed ? 0.35 : 0.22,
-                  shadowRadius: 7,
-                  shadowOffset: { width: 0, height: 0 },
-                  elevation: 3,
-                },
-              ]}
-            >
-              <Icon as={ArrowUpRight} size={16} className="text-primary" />
-              <Text className="text-[14px] font-medium text-foreground">
-                Import shared link
-              </Text>
+                  overflow: "hidden",
+                  backgroundColor: tokens.background,
+                }}
+              >
+                <View
+                  pointerEvents="none"
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 1,
+                    backgroundColor: withAlpha(tokens.foreground, 0.08),
+                  }}
+                />
+                <Icon as={ArrowUpRight} size={16} className="text-primary" />
+                <Text className="text-[14px] font-medium text-foreground">
+                  Import shared link
+                </Text>
+              </LinearGradient>
             </Pressable>
           </View>
 
@@ -530,19 +557,42 @@ export default function HomeScreen() {
                 ? STEPS.map((step, i) => (
                     <FadeInUp key={step.title} delay={i * 60}>
                       <View className="flex-row gap-4">
-                        <LinearGradient
-                          colors={[`${primary}26`, `${primary}0D`]}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          className="h-10 w-10 items-center justify-center rounded-full border border-primary/20"
+                        {/* Round glow lives on a wrapper with an explicit
+                            radius: a className radius isn't seen by the
+                            shadow, which is what drew a square halo. */}
+                        <View
                           style={{
-                            boxShadow: `0 4px 8px ${primary}59`,
+                            width: 40,
+                            height: 40,
+                            borderRadius: 20,
+                            shadowColor: primary,
+                            shadowOpacity: 0.35,
+                            shadowRadius: 8,
+                            shadowOffset: { width: 0, height: 4 },
+                            elevation: 3,
+                            backgroundColor: tokens.background,
                           }}
                         >
-                          <Text className="text-[13px] font-semibold text-primary">
-                            {String(i + 1).padStart(2, "0")}
-                          </Text>
-                        </LinearGradient>
+                          <LinearGradient
+                            colors={[withAlpha(primary, 0.15), withAlpha(primary, 0.05)]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={{
+                              width: 40,
+                              height: 40,
+                              borderRadius: 20,
+                              borderWidth: 1,
+                              borderColor: withAlpha(primary, 0.2),
+                              alignItems: "center",
+                              justifyContent: "center",
+                              overflow: "hidden",
+                            }}
+                          >
+                            <Text className="text-[13px] font-semibold text-primary">
+                              {String(i + 1).padStart(2, "0")}
+                            </Text>
+                          </LinearGradient>
+                        </View>
                         <View className="flex-1 pt-1.5">
                           <Text className="text-[14.5px] font-medium text-foreground">
                             {step.title}
