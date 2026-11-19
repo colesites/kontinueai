@@ -61,6 +61,8 @@ number.
   footer.
 - Previous recorded Android remote build number before this release: `14`.
 - Submitted Android preview build number: `15` (EAS auto-increment).
+- EAS build ID: `c64f42e9-5b51-42a2-aedc-1821221c6ba2` (commit 5744bc8,
+  submitted with `--no-wait`; do not poll it from an AI task).
 
 ### Previous releases
 
