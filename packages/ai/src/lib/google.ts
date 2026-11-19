@@ -34,6 +34,12 @@ export const GOOGLE_MODELS: ModelOption[] = [
     description: "Fast Gemini 4 for reasoning and coding",
   },
   {
+    id: "google/gemini-4-neon",
+    name: "Gemini 4 Neon",
+    provider: "google",
+    description: "Google's faster Gemini 4, close to the larger models on coding and agent work",
+  },
+  {
     id: "google/gemini-3.8-flash",
     name: "Gemini 3.8 Flash",
     provider: "google",
