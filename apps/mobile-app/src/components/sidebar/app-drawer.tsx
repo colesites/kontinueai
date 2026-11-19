@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BackHandler, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import Animated, {
   Easing,
@@ -35,6 +35,18 @@ export function AppDrawer() {
     );
   }, [open, progress]);
 
+  // The backdrop covers the button that opened the drawer, so a double tap or
+  // a bounced touch on that button landed on the backdrop and closed the
+  // drawer straight away. Ignore backdrop taps just after opening.
+  const openedAt = useRef(0);
+  useEffect(() => {
+    if (open) openedAt.current = Date.now();
+  }, [open]);
+  const onBackdropPress = () => {
+    if (Date.now() - openedAt.current < 400) return;
+    closeSidebar();
+  };
+
   // Android back closes the drawer first, like the Modal did.
   useEffect(() => {
     if (!open) return;
@@ -60,7 +72,7 @@ export function AppDrawer() {
       <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]}>
         <Pressable
           accessibilityLabel="Close sidebar"
-          onPress={closeSidebar}
+          onPress={onBackdropPress}
           className="bg-black/50"
           style={{ flex: 1 }}
         />

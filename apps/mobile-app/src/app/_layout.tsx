@@ -21,6 +21,7 @@ import { AppDrawer } from "@/components/sidebar/app-drawer";
 import { SidebarProvider } from "@/components/sidebar/sidebar-context";
 import { ThemeProvider, useTheme } from "@/components/theme-provider";
 import { ThemeOnboarding } from "@/components/theme-onboarding";
+import { PortalHost } from "@/components/ui/portal";
 import { Toaster } from "@/components/ui/toast";
 import { ConvexClientProvider } from "@/lib/convex";
 
@@ -154,6 +155,7 @@ function AppShell() {
         {isAppReady ? <AppDrawer /> : null}
         {isAppReady ? <ThemeOnboarding /> : null}
         {isAppReady ? <OfflineBanner /> : null}
+        <PortalHost />
         <Toaster />
       </SidebarProvider>
     </NavThemeProvider>

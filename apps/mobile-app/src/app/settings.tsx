@@ -11,7 +11,8 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Image } from "expo-image";
 import * as DocumentPicker from "expo-document-picker";
 import * as Clipboard from "expo-clipboard";
@@ -55,7 +56,10 @@ import {
   Upload,
 } from "lucide-react-native";
 
+import { withAlpha } from "@/components/chat/markdown";
+import { FloatingHeader, FloatingHeaderButton } from "@/components/floating-header";
 import { useTheme } from "@/components/theme-provider";
+import { GlassPill } from "@/components/top-toolbar";
 import { API_BASE_URL } from "@/lib/chat-api";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Icon } from "@/components/ui/icon";
@@ -98,31 +102,17 @@ export default function SettingsScreen() {
   const displayName = getDisplayName(user, "Account");
   const email = user?.primaryEmailAddress?.emailAddress ?? "";
   const initial = getInitial(user);
+  const { primary } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 64);
 
   return (
-    <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
-      <View className="flex-row items-center justify-between gap-2 px-4 py-3">
-        <Pressable
-          onPress={() => goBackOr(router, "/")}
-          className="min-h-11 flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/4 px-3.5 active:bg-foreground/8"
-        >
-          <Icon as={ArrowLeft} size={16} className="text-muted-foreground" />
-          <Text className="text-[13px] font-medium text-muted-foreground">Back to chat</Text>
-        </Pressable>
-        <View className="flex-row items-center gap-1">
-          <ModeToggle />
-          <Pressable
-            onPress={() => void signOut()}
-            className="min-h-11 flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/4 px-3.5 active:bg-destructive/10"
-          >
-            <Icon as={LogOut} size={15} className="text-destructive" />
-            <Text className="text-[13px] font-medium text-destructive">Sign out</Text>
-          </Pressable>
-        </View>
-      </View>
+    <View className="bg-background" style={{ flex: 1 }}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerClassName="px-4 pb-10 gap-5"
+        contentContainerStyle={{ paddingTop: headerHeight }}
+        scrollIndicatorInsets={{ top: headerHeight }}
         showsVerticalScrollIndicator={false}
       >
         <View className="pb-1 pt-2">
@@ -133,7 +123,13 @@ export default function SettingsScreen() {
 
         {/* Profile card */}
         <View className="relative flex-row items-center gap-4 overflow-hidden rounded-2xl border border-foreground/8 bg-card px-4 py-5">
-          <View className="absolute -top-10 left-0 right-0 h-24 bg-primary/8" />
+          {/* Web: `-top-16 h-32 bg-primary/10 blur-3xl`. RN can't blur a
+              view, so fade it out instead of ending on a hard edge. */}
+          <LinearGradient
+            pointerEvents="none"
+            colors={[withAlpha(primary, 0.12), withAlpha(primary, 0)]}
+            style={{ position: "absolute", top: 0, left: 0, right: 0, height: 96 }}
+          />
           {user?.imageUrl ? (
             <Image
               source={{ uri: user.imageUrl }}
@@ -274,7 +270,19 @@ export default function SettingsScreen() {
           </Pressable>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      <FloatingHeader
+        onHeight={setHeaderHeight}
+        left={<FloatingHeaderButton label="Back to chat" icon={ArrowLeft} onPress={() => goBackOr(router, "/")} />}
+        right={
+          <>
+            <GlassPill className="p-1">
+              <ModeToggle />
+            </GlassPill>
+            <FloatingHeaderButton label="Sign out" icon={LogOut} destructive onPress={() => void signOut()} />
+          </>
+        }
+      />
+    </View>
   );
 }
 

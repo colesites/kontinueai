@@ -49,6 +49,20 @@ number.
 
 ## Current release
 
+- User-visible version: `1.3.3`
+- Scope: fixes on top of 1.3.2. Home logo no longer sits in a solid box on
+  Android (boxShadow can only draw the view's box; the logo glow is iOS-only
+  again). Composers sit closer to the bottom (`composerBottomInset`). Settings
+  and Connectors headers float as glass pills over the page; the profile
+  card's glow fades instead of ending in a hard line. The drawer ignores
+  backdrop taps for 400ms after opening (double taps closed it at once). The
+  composer's "+" and image-size menus render through an in-window Portal
+  instead of a Modal, so the keyboard stays open.
+- Previous recorded Android remote build number before this release: `16`.
+- Profile: `production`.
+
+### Previous releases
+
 - User-visible version: `1.3.2`
 - Scope: fixes the stray rectangle drawn inside glass surfaces on Android
   (chat composer, header pills, Canvas pill, empty state, Canvas input bar,

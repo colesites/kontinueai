@@ -101,6 +101,7 @@ import {
 import { consumePendingChatDraft } from "@/lib/pending-chat-draft";
 import { cn } from "@/lib/utils";
 import { softShadow } from "@/lib/shadow";
+import { composerBottomInset } from "@/lib/composer-inset";
 
 const EMPTY_STREAMING_MESSAGE: DisplayMessage = {
   id: "streaming-placeholder",
@@ -881,7 +882,7 @@ export default function ConversationScreen() {
               bottom: 0,
               paddingHorizontal: 12,
               paddingTop: 10,
-              paddingBottom: keyboardOpen ? 8 : Math.max(insets.bottom, 10),
+              paddingBottom: composerBottomInset(insets.bottom, keyboardOpen),
             }}
           >
             <LinearGradient

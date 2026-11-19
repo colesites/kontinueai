@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { goBackOr } from "@/lib/navigation";
 import * as Linking from "expo-linking";
@@ -15,6 +15,7 @@ import {
   ConnectorLogo,
   type ConnectorDef,
 } from "@/components/connectors/catalog";
+import { FloatingHeader, FloatingHeaderButton } from "@/components/floating-header";
 import { useTheme } from "@/components/theme-provider";
 import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
@@ -25,6 +26,8 @@ import { softShadow } from "@/lib/shadow";
 
 export default function ConnectorsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [headerHeight, setHeaderHeight] = useState(insets.top + 64);
   const connections = useQuery(api.connectors.listConnectors, {});
   const disconnect = useMutation(api.connectors.disconnect);
 
@@ -105,19 +108,14 @@ export default function ConnectorsScreen() {
   };
 
   return (
-    <SafeAreaView className="bg-background" style={{ flex: 1 }} edges={["top"]}>
+    <View className="bg-background" style={{ flex: 1 }}>
       <ScrollView
         style={{ flex: 1 }}
-        contentContainerClassName="px-4 pb-10 pt-4"
+        contentContainerClassName="px-4 pb-10"
+        contentContainerStyle={{ paddingTop: headerHeight + 8 }}
+        scrollIndicatorInsets={{ top: headerHeight }}
         showsVerticalScrollIndicator={false}
       >
-        <Pressable
-          onPress={() => goBackOr(router, "/")}
-          className="mb-6 min-h-11 self-start flex-row items-center gap-2 rounded-full border border-foreground/8 bg-foreground/4 px-3.5 active:bg-foreground/8"
-        >
-          <Icon as={ArrowLeft} size={16} className="text-muted-foreground" />
-          <Text className="text-[13px] font-medium text-muted-foreground">Back to chat</Text>
-        </Pressable>
 
         {/* Header — mirrors ConnectorsClient */}
         <Text className="text-[10.5px] font-semibold uppercase tracking-[2.5px] text-primary">Integrations</Text>
@@ -201,6 +199,10 @@ export default function ConnectorsScreen() {
           })}
         </View>
       </ScrollView>
-    </SafeAreaView>
+      <FloatingHeader
+        onHeight={setHeaderHeight}
+        left={<FloatingHeaderButton label="Back to chat" icon={ArrowLeft} onPress={() => goBackOr(router, "/")} />}
+      />
+    </View>
   );
 }

@@ -461,6 +461,7 @@ export function ChatInput({
           anchor={plusMenu.anchor}
           onClose={closeMenu}
           placement="above"
+          keepKeyboard
         >
           {plusMenu.visible && menuView === "root" ? (
             <>
@@ -625,6 +626,7 @@ export function ChatInput({
           anchor={imageMenu.anchor}
           onClose={imageMenu.close}
           placement="above"
+          keepKeyboard
           width={188}
         >
           {imageMenu.visible ? (
