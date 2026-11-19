@@ -7,6 +7,7 @@
 # go into one draft release, "Kontinue AI <version>", and add their platform to
 # its latest.json. Publishing the draft (Releases → Edit → Publish release) is
 # what ships it; installed apps check .../releases/latest/download/latest.json.
+# A published version can't be released again: bump the version first.
 #
 # Deploy the Convex backend (packages/backend/convex: npx convex deploy) before
 # releasing; `bun run check:convex` in apps/desktop confirms production has
@@ -66,6 +67,31 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri -> target
           key: ${{ inputs.platform }}-${{ inputs.release && 'release' || 'check' }}
+
+      # Shipping is a version bump. tauri-action adds assets to the release for
+      # the version in tauri.conf.json, and it happily reuses one that is
+      # already published: a release run without a bump overwrites the live
+      # installers and leaves latest.json pointing at the same version, so
+      # installed apps see nothing to update.
+      - name: Version check
+        if: inputs.release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version=$(sed -n 's/.*"version": "\([^"]*\)".*/\1/p' apps/desktop/src-tauri/tauri.conf.json | head -1)
+          tag="desktop-v$version"
+          echo "Releasing $version ($tag)"
+          state=$(gh release view "$tag" --repo "$GITHUB_REPOSITORY" --json isDraft -q '.isDraft' 2>/dev/null || echo "missing")
+          if [ "$state" = "false" ]; then
+            echo "::error::$tag is already published. Bump the version in apps/desktop/tauri.conf.json and package.json (and run bun install) before releasing, otherwise installed apps never see an update."
+            exit 1
+          fi
+          if [ "$state" = "true" ]; then
+            echo "$tag is a draft: adding this platform to it."
+          else
+            echo "$tag does not exist yet: the draft release will be created."
+          fi
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
