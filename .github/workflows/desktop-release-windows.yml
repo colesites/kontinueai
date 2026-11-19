@@ -6,8 +6,16 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: desktop-release-windows
+  # One group for all three platforms: each run adds its installers to the same
+  # draft release, and tauri-action's find-or-create is not atomic. Running them
+  # at once can create duplicate releases for one tag (as 0.1.1-alpha.7 did), so
+  # they queue instead. Publishing the draft is still what ships it.
+  group: desktop-release
   cancel-in-progress: false
+  # Keep every waiting platform instead of only the newest: with the default
+  # queue ("single"), triggering the third workflow would cancel the second and
+  # that platform would silently never ship.
+  queue: max
 
 permissions:
   contents: write

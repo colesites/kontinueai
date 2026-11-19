@@ -2,11 +2,15 @@
 #   desktop-build-{macos,windows,linux}.yml    compile check on PRs, uploads nothing
 #   desktop-release-{macos,windows,linux}.yml  build and add to the draft release
 #
-# Each platform runs on its own, so one failing never blocks the others. All
-# release runs for the same version (apps/desktop/src-tauri/tauri.conf.json)
-# go into one draft release, "Kontinue AI <version>", and add their platform to
-# its latest.json. Publishing the draft (Releases → Edit → Publish release) is
-# what ships it; installed apps check .../releases/latest/download/latest.json.
+# Each platform builds on its own, so one failing never blocks the others. All
+# release runs for the same version (apps/desktop/src-tauri/tauri.conf.json) go
+# into ONE draft release, "Kontinue AI <version>", each adding its platform to
+# that release's latest.json. They share one concurrency group and run in turn
+# because tauri-action's find-or-create is not atomic: run at the same time, two
+# or three could each find no release and create their own for the same tag
+# (0.1.1-alpha.7 did), leaving each latest.json with only some platforms.
+# Publishing the draft (Releases → Edit → Publish release) is what ships it;
+# installed apps check .../releases/latest/download/latest.json.
 # A published version can't be released again: bump the version first.
 #
 # Deploy the Convex backend (packages/backend/convex: npx convex deploy) before
