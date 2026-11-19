@@ -16,6 +16,7 @@ import { Icon } from "@/components/ui/icon";
 import { Text } from "@/components/ui/text";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react-native";
+import { softShadow } from "@/lib/shadow";
 
 export type DropdownAnchor = { x: number; y: number };
 
@@ -82,11 +83,7 @@ export function Dropdown({
               ? { bottom: screen.height - (anchor?.y ?? 0) + 8 }
               : { top: (anchor?.y ?? 0) + 8 }),
             borderRadius: 16,
-            shadowColor: "#000",
-            shadowOpacity: 0.4,
-            shadowRadius: 24,
-            shadowOffset: { width: 0, height: 8 },
-            elevation: 16,
+            ...softShadow({ color: "#000", opacity: 0.4, radius: 24, offsetY: 8 }),
           }}
         >
           {/* Web menus: `glass bg-background/40 backdrop-blur-3xl rounded-2xl

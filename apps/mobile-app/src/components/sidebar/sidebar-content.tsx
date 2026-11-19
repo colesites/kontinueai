@@ -66,6 +66,7 @@ import { GlassDialog, DialogClosePill, Eyebrow } from "@/components/ui/glass";
 import { API_BASE_URL } from "@/lib/chat-api";
 import { PROVIDER_CONFIG, type Provider } from "@/lib/import-providers";
 import { getDisplayName, getInitial } from "@/lib/user-display";
+import { softShadow } from "@/lib/shadow";
 
 // Same swatches as web ProjectCreateDialog (project identity colors are user
 // data, like provider brand colors, not theme tokens).
@@ -372,11 +373,7 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
               flex: 1,
               borderRadius: 12,
               transform: [{ scale: pressed ? 0.98 : 1 }],
-              shadowColor: primary,
-              shadowOpacity: 0.45,
-              shadowRadius: 12,
-              shadowOffset: { width: 0, height: 3 },
-              elevation: 6,
+              ...softShadow({ color: primary, opacity: 0.45, radius: 12, offsetY: 3 }),
             },
           ]}
         >

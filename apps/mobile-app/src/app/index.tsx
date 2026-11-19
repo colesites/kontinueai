@@ -53,6 +53,7 @@ import {
 } from "@/lib/import-providers";
 import { savePendingChatDraft } from "@/lib/pending-chat-draft";
 import { getFirstName } from "@/lib/user-display";
+import { softShadow } from "@/lib/shadow";
 
 const STEPS = [
   {
@@ -379,11 +380,7 @@ export default function HomeScreen() {
         >
           <View
             style={{
-              shadowColor: primary,
-              shadowOpacity: 0.35,
-              shadowRadius: 28,
-              shadowOffset: { width: 0, height: 8 },
-              elevation: 10,
+              ...softShadow({ color: primary, opacity: 0.35, radius: 28, offsetY: 8 }),
             }}
           >
             <KontinueLogo height={44} />
@@ -429,11 +426,7 @@ export default function HomeScreen() {
                 borderRadius: 999,
                 transform: [{ scale: pressed ? 0.98 : 1 }],
                 // 0 2px 8px -2px primary 35% + 0 0 28px -10px primary 60%
-                shadowColor: primary,
-                shadowOpacity: 0.5,
-                shadowRadius: 12,
-                shadowOffset: { width: 0, height: 3 },
-                elevation: 4,
+                ...softShadow({ color: primary, opacity: 0.5, radius: 12, offsetY: 3 }),
               })}
             >
               {/* Web HomeImportDialog trigger: from-primary/18 to-primary/8,
@@ -565,11 +558,7 @@ export default function HomeScreen() {
                             width: 40,
                             height: 40,
                             borderRadius: 20,
-                            shadowColor: primary,
-                            shadowOpacity: 0.35,
-                            shadowRadius: 8,
-                            shadowOffset: { width: 0, height: 4 },
-                            elevation: 3,
+                            ...softShadow({ color: primary, opacity: 0.35, radius: 8, offsetY: 4 }),
                             backgroundColor: tokens.background,
                           }}
                         >
@@ -703,11 +692,7 @@ export default function HomeScreen() {
               style={({ pressed }) => [
                 importUrl.trim() && !isImporting
                   ? {
-                      shadowColor: primary,
-                      shadowOpacity: 0.45,
-                      shadowRadius: 10,
-                      shadowOffset: { width: 0, height: 4 },
-                      elevation: 4,
+                      ...softShadow({ color: primary, opacity: 0.45, radius: 10, offsetY: 4 }),
                       transform: [{ scale: pressed ? 0.95 : 1 }],
                     }
                   : null,

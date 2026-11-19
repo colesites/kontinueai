@@ -68,6 +68,7 @@ import {
   getMobileSpeechLanguage,
   setMobileSpeechLanguage,
 } from "@/lib/speech-settings";
+import { softShadow } from "@/lib/shadow";
 
 type SettingsTab = "account" | "invite" | "memory" | "data" | "contact";
 
@@ -209,11 +210,7 @@ export default function SettingsScreen() {
               style={
                 tab === t.id
                   ? {
-                      shadowColor: "#000",
-                      shadowOpacity: 0.12,
-                      shadowRadius: 6,
-                      shadowOffset: { width: 0, height: 2 },
-                      elevation: 2,
+                      ...softShadow({ color: "#000", opacity: 0.12, radius: 6, offsetY: 2 }),
                     }
                   : undefined
               }

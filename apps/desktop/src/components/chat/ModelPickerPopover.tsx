@@ -88,7 +88,7 @@ export function ModelPickerPopover({
   const providers = useMemo(() => {
     // Ranked on their own: your agents' models list last, but their icons
     // (Claude Code shares Anthropic's, Cursor gets its own) take their lab's place.
-    return Array.from(new Set(modelList.map((m) => m.provider))).sort((a, b) => labRank(a) - labRank(b));
+    return Array.from(new Set(modelList.map((m) => filterKey(m.provider)))).sort((a, b) => labRank(a) - labRank(b));
   }, [modelList]);
 
   const filteredModels = useMemo(() => {
@@ -96,7 +96,7 @@ export function ModelPickerPopover({
       if (activeProvider === "favorites" && !favorites.includes(model.id)) {
         return false;
       }
-      if (activeProvider !== "all" && activeProvider !== "favorites" && model.provider !== activeProvider) {
+      if (activeProvider !== "all" && activeProvider !== "favorites" && filterKey(model.provider) !== activeProvider) {
         return false;
       }
       if (search.trim()) {
@@ -229,7 +229,7 @@ export function ModelPickerPopover({
             </FilterChip>
             <span className="mx-0.5 h-3.5 w-px shrink-0 bg-border" />
             {providers.map((p) => (
-              <FilterChip key={p} active={activeProvider === p} onClick={() => setActiveProvider(p)} title={p} icon>
+              <FilterChip key={p} active={activeProvider === p} onClick={() => setActiveProvider(p)} title={providerTitle(p, modelList)} icon>
                 <ProviderIcon provider={p} className="size-3.5" />
               </FilterChip>
             ))}
@@ -372,7 +372,9 @@ export function ModelPickerPopover({
                     ? "Available on Pro and Max."
                     : selectedKode?.fast
                       ? "About 2× faster output, uses about 2× usage."
-                      : `Not available for ${selectedModel?.name ?? "this model"}.`}
+                      : !selectedKode && parseCliModelId(selectedModelId)
+                        ? "Works with Kode models, not your own agents."
+                        : `Not available for ${selectedModel?.name ?? "this model"}.`}
                 </p>
               </div>
               <Switch checked={fastAvailable && kodeFastMode} disabled={!fastAvailable} onCheckedChange={(checked) => updateSettings({ kodeFastMode: checked })} />
@@ -399,7 +401,7 @@ export function ModelPickerPopover({
 }
 
 export function ModelSelectorLogo({ provider, className }: { provider?: string; className?: string }) {
-  const p = (provider || "kontinue").toLowerCase();
+  const p = logoKey(provider || "kontinue");
   const [imgFailed, setImgFailed] = useState(false);
   // A full URL is an icon from elsewhere (ACP Registry agents).
   const isUrl = /^https?:\/\//.test(provider ?? "");
@@ -408,6 +410,10 @@ export function ModelSelectorLogo({ provider, className }: { provider?: string; 
   // Claude models show the Claude mark rather than Anthropic's wordmark.
   if (p === "anthropic") {
     return <img src="/claude-ai.svg" alt="Claude logo" className={cn("size-3.5 object-contain", className)} />;
+  }
+
+  if (p === "antigravity") {
+    return <img src="/logos/antigravity.svg" alt="Antigravity logo" className={cn("size-3.5 object-contain", className)} />;
   }
 
   // Logos we ship ourselves, with a light and a dark version.
@@ -430,6 +436,44 @@ export function ModelSelectorLogo({ provider, className }: { provider?: string; 
 }
 
 const ProviderIcon = ModelSelectorLogo;
+
+/** Lowercase logo key; the ACP Registry's Antigravity icon becomes our own logo. */
+function logoKey(provider: string): string {
+  return /\/antigravity-acp\.svg$/i.test(provider) ? "antigravity" : provider.toLowerCase();
+}
+
+/** Filter chip a provider belongs to: Antigravity shares Google's. */
+function filterKey(provider: string): string {
+  const key = logoKey(provider);
+  return key === "antigravity" ? "google" : /^https?:\/\//.test(provider) ? provider : key;
+}
+
+const PROVIDER_NAMES: Record<string, string> = {
+  kontinue: "Kontinue",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  google: "Google",
+  cursor: "Cursor",
+  xai: "xAI",
+  deepseek: "DeepSeek",
+  moonshotai: "Moonshot AI",
+  zai: "Z.ai",
+  alibaba: "Alibaba",
+  minimax: "MiniMax",
+  mistral: "Mistral",
+  perplexity: "Perplexity",
+  opencode: "OpenCode",
+  "github-copilot": "GitHub Copilot",
+  amp: "Amp",
+};
+
+/** Chip tooltip: the provider's name, never a logo URL. */
+function providerTitle(key: string, models: readonly AnyModelOption[]): string {
+  if (PROVIDER_NAMES[key]) return PROVIDER_NAMES[key];
+  const model = models.find((m) => filterKey(m.provider) === key);
+  const cli = model ? parseCliModelId(model.id) : null;
+  return (model && "group" in model && model.group) || (cli && getProvider(cli.instanceId)?.label) || "Agent";
+}
 
 const TIER_LABEL: Record<KodeModelOption["tier"], string> = {
   light: "Light",

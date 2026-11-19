@@ -54,6 +54,12 @@ export const OPENAI_MODELS: ModelOption[] = [
 			"OpenAI's latest flagship model with cutting-edge reasoning and agentic problem solving",
 	},
 	{
+		id: "openai/gpt-6.1-sol-fast",
+		name: "GPT 6.1 Sol Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 6.1 Sol with about 2x faster output",
+	},
+	{
 		id: "openai/gpt-6-sol",
 		name: "GPT 6 Sol",
 		provider: "openai",
@@ -61,11 +67,23 @@ export const OPENAI_MODELS: ModelOption[] = [
 			"Frontier intelligence combining extreme reasoning depth with fast agentic action",
 	},
 	{
+		id: "openai/gpt-6-sol-fast",
+		name: "GPT 6 Sol Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 6 Sol with about 2x faster output",
+	},
+	{
 		id: "openai/gpt-6-luna",
 		name: "GPT 6 Luna",
 		provider: "openai",
 		description:
 			"High-efficiency GPT-6 intelligence designed for responsive agent workflows",
+	},
+	{
+		id: "openai/gpt-6-luna-fast",
+		name: "GPT 6 Luna Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 6 Luna with about 2x faster output",
 	},
 	{
 		id: "openai/gpt-6.2-astra",
@@ -89,11 +107,23 @@ export const OPENAI_MODELS: ModelOption[] = [
 			"Advanced frontier model for deep reasoning, coding, and research",
 	},
 	{
+		id: "openai/gpt-6-astra-fast",
+		name: "GPT-6 Astra Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT-6 Astra with about 2x faster output",
+	},
+	{
 		id: "openai/gpt-5.6-sol",
 		name: "GPT 5.6 Sol",
 		provider: "openai",
 		description:
 			"High-capability reasoning model for complex coding and agentic work",
+	},
+	{
+		id: "openai/gpt-5.6-sol-fast",
+		name: "GPT 5.6 Sol Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.6 Sol with about 2x faster output",
 	},
 	{
 		id: "openai/gpt-5.6-terra",
@@ -102,10 +132,22 @@ export const OPENAI_MODELS: ModelOption[] = [
 		description: "Balanced intelligence and cost for capable everyday work",
 	},
 	{
+		id: "openai/gpt-5.6-terra-fast",
+		name: "GPT 5.6 Terra Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.6 Terra with about 2x faster output",
+	},
+	{
 		id: "openai/gpt-5.6-luna",
 		name: "GPT 5.6 Luna",
 		provider: "openai",
 		description: "Fast, cost-efficient intelligence for high-volume tasks",
+	},
+	{
+		id: "openai/gpt-5.6-luna-fast",
+		name: "GPT 5.6 Luna Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.6 Luna with about 2x faster output",
 	},
 	{
 		id: "openai/gpt-5.5-pro",
@@ -120,6 +162,12 @@ export const OPENAI_MODELS: ModelOption[] = [
 		description: "Powerful, general-purpose model for coding, and research",
 	},
 	{
+		id: "openai/gpt-5.5-fast",
+		name: "GPT 5.5 Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.5 with about 2x faster output",
+	},
+	{
 		id: "openai/gpt-5.4-pro",
 		name: "GPT 5.4 Pro",
 		provider: "openai",
@@ -132,10 +180,22 @@ export const OPENAI_MODELS: ModelOption[] = [
 		description: "Fast, efficient model for everyday AI tasks",
 	},
 	{
+		id: "openai/gpt-5.4-fast",
+		name: "GPT 5.4 Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.4 with about 2x faster output",
+	},
+	{
 		id: "openai/gpt-5.4-mini",
 		name: "GPT 5.4 Mini",
 		provider: "openai",
 		description: "The strengths of GPT-5.4 to a faster, more efficient model",
+	},
+	{
+		id: "openai/gpt-5.4-mini-fast",
+		name: "GPT 5.4 Mini Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.4 Mini with about 2x faster output",
 	},
 	{
 		id: "openai/gpt-5.4-nano",
@@ -151,11 +211,23 @@ export const OPENAI_MODELS: ModelOption[] = [
 			"Specialized model fine-tuned for complex software engineering and code refactoring",
 	},
 	{
+		id: "openai/gpt-5.3-codex-fast",
+		name: "GPT 5.3 Codex Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.3 Codex with about 2x faster output",
+	},
+	{
 		id: "openai/gpt-5.2",
 		name: "GPT 5.2",
 		provider: "openai",
 		description:
 			"Versatile high-performance model for reasoning, analysis, and coding",
+	},
+	{
+		id: "openai/gpt-5.2-fast",
+		name: "GPT 5.2 Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.2 with about 2x faster output",
 	},
 	{
 		id: "openai/gpt-5.1-thinking",
@@ -165,11 +237,23 @@ export const OPENAI_MODELS: ModelOption[] = [
 			"Deep deliberative reasoning model for multi-step STEM and logic tasks",
 	},
 	{
+		id: "openai/gpt-5.1-thinking-fast",
+		name: "GPT 5.1 Thinking Fast",
+		provider: "openai",
+		description: "High-speed edition of GPT 5.1 Thinking with about 2x faster output",
+	},
+	{
 		id: "openai/o3",
 		name: "o3",
 		provider: "openai",
 		description:
 			"Frontier reasoning model excelling at complex coding, science, and math",
+	},
+	{
+		id: "openai/o3-fast",
+		name: "o3 Fast",
+		provider: "openai",
+		description: "High-speed edition of o3 with about 2x faster output",
 	},
 	{
 		id: "openai/o3-mini",

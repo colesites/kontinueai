@@ -64,6 +64,7 @@ import { useIsProPlan } from "@/hooks/use-plan-tier";
 import { useReasoningPreference } from "@/hooks/use-reasoning-preference";
 import { ConnectorLogo, connectorDef } from "@/components/connectors/catalog";
 import { applyMention, detectMention } from "@repo/core/chat-mentions";
+import { softShadow } from "@/lib/shadow";
 
 const connectorName = (provider: string) =>
   connectorDef(provider)?.name ?? provider;
@@ -245,11 +246,7 @@ export function ChatInput({
     <View
       style={{
         borderRadius: 26,
-        shadowColor: isFocused ? primary : "#000000",
-        shadowOpacity: isFocused ? 0.45 : isDark ? 0.35 : 0.12,
-        shadowRadius: isFocused ? 24 : 16,
-        shadowOffset: { width: 0, height: isFocused ? 12 : 10 },
-        elevation: 8,
+        ...softShadow({ color: isFocused ? primary : "#000000", opacity: isFocused ? 0.45 : isDark ? 0.35 : 0.12, radius: isFocused ? 24 : 16, offsetY: isFocused ? 12 : 10 }),
       }}
     >
       {mentionItems.length > 0 ? (
@@ -716,12 +713,8 @@ function MentionMenu({
         width: 260,
         marginBottom: 8,
         zIndex: 50,
-        elevation: 12,
         borderRadius: 14,
-        shadowColor: "#000",
-        shadowOpacity: 0.35,
-        shadowRadius: 18,
-        shadowOffset: { width: 0, height: 8 },
+        ...softShadow({ color: "#000", opacity: 0.35, radius: 18, offsetY: 8 }),
       }}
     >
       <GlassView

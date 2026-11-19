@@ -118,7 +118,6 @@ export type AcpPresetInfo = KindInfo & {
   registryId?: string;
 };
 
-const ACP_REGISTRY_CDN = "https://cdn.agentclientprotocol.com/registry/v1/latest";
 /** Where managed registry downloads live (see acp_registry.rs). */
 export const ACP_AGENTS_DIR = "~/.kontinue/acp-agents";
 
@@ -139,7 +138,7 @@ export const ACP_PRESETS: Record<AcpPreset, AcpPresetInfo> = {
   },
   antigravity: {
     name: "Antigravity",
-    logo: `${ACP_REGISTRY_CDN}/antigravity-acp.svg`,
+    logo: "antigravity",
     plan: "Google",
     loginCommand: null,
     install: "https://antigravity.google/docs/ide/extensions",

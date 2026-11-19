@@ -85,6 +85,7 @@ import { AppError, readApiError, showAppErrorToast } from "@/lib/app-errors";
 import { API_BASE_URL } from "@/lib/chat-api";
 import { shareMediaFile } from "@/lib/media-share";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 type Creation = Doc<"canvasCreations">;
 type Mode = "image" | "video";
@@ -482,11 +483,7 @@ export default function CanvasScreen() {
             <View
               className="h-14 w-14 items-center justify-center rounded-2xl border border-primary/20 bg-primary/12"
               style={{
-                shadowColor: primary,
-                shadowOpacity: 0.35,
-                shadowRadius: 16,
-                shadowOffset: { width: 0, height: 6 },
-                elevation: 6,
+                ...softShadow({ color: primary, opacity: 0.35, radius: 16, offsetY: 6 }),
               }}
             >
               <Icon as={Sparkles} size={24} className="text-primary" />
@@ -569,11 +566,7 @@ export default function CanvasScreen() {
           <View
             style={{
               borderRadius: 24,
-              shadowColor: inputFocused ? primary : "#000000",
-              shadowOpacity: inputFocused ? 0.45 : isDark ? 0.5 : 0.15,
-              shadowRadius: 24,
-              shadowOffset: { width: 0, height: 12 },
-              elevation: 12,
+              ...softShadow({ color: inputFocused ? primary : "#000000", opacity: inputFocused ? 0.45 : isDark ? 0.5 : 0.15, radius: 24, offsetY: 12 }),
             }}
           >
             {/* Web: `glow-rail rounded-3xl border border-border/40

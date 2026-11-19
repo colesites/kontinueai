@@ -100,6 +100,7 @@ import {
 } from "@/lib/chat-attachments";
 import { consumePendingChatDraft } from "@/lib/pending-chat-draft";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 const EMPTY_STREAMING_MESSAGE: DisplayMessage = {
   id: "streaming-placeholder",
@@ -1395,11 +1396,7 @@ function ShareChatDialog({
             onPress={onCopy}
             className="h-9 flex-row items-center gap-1.5 rounded-lg bg-primary px-3 active:opacity-90"
             style={{
-              shadowColor: primary,
-              shadowOpacity: 0.35,
-              shadowRadius: 8,
-              shadowOffset: { width: 0, height: 3 },
-              elevation: 3,
+              ...softShadow({ color: primary, opacity: 0.35, radius: 8, offsetY: 3 }),
             }}
           >
             <Icon

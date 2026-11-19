@@ -21,6 +21,7 @@ import { Text } from "@/components/ui/text";
 import { toast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/app-errors";
 import { API_BASE_URL } from "@/lib/chat-api";
+import { softShadow } from "@/lib/shadow";
 
 export default function ConnectorsScreen() {
   const router = useRouter();
@@ -184,11 +185,7 @@ export default function ConnectorsScreen() {
                     onPress={() => void handleConnect(def)}
                     className="min-w-20 items-center rounded-full bg-primary px-3.5 py-1.5 active:opacity-90"
                     style={{
-                      shadowColor: primary,
-                      shadowOpacity: 0.3,
-                      shadowRadius: 8,
-                      shadowOffset: { width: 0, height: 3 },
-                      elevation: 3,
+                      ...softShadow({ color: primary, opacity: 0.3, radius: 8, offsetY: 3 }),
                       opacity: connecting && connecting !== def.provider ? 0.5 : 1,
                     }}
                   >

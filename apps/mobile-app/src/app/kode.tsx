@@ -49,6 +49,7 @@ import {
   type KodeAttachment,
 } from "@/lib/kode-attachments";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 const STARTERS = [
   "Build a clean client portal for a creative agency",
@@ -151,11 +152,7 @@ function KodeDashboard() {
             onPress={() => setComposerOpen(true)}
             className="h-9 flex-row items-center gap-1.5 rounded-full bg-primary px-3.5 active:opacity-90"
             style={{
-              shadowColor: primary,
-              shadowOpacity: 0.35,
-              shadowRadius: 10,
-              shadowOffset: { width: 0, height: 4 },
-              elevation: 4,
+              ...softShadow({ color: primary, opacity: 0.35, radius: 10, offsetY: 4 }),
             }}
           >
             <Icon as={Plus} size={16} className="text-primary-foreground" />

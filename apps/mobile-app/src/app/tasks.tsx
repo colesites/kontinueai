@@ -44,6 +44,7 @@ import { toast } from "@/components/ui/toast";
 import { errorMessage } from "@/lib/app-errors";
 import { isPushEnabled, requestPushPermission } from "@/lib/push-notifications";
 import { cn } from "@/lib/utils";
+import { softShadow } from "@/lib/shadow";
 
 type Task = Doc<"tasks">;
 type TaskView = "list" | "kanban" | "calendar";
@@ -290,11 +291,7 @@ export default function TasksScreen() {
                 width: 40,
                 height: 40,
                 borderRadius: 12,
-                shadowColor: themePrimary,
-                shadowOpacity: 0.55,
-                shadowRadius: 10,
-                shadowOffset: { width: 0, height: 4 },
-                elevation: 4,
+                ...softShadow({ color: themePrimary, opacity: 0.55, radius: 10, offsetY: 4 }),
               }}
             >
               <Icon as={ListChecks} size={19} className="text-primary" />
@@ -353,11 +350,7 @@ export default function TasksScreen() {
         <View
           className="mb-6 flex-row items-center gap-2 rounded-2xl border border-border/70 bg-card p-2.5"
           style={{
-            shadowColor: "#000000",
-            shadowOpacity: 0.2,
-            shadowRadius: 2,
-            shadowOffset: { width: 0, height: 1 },
-            elevation: 1,
+            ...softShadow({ color: "#000000", opacity: 0.2, radius: 2, offsetY: 1 }),
           }}
         >
           <TextInput

@@ -50,6 +50,8 @@ describe("AI model catalog", () => {
 			"openai/gpt-6.2-sol-fast",
 			"openai/gpt-6.2-astra",
 			"openai/gpt-6.2-astra-fast",
+			"anthropic/claude-opus-5.5-fast",
+			"anthropic/claude-fable-5.2-fast",
 		]) {
 			expect(mainIds).toContain(id);
 			expect(getKodeModelById(id) ?? getKodeModelById(id.replace(/-fast$/, ""))).toBeDefined();
