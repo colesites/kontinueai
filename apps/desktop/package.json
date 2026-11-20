@@ -1,13 +1,14 @@
 {
   "name": "kontinue-ai",
   "private": true,
-  "version": "0.1.1-alpha.8",
+  "version": "0.1.1-alpha.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "check:convex": "node scripts/check-convex-functions.mjs",
+    "smoke:agents": "node scripts/smoke-acp-agents.mjs",
     "tauri": "tauri",
     "test": "bun test src",
     "typecheck": "tsc --noEmit"

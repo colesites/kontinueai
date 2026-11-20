@@ -14,6 +14,7 @@ import {
   ACP_PRESETS,
   INSTANCE_ID_PATTERN,
   addProvider,
+  dataFolderInfo,
   getProviders,
   kindName,
   loadAcpRegistry,
@@ -523,14 +524,14 @@ export function AddProviderDialog({
                       mono
                     />
                   </Field>
-                ) : choice.kind === "acp" && choice.preset === "opencode" ? (
-                  <Field
-                    label="Data folder (XDG_DATA_HOME)"
-                    description="A separate folder keeps this OpenCode account's sign-in and sessions apart. Leave empty for your default account."
-                  >
-                    <TextInput value={homeDir} onChange={setHomeDir} placeholder="~/.opencode-work" mono />
-                  </Field>
-                ) : null}
+                ) : (() => {
+                  const folder = dataFolderInfo(choice);
+                  return folder ? (
+                    <Field label={folder.label} description={folder.description}>
+                      <TextInput value={homeDir} onChange={setHomeDir} placeholder={folder.placeholder} mono />
+                    </Field>
+                  ) : null;
+                })()}
                 {!isAcp ? (
                   <Field label="Binary path" description="Leave empty to find it on your PATH.">
                     <TextInput value={binaryPath} onChange={setBinaryPath} placeholder="Automatic" mono />

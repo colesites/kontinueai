@@ -12,7 +12,7 @@ use super::{
     CliRunRequest, CliRunResult, CliRunState, CliTaskResult, CliTodo, Parser,
 };
 use serde_json::{json, Value};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::{Arc, Mutex};
 use tauri::ipc::Channel;
@@ -71,6 +71,7 @@ impl Conn {
         cwd: &Path,
         on_stderr: Option<Channel<String>>,
     ) -> Result<Self, String> {
+        super::registry::repair_macos_par_signature(binary);
         let mut cmd = cli_command(CliProvider::Acp, binary, config);
         // The command's first word is the binary (or the Binary path override).
         let args: Vec<String> = config
@@ -168,11 +169,14 @@ impl Conn {
                 (Some(name), None) => handler.notification(name, &params),
                 (None, Some(response_id)) if response_id.as_u64() == Some(id) => {
                     if let Some(error) = message.get("error") {
+                        let data_msg = error
+                            .pointer("/data/message")
+                            .and_then(Value::as_str)
+                            .filter(|s| !s.trim().is_empty());
                         return Err(AcpError {
                             code: error.get("code").and_then(Value::as_i64).unwrap_or(0),
-                            message: error
-                                .get("message")
-                                .and_then(Value::as_str)
+                            message: data_msg
+                                .or_else(|| error.get("message").and_then(Value::as_str))
                                 .unwrap_or("The agent returned an error.")
                                 .to_string(),
                         });
@@ -448,6 +452,13 @@ async fn select_model(
     Ok(())
 }
 
+/// Non-interactive auth methods can authenticate immediately without opening a
+/// browser, so `probe_models` can send `authenticate` when the agent hasn't
+/// stored a selection yet.
+fn is_noninteractive_auth(method: &str) -> bool {
+    !method.is_empty() && !method.starts_with("oauth")
+}
+
 /// `session/new`, signing in once with the chosen method if the agent asks.
 /// Gemini CLI forgets the sign-in method between processes unless its own
 /// settings name one, so without this it reports a missing API key even
@@ -457,30 +468,20 @@ async fn new_session(
     handler: &mut (dyn Handler + Send),
     params: Value,
     config: &CliConfig,
+    allow_oauth: bool,
 ) -> Result<Value, AcpError> {
+    let method = config.auth_method.trim();
     match conn.request("session/new", params.clone(), handler).await {
-        Err(error) if error.code == AUTH_REQUIRED && !config.auth_method.trim().is_empty() => {
-            let method = json!({ "methodId": config.auth_method.trim() });
-            conn.request("authenticate", method, handler).await?;
+        Err(error)
+            if error.code == AUTH_REQUIRED
+                && !method.is_empty()
+                && (allow_oauth || is_noninteractive_auth(method)) =>
+        {
+            conn.request("authenticate", json!({ "methodId": method }), handler).await?;
             conn.request("session/new", params, handler).await
         }
         other => other,
     }
-}
-
-/// Downloads known to hang before answering anything: Google's Antigravity
-/// 1.4.5 and 1.5.0 for Intel Macs spin forever inside libffi at startup
-/// (tested 2026-11-17). Starting them only burns a CPU core until our timeout
-/// kills them, so refuse up front. A newer version is tried again.
-fn known_broken(binary: &Path) -> Option<String> {
-    let id = super::registry::managed_id(binary)?;
-    let version = super::registry::managed_version(binary).unwrap_or_default();
-    (id == "antigravity-acp"
-        && super::registry::platform() == "darwin-x86_64"
-        && matches!(version.as_str(), "1.4.5" | "1.5.0"))
-    .then(|| format!(
-        "Google's Antigravity agent {version} doesn't start on Intel Macs: it hangs before answering, so sign-in and models can't work. This is a bug in Google's download, not in Kontinue. It works on Apple silicon Macs; press Update later to try a newer version."
-    ))
 }
 
 /// Run one turn with an ACP agent.
@@ -491,9 +492,6 @@ pub(super) async fn run(
     req: &CliRunRequest,
     on_event: Channel<CliEvent>,
 ) -> Result<CliRunResult, String> {
-    if let Some(message) = known_broken(binary) {
-        return Err(message);
-    }
     let root = Path::new(&req.root);
     let mut conn = Conn::spawn(binary, &req.config, root, None)?;
     state.runs.lock().map_err(|_| "Run state unavailable")?.insert(run_id, conn.pid);
@@ -535,7 +533,7 @@ pub(super) async fn run(
             Some(found) => found,
             None => {
                 let params = json!({ "cwd": cwd, "mcpServers": super::acp_mcp_servers(req) });
-                let setup = new_session(&mut conn, &mut handler, params, &req.config).await?;
+                let setup = new_session(&mut conn, &mut handler, params, &req.config, true).await?;
                 let id = setup.get("sessionId").and_then(Value::as_str).unwrap_or_default().to_string();
                 (id, setup)
             }
@@ -609,9 +607,6 @@ pub(super) async fn run(
 /// List the agent's models by opening a throwaway session (no prompt is sent).
 pub(super) async fn probe_models(config: &CliConfig) -> Result<Vec<CliModel>, String> {
     let binary = resolve_binary(CliProvider::Acp, config).ok_or("Set the command that starts this agent.")?;
-    if let Some(message) = known_broken(&binary) {
-        return Err(message);
-    }
     let dir = std::env::temp_dir().join("kontinue-acp-probe");
     let _ = std::fs::create_dir_all(&dir);
     let mut conn = Conn::spawn(&binary, config, &dir, None)?;
@@ -619,9 +614,10 @@ pub(super) async fn probe_models(config: &CliConfig) -> Result<Vec<CliModel>, St
     let cwd = dir.to_string_lossy().to_string();
     let result = tokio::time::timeout(std::time::Duration::from_secs(45), async {
         conn.request("initialize", initialize_params(), &mut handler).await?;
-        // No sign-in retry here: probes run in the background and must never
-        // open a browser.
-        conn.request("session/new", json!({ "cwd": cwd, "mcpServers": [] }), &mut handler).await
+        // Only non-OAuth methods may authenticate here: probes run in the
+        // background and must never open a browser.
+        let params = json!({ "cwd": cwd, "mcpServers": [] });
+        new_session(&mut conn, &mut handler, params, config, false).await
     })
     .await;
     conn.stop();
@@ -640,7 +636,7 @@ pub(super) async fn probe_models(config: &CliConfig) -> Result<Vec<CliModel>, St
 
 /// Deletes the sessions model probes left in the agent's history. Only
 /// sessions in the probe's own temp folder are touched, and only for agents
-/// whose storage Kontinue knows (OpenCode, Gemini CLI); others keep them.
+/// whose storage Kontinue knows (OpenCode, Gemini CLI, Antigravity); others keep them.
 async fn forget_probe_sessions(binary: &Path, config: &CliConfig, probe_dir: &Path) {
     let probe = std::fs::canonicalize(probe_dir).unwrap_or_else(|_| probe_dir.to_path_buf());
     let same_dir = |dir: &str| {
@@ -679,12 +675,48 @@ async fn forget_probe_sessions(binary: &Path, config: &CliConfig, probe_dir: &Pa
         }
         "gemini" => {
             // ~/.gemini/tmp/<project>/ with a `.project_root` naming the folder.
-            let Some(home) = std::env::var_os("HOME") else { return };
-            let Ok(projects) = std::fs::read_dir(Path::new(&home).join(".gemini").join("tmp")) else { return };
+            let base = if !config.home_dir.trim().is_empty() {
+                PathBuf::from(super::expand_home(config.home_dir.trim())).join(".gemini")
+            } else if let Some(h) = super::login_var("GEMINI_CLI_HOME") {
+                PathBuf::from(super::expand_home(&h)).join(".gemini")
+            } else {
+                let Some(home) = std::env::var_os("HOME") else { return };
+                Path::new(&home).join(".gemini")
+            };
+            let Ok(projects) = std::fs::read_dir(base.join("tmp")) else { return };
             for project in projects.flatten() {
                 let root = std::fs::read_to_string(project.path().join(".project_root")).unwrap_or_default();
                 if !root.trim().is_empty() && same_dir(&root) {
                     let _ = std::fs::remove_dir_all(project.path().join("chats"));
+                }
+            }
+        }
+        "antigravity" => {
+            // <gemini_home>/antigravity-acp/conversations/<id>.db + <id>.meta
+            let base = if !config.home_dir.trim().is_empty() {
+                PathBuf::from(super::expand_home(config.home_dir.trim()))
+            } else if let Some(h) = super::login_var("GEMINI_HOME") {
+                PathBuf::from(super::expand_home(&h))
+            } else {
+                let Some(home) = std::env::var_os("HOME") else { return };
+                Path::new(&home).join(".gemini")
+            };
+            let conv_dir = base.join("antigravity-acp").join("conversations");
+            let brain_dir = base.join("antigravity-acp").join("brain");
+            let Ok(entries) = std::fs::read_dir(&conv_dir) else { return };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|e| e.to_str()) != Some("meta") {
+                    continue;
+                }
+                let Ok(text) = std::fs::read_to_string(&path) else { continue };
+                let Ok(meta) = serde_json::from_str::<Value>(&text) else { continue };
+                let Some(cwd) = meta.get("cwd").and_then(Value::as_str) else { continue };
+                if same_dir(cwd) {
+                    let Some(stem) = path.file_stem().map(|s| s.to_string_lossy().to_string()) else { continue };
+                    let _ = std::fs::remove_file(&path);
+                    let _ = std::fs::remove_file(conv_dir.join(format!("{stem}.db")));
+                    let _ = std::fs::remove_dir_all(brain_dir.join(&stem));
                 }
             }
         }
@@ -700,10 +732,6 @@ pub(super) async fn authenticate(
     config: &CliConfig,
     on_line: Channel<String>,
 ) -> Result<CliTaskResult, String> {
-    if let Some(message) = known_broken(binary) {
-        let _ = on_line.send(message.clone());
-        return Ok(CliTaskResult { success: false, stopped: false, output: message });
-    }
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
     let mut conn = Conn::spawn(binary, config, Path::new(&home), Some(on_line.clone()))?;
     state.runs.lock().map_err(|_| "Run state unavailable")?.insert(run_id, conn.pid);
@@ -790,5 +818,12 @@ mod tests {
 
         let setup = json!({"configOptions":[{"id":"model","category":"model","options":[{"group":"A","options":[{"value":"m1","name":"Model 1"}]}]}]});
         assert_eq!(models_from(&setup)[0].id, "m1");
+
+        assert!(!is_noninteractive_auth(""));
+        assert!(!is_noninteractive_auth("oauth-personal"));
+        assert!(!is_noninteractive_auth("oauth-business"));
+        assert!(is_noninteractive_auth("gemini-api-key"));
+        assert!(is_noninteractive_auth("vertex-ai"));
+        assert!(is_noninteractive_auth("agent-platform"));
     }
 }

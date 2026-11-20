@@ -127,6 +127,7 @@ async fn install_inner(
         let program = dest.join(cmd.trim_start_matches("./"));
         let installed = std::fs::read_to_string(dest.join(VERSION_FILE)).unwrap_or_default();
         if program.is_file() && installed.trim() == version {
+            repair_macos_par_signature(&program);
             return Ok(format!("{name} {version} is the latest version. You're up to date."));
         }
     }
@@ -215,7 +216,40 @@ async fn install_inner(
             }
         }
     }
+    repair_macos_par_signature(&program);
     Ok(format!("Installed {name} {version}."))
+}
+
+/// Google's x86_64 `.par` downloads (Antigravity's `agy_acp_server.par`) are
+/// signed with Hardened Runtime (`flags=0x10000`) and no `allow-jit`
+/// entitlement. When Python's `_ctypes` loads on Intel macOS, `libffi`'s
+/// `dlmmap` gets `EACCES` on anonymous `PROT_EXEC` memory and falls back to an
+/// unlinked temp file mapped `PROT_READ | PROT_EXEC`. The Hardened Runtime
+/// blocks mapping an unsigned temp file as executable too, and `dlmmap_locked`
+/// has an index bug that resets its 5-candidate loop before checking the end,
+/// spinning forever creating and unlinking `/tmp/ffiXXXXXX`. Re-signing ad-hoc
+/// clears the Hardened Runtime flag so `mmap` succeeds on the first call.
+pub(super) fn repair_macos_par_signature(binary: &Path) {
+    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+    {
+        if binary.extension().is_some_and(|e| e == "par") && managed_id(binary).is_some() && binary.is_file() {
+            let info = std::process::Command::new("codesign")
+                .args(["-d", "-v"])
+                .arg(binary)
+                .output();
+            let hardened = info
+                .map(|out| String::from_utf8_lossy(&out.stderr).contains("(runtime)"))
+                .unwrap_or(false);
+            if hardened {
+                let _ = std::process::Command::new("codesign")
+                    .args(["--force", "--sign", "-"])
+                    .arg(binary)
+                    .status();
+            }
+        }
+    }
+    #[cfg(not(all(target_os = "macos", target_arch = "x86_64")))]
+    let _ = binary;
 }
 
 fn unpack(archive: &Path, out: &Path, cmd: &str) -> Result<(), String> {

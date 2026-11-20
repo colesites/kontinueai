@@ -336,6 +336,8 @@ fn agent_dirs(id: &str, dirs: &[&str], home: &str) -> Vec<PathBuf> {
         .map(|dir| match (id, *dir) {
             ("claude", ".claude") => var("CLAUDE_CONFIG_DIR"),
             ("codex", ".codex") => var("CODEX_HOME"),
+            ("gemini", ".gemini") => var("GEMINI_HOME")
+                .or_else(|| var("GEMINI_CLI_HOME").map(|h| h.join(".gemini"))),
             (_, d) if d.starts_with(".local/share/") => var("XDG_DATA_HOME").map(|x| x.join(&d[".local/share/".len()..])),
             (_, d) if d.starts_with(".config/") => var("XDG_CONFIG_HOME").map(|x| x.join(&d[".config/".len()..])),
             _ => None,

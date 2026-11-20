@@ -294,9 +294,37 @@ export function cliLoginCommand(instance: InstanceRef & { config?: { homeDir?: s
   return command;
 }
 
-/** OpenCode: one data folder per account (XDG_DATA_HOME, see cli_agents.rs). */
+/** Per-account config/data folder field for ACP agents that support one (see cli_agents.rs). */
+export function dataFolderInfo(
+  instance: { kind: string; preset?: string | null },
+): { label: string; description: string; placeholder: string } | null {
+  if (instance.kind !== "acp") return null;
+  switch (instance.preset) {
+    case "opencode":
+      return {
+        label: "Data folder (XDG_DATA_HOME)",
+        description: "Where this account's OpenCode sign-ins and sessions live. Use a different folder for each account.",
+        placeholder: "~/.local/share",
+      };
+    case "antigravity":
+      return {
+        label: "Config folder (GEMINI_HOME)",
+        description: "Where this account's Antigravity sign-in and sessions live. Leave empty for ~/.gemini.",
+        placeholder: "~/.gemini-work",
+      };
+    case "gemini":
+      return {
+        label: "Home folder (GEMINI_CLI_HOME)",
+        description: "Parent folder for this account's .gemini settings and sessions. Leave empty for your home folder.",
+        placeholder: "~/.gemini-work",
+      };
+    default:
+      return null;
+  }
+}
+
 export function usesDataFolder(instance: { kind: string; preset?: string | null }): boolean {
-  return instance.kind === "acp" && instance.preset === "opencode";
+  return dataFolderInfo(instance) !== null;
 }
 
 export function cliNeedsLogin(statuses: CliStatus[] | null, instanceId: string): boolean {

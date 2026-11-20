@@ -16,7 +16,7 @@
     },
     "apps/desktop": {
       "name": "kontinue-ai",
-      "version": "0.1.1-alpha.8",
+      "version": "0.1.1-alpha.9",
       "dependencies": {
         "@clerk/clerk-js": "5.125.10",
         "@clerk/clerk-react": "^5.61.2",
