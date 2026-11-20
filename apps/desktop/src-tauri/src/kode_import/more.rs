@@ -47,8 +47,12 @@ fn cursor_user_dir(home: &Path) -> PathBuf {
         home.join(".config/Cursor/User")
     }
 }
-fn antigravity_root(home: &Path) -> PathBuf {
-    home.join(".gemini").join("antigravity").join("conversations")
+fn antigravity_roots(home: &Path) -> [PathBuf; 2] {
+    let gemini = home.join(".gemini");
+    [
+        gemini.join("antigravity").join("conversations"),
+        gemini.join("antigravity-acp").join("conversations"),
+    ]
 }
 
 /// Gemini CLI (before its project slugs) named its per-project folder after sha256(cwd).
@@ -77,9 +81,14 @@ pub(super) fn detect_sources(home: &Path) -> Vec<SessionSource> {
     };
     let sqlite = sqlite_available();
     let needs_sqlite = |agent: &str| (!sqlite).then(|| format!("Needs the sqlite3 command to read {agent}'s history."));
-    let encrypted_antigravity = std::fs::read_dir(antigravity_root(home))
-        .map(|entries| entries.flatten().any(|e| e.path().extension().and_then(|x| x.to_str()) == Some("pb")))
-        .unwrap_or(false);
+    let roots = antigravity_roots(home);
+    let has_antigravity = roots.iter().any(|r| r.is_dir());
+    let encrypted_antigravity = roots
+        .iter()
+        .filter_map(|r| std::fs::read_dir(r).ok())
+        .flatten()
+        .flatten()
+        .any(|e| e.path().extension().and_then(|x| x.to_str()) == Some("pb"));
     let antigravity_note = needs_sqlite("Antigravity").or_else(|| {
         encrypted_antigravity.then(|| "Older Antigravity conversations are stored encrypted, so only newer ones are listed.".to_string())
     });
@@ -101,7 +110,7 @@ pub(super) fn detect_sources(home: &Path) -> Vec<SessionSource> {
             sqlite || opencode_root(home).join("session").is_dir(),
             needs_sqlite("OpenCode").as_deref(),
         ),
-        source(ANTIGRAVITY_PROVIDER, "Antigravity", antigravity_root(home).is_dir(), sqlite, antigravity_note.as_deref()),
+        source(ANTIGRAVITY_PROVIDER, "Antigravity", has_antigravity, sqlite, antigravity_note.as_deref()),
         source(AIDER_PROVIDER, "Aider", true, true, Some("Read from .aider.chat.history.md in the project folder.")),
     ]
 }
@@ -1013,6 +1022,14 @@ fn from_hex(text: &str) -> Vec<u8> {
 }
 
 fn antigravity_workspace(db: &Path) -> Option<String> {
+    if let Some(cwd) = std::fs::read_to_string(db.with_extension("meta"))
+        .ok()
+        .and_then(|text| serde_json::from_str::<Value>(&text).ok())
+        .and_then(|meta| meta.get("cwd")?.as_str().map(str::to_string))
+        .filter(|cwd| !cwd.trim().is_empty())
+    {
+        return Some(cwd);
+    }
     let row = sqlite_rows(db, "select hex(data) as data from trajectory_metadata_blob where id = 'main'").into_iter().next()?;
     let blob = from_hex(row.get("data")?.as_str()?);
     let uri = pb_string(&blob, &[7]).filter(|uri| !uri.is_empty()).or_else(|| pb_string(&blob, &[1, 1]))?;
@@ -1071,32 +1088,34 @@ fn scan_antigravity(home: &Path, filter: Option<&Path>, out: &mut Vec<CodingSess
     if !sqlite_available() {
         return;
     }
-    let Ok(entries) = std::fs::read_dir(antigravity_root(home)) else { return };
-    for entry in entries.flatten() {
-        let db = entry.path();
-        if db.extension().and_then(|e| e.to_str()) != Some("db") {
-            continue;
+    for root in antigravity_roots(home) {
+        let Ok(entries) = std::fs::read_dir(root) else { continue };
+        for entry in entries.flatten() {
+            let db = entry.path();
+            if db.extension().and_then(|e| e.to_str()) != Some("db") {
+                continue;
+            }
+            let cwd = antigravity_workspace(&db);
+            if !keep_session_dir(cwd.as_deref(), filter) {
+                continue;
+            }
+            let first = sqlite_rows(&db, &format!("select hex(step_payload) as p from steps where step_type = {ANTIGRAVITY_USER_INPUT} order by idx limit 1"));
+            let Some(step) = first.first().and_then(|r| r.get("p")).and_then(Value::as_str).map(from_hex) else { continue };
+            let title = antigravity_user_text(&step);
+            if title.trim().is_empty() {
+                continue;
+            }
+            let id = db.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            out.push(summary(
+                ANTIGRAVITY_PROVIDER,
+                id,
+                title.lines().find(|l| !l.trim().is_empty()).unwrap_or("").to_string(),
+                cwd,
+                db_modified_ms(&db),
+                db.to_string_lossy().to_string(),
+                std::fs::metadata(&db).map(|m| m.len()).unwrap_or(0),
+            ));
         }
-        let cwd = antigravity_workspace(&db);
-        if !keep_session_dir(cwd.as_deref(), filter) {
-            continue;
-        }
-        let first = sqlite_rows(&db, &format!("select hex(step_payload) as p from steps where step_type = {ANTIGRAVITY_USER_INPUT} order by idx limit 1"));
-        let Some(step) = first.first().and_then(|r| r.get("p")).and_then(Value::as_str).map(from_hex) else { continue };
-        let title = antigravity_user_text(&step);
-        if title.trim().is_empty() {
-            continue;
-        }
-        let id = db.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        out.push(summary(
-            ANTIGRAVITY_PROVIDER,
-            id,
-            title.lines().find(|l| !l.trim().is_empty()).unwrap_or("").to_string(),
-            cwd,
-            db_modified_ms(&db),
-            db.to_string_lossy().to_string(),
-            std::fs::metadata(&db).map(|m| m.len()).unwrap_or(0),
-        ));
     }
 }
 
@@ -1188,12 +1207,19 @@ pub(super) fn read_more(home: &Path, provider: &str, source: &str) -> Option<Res
                 .map(|text| parse_aider_history(&text, &path))
         }
         CURSOR_PROVIDER => read_cursor(home, source),
-        ANTIGRAVITY_PROVIDER => inside(antigravity_root(home)).and_then(|path| {
-            if path.extension().and_then(|e| e.to_str()) != Some("db") {
-                return Err("Only newer Antigravity conversations can be read; older ones are encrypted.".into());
-            }
-            read_antigravity(&path)
-        }),
+        ANTIGRAVITY_PROVIDER => {
+            let roots = antigravity_roots(home);
+            let checked = roots
+                .iter()
+                .find_map(|root| inside(root.clone()).ok())
+                .ok_or_else(|| "The session is outside the agent's history folder.".to_string());
+            checked.and_then(|path| {
+                if path.extension().and_then(|e| e.to_str()) != Some("db") {
+                    return Err("Only newer Antigravity conversations can be read; older ones are encrypted.".into());
+                }
+                read_antigravity(&path)
+            })
+        }
         _ => return None,
     })
 }

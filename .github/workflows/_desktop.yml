@@ -97,6 +97,12 @@ jobs:
             echo "$tag does not exist yet: the draft release will be created."
           fi
 
+      # Antigravity (registry download for this runner) and Gemini CLI must
+      # start and answer ACP. Catches Google shipping a build that hangs or
+      # crashes on this OS before we build installers around it.
+      - name: Agent smoke test
+        run: node apps/desktop/scripts/smoke-acp-agents.mjs
+
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
@@ -160,3 +166,16 @@ jobs:
           releaseDraft: true
           prerelease: false
           includeUpdaterJson: true
+
+  # macos-latest is Apple silicon, but Antigravity's Intel Mac download is the
+  # one that hung (Hardened Runtime + libffi; acp_registry.rs
+  # repair_macos_par_signature). Smoke-test it on a real Intel runner too.
+  agents-intel-mac:
+    name: Agent smoke test macOS Intel
+    if: inputs.platform == 'macos'
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Agent smoke test
+        run: node apps/desktop/scripts/smoke-acp-agents.mjs

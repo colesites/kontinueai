@@ -32,7 +32,15 @@ mod registry;
 /// Settings that move where the agents keep their data. Apps opened from the
 /// Dock don't see the shell profile, so these are read from the login shell
 /// (like PATH) and passed on to every CLI this app starts.
-const LOGIN_VARS: &[&str] = &["CLAUDE_CONFIG_DIR", "CODEX_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"];
+const LOGIN_VARS: &[&str] = &[
+    "CLAUDE_CONFIG_DIR",
+    "CODEX_HOME",
+    "GEMINI_HOME",
+    "GEMINI_CLI_HOME",
+    "XDG_CONFIG_HOME",
+    "XDG_DATA_HOME",
+    "XDG_CACHE_HOME",
+];
 
 fn login_vars() -> &'static HashMap<String, String> {
     static VARS: OnceLock<HashMap<String, String>> = OnceLock::new();
@@ -285,6 +293,15 @@ fn resolve_binary(provider: CliProvider, config: &CliConfig) -> Option<PathBuf> 
     let expanded = expand_home(custom);
     if expanded.contains('/') || expanded.contains('\\') {
         let path = PathBuf::from(expanded);
+        // Antigravity's fallback command names the macOS/Linux `.par`; its
+        // Windows download is `agy_acp_server.exe` in the same folder.
+        #[cfg(windows)]
+        if !path.is_file() && path.extension().is_some_and(|e| e == "par") {
+            let exe = path.with_extension("exe");
+            if exe.is_file() {
+                return Some(exe);
+            }
+        }
         return path.is_file().then_some(path);
     }
     find_binary(&expanded)
@@ -331,9 +348,18 @@ fn cli_command(provider: CliProvider, binary: &Path, config: &CliConfig) -> Comm
         cmd.env(var, expand_home(home));
     }
     // OpenCode keeps its sign-ins and sessions under $XDG_DATA_HOME/opencode,
-    // so a separate data folder is a separate account.
-    if provider == CliProvider::Acp && config.preset == "opencode" && !home.is_empty() {
-        cmd.env("XDG_DATA_HOME", expand_home(home));
+    // Antigravity under $GEMINI_HOME/antigravity-acp, and Gemini CLI under
+    // $GEMINI_CLI_HOME/.gemini, so a separate folder is a separate account.
+    if provider == CliProvider::Acp && !home.is_empty() {
+        let var = match config.preset.as_str() {
+            "opencode" => Some("XDG_DATA_HOME"),
+            "antigravity" => Some("GEMINI_HOME"),
+            "gemini" => Some("GEMINI_CLI_HOME"),
+            _ => None,
+        };
+        if let Some(var) = var {
+            cmd.env(var, expand_home(home));
+        }
     }
     for (name, value) in &config.env {
         if !name.trim().is_empty() {

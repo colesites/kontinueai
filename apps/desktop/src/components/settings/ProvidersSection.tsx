@@ -38,7 +38,7 @@ import {
 import {
   ACP_PRESETS,
   cliLoginCommand,
-  usesDataFolder,
+  dataFolderInfo,
   cliModelCatalog,
   cliPlanLabel,
   cliVersionIssue,
@@ -581,7 +581,12 @@ function InstanceDetail({
               </div>
               <Select
                 value={instance.config.authMethod || (ACP_PRESETS[instance.preset ?? "custom"].authMethods?.[0]?.id ?? "")}
-                onChange={(authMethod) => updateProvider(instance.id, { config: { ...instance.config, authMethod } })}
+                onChange={(authMethod) => {
+                  const latest = getProvider(instance.id) ?? instance;
+                  updateProvider(instance.id, { config: { ...latest.config, authMethod } });
+                  const updated = getProvider(instance.id);
+                  if (updated) void loadInstanceModels(updated);
+                }}
                 minWidth={200}
                 options={(ACP_PRESETS[instance.preset ?? "custom"].authMethods ?? []).map((m) => ({
                   value: m.id,
@@ -610,15 +615,18 @@ function InstanceDetail({
               description="Use a separate config and sign-in folder, for example a second account."
               placeholder={instance.kind === "claude" ? "~/.claude" : "~/.codex"}
             />
-          ) : usesDataFolder(instance) ? (
-            <ConfigField
-              instance={instance}
-              field="homeDir"
-              label="Data folder (XDG_DATA_HOME)"
-              description="Where this account's OpenCode sign-ins and sessions live. Use a different folder for each account."
-              placeholder="~/.local/share"
-            />
-          ) : null}
+          ) : (() => {
+            const folder = dataFolderInfo(instance);
+            return folder ? (
+              <ConfigField
+                instance={instance}
+                field="homeDir"
+                label={folder.label}
+                description={folder.description}
+                placeholder={folder.placeholder}
+              />
+            ) : null;
+          })()}
           <ConfigField
             instance={instance}
             field="launchArgs"
@@ -859,10 +867,16 @@ function VariablesEditor({ instance }: { instance: ProviderInstance }) {
   }, [instance.id, secretNames]);
 
   const latestVariables = () => (getProvider(instance.id) ?? instance).variables;
-  const putVariable = (variable: ProviderVariable) =>
+  const reloadModels = () => {
+    const latest = getProvider(instance.id);
+    if (latest && latest.kind === "acp" && latest.enabled) void loadInstanceModels(latest);
+  };
+  const putVariable = (variable: ProviderVariable) => {
     updateProvider(instance.id, {
       variables: [...latestVariables().filter((v) => v.name !== variable.name), variable],
     });
+    reloadModels();
+  };
 
   const addDraft = () =>
     setDrafts((rows) => [...rows, { key: nextKey.current++, name: "", value: "", secret: false }]);
@@ -894,6 +908,7 @@ function VariablesEditor({ instance }: { instance: ProviderInstance }) {
       if (!value) return; // left empty: keep the stored secret
       await saveSecret(instance.id, variable.name, value);
       void refreshSaved();
+      reloadModels();
     } else if (value !== variable.value) {
       putVariable({ ...variable, value });
     }
@@ -915,6 +930,7 @@ function VariablesEditor({ instance }: { instance: ProviderInstance }) {
   const remove = (variable: ProviderVariable) => {
     if (variable.secret) void removeSecret(instance.id, variable.name);
     updateProvider(instance.id, { variables: latestVariables().filter((v) => v.name !== variable.name) });
+    reloadModels();
   };
 
   return (
