@@ -1,8 +1,10 @@
 // Annotations: notes pinned to selected text (a reply, a file) or to an
 // element in the browser preview. They wait as chips in the composer and go
-// out with your next message, then clear.
+// out with your next message, then clear. Each belongs to the thread that was
+// open when it was made (its composer's draft key), so a note doesn't follow
+// you into another thread.
 
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 
 export type KodeAnnotation =
   | {
@@ -30,39 +32,49 @@ type NewAnnotation =
   | Omit<Extract<KodeAnnotation, { kind: "text" }>, "id">
   | Omit<Extract<KodeAnnotation, { kind: "element" }>, "id">;
 
-const EMPTY: KodeAnnotation[] = [];
-let items: KodeAnnotation[] = EMPTY;
+type Scoped = { scope: string; annotation: KodeAnnotation };
+
+const EMPTY: Scoped[] = [];
+let items: Scoped[] = EMPTY;
+let currentScope = "default";
 const listeners = new Set<() => void>();
 
-function commit(next: KodeAnnotation[]) {
+function commit(next: Scoped[]) {
   items = next.length ? next : EMPTY;
   for (const listener of listeners) listener();
 }
 
-export function useAnnotations(): KodeAnnotation[] {
-  return useSyncExternalStore(
+/** The thread in view (PlanView): new notes belong to it. */
+export function setAnnotationScope(scope: string) {
+  currentScope = scope;
+}
+
+/** The notes waiting in this thread's composer. */
+export function useAnnotations(scope: string = currentScope): KodeAnnotation[] {
+  const all = useSyncExternalStore(
     (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
     () => items,
   );
+  return useMemo(() => all.filter((item) => item.scope === scope).map((item) => item.annotation), [all, scope]);
 }
 
 export function addAnnotation(annotation: NewAnnotation) {
   const id = `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-  commit([...items, { ...annotation, id } as KodeAnnotation]);
+  commit([...items, { scope: currentScope, annotation: { ...annotation, id } as KodeAnnotation }]);
 }
 
 export function removeAnnotation(id: string) {
-  if (items.some((item) => item.id === id)) commit(items.filter((item) => item.id !== id));
+  if (items.some((item) => item.annotation.id === id)) commit(items.filter((item) => item.annotation.id !== id));
 }
 
-/** Hand the pending annotations to a send and clear them. */
-export function takeAnnotations(): KodeAnnotation[] {
-  const taken = items;
-  if (taken.length) commit([]);
-  return taken;
+/** Hand this thread's pending annotations to a send and clear them. */
+export function takeAnnotations(scope: string = currentScope): KodeAnnotation[] {
+  const taken = items.filter((item) => item.scope === scope);
+  if (taken.length) commit(items.filter((item) => item.scope !== scope));
+  return taken.map((item) => item.annotation);
 }
 
 const QUOTE_CHARS = 1_200;

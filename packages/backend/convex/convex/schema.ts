@@ -287,96 +287,147 @@ export default defineSchema({
 		.index("by_chat_order", ["chatId", "order"])
 		.index("by_owner", ["ownerId"]),
 
-	// ── Kode Web app builder (separate from the desktop IDE) ────────────────
-	kodeWebProjects: defineTable({
+	// ── Kode remote control (kodeRemote.ts) ─────────────────────────────────
+	// A desktop app (the host) runs Kode chats on the user's computer; the
+	// mobile and web apps steer it through these tables. Both sides only make
+	// outbound Convex connections, so it works from anywhere.
+	kodeRemoteDevices: defineTable({
 		ownerId: v.id("users"),
-		title: v.string(),
-		description: v.optional(v.string()),
-		status: v.union(
-			v.literal("draft"),
-			v.literal("building"),
-			v.literal("ready"),
-			v.literal("error"),
-		),
-		activeVersion: v.number(),
-		starred: v.boolean(),
-		lastError: v.optional(v.string()),
+		deviceId: v.string(),
+		name: v.string(),
+		platform: v.string(),
+		appVersion: v.optional(v.string()),
+		// Remote control switched on in the desktop app's settings.
+		enabled: v.boolean(),
+		// Models this computer can run, for the remote composer's picker.
+		models: v.array(v.object({ id: v.string(), name: v.string() })),
+		defaultModelId: v.optional(v.string()),
 		createdAt: v.number(),
 		updatedAt: v.number(),
-		lastBuildAt: v.optional(v.number()),
-	})
-		.index("by_owner_and_updated", ["ownerId", "updatedAt"])
-		.index("by_owner_and_starred_and_updated", [
-			"ownerId",
-			"starred",
-			"updatedAt",
-		]),
+	}).index("by_ownerId_and_deviceId", ["ownerId", "deviceId"]),
 
-	kodeWebMessages: defineTable({
-		projectId: v.id("kodeWebProjects"),
+	// Heartbeats, kept apart from the device row (high churn).
+	kodeRemotePresence: defineTable({
 		ownerId: v.id("users"),
-		role: v.union(v.literal("user"), v.literal("assistant")),
-		content: v.string(),
+		deviceId: v.string(),
+		lastSeenAt: v.number(),
+	}).index("by_ownerId_and_deviceId", ["ownerId", "deviceId"]),
+
+	// The computer's project folders (names only, never paths).
+	kodeRemoteProjects: defineTable({
+		ownerId: v.id("users"),
+		deviceId: v.string(),
+		projectKey: v.string(),
+		name: v.string(),
 		order: v.number(),
-		buildId: v.optional(v.id("kodeWebBuilds")),
-		createdAt: v.number(),
-	})
-		.index("by_project", ["projectId"])
-		.index("by_project_and_order", ["projectId", "order"])
-		.index("by_owner", ["ownerId"]),
+	}).index("by_ownerId_and_deviceId", ["ownerId", "deviceId"]),
 
-	kodeWebFiles: defineTable({
-		projectId: v.id("kodeWebProjects"),
+	// Which project each chat sits under on that computer.
+	kodeRemoteChatLinks: defineTable({
 		ownerId: v.id("users"),
-		version: v.number(),
-		path: v.string(),
-		language: v.string(),
-		content: v.string(),
-		createdAt: v.number(),
+		deviceId: v.string(),
+		chatId: v.id("kodeChats"),
+		projectKey: v.union(v.string(), v.null()),
+	})
+		.index("by_ownerId_and_deviceId", ["ownerId", "deviceId"])
+		.index("by_chatId", ["chatId"]),
+
+	// Live state of a chat's run on the computer: status, the reply so far,
+	// recent tool steps and anything waiting on the user.
+	kodeRemoteRuns: defineTable({
+		ownerId: v.id("users"),
+		deviceId: v.string(),
+		chatId: v.id("kodeChats"),
+		status: v.union(
+			v.literal("running"),
+			v.literal("awaiting"),
+			v.literal("idle"),
+		),
+		text: v.string(),
+		steps: v.array(
+			v.object({
+				id: v.string(),
+				name: v.string(),
+				label: v.string(),
+				state: v.string(),
+			}),
+		),
+		pending: v.array(
+			v.object({
+				id: v.string(),
+				kind: v.union(v.literal("approval"), v.literal("question")),
+				title: v.string(),
+				detail: v.optional(v.string()),
+				questions: v.optional(
+					v.array(
+						v.object({
+							question: v.string(),
+							kind: v.optional(v.string()),
+							options: v.array(
+								v.object({
+									value: v.string(),
+									label: v.string(),
+									description: v.optional(v.string()),
+								}),
+							),
+							allowOther: v.optional(v.boolean()),
+							placeholder: v.optional(v.string()),
+						}),
+					),
+				),
+			}),
+		),
+		modelId: v.optional(v.string()),
 		updatedAt: v.number(),
 	})
-		.index("by_project_and_version", ["projectId", "version"])
-		.index("by_project_and_version_and_path", ["projectId", "version", "path"])
-		.index("by_owner", ["ownerId"]),
+		.index("by_ownerId_and_deviceId", ["ownerId", "deviceId"])
+		.index("by_ownerId_and_chatId", ["ownerId", "chatId"]),
 
-	kodeWebBuilds: defineTable({
-		projectId: v.id("kodeWebProjects"),
+	// Commands from a phone or browser, claimed and run by the computer.
+	kodeRemoteCommands: defineTable({
 		ownerId: v.id("users"),
-		prompt: v.string(),
-		mode: v.optional(v.union(v.literal("build"), v.literal("plan"))),
+		deviceId: v.string(),
+		kind: v.union(
+			v.literal("send"),
+			v.literal("approve"),
+			v.literal("answer"),
+			v.literal("stop"),
+		),
+		chatId: v.id("kodeChats"),
+		projectKey: v.optional(v.union(v.string(), v.null())),
+		newChat: v.optional(v.boolean()),
+		text: v.optional(v.string()),
+		modelId: v.optional(v.string()),
+		mode: v.optional(v.string()),
+		stepId: v.optional(v.string()),
+		approved: v.optional(v.boolean()),
+		values: v.optional(v.array(v.string())),
 		status: v.union(
-			v.literal("queued"),
-			v.literal("planning"),
-			v.literal("generating"),
-			v.literal("validating"),
-			v.literal("completed"),
+			v.literal("pending"),
+			v.literal("done"),
 			v.literal("failed"),
 		),
-		targetVersion: v.number(),
-		creditCost: v.number(),
-		chargedCredits: v.optional(v.number()),
-		creditMonthKey: v.string(),
-		model: v.optional(v.string()),
-		inputTokens: v.optional(v.number()),
-		outputTokens: v.optional(v.number()),
-		totalTokens: v.optional(v.number()),
-		attachmentContext: v.optional(v.string()),
-		validation: v.optional(v.string()),
-		errorMessage: v.optional(v.string()),
+		error: v.optional(v.string()),
 		createdAt: v.number(),
-		completedAt: v.optional(v.number()),
+		expiresAt: v.number(),
+		finishedAt: v.optional(v.number()),
 	})
-		.index("by_project_and_created", ["projectId", "createdAt"])
-		.index("by_owner_and_created", ["ownerId", "createdAt"])
-		.index("by_owner_mode_created", ["ownerId", "mode", "createdAt"]),
+		.index("by_ownerId_and_deviceId_and_status", [
+			"ownerId",
+			"deviceId",
+			"status",
+		])
+		.index("by_status_and_createdAt", ["status", "createdAt"]),
 
-	kodeWebCredits: defineTable({
+	// Someone has this chat open remotely, so the computer streams the reply.
+	kodeRemoteWatchers: defineTable({
 		ownerId: v.id("users"),
-		monthKey: v.string(),
-		allowance: v.number(),
-		used: v.number(),
-		updatedAt: v.number(),
-	}).index("by_owner_and_month", ["ownerId", "monthKey"]),
+		deviceId: v.string(),
+		chatId: v.id("kodeChats"),
+		until: v.number(),
+	})
+		.index("by_ownerId_and_deviceId", ["ownerId", "deviceId"])
+		.index("by_ownerId_and_chatId", ["ownerId", "chatId"]),
 
 	memories: defineTable({
 		userId: v.id("users"),

@@ -111,8 +111,8 @@ export function SettingsUsagePanel({
 						className="h-2"
 					/>
 					<p className="text-[11px] leading-relaxed text-muted-foreground">
-						Shared by metered search, media, Live, Canvas AI actions, Kode AI
-						runs, and paid-model work. Opening Canvas or Kode uses no credits.
+						Shared by metered search, media, Live, Canvas AI actions, and
+						paid-model work. Opening Canvas uses no credits.
 					</p>
 				</div>
 				<KaiUsageSection usage={usage} />
@@ -136,7 +136,7 @@ export function SettingsUsagePanel({
 				/>
 				<p className="text-[11px] leading-relaxed text-muted-foreground">
 					{aiUsage.remaining.toLocaleString()} credits remain across chat,
-					search, media, Live, Canvas AI actions, and Kode AI runs.
+					search, media, Live, and Canvas AI actions.
 				</p>
 			</div>
 			<KaiUsageSection usage={usage} />

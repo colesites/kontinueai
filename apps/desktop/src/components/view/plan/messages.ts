@@ -23,6 +23,8 @@ export type ChatMessage = KodeWorkspaceMessage & {
   // Already saved to Convex (the user's message is saved when it is sent), so
   // the persisted copy shows instead of this one.
   saved?: boolean;
+  // Only the usage-limit card: the turn it stopped is already saved.
+  limitCard?: boolean;
   // The turn stopped on a usage limit: what to resend, and when it resets.
   limit?: {
     resetAt: number | null;

@@ -129,18 +129,18 @@ import { useKodeWorkspace } from "@/lib/kode-workspace";
 import { useReasoningPreference } from "@/lib/use-reasoning-preference";
 import { LimitCard, ScheduledBar } from "@/components/kode/ScheduledPrompts";
 import { mergeQueued, QueuedMessages, type QueuedMessage } from "@/components/chat/QueuedMessages";
-import { buildHandoff } from "@/lib/kode-handoff";
+import { buildHandoff, handoffBudget } from "@/lib/kode-handoff";
 import { redactSecrets, scanSecrets } from "@/lib/kode-secrets";
 import { condenseSteps } from "@/lib/kode-steps";
 import { setDenialNote } from "@/lib/kode-agent";
 import { HandoffChip, HandoffPreviewDialog } from "@/components/kode/HandoffPreview";
 import { getInterruptedTurn, interruptedTurnNote } from "@/lib/kode-tool-ledger";
 import { gitStatus } from "@/components/panel/panel-api";
-import { recordPrLinks } from "@/lib/kode-prs";
 import { rememberChatModel } from "@/lib/kode-pr-watch";
 import { publishSubagentModels } from "@/lib/kode-fanout";
+import { finishRemoteSend, remoteInboxSlot } from "@/lib/kode-remote-host";
 import { claimScheduledPrompt } from "@/lib/kode-continuity";
-import { takeAnnotations } from "@/lib/kode-annotations";
+import { setAnnotationScope, takeAnnotations } from "@/lib/kode-annotations";
 import { splitUserAttachments } from "@/lib/kode-attachments";
 import {
   getScheduledPrompts,
@@ -621,6 +621,12 @@ const PlanView = () => {
   };
 
   const currentKey = activeChatId ?? DRAFT_KEY;
+  // This thread's composer: its draft and its annotations (lib/kode-drafts,
+  // lib/kode-annotations), so neither follows you to another thread.
+  const composerKey = activeChatId ? `kode:${activeChatId}` : `kode:new:${draftProjectId ?? "none"}`;
+  useEffect(() => {
+    setAnnotationScope(composerKey);
+  }, [composerKey]);
 
   // ---- Messages typed while Kode is working (sent when the turn ends) ----
   const [queuedByChat, setQueuedByChat] = useRunSlot(queuedSlot);
@@ -699,6 +705,7 @@ const PlanView = () => {
       changedFiles: git?.isRepo ? git.files : [],
       importContext: importContext?.contextPrompt,
       interrupted: interrupted ? interruptedTurnNote(interrupted) : null,
+      budget: handoffBudget(getContextWindow(modelId, contextWindows, null, getModelName(modelId) ?? undefined)),
     });
     const kinds = scanSecrets(raw.text).map((m) => m.kind);
     const scrubbed = redactSecrets(raw.text);
@@ -779,21 +786,14 @@ const PlanView = () => {
     }
   };
 
-  // Link PRs to the chat that opened them (their URL shows up in its messages).
+  // Auto-fix prompts for this chat's PRs run on the model it last used. (PRs
+  // are linked when a turn pushes or opens one, see linkTurnPrs, not by
+  // scanning replies: a chat that only quoted a PR link isn't its chat.)
   useEffect(() => {
-    if (!activeChatId || persistedMessages.length === 0) return;
-    const title = chats.find((chat) => chat.id === activeChatId)?.title;
-    if (!title) return;
-    const replies = persistedMessages.filter((m) => m.role === "assistant");
-    recordPrLinks(
-      activeChatId,
-      title,
-      replies.map((m) => m.content),
-    );
-    // Auto-fix prompts for this chat's PRs run on the model it last used.
-    const lastModel = replies.at(-1)?.modelId;
+    if (!activeChatId) return;
+    const lastModel = persistedMessages.filter((m) => m.role === "assistant").at(-1)?.modelId;
     if (lastModel) rememberChatModel(activeChatId, lastModel);
-  }, [activeChatId, persistedMessages, chats]);
+  }, [activeChatId, persistedMessages]);
 
   // ---- Scheduled prompts ("send when my limit resets") ----
   const scheduled = useScheduledPrompts();
@@ -807,7 +807,7 @@ const PlanView = () => {
   // One turn from a typed message to a saved reply (plan/submit-prompt.tsx).
   const submitPrompt = createSubmitPrompt({
     chats, activeChatId, draftProjectId, createChatRecord, addMessageRecord, selectChat,
-    rewindAfter, ensureFolder, abortByChat, allPersistedMessages, appSettings, autoEditChats,
+    ensureFolder, abortByChat, allPersistedMessages, appSettings, autoEditChats,
     chatPrefs, chatReasoning, cliStatuses, cliStore, compactionByChat, composeHandoff,
     connectorTools, contextWindows, homeDirRef, importContext, kodeModels, mcpTools, chatsRef, mode,
     persistedMessages, planTier, plugins, projectRoot, reasoningEnabled, runtime, selectedModelId,
@@ -825,6 +825,20 @@ const PlanView = () => {
     void submitRef.current(next.text || (next.annotations.length ? "Please address my notes." : next.text), next.modelId, next.attachments, next.reasoning, undefined, undefined, next.annotations);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sendingChats, currentKey, queued.length]);
+  // A prompt sent from your phone or the web app (lib/kode-remote-host.tsx):
+  // the host opened its chat; send it once the chat is here and idle.
+  const [remoteInbox] = useRunSlot(remoteInboxSlot);
+  useEffect(() => {
+    const next = remoteInbox.find((item) => item.chatId === activeChatId);
+    if (!next || sendingChats[next.chatId] || !chats.some((chat) => chat.id === next.chatId)) return;
+    remoteInboxSlot.set((list) => list.filter((item) => item.commandId !== next.commandId));
+    const modelId = next.modelId && kodeModels.some((model) => model.id === next.modelId) ? next.modelId : undefined;
+    finishRemoteSend(next, true);
+    void submitRef.current(next.text, modelId, undefined, undefined, next.mode).catch((error) =>
+      console.warn("[Kode remote] send failed:", error),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [remoteInbox, activeChatId, sendingChats, chats]);
   const sendScheduled = (item: ScheduledPrompt) => {
     removeScheduledPrompt(item.id);
     // Another open computer may have sent it already (kode-continuity.ts).
@@ -1424,6 +1438,7 @@ const PlanView = () => {
             />
           ) : null}
           <ChatInput
+            draftKey={composerKey}
             onDropChat={contextFromChat}
             contextChats={contextChats}
             compact={inChat}
@@ -1552,7 +1567,7 @@ const PlanView = () => {
             queueWhileLoading
             onSend={(text, mId, atts, _w, r) => {
               // Pending annotations go out with this message, then clear.
-              const notes = takeAnnotations();
+              const notes = takeAnnotations(composerKey);
               if (isCurrentSending) {
                 enqueue({ text, modelId: mId, attachments: atts, reasoning: r, annotations: notes });
                 return;

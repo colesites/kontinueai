@@ -1,17 +1,11 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
-import { KodeComingSoon } from "../../../features/kode/components/KodeComingSoon";
-import { KodeDashboard } from "../../../features/kode/components/KodeDashboard";
-import { isKodeComingSoon } from "../../../features/kode/lib/availability";
+import { KodeRemoteHome } from "../../../features/kode-remote/components/KodeRemoteHome";
 
 export const metadata: Metadata = {
-	title: "Kode — Kontinue AI",
-	description: "Build working web apps from a prompt with Kode.",
+	title: "Kode remote control - Kontinue AI",
+	description: "Run Kode on your computer from anywhere.",
 };
 
-export default async function KodePage() {
-	if (isKodeComingSoon((await headers()).get("host"))) {
-		return <KodeComingSoon />;
-	}
-	return <KodeDashboard />;
+export default function KodeRemotePage() {
+	return <KodeRemoteHome />;
 }

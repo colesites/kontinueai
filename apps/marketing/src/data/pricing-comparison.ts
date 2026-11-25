@@ -105,7 +105,7 @@ export const pricingComparisonSections: PricingComparisonSection[] = [
 			{
 				label: "AI usage credits",
 				description:
-					"Shared metering for paid chat tokens and K-AI fallbacks, web search, K-Image, K-Video, Kontinue Live, AI actions in Canvas, and Kode AI runs. Simply opening Canvas or Kode does not use credits.",
+					"Shared metering for paid chat tokens and K-AI fallbacks, web search, K-Image, K-Video, Kontinue Live, and AI actions in Canvas. Simply opening Canvas does not use credits.",
 				values: values(
 					count(free.limits.aiUsageCredits),
 					count(starter.limits.aiUsageCredits),
@@ -341,15 +341,15 @@ export const pricingComparisonSections: PricingComparisonSection[] = [
 				),
 			},
 			{
-				label: "Kode",
+				label: "Kode desktop",
 				description:
-					"Kode access and build-count limits are included. Kode reserves AI units while it works and returns unused units. One unit covers up to 25K model tokens and costs 25 shared AI usage credits.",
+					"The Kode coding app. Usage is measured by real model cost, so lighter models go further. A 5-hour and a weekly limit apply; paid plans keep Kode 1.0 working after a limit is reached. Usage shown relative to Free.",
 				values: values(
-					free.limits.kodeAccess,
-					starter.limits.kodeAccess,
-					plus.limits.kodeAccess,
-					`${pro.limits.kodeAccess} · ${pro.limits.kodeBuilds} builds/month`,
-					`${max.limits.kodeAccess} · ${max.limits.kodeBuilds} builds/month`,
+					free.limits.kodeDesktop,
+					starter.limits.kodeDesktop,
+					plus.limits.kodeDesktop,
+					pro.limits.kodeDesktop,
+					max.limits.kodeDesktop,
 				),
 			},
 		],

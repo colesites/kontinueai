@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildHandoff, describeHandoff } from "./kode-handoff";
+import { buildHandoff, describeHandoff, handoffBudget } from "./kode-handoff";
 
 describe("buildHandoff", () => {
   test("includes task, recent turns, plan and project state", () => {
@@ -46,5 +46,15 @@ describe("buildHandoff", () => {
     expect(handoff.omittedMessages).toBeGreaterThan(0);
     expect(handoff.text).toContain("earlier messages left out");
     expect(handoff.text.length).toBeLessThan(4_500);
+  });
+});
+
+describe("hand-off size", () => {
+  test("grows with the joining model's context window", () => {
+    expect(handoffBudget(32_000)).toBe(32_000);
+    expect(handoffBudget(200_000)).toBe(200_000);
+    expect(handoffBudget(1_000_000)).toBe(400_000);
+    expect(handoffBudget(8_000)).toBe(28_000);
+    expect(handoffBudget(Number.NaN)).toBe(28_000);
   });
 });

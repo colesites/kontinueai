@@ -1,4 +1,3 @@
-import { type PlanTier, planLabel } from "@repo/core/plan-tier";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -31,8 +30,6 @@ type SidebarHeaderSectionProps = {
 	onSearchQueryChange: (value: string) => void;
 	onClearSearch: () => void;
 	onNavigate: () => void;
-	planTier: PlanTier;
-	kodeComingSoon: boolean;
 };
 
 export function SidebarHeaderSection({
@@ -40,8 +37,6 @@ export function SidebarHeaderSection({
 	onSearchQueryChange,
 	onClearSearch,
 	onNavigate,
-	planTier,
-	kodeComingSoon,
 }: SidebarHeaderSectionProps) {
 	return (
 		<SidebarHeader className="border-b border-foreground/6 -mx-2 px-5 py-3.5 gap-3.5">
@@ -225,16 +220,7 @@ export function SidebarHeaderSection({
 						<DropdownMenuItem asChild>
 							<Link href="/kode" onClick={onNavigate} className="gap-2">
 								<Braces className="size-4 text-primary" />
-								<div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-									<span>Kode</span>
-									<span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-primary">
-										{kodeComingSoon
-											? "Coming soon"
-											: planTier === "pro" || planTier === "max"
-												? planLabel(planTier)
-												: "Locked"}
-									</span>
-								</div>
+								<span>Kode</span>
 							</Link>
 						</DropdownMenuItem>
 						<DropdownMenuItem asChild>

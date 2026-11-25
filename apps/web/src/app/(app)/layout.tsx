@@ -4,7 +4,6 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AppRouteFallback } from "../../components/RouteLoadingFallbacks";
-import { isKodeComingSoon } from "../../features/kode/lib/availability";
 import {
 	clerkPostAuthRedirect,
 	DESKTOP_AUTH_RETURN_COOKIE,
@@ -47,12 +46,11 @@ async function AuthenticatedAppLayout({
 	if (desktopReturn) redirect(desktopReturn);
 
 	const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
-	const kodeComingSoon = isKodeComingSoon(null);
 
 	return (
 		<Providers>
 			<AppProviders>
-				<AppShell defaultOpen={defaultOpen} kodeComingSoon={kodeComingSoon}>
+				<AppShell defaultOpen={defaultOpen}>
 					{children}
 				</AppShell>
 			</AppProviders>

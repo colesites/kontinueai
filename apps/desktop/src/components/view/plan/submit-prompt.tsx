@@ -75,13 +75,17 @@ import type { Handoff } from "@/lib/kode-handoff";
 import { scanSecrets } from "@/lib/kode-secrets";
 import { DRAFT_KEY, pendingSlot } from "./run-state";
 
+/** Sent when a turn that stopped on a usage limit carries on (its message
+ *  and partial reply are already in the chat). */
+const LIMIT_CONTINUE_PROMPT = "Continue from where you stopped.";
+
 type Workspace = ReturnType<typeof useKodeWorkspace>;
 type SlotSetter<T> = ReturnType<typeof useRunSlot<T>>[1];
 
 /** Everything the send path reads from the chat view. */
 export type SubmitDeps = Pick<
   Workspace,
-  "chats" | "activeChatId" | "draftProjectId" | "createChatRecord" | "addMessageRecord" | "selectChat" | "rewindAfter" | "ensureFolder"
+  "chats" | "activeChatId" | "draftProjectId" | "createChatRecord" | "addMessageRecord" | "selectChat" | "ensureFolder"
 > & {
   abortByChat: MutableRefObject<typeof runAborts>;
   allPersistedMessages: () => Promise<ChatMessage[]>;
@@ -140,7 +144,7 @@ export type ComposedHandoff = {
  */
 export function createSubmitPrompt(deps: SubmitDeps) {
   const {
-    chats, activeChatId, draftProjectId, createChatRecord, addMessageRecord, selectChat, rewindAfter, ensureFolder,
+    chats, activeChatId, draftProjectId, createChatRecord, addMessageRecord, selectChat, ensureFolder,
     abortByChat, allPersistedMessages, appSettings, autoEditChats, chatPrefs, chatReasoning, cliStatuses, cliStore,
     compactionByChat, composeHandoff, connectorTools, contextWindows, homeDirRef, importContext, kodeModels, mcpTools,
     chatsRef, mode, persistedMessages, planTier, plugins, projectRoot, reasoningEnabled, runtime,
@@ -167,7 +171,7 @@ export function createSubmitPrompt(deps: SubmitDeps) {
    * replacing it. Returns what could not be saved, to keep showing.
    */
   const settleLeftoverTurn = async (chatKey: string, chatId: string | null): Promise<ChatMessage[]> => {
-    const leftover = (pendingSlot.get()[chatKey] ?? []).filter((item) => !item.notice && !item.saved);
+    const leftover = (pendingSlot.get()[chatKey] ?? []).filter((item) => !item.notice && !item.saved && !item.limitCard);
     if (leftover.length === 0) return [];
     const unsaved: ChatMessage[] = [];
     for (const item of leftover) {
@@ -207,6 +211,28 @@ export function createSubmitPrompt(deps: SubmitDeps) {
     const linkPrsOfTurn = (chatId: string, steps: KodeToolStep[], reply: string) => {
       const title = chatsRef.current.find((chat) => chat.id === chatId)?.title ?? "Kode chat";
       void linkTurnPrs(chatId, title, projectRoot, steps, reply);
+    };
+    // Settings → General → Auto-resume limited threads: queue it for the
+    // reset time instead of waiting for a click on the limit card.
+    const scheduleLimitResume = (
+      target: string,
+      resetAt: number | null,
+      resumeText: string,
+      resumeAttachments: StagedAttachment[] | undefined,
+    ) => {
+      if (!getSettings().autoResumeLimited || !resetAt || resetAt <= Date.now() || target === DRAFT_KEY) return;
+      schedulePrompt({
+        chatId: target,
+        chatTitle: chats.find((chat) => chat.id === target)?.title ?? null,
+        text: resumeText,
+        modelId,
+        mode: modeOverride ?? mode,
+        attachments: resumeAttachments,
+        fireAt: resetAt + RESET_BUFFER_MS,
+        reason: "limit",
+      });
+      dropRunItems(target);
+      setScheduleNow(Date.now());
     };
     const draftProjectId = workspace.projectId;
     // Approving a plan switches mode and sends in the same tick, so use the
@@ -924,9 +950,13 @@ export function createSubmitPrompt(deps: SubmitDeps) {
 
       // Save what this turn did before it failed, so the chat keeps it: the
       // bubbles used to exist only on screen and were gone after a restart,
-      // and the next "continue" had no record of the work. Usage limits keep
-      // their card (it can schedule the retry) and are not saved here.
-      if (!limit && chatId && runKey !== DRAFT_KEY) {
+      // and the next "continue" had no record of the work. A usage limit is
+      // saved the same way (your message, the partial reply and its steps
+      // stay, as in Claude), and its card then offers to continue instead of
+      // sending the whole prompt again.
+      const continueLimit = (resetAt: number | null) =>
+        ({ resetAt, text: LIMIT_CONTINUE_PROMPT, modelId, mode: activeMode }) satisfies NonNullable<ChatMessage["limit"]>;
+      if (chatId && runKey !== DRAFT_KEY) {
         const live = pendingSlot.get()[runKey] ?? [];
         const reply = live.find((item) => item.id === thinkingMessage.id);
         const todos = reply?.toolTodos ?? [];
@@ -936,7 +966,7 @@ export function createSubmitPrompt(deps: SubmitDeps) {
             chatId,
             role: "assistant",
             content: withSteps(
-              interruptedReply(reply?.content ?? "", cleanLimitMarker(message), todos),
+              interruptedReply(reply?.content ?? "", limit ? "You reached a usage limit." : cleanLimitMarker(message), todos),
               [...turnSteps.values()],
             ),
             model: modelId,
@@ -944,70 +974,53 @@ export function createSubmitPrompt(deps: SubmitDeps) {
           });
           linkPrsOfTurn(chatId, [...turnSteps.values()], reply?.content ?? "");
           clearInterruptedTurn(runKey);
-          dropRunItems(runKey);
-          notifyRunEvent({ chatId: runKey, kind: "failed", detail: cleanLimitMarker(message).slice(0, 140) });
+          if (!limit) {
+            dropRunItems(runKey);
+            notifyRunEvent({ chatId: runKey, kind: "failed", detail: cleanLimitMarker(message).slice(0, 140) });
+            return;
+          }
+          // Only the limit card stays on screen; the turn itself is saved.
+          setPendingByChat((current) => ({
+            ...current,
+            [runKey]: [
+              {
+                ...thinkingMessage,
+                content: cleanLimitMarker(message),
+                toolSteps: undefined,
+                status: "error",
+                limitCard: true,
+                limit: continueLimit(limit.resetAt),
+              },
+            ],
+          }));
+          scheduleLimitResume(runKey, limit.resetAt, LIMIT_CONTINUE_PROMPT, undefined);
+          notifyRunEvent({ chatId: runKey, kind: "limit", detail: cleanLimitMarker(message).slice(0, 140) });
           return;
         } catch {
           // Couldn't save (offline?): keep the turn on screen as before.
         }
       }
 
-      // A usage limit leaves the turn unanswered: take back the saved message
-      // so the card's "send when it resets" doesn't show it twice.
-      if (limit && userMessageId) {
-        try {
-          await rewindAfter(userMessageId);
-        } catch {
-          // Leave it saved; the retry will just repeat it.
-        }
-      }
       setPendingByChat((current) => ({
         ...current,
         [runKey]: (current[runKey] ?? []).map((item) =>
-          item.id === userMessage.id && limit
-            ? { ...item, saved: false }
-            : item.id === thinkingMessage.id
+          item.id === thinkingMessage.id
             ? {
                 ...item,
                 content: cleanLimitMarker(message),
                 status: "error",
+                // Not saved: the card resends the prompt itself, unless your
+                // message already made it into the chat.
                 limit: limit
-                  ? {
-                      resetAt: limit.resetAt,
-                      text,
-                      modelId,
-                      mode: activeMode,
-                      attachments,
-                    }
+                  ? userMessageId
+                    ? continueLimit(limit.resetAt)
+                    : { resetAt: limit.resetAt, text, modelId, mode: activeMode, attachments }
                   : undefined,
               }
             : item,
         ),
       }));
-
-      // Settings → General → Auto-resume limited threads: queue the prompt for
-      // the reset time instead of waiting for a click on the limit card.
-      const settingsNow = getSettings();
-      if (
-        limit &&
-        settingsNow.autoResumeLimited &&
-        limit.resetAt &&
-        limit.resetAt > Date.now() &&
-        runKey !== DRAFT_KEY
-      ) {
-        schedulePrompt({
-          chatId: runKey,
-          chatTitle: chats.find((chat) => chat.id === runKey)?.title ?? null,
-          text,
-          modelId,
-          mode: activeMode,
-          attachments,
-          fireAt: limit.resetAt + RESET_BUFFER_MS,
-          reason: "limit",
-        });
-        dropRunItems(runKey);
-        setScheduleNow(Date.now());
-      }
+      if (limit) scheduleLimitResume(runKey, limit.resetAt, userMessageId ? LIMIT_CONTINUE_PROMPT : text, userMessageId ? undefined : attachments);
       notifyRunEvent({ chatId: runKey === DRAFT_KEY ? null : runKey, kind: limit ? "limit" : "failed", detail: cleanLimitMarker(message).slice(0, 140) });
     } finally {
       // The turn is saved (or kept on screen): drop its checkpoint.

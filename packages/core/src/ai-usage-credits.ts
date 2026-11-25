@@ -13,7 +13,6 @@ export const AI_USAGE_CREDIT_COSTS = {
 	imageGeneration: 20,
 	videoGenerationPerSecond: 15,
 	liveVoicePerSecond: 2,
-	kodeCredit: 25,
 } as const;
 
 export function getChatRequestCreditCost(modelClass: ModelAccessClass): number {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Kontinue AI",
     "slug": "mobile-app",
-    "version": "1.3.3",
+    "version": "1.4.0",
     "orientation": "portrait",
     "icon": "./assets/images/kontinue-icon.png",
     "scheme": [

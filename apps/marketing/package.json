@@ -17,6 +17,7 @@
 		"@clerk/nextjs": "^7.4.3",
 		"@gsap/react": "^2.1.2",
 		"@next/third-parties": "^16.1.6",
+		"@repo/ai": "workspace:*",
 		"@repo/core": "workspace:*",
 		"@sanity/image-url": "^2.1.1",
 		"@sanity/vision": "^6.1.0",

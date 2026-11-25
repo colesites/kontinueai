@@ -30,18 +30,16 @@ function focusSidebarSearch() {
 export function AppShell({
 	children,
 	defaultOpen = true,
-	kodeComingSoon = false,
 }: {
 	children: ReactNode;
 	defaultOpen?: boolean;
-	kodeComingSoon?: boolean;
 }) {
 	return (
 		<ChatProvider>
 			<UserSync />
 			<PushNotificationsProvider>
 				<SidebarProvider defaultOpen={defaultOpen}>
-					<ShellLayout kodeComingSoon={kodeComingSoon}>{children}</ShellLayout>
+					<ShellLayout>{children}</ShellLayout>
 				</SidebarProvider>
 			</PushNotificationsProvider>
 		</ChatProvider>
@@ -57,13 +55,7 @@ import {
 } from "@repo/ui/components/ui/select";
 import { useCanvasContext } from "../../features/canvas/contexts/CanvasContext";
 
-function ShellLayout({
-	children,
-	kodeComingSoon,
-}: {
-	children: ReactNode;
-	kodeComingSoon: boolean;
-}) {
+function ShellLayout({ children }: { children: ReactNode }) {
 	const pathname = usePathname();
 	const { isMobile, open, openMobile, setOpenMobile, setOpen } = useSidebar();
 	const { chatId, chatTitle } = useChatContext();
@@ -71,8 +63,6 @@ function ShellLayout({
 	const isHome = pathname === "/";
 	const isCanvas = pathname === "/canvas";
 	const isChatRoute = pathname.startsWith("/chat/");
-	const isKodeRoute = pathname.startsWith("/kode");
-	const isKodeWorkspace = isKodeRoute && pathname !== "/kode";
 
 	const floatingPillClasses =
 		"pointer-events-auto glass bg-background/40 backdrop-blur-3xl rounded-2xl p-1 text-foreground transition-all duration-300";
@@ -100,7 +90,7 @@ function ShellLayout({
 
 	return (
 		<>
-			<AppSidebar kodeComingSoon={kodeComingSoon} />
+			<AppSidebar />
 			<SidebarInset className="bg-background h-dvh flex flex-col overflow-hidden relative md:peer-data-[variant=inset]:h-[calc(100dvh-1rem)] md:peer-data-[variant=inset]:rounded-2xl md:peer-data-[variant=inset]:ring-1 md:peer-data-[variant=inset]:ring-foreground/8 md:peer-data-[variant=inset]:shadow-[0_2px_8px_-4px_color-mix(in_oklch,black_15%,transparent)]">
 				{/* Animated app-shell frame — a slow theme-primary comet travelling
             the whole window border (desktop inset only). */}
@@ -225,17 +215,13 @@ function ShellLayout({
 						id="chat-scroll-container"
 						className={cn(
 							"min-h-0 flex-1 overscroll-y-contain",
-							isKodeWorkspace
-								? "overflow-y-auto pt-12 lg:overflow-hidden lg:pt-0"
-								: isKodeRoute
-									? "overflow-y-auto pt-12 lg:pt-0"
-									: isHome
-										? "overflow-hidden pt-0"
-										: isCanvas
-											? "overflow-y-auto pt-16 lg:pt-0"
-											: isChatRoute
-												? "overflow-y-auto pt-14 lg:pt-0"
-												: "overflow-y-auto pt-9",
+							isHome
+								? "overflow-hidden pt-0"
+								: isCanvas
+									? "overflow-y-auto pt-16 lg:pt-0"
+									: isChatRoute
+										? "overflow-y-auto pt-14 lg:pt-0"
+										: "overflow-y-auto pt-9",
 						)}
 					>
 						{children}

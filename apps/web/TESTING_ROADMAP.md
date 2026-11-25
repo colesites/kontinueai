@@ -83,8 +83,6 @@ Goal: establish the security boundary that every other feature depends on.
 - [x] `PLAN-002` Free users cannot access paid-only file uploads or models.
 - [x] `PLAN-003` Starter users receive Starter access but not Pro-only access.
 - [x] `PLAN-004` Pro users receive all intended Pro capabilities.
-- [x] `PLAN-005` Kode remains Pro-only when enabled.
-- [x] `PLAN-006` Kode displays Coming soon and rejects build requests in production while disabled.
 - [x] `PLAN-007` UI gates and server-side gates return the same authorization result.
 - [x] `PLAN-008` Changing or canceling a subscription updates access correctly.
 
@@ -102,7 +100,7 @@ For every owned resource, create it as user A and attempt every read/write opera
 - [x] `ISO-008` Notifications and push subscriptions.
 - [x] `ISO-009` Connector metadata and encrypted tokens.
 - [x] `ISO-010` Feedback edits/deletes that require ownership.
-- [x] `ISO-011` Kode projects, files, messages, builds, and credits.
+- [x] `ISO-011` Kode chats and messages.
 
 ### 1.4 Security branch tests
 
@@ -296,7 +294,6 @@ Use mocked provider APIs in normal CI and scheduled live contract tests with ded
 - [ ] `SIDEBAR-004` Optimistic changes roll back on failure.
 - [ ] `SIDEBAR-005` Keyboard shortcut focuses search.
 - [ ] `SIDEBAR-006` Mobile navigation closes after selection.
-- [ ] `SIDEBAR-007` More menu shows the correct Kode state.
 
 ---
 
@@ -342,64 +339,13 @@ Use mocked provider APIs in normal CI and scheduled live contract tests with ded
 
 ---
 
-## 12. Kode pre-launch testing — Medium until launch, Critical before launch
-
-### Production gate
-
-- [ ] `KODE-001` Production displays Coming soon while disabled.
-- [ ] `KODE-002` Preview/local environments retain test access.
-- [ ] `KODE-003` Production build API returns 503 while disabled.
-- [ ] `KODE-004` Enabling the launch flag activates the intended production UI/API.
-
-### Access and composer
-
-- [ ] `KODE-005` Only Pro users can access enabled Kode functionality.
-- [ ] `KODE-006` Model is locked to `zai/glm-5.2` server-side.
-- [ ] `KODE-007` Build/Plan selector and remaining credits render correctly.
-- [ ] `KODE-008` Plan mode does not modify project files.
-
-### Jobs and credits
-
-- [ ] `KODE-009` Project creation and initial queued job.
-- [ ] `KODE-010` Build reserves four credits; Plan reserves one.
-- [ ] `KODE-011` Usage reconciles at one credit per 25,000 reported tokens.
-- [ ] `KODE-012` Successful jobs refund unused reservations.
-- [ ] `KODE-013` Failed jobs refund the full reservation.
-- [ ] `KODE-014` Concurrent requests cannot overspend credits.
-- [ ] `KODE-015` Monthly reset behavior.
-- [ ] `KODE-016` Worker secret rejects unauthorized requests.
-- [ ] `KODE-017` Missing worker configuration fails safely and refunds credits.
-- [ ] `KODE-018` Queue, generation, completion, and failure statuses persist.
-
-### Worker and sandbox
-
-- [ ] `KODE-019` Generated output contains exactly the allowed files.
-- [ ] `KODE-020` File count, path, and byte limits.
-- [ ] `KODE-021` Safety scanner rejects external scripts, eval, Function, and service workers.
-- [ ] `KODE-022` Sandbox network policy is deny-all.
-- [ ] `KODE-023` Invalid JavaScript fails sandbox validation.
-- [ ] `KODE-024` Valid projects complete and render in the preview iframe.
-- [ ] `KODE-025` Preview CSP and iframe sandbox prevent parent-app access.
-- [ ] `KODE-026` Connector tools remain read-only and owner-scoped.
-
-### Project lifecycle
-
-- [ ] `KODE-027` Workspace loads files, messages, builds, and credits.
-- [ ] `KODE-028` Rename, star/unstar, and delete.
-- [ ] `KODE-029` Manual file editing and saving.
-- [ ] `KODE-030` Version changes refresh the preview.
-- [ ] `KODE-031` Downloaded HTML has a safe filename and includes project assets.
-- [ ] `KODE-032` User A cannot access user B's project or worker payload.
-
----
-
-## 13. Cross-cutting non-functional testing — Required before release
+## 12. Cross-cutting non-functional testing — Required before release
 
 ### Security
 
 - [ ] Dependency and secret scanning.
 - [ ] CSRF tests for state-changing routes and OAuth flows.
-- [ ] XSS tests for chat markdown, imports, feedback, filenames, and Kode previews.
+- [ ] XSS tests for chat markdown, imports, feedback, and filenames.
 - [ ] Open redirect tests.
 - [ ] Rate-limit tests for expensive AI and provider routes.
 - [ ] Prompt-injection tests for web search and connector outputs.
@@ -463,7 +409,6 @@ Run this small black-box suite after every preview and production deployment:
 - [ ] One connector status page loads without exposing tokens.
 - [ ] Canvas page loads and shows the correct credit state.
 - [ ] Tasks page loads and a reversible test task can be created/deleted.
-- [ ] Production Kode state matches the launch flag.
 - [ ] Sign-out succeeds.
 
 # CI gates to add
@@ -505,7 +450,7 @@ bun run --cwd apps/web check-types
 bun run --cwd apps/web lint
 bun run build:web
 bun run test:convex
-bun test packages/core/src/memory.test.ts packages/core/src/kode-web.test.ts
+bun test packages/core/src/memory.test.ts
 ```
 
 The standard root test command does not currently execute the Core helper tests. Add them to CI or create a dedicated `test:core` script when the test infrastructure work begins.

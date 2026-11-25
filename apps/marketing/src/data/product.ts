@@ -9,10 +9,9 @@ import {
 	PLAN_TIERS,
 	type PlanTier,
 } from "@repo/core/plan-tier";
+import { kodeDesktopSummary } from "@repo/core/pricing-comparison";
 
 export type ProductPlanId = PlanTier;
-
-export type KodeAccess = "Not included" | "Kode Lite" | "Full Kode";
 
 export interface ProductPlan {
 	id: ProductPlanId;
@@ -43,8 +42,7 @@ export interface ProductPlan {
 		maxChatFileBytes: number;
 		storedFileBytes: number;
 		memoryBytes: number;
-		kodeBuilds: number;
-		kodeAccess: KodeAccess;
+		kodeDesktop: string;
 		canvas: boolean;
 	};
 	features: string[];
@@ -193,13 +191,7 @@ function productPlan(id: ProductPlanId): ProductPlan {
 			maxChatFileBytes: definition.maxChatUploadBytes,
 			storedFileBytes: definition.storedFilesBytes,
 			memoryBytes: definition.memoryBytes,
-			kodeBuilds: definition.kodeBuilds,
-			kodeAccess:
-				definition.kodeMode === "none"
-					? "Not included"
-					: definition.kodeMode === "lite"
-						? "Kode Lite"
-						: "Full Kode",
+			kodeDesktop: kodeDesktopSummary(id),
 			canvas: definition.canvas,
 		},
 	};

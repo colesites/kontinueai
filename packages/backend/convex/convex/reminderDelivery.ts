@@ -1,27 +1,9 @@
 "use node";
 
 import { v } from "convex/values";
-import webpush from "web-push";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-
-let vapidConfigured: boolean | null = null;
-
-// Configure web-push once per cold start. Returns false when VAPID keys are
-// absent so callers can skip push delivery instead of throwing.
-function ensureVapid(): boolean {
-  if (vapidConfigured !== null) return vapidConfigured;
-  const publicKey = process.env.VAPID_PUBLIC_KEY;
-  const privateKey = process.env.VAPID_PRIVATE_KEY;
-  const subject = process.env.VAPID_SUBJECT ?? "mailto:support@kontinue.ai";
-  if (!publicKey || !privateKey) {
-    vapidConfigured = false;
-    return false;
-  }
-  webpush.setVapidDetails(subject, publicKey, privateKey);
-  vapidConfigured = true;
-  return true;
-}
+import { pushToMobile, pushToWeb } from "./lib/pushDelivery";
 
 async function sendEmail(
   to: string,
@@ -57,51 +39,6 @@ async function sendEmail(
   }
 }
 
-// Send to the mobile app via Expo's push service. No SDK needed — the HTTP
-// API accepts up to 100 messages per request. Returns tokens Expo reported
-// as dead (DeviceNotRegistered) so the caller can prune them.
-async function sendExpoPush(
-  tokens: string[],
-  message: { title: string; body: string; data: Record<string, string> },
-): Promise<string[]> {
-  if (tokens.length === 0) return [];
-  const res = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: JSON.stringify(
-      tokens.map((to) => ({
-        to,
-        title: message.title,
-        body: message.body,
-        data: message.data,
-        sound: "default",
-      })),
-    ),
-  });
-  if (!res.ok) {
-    console.error("[reminder] expo push send failed", res.status, await res.text());
-    return [];
-  }
-  const json = (await res.json()) as {
-    data?: Array<{ status: string; details?: { error?: string } }>;
-  };
-  const dead: string[] = [];
-  (json.data ?? []).forEach((ticket, i) => {
-    if (ticket.status === "error") {
-      if (ticket.details?.error === "DeviceNotRegistered") {
-        const token = tokens[i];
-        if (token) dead.push(token);
-      } else {
-        console.error("[reminder] expo push ticket error", ticket);
-      }
-    }
-  });
-  return dead;
-}
-
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -135,61 +72,16 @@ export const deliver = internalAction({
 
     // Mobile push (Expo) — independent of the web-push VAPID config.
     if (profile.pushEnabled) {
-      try {
-        const expoTokens = await ctx.runQuery(
-          internal.push.getExpoTokensForUser,
-          { userId: args.userId },
-        );
-        const dead = await sendExpoPush(
-          expoTokens.map((t) => t.token),
-          {
-            title: args.title,
-            body: args.body ?? "",
-            data: args.taskId ? { url: "/tasks" } : { url: "/notifications" },
-          },
-        );
-        for (const token of dead) {
-          await ctx.runMutation(internal.push.removeExpoTokenByToken, { token });
-        }
-      } catch (error) {
-        console.error("[reminder] expo push error", error);
-      }
-    }
-
-    // Push
-    if (profile.pushEnabled && ensureVapid()) {
-      const subs = await ctx.runQuery(internal.push.getSubscriptionsForUser, {
-        userId: args.userId,
+      await pushToMobile(ctx, args.userId, {
+        title: args.title,
+        body: args.body ?? "",
+        data: args.taskId ? { url: "/tasks" } : { url: "/notifications" },
       });
-      const payload = JSON.stringify({
+      await pushToWeb(ctx, args.userId, {
         title: args.title,
         body: args.body ?? "",
         url: args.taskId ? "/tasks" : "/",
       });
-      await Promise.all(
-        subs.map(async (sub) => {
-          try {
-            await webpush.sendNotification(
-              {
-                endpoint: sub.endpoint,
-                keys: { p256dh: sub.p256dh, auth: sub.auth },
-              },
-              payload,
-            );
-          } catch (error: unknown) {
-            const statusCode = (error as { statusCode?: number })?.statusCode;
-            if (statusCode === 404 || statusCode === 410) {
-              // Subscription is dead — prune it so we stop retrying.
-              await ctx.runMutation(
-                internal.push.removeSubscriptionByEndpoint,
-                { endpoint: sub.endpoint },
-              );
-            } else {
-              console.error("[reminder] push error", statusCode, error);
-            }
-          }
-        }),
-      );
     }
 
     return null;

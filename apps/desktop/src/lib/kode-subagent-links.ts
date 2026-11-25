@@ -119,22 +119,3 @@ export function worktreeRepoName(path: string): string | null {
   return parts.length >= 2 ? (parts[parts.length - 2] ?? null) : null;
 }
 
-/**
- * Best-effort model label for a legacy sub-agent folder, from its branch:
- * "kode-read-only-analysis-task-grok-4-7-high-fast-g6931" → "Grok 4 7 High Fast".
- */
-export function legacySubagentModel(path: string, chatTitle: string): string | null {
-  const leaf = path.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? "";
-  const slug = slugify(chatTitle, 24);
-  const at = slug ? leaf.indexOf(slug) : -1;
-  if (at === -1) return null;
-  const model = leaf
-    .slice(at + slug.length)
-    .replace(FANOUT_SUFFIX, "")
-    .replace(/^-+/, "");
-  if (!model) return null;
-  return model
-    .split("-")
-    .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
-    .join(" ");
-}

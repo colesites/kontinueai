@@ -45,6 +45,20 @@ export type Handoff = {
 };
 
 const DEFAULT_BUDGET = 28_000;
+/** Share of the joining model's context window the hand-off may use. */
+const WINDOW_SHARE = 0.25;
+const MAX_BUDGET = 400_000;
+
+/**
+ * The hand-off's size for the model taking over (characters, about 4 per
+ * token): a quarter of its context window, so a big model gets much more of
+ * the conversation than a fixed 28k characters, and a small one still has
+ * room to work.
+ */
+export function handoffBudget(contextTokens: number): number {
+  if (!Number.isFinite(contextTokens) || contextTokens <= 0) return DEFAULT_BUDGET;
+  return Math.max(DEFAULT_BUDGET, Math.min(MAX_BUDGET, Math.round(contextTokens * 4 * WINDOW_SHARE)));
+}
 const TASK_CAP = 3_000;
 const MESSAGE_CAP = 6_000;
 const MAX_FILES = 40;
@@ -70,6 +84,8 @@ const TODO_MARK: Record<string, string> = {
 
 export function buildHandoff(input: HandoffInput): Handoff {
   const budget = input.budget ?? DEFAULT_BUDGET;
+  // A bigger hand-off keeps long messages whole too, not just more of them.
+  const messageCap = Math.max(MESSAGE_CAP, Math.round(budget / 10));
   const history = input.history.filter((m) => m.content.trim());
   const sections: string[] = [];
 
@@ -117,7 +133,7 @@ export function buildHandoff(input: HandoffInput): Handoff {
   const recent: string[] = [];
   let included = 0;
   for (let i = history.length - 1; i > firstUser; i--) {
-    const block = `${speaker(history[i])}: ${clip(history[i].content, MESSAGE_CAP)}`;
+    const block = `${speaker(history[i])}: ${clip(history[i].content, messageCap)}`;
     if (block.length > remaining) {
       if (recent.length === 0 && remaining > 600) {
         recent.unshift(`${speaker(history[i])}: ${clip(history[i].content, remaining - 40)}`);

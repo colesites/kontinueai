@@ -81,6 +81,8 @@ import { slashEntries, type SlashEntry, type SlashSkill } from "@/lib/kode-comma
 import { mentionEntries, type MentionEntry } from "@/lib/kode-mentions";
 import { loadUserCommands, pluginCommands, usePlugins, type UserCommand } from "@/lib/kode-plugins";
 import { removeStashed, stashDraft, useStash } from "@/lib/kode-stash";
+import { getDraft, getDraftChips, setDraft, setDraftChips } from "@/lib/kode-drafts";
+import { fitImage, formatBytes } from "@/lib/kode-image-fit";
 import { annotationTitle, removeAnnotation, useAnnotations } from "@/lib/kode-annotations";
 import { cn } from "@/lib/utils";
 import { KodeReasoningPopover } from "./KodeReasoningPopover";
@@ -199,7 +201,7 @@ function ChatContextMenu({
   );
 }
 
-function readAsDataURL(file: File): Promise<string> {
+function readAsDataURL(file: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -208,7 +210,10 @@ function readAsDataURL(file: File): Promise<string> {
   });
 }
 
-const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+/** Files that aren't images (video, PDFs, archives): saved into the project
+ *  for agents to open, so they pass through memory once. Images have no
+ *  limit: big ones are scaled down (lib/kode-image-fit). */
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 
 /** Text we can show the model as-is: no NUL bytes in the first 8 KB. */
 async function looksLikeText(file: File): Promise<boolean> {
@@ -254,6 +259,8 @@ type ChatInputProps = {
   // same text be re-seeded.
   seedText?: string;
   seedNonce?: number;
+  /** Which thread this composer is for: each key keeps its own draft (lib/kode-drafts). */
+  draftKey?: string;
   hideAgentMode?: boolean;
   /** Footer inside the composer (Kode: project / work in / branch). Hidden by the caller when there is no project. */
   bottomBar?: React.ReactNode;
@@ -410,6 +417,7 @@ export function ChatInput({
   onModeChange,
   seedText = "",
   seedNonce = 0,
+  draftKey,
   hideAgentMode = false,
   bottomBar,
   topBar,
@@ -441,8 +449,25 @@ export function ChatInput({
   // ⌘⇧M (Settings → Keyboard shortcuts) opens the model picker.
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
   useKeybinding("composer.modelPicker", () => setModelPickerOpen(true));
-  const [value, setValue] = useState("");
-  const [attachments, setAttachments] = useState<StagedAttachment[]>([]);
+  const [value, setValue] = useState(() => (draftKey ? getDraft<StagedAttachment>(draftKey).text : ""));
+  // Why a file wasn't attached (too big, unreadable); clears on the next add.
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<StagedAttachment[]>(() =>
+    draftKey ? getDraft<StagedAttachment>(draftKey).attachments : [],
+  );
+  // Switching threads swaps in that thread's own draft instead of carrying
+  // this one along; every change is saved under the current thread.
+  const draftKeyRef = useRef(draftKey);
+  useLayoutEffect(() => {
+    if (draftKeyRef.current === draftKey) return;
+    draftKeyRef.current = draftKey;
+    const draft = draftKey ? getDraft<StagedAttachment>(draftKey) : { text: "", attachments: [] };
+    setValue(draft.text);
+    setAttachments(draft.attachments);
+  }, [draftKey]);
+  useEffect(() => {
+    if (draftKeyRef.current) setDraft(draftKeyRef.current, value, attachments);
+  }, [value, attachments]);
   const [internalWebSearchEnabled, setInternalWebSearchEnabled] =
     useState(false);
   const webSearchEnabled =
@@ -582,6 +607,17 @@ export function ChatInput({
   );
   const modelId = controlledModelId ?? uncontrolledModelId;
   const ref = useRef<HTMLTextAreaElement>(null);
+  // Anything else that tries to type a macOS function-key character (U+F700–
+  // U+F8FF) is refused before it lands, so no box glyph flashes in.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const refuse = (event: InputEvent) => {
+      if (event.data && FUNCTION_KEY_CHARS.test(event.data)) event.preventDefault();
+    };
+    el.addEventListener("beforeinput", refuse);
+    return () => el.removeEventListener("beforeinput", refuse);
+  }, []);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [bannerSlot, setBannerSlot] = useState<HTMLDivElement | null>(null);
@@ -589,7 +625,7 @@ export function ChatInput({
 
   const [dropActive, setDropActive] = useState(false);
   // Notes from Annotate (selected text, browser elements); sent with the message.
-  const annotations = useAnnotations();
+  const annotations = useAnnotations(draftKey);
   /** Attach another chat's context (dragged in, or picked from the + menu). */
   const attachChat = async (chat: DroppedChat) => {
     if (!onDropChat) return;
@@ -624,6 +660,7 @@ export function ChatInput({
   const addFiles = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
     const staged: StagedAttachment[] = [];
+    const refused: string[] = [];
     for (const file of Array.from(files)) {
       const id = `att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const mediaType = file.type || "application/octet-stream";
@@ -631,16 +668,20 @@ export function ChatInput({
       const filename = mediaType.startsWith("image/") && /^image\.\w+$/.test(file.name)
         ? `screenshot-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)}.${file.name.split(".").pop()}`
         : file.name || "attachment";
-      if (file.size > MAX_ATTACHMENT_BYTES) continue;
       if (mediaType.startsWith("image/")) {
-        staged.push({
-          type: "file",
-          id,
-          mediaType,
-          filename,
-          url: await readAsDataURL(file),
-        });
-      } else if (await looksLikeText(file)) {
+        try {
+          const fitted = await fitImage(file, readAsDataURL);
+          staged.push({ type: "file", id, mediaType: fitted.mediaType, filename, url: fitted.url });
+        } catch {
+          refused.push(`${filename} couldn't be read as an image.`);
+        }
+        continue;
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        refused.push(`${filename} is ${formatBytes(file.size)}; files can be up to ${formatBytes(MAX_ATTACHMENT_BYTES)}.`);
+        continue;
+      }
+      if (await looksLikeText(file)) {
         // Text-like file: keep its text to send to the model as context.
         const text = await readAsText(file).catch(() => "");
         staged.push({
@@ -664,6 +705,7 @@ export function ChatInput({
       }
     }
     setAttachments((current) => [...current, ...staged]);
+    setAttachError(refused.length ? refused.join(" ") : null);
   };
 
   const resize = useCallback(() => {
@@ -702,6 +744,11 @@ export function ChatInput({
       });
     }
   }, [seedNonce, seedText, resize]);
+
+  // Another thread's draft can be a different height.
+  useEffect(() => {
+    requestAnimationFrame(resize);
+  }, [draftKey, resize]);
 
   const submit = () => {
     const typed = value.trim();
@@ -783,7 +830,20 @@ export function ChatInput({
 
   // Picked commands, skills and connectors show as chips, not text. On send
   // they go in front of the message (`/review /github …`), command first.
-  const [tokens, setTokens] = useState<SlashEntry[]>([]);
+  const [tokens, setTokens] = useState<SlashEntry[]>(() => (draftKey ? getDraftChips<SlashEntry>(draftKey) : []));
+  // Chips belong to the thread too; an open @ or / menu doesn't follow you.
+  const chipsKeyRef = useRef(draftKey);
+  useLayoutEffect(() => {
+    if (chipsKeyRef.current === draftKey) return;
+    chipsKeyRef.current = draftKey;
+    setTokens(draftKey ? getDraftChips<SlashEntry>(draftKey) : []);
+    setMentionQuery(null);
+    setMentionStartIndex(null);
+    setSlashQuery(null);
+  }, [draftKey]);
+  useEffect(() => {
+    if (chipsKeyRef.current) setDraftChips(chipsKeyRef.current, tokens);
+  }, [tokens]);
   const addToken = (entry: SlashEntry) =>
     setTokens((current) =>
       entry.kind === "connector"
@@ -872,6 +932,20 @@ export function ChatInput({
     // Enter / arrows confirm an IME composition (Chinese, Japanese, Korean,
     // the accent popup); they must not send the message or pick from a menu.
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    // An arrow that can't move the caret (→ at the end, ← at the start) is
+    // handed to macOS text input, which types its private-use character in
+    // as a box glyph. There's nothing for it to do, so stop it here.
+    const el = e.currentTarget;
+    const collapsed = el.selectionStart === el.selectionEnd;
+    if (
+      collapsed &&
+      !e.shiftKey &&
+      ((e.key === "ArrowRight" && el.selectionEnd === el.value.length) ||
+        (e.key === "ArrowLeft" && el.selectionStart === 0))
+    ) {
+      e.preventDefault();
+      return;
+    }
     if (slashQuery !== null && slashCandidates.length > 0) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -1085,6 +1159,20 @@ export function ChatInput({
               </Attachment>
             ))}
           </Attachments>
+        ) : null}
+
+        {attachError ? (
+          <div role="alert" className="flex items-start gap-2 px-3 pt-2 text-label text-danger">
+            <span className="min-w-0 flex-1">{attachError}</span>
+            <button
+              type="button"
+              onClick={() => setAttachError(null)}
+              className="shrink-0 cursor-pointer text-muted-foreground hover:text-foreground"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
+          </div>
         ) : null}
 
         {(webSearchEnabled || activeAgent) && (

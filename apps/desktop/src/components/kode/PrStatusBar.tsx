@@ -11,7 +11,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { useAppSettings } from "@/lib/app-settings";
-import { cleanupMergedPr, type MergedCleanup, mergePullRequest, usePrThreads } from "@/lib/kode-prs";
+import { cleanupMergedPr, type MergedCleanup, mergePullRequest, unlinkPr, usePrThreads } from "@/lib/kode-prs";
 import {
   pickChatPr,
   type PrStanding,
@@ -161,9 +161,25 @@ function PrRow({
           {label}
           {watch?.title ? <span className="font-normal text-muted-foreground"> {watch.title}</span> : null}
         </button>
-        <span className={cn("shrink-0 font-medium", TONE[standing.tone])}>· {standing.label}</span>
+        <span
+          className={cn("shrink-0 font-medium", TONE[standing.tone])}
+          title={watch?.lastError && !watch.state ? watch.lastError : undefined}
+        >
+          · {standing.label}
+        </span>
 
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
+          {!merged && !confirming ? (
+            <button
+              type="button"
+              onClick={() => unlinkPr(url)}
+              className={cn(quietButton, "px-1.5")}
+              title="Not this chat's pull request: stop showing it here"
+              aria-label="Remove this pull request from the chat"
+            >
+              <X size={13} />
+            </button>
+          ) : null}
           {merged ? (
             result ? (
               <button type="button" onClick={dismiss} className={quietButton}>

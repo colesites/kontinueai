@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  isLegacySubagentFolder,
-  legacySubagentModel,
-  worktreeRepoName,
-} from "./kode-subagent-links";
+import { isLegacySubagentFolder, worktreeRepoName } from "./kode-subagent-links";
 
 const base = "/Users/me/.kontinue/worktrees/kontinueai";
 
@@ -28,15 +24,6 @@ describe("sub-agent worktrees", () => {
     expect(isLegacySubagentFolder(`${base}/kode-task-model-abcd1`, ["Fix the login bug"])).toBe(false);
     // Not a Kode worktree at all.
     expect(isLegacySubagentFolder("/Users/me/code/app-abcd1", ["App"])).toBe(false);
-  });
-
-  test("recovers the model name from the branch", () => {
-    expect(
-      legacySubagentModel(
-        `${base}/kode-read-only-analysis-task-grok-4-7-high-fast-g6931`,
-        "READ-ONLY ANALYSIS TASK",
-      ),
-    ).toBe("Grok 4 7 High Fast");
   });
 
   test("finds the repo a worktree came from", () => {

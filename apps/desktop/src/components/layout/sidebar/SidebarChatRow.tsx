@@ -34,14 +34,7 @@ export const formatWhen = (timestamp: number) => {
   return `${Math.floor(diff / year)}y`;
 };
 
-const SidebarChatRow = ({
-  chat,
-  subagentModel,
-}: {
-  chat: KodeChat;
-  /** Shown as a sub-agent run of its parent chat: the model leads the label. */
-  subagentModel?: string;
-}) => {
+const SidebarChatRow = ({ chat }: { chat: KodeChat }) => {
   const {
     activeTab,
     setActiveTab,
@@ -87,7 +80,7 @@ const SidebarChatRow = ({
     >
       {isRenaming ? (
         <div className="flex min-w-0 flex-1 items-center gap-2">
-          <ChatStatusIndicator chatId={chat.id} isPinned={isPinned} />
+          <ChatStatusIndicator chatId={chat.id} />
           <input
             type="text"
             value={title}
@@ -116,18 +109,21 @@ const SidebarChatRow = ({
           }}
           className="flex h-full min-w-0 flex-1 items-center gap-2 text-left"
         >
-          <ChatStatusIndicator chatId={chat.id} isPinned={isPinned} />
-          {subagentModel ? (
-            <span className="min-w-0 flex-1 truncate" title={chat.title}>
-              <span className="text-foreground/85">{subagentModel}</span>
-              <span className="text-foreground/40"> · sub-agent</span>
-            </span>
-          ) : (
-            <span className="min-w-0 flex-1 truncate">{chat.title}</span>
-          )}
+          <ChatStatusIndicator chatId={chat.id} />
+          <span className="min-w-0 flex-1 truncate">{chat.title}</span>
         </button>
       )}
 
+      {/* Pinned shows on the right, so a running, waiting or PR icon on the
+          left never hides it. */}
+      {isPinned ? (
+        <Pin
+          size={11}
+          aria-label="Pinned"
+          className="shrink-0 text-foreground/45 group-hover/chat:hidden group-has-[[data-state=open]]/chat:hidden"
+          fill="currentColor"
+        />
+      ) : null}
       <span className="shrink-0 pr-1 text-caption tabular-nums text-foreground/35 group-hover/chat:hidden group-has-[[data-state=open]]/chat:hidden">
         {formatWhen(chat.updatedAt)}
       </span>

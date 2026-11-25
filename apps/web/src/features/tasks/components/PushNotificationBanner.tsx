@@ -5,9 +5,17 @@ import { BellOff, BellRing, Check } from "lucide-react";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 
 // A prominent prompt to enable browser push notifications, shown on the Tasks
-// page so reminders aren't gated behind the sidebar bell. Hides itself once the
+// and Kode remote control pages so alerts aren't gated behind the sidebar bell. Hides itself once the
 // user is subscribed (or when push isn't supported in this browser).
-export function PushNotificationBanner({ className }: { className?: string }) {
+export function PushNotificationBanner({
+	className,
+	title = "Get reminded on time",
+	description = "Turn on push notifications so task reminders reach you.",
+}: {
+	className?: string;
+	title?: string;
+	description?: string;
+}) {
 	const push = usePushNotifications();
 
 	if (!push.supported) return null;
@@ -27,12 +35,12 @@ export function PushNotificationBanner({ className }: { className?: string }) {
 			</span>
 			<div className="min-w-0 flex-1">
 				<p className="text-sm font-medium leading-tight">
-					{blocked ? "Notifications are blocked" : "Get reminded on time"}
+					{blocked ? "Notifications are blocked" : title}
 				</p>
 				<p className="text-xs text-muted-foreground">
 					{blocked
 						? "Allow notifications for this site in your browser settings."
-						: "Turn on push notifications so task reminders reach you."}
+						: description}
 				</p>
 			</div>
 			{!blocked && (

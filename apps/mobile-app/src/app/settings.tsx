@@ -168,9 +168,9 @@ export default function SettingsScreen() {
           </Text>
           <Text className="mt-1.5 text-[13px] leading-5 text-muted-foreground">
             {planTier === "max"
-              ? "You have our highest limits, full Kode, Canvas, and 120 minutes of Live."
+              ? "You have our highest limits, every Kode model incl. Fable, Canvas, and 120 minutes of Live."
               : planTier === "pro"
-                ? "You have Frontier models, Kode Lite, Canvas, and Kontinue Live."
+                ? "You have Frontier models, Kode with Fast mode, Canvas, and Kontinue Live."
                 : planTier === "plus"
                   ? "You have the wider Basic and Pro model catalogue."
                   : planTier === "starter"
@@ -330,8 +330,8 @@ function AccountPanel() {
               limit={aiUsage.limit}
               note={
                 usage.isPaid
-                  ? `${aiUsage.remaining.toLocaleString()} credits remain across chat, search, media, Live, Canvas AI actions, and Kode AI runs.`
-                  : "Shared by metered search, media, Live, Canvas AI actions, Kode AI runs, and paid-model work. Opening Canvas or Kode uses no credits."
+                  ? `${aiUsage.remaining.toLocaleString()} credits remain across chat, search, media, Live, and Canvas AI actions.`
+                  : "Shared by metered search, media, Live, Canvas AI actions, and paid-model work. Opening Canvas uses no credits."
               }
             />
             <UsageBar

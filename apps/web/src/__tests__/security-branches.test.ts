@@ -8,11 +8,11 @@ import { sharedSecretMatches } from "../app/api/lib/shared-secret";
 describe("security branches", () => {
 	test("insufficient plan returns 403 with a stable error code", () => {
 		const response = planDeniedResponse(
-			PLAN_ERROR_CODES.KODE_PRO_REQUIRED,
+			PLAN_ERROR_CODES.CANVAS_PRO_REQUIRED,
 			"Pro required",
 		);
 		expect(response.status).toBe(403);
-		expect(response.headers.get("x-error-code")).toBe("KODE_PRO_REQUIRED");
+		expect(response.headers.get("x-error-code")).toBe("CANVAS_PRO_REQUIRED");
 	});
 
 	test("shared server secrets reject missing and incorrect values", () => {

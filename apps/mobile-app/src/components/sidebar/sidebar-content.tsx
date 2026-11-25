@@ -439,18 +439,12 @@ export function SidebarContent({ onNavigate }: SidebarContentProps) {
         <DropdownItem
           icon={Code2}
           label="Kode"
-          trailing={
-            <View className="rounded-full border border-primary/15 bg-primary/10 px-1.5 py-0.5">
-              <Text className="text-[9px] font-bold uppercase tracking-wide text-primary">
-                {planTier === "pro" || planTier === "max" ? planLabel(planTier) : "Locked"}
-              </Text>
-            </View>
-          }
           onPress={() => {
             productMenu.close();
             go("/kode");
           }}
         />
+        <DropdownSeparator />
         <DropdownItem
           icon={Plug}
           label="Connectors"

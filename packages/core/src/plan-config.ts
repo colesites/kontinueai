@@ -22,8 +22,6 @@ export type PlanDefinition = {
 	imageGenerations: number;
 	videoGenerationSeconds: number;
 	liveVoiceMinutes: number;
-	kodeBuilds: number;
-	kodeMode: "none" | "lite" | "full";
 	canvas: boolean;
 	// Reference images per Canvas generation. The model's own cap still applies
 	// (see `maxReferenceImages` in canvas-models).
@@ -54,8 +52,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		imageGenerations: 0,
 		videoGenerationSeconds: 0,
 		liveVoiceMinutes: 0,
-		kodeBuilds: 0,
-		kodeMode: "none",
 		canvas: false,
 		canvasReferenceImages: 0,
 	},
@@ -79,8 +75,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		imageGenerations: 10,
 		videoGenerationSeconds: 0,
 		liveVoiceMinutes: 0,
-		kodeBuilds: 0,
-		kodeMode: "none",
 		canvas: false,
 		canvasReferenceImages: 0,
 	},
@@ -104,8 +98,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		imageGenerations: 50,
 		videoGenerationSeconds: 0,
 		liveVoiceMinutes: 0,
-		kodeBuilds: 0,
-		kodeMode: "none",
 		canvas: false,
 		canvasReferenceImages: 0,
 	},
@@ -129,8 +121,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		imageGenerations: 200,
 		videoGenerationSeconds: 60,
 		liveVoiceMinutes: 30,
-		kodeBuilds: 25,
-		kodeMode: "lite",
 		canvas: true,
 		canvasReferenceImages: 4,
 	},
@@ -159,8 +149,6 @@ export const PLAN_DEFINITIONS: Record<PlanTier, PlanDefinition> = {
 		imageGenerations: 500,
 		videoGenerationSeconds: 180,
 		liveVoiceMinutes: 120,
-		kodeBuilds: 100,
-		kodeMode: "full",
 		canvas: true,
 		canvasReferenceImages: 8,
 	},

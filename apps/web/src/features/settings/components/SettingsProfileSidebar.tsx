@@ -64,9 +64,9 @@ export function SettingsProfileSidebar({
 				<p className="text-sm font-semibold text-foreground">Current plan</p>
 				<p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
 					{currentPlanTier === "max"
-						? "You have our highest limits, full Kode, Canvas, and 120 minutes of Live."
+						? "You have our highest limits, every Kode model incl. Fable, Canvas, and 120 minutes of Live."
 						: currentPlanTier === "pro"
-							? "You have Frontier models, Kode Lite, Canvas, and Kontinue Live."
+							? "You have Frontier models, Kode with Fast mode, Canvas, and Kontinue Live."
 							: currentPlanTier === "plus"
 								? "You have the wider Basic and Pro model catalogue."
 								: currentPlanTier === "starter"

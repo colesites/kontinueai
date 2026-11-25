@@ -16,11 +16,7 @@ import { SidebarChatsSection } from "./sidebar/SidebarChatsSection";
 import { SidebarHeaderSection } from "./sidebar/SidebarHeaderSection";
 import { SidebarProjectsSection } from "./sidebar/SidebarProjectsSection";
 
-export function Sidebar({
-	kodeComingSoon = false,
-}: {
-	kodeComingSoon?: boolean;
-}) {
+export function Sidebar() {
 	const pathname = usePathname();
 	const sidebar = useSidebar();
 	const { user } = useUser();
@@ -91,8 +87,6 @@ export function Sidebar({
 				onSearchQueryChange={setSearchQuery}
 				onClearSearch={() => setSearchQuery("")}
 				onNavigate={handleNavigate}
-				planTier={planTier}
-				kodeComingSoon={kodeComingSoon}
 			/>
 
 			<SidebarContent className="px-2 py-3">

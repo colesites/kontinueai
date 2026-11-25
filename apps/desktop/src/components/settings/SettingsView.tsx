@@ -17,6 +17,7 @@ import {
   Laptop,
   LogOut,
   Megaphone,
+  MonitorSmartphone,
   Moon,
   Palette,
   Plug2,
@@ -33,6 +34,7 @@ import {
 import { useTheme } from "@/components/theme/theme-provider";
 import { Switch } from "@/components/ui/switch";
 import { WebhooksSection } from "./WebhooksSection";
+import { RemoteControlSection } from "./RemoteControlSection";
 import { ProvidersSection } from "./ProvidersSection";
 import { CustomizeSection, type CustomizeTab } from "./CustomizeSection";
 import { UsageSection } from "./UsageSection";
@@ -85,6 +87,7 @@ const NAV_GROUPS: { label: string; items: NavItem[] }[] = [
   {
     label: "Kode",
     items: [
+      { id: "remote", label: "Remote control", description: "Run Kode on this computer from your phone or the web, from anywhere.", icon: MonitorSmartphone, keywords: "phone mobile web remote away anywhere qr pair approve" },
       { id: "providers", label: "Providers", description: "How Kode reaches each model: your Claude or ChatGPT subscription, your own API key, or Kode.", icon: Terminal, keywords: "claude codex cursor api key byok cli" },
       { id: "customize", label: "Customize", description: "Connectors, skills and plugins for Kontinue and Kode.", icon: Plug2, keywords: "connectors skills plugins mcp integrations" },
       { id: "agents", label: "Agents", description: "Specialized agents for the Kontinue chat.", icon: Bot },
@@ -296,6 +299,7 @@ export function SettingsView({ onBack, initialTab }: SettingsViewProps) {
           {active === "source-control" && <SourceControlSection onClose={onBack} />}
           {active === "storage" && <StorageSection />}
           {active === "webhooks" && <WebhooksSection />}
+          {active === "remote" && <RemoteControlSection />}
           {active === "account" && <AccountSection />}
           {active === "data" && <DataSection />}
         </div>
