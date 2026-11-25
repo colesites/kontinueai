@@ -10,8 +10,9 @@
 
 import { useSyncExternalStore } from "react";
 import { gitStatus } from "@/components/panel/panel-api";
-import { runKodeAgent, type KodeExtraTool } from "./kode-agent";
-import { getProvider, parseCliModelId, runCliTurn, saveCliSession } from "./kode-cli";
+import { runKodeAgent, type KodeExtraTool, type KodeToolStep } from "./kode-agent";
+import { cliToolStep, getProvider, parseCliModelId, runCliTurn, saveCliSession } from "./kode-cli";
+import { withSteps } from "./kode-steps";
 import type { KodeAgentMode, KodeTodo } from "./kode-tools";
 import { addWorktree, branchPrefix, slugify } from "./kode-branches";
 import { linkSubagentChat } from "./kode-subagent-links";
@@ -32,6 +33,8 @@ export type FanOutRun = {
   preview: string;
   /** End of the final reply, for the calling agent to compare. */
   reply: string;
+  /** What it's doing: its tool steps, shown when its row is expanded. */
+  steps: KodeToolStep[];
   error: string | null;
   files: number | null;
   additions: number;
@@ -163,6 +166,8 @@ export function fanOutBranch(prompt: string, modelName: string, suffix: string, 
 }
 
 const REPLY_CHARS = 2_000;
+/** Steps kept per run for its expanded row (the newest). */
+const MAX_RUN_STEPS = 60;
 const previewOf = (text: string) => text.replace(/\s+/g, " ").trim().slice(-160);
 
 /** Start one sub-agent per model; `done` resolves with every run's outcome. */
@@ -191,6 +196,7 @@ export function startFanOut(input: {
       branch: fanOutBranch(prompt, modelName, `${suffix}${index}`),
       preview: "",
       reply: "",
+      steps: [],
       error: null,
       files: null,
       additions: 0,
@@ -232,7 +238,9 @@ async function runOne(
   patchRun(fanOutId, run.id, { status: "starting", startedAt: Date.now() });
   let text = "";
   let todos: KodeTodo[] = [];
+  const steps: KodeToolStep[] = [];
   const declined: string[] = [];
+  let persist: (reply: string) => Promise<void> = async () => {};
   try {
     // Runs that can edit get their own worktree so they can't trample each
     // other or the parent's checkout. Read-only ("plan") runs only look, so
@@ -241,15 +249,35 @@ async function runOne(
     const readOnly = mode === "plan";
     const worktree = readOnly ? root : await addWorktree(root, run.branch, null);
     const projectId = deps.ensureFolder(worktree);
-    const title = `${prompt.replace(/\s+/g, " ").trim().slice(0, 48)} · ${run.modelName}`;
-    const chatId = await deps.createChatRecord({ title, projectId });
-    // Shown nested under the chat that started it, not as a new project.
-    linkSubagentChat(chatId, { parentChatId, model: run.modelName, root: worktree });
-    patchRun(fanOutId, run.id, {
-      worktree: readOnly ? null : worktree,
-      chatId,
-      status: "running",
-    });
+    patchRun(fanOutId, run.id, { worktree: readOnly ? null : worktree, status: "running" });
+
+    // Its chat (so the work can be read and continued) is made once there is
+    // something to put in it: runs that failed at once used to leave empty
+    // "sub-agent" chats behind. Shown inside the parent chat, not the sidebar.
+    let cliSession: { instanceId: string; sessionId: string } | null = null;
+    persist = async (reply: string) => {
+      if (!reply.trim() && steps.length === 0) return;
+      const title = `${prompt.replace(/\s+/g, " ").trim().slice(0, 48)} · ${run.modelName}`;
+      const chatId = await deps.createChatRecord({ title, projectId });
+      linkSubagentChat(chatId, { parentChatId, model: run.modelName, root: worktree });
+      if (cliSession) saveCliSession(chatId, cliSession.instanceId, cliSession.sessionId);
+      await deps.addMessageRecord({ chatId, role: "user", content: prompt, model: run.modelId });
+      await deps.addMessageRecord({
+        chatId,
+        role: "assistant",
+        content: withSteps(reply, steps),
+        model: run.modelId,
+        todos: todos.length ? todos : undefined,
+      });
+      patchRun(fanOutId, run.id, { chatId });
+    };
+    const onStep = (step: KodeToolStep) => {
+      const index = steps.findIndex((item) => item.id === step.id);
+      if (index >= 0) steps[index] = { ...step };
+      else steps.push({ ...step });
+      if (steps.length > MAX_RUN_STEPS) steps.splice(0, steps.length - MAX_RUN_STEPS);
+      patchRun(fanOutId, run.id, { steps: [...steps] });
+    };
 
     const onText = (delta: string) => {
       text += delta;
@@ -271,10 +299,13 @@ async function runOne(
         signal: controller.signal,
         onEvent: (event) => {
           if (event.type === "text") onText(event.delta);
-          if (event.type === "session") saveCliSession(chatId, instance.id, event.sessionId);
+          if (event.type === "session") cliSession = { instanceId: instance.id, sessionId: event.sessionId };
+          if (event.type === "toolStart" || event.type === "toolEnd") {
+            onStep(cliToolStep(event, steps.find((item) => item.id === event.id)));
+          }
         },
       });
-      if (result.sessionId) saveCliSession(chatId, instance.id, result.sessionId);
+      if (result.sessionId) cliSession = { instanceId: instance.id, sessionId: result.sessionId };
       if (result.error) throw new Error(result.error);
       text = result.text || text;
       stopped = result.stopped;
@@ -287,7 +318,7 @@ async function runOne(
         projectRoot: worktree,
         onText,
         onReasoning: () => {},
-        onToolStep: () => {},
+        onToolStep: onStep,
         // Nobody is watching: decline anything that needs a person.
         requestApproval: async (step) => {
           declined.push(step.description || step.name);
@@ -306,14 +337,7 @@ async function runOne(
     const note = declined.length
       ? `\n\n> Ran without you, so these needed approval and were skipped: ${[...new Set(declined)].join(", ")}.`
       : "";
-    await deps.addMessageRecord({ chatId, role: "user", content: prompt, model: run.modelId });
-    await deps.addMessageRecord({
-      chatId,
-      role: "assistant",
-      content: (text.trim() + note).trim() || (stopped ? "_Stopped._" : "_No reply._"),
-      model: run.modelId,
-      todos: todos.length ? todos : undefined,
-    });
+    await persist((text.trim() + note).trim() || (stopped ? "_Stopped._" : "_No reply._"));
     // A read-only run shares the project's checkout, so its git status would
     // report the parent's own uncommitted work as this run's changes.
     const git = readOnly ? null : await gitStatus(worktree).catch(() => null);
@@ -328,11 +352,11 @@ async function runOne(
     });
   } catch (error) {
     const aborted = controller.signal.aborted;
-    patchRun(fanOutId, run.id, {
-      status: aborted ? "stopped" : "error",
-      error: aborted ? null : error instanceof Error ? error.message : String(error),
-      finishedAt: Date.now(),
-    });
+    const reason = aborted ? null : error instanceof Error ? error.message : String(error);
+    patchRun(fanOutId, run.id, { status: aborted ? "stopped" : "error", error: reason, finishedAt: Date.now() });
+    // Keep what it did before it stopped (nothing is saved for a run that
+    // never got going).
+    await persist(`${text.trim()}\n\n> ${aborted ? "Stopped." : `Failed: ${reason}`}`.trim()).catch(() => {});
   } finally {
     controllers.delete(run.id);
   }

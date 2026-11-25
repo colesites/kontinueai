@@ -63,8 +63,8 @@ export default function PricingPage() {
 									"Paid model work, provider-backed web search, K-Image, and K-Video draw from the same monthly balance.",
 								],
 								[
-									"Canvas and Kode",
-									"Opening either workspace costs nothing. AI generation in Canvas and AI runs in Kode consume credits.",
+									"Canvas",
+									"Opening Canvas costs nothing. AI generation inside it consumes credits.",
 								],
 								[
 									"Live and safeguards",
@@ -105,10 +105,6 @@ export default function PricingPage() {
 								[
 									"Kontinue Live",
 									`${AI_USAGE_CREDIT_COSTS.liveVoicePerSecond}/second`,
-								],
-								[
-									"Kode AI unit (up to 25K tokens)",
-									`${AI_USAGE_CREDIT_COSTS.kodeCredit} credits`,
 								],
 							].map(([label, value]) => (
 								<div

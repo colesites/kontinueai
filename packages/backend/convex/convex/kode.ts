@@ -606,6 +606,22 @@ export const deleteChat = mutation({
 			await ctx.db.delete(importContext._id);
 		}
 
+		// Remote control state for the chat (kodeRemote.ts).
+		const links = await ctx.db
+			.query("kodeRemoteChatLinks")
+			.withIndex("by_chatId", (q) => q.eq("chatId", args.chatId))
+			.take(50);
+		for (const link of links) await ctx.db.delete(link._id);
+		for (const table of ["kodeRemoteRuns", "kodeRemoteWatchers"] as const) {
+			const rows = await ctx.db
+				.query(table)
+				.withIndex("by_ownerId_and_chatId", (q) =>
+					q.eq("ownerId", user._id).eq("chatId", args.chatId),
+				)
+				.take(10);
+			for (const row of rows) await ctx.db.delete(row._id);
+		}
+
 		await ctx.db.delete(args.chatId);
 	},
 });

@@ -3,6 +3,7 @@
 
 import { ModelSelectorLogo } from "@/components/chat/ModelPickerPopover";
 import { SubagentGroup, type SubagentItem, type SubagentStatus } from "@/components/chat/SubagentGroup";
+import { ToolStepList } from "@/components/chat/ToolStep";
 import { stopFanOutRun, useFanOuts, type FanOut, type FanOutRunStatus } from "@/lib/kode-fanout";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
 
@@ -25,6 +26,8 @@ export function fanOutItems(fanOut: FanOut, openChat: (chatId: string) => void):
     meta: run.files ? `${run.files} file${run.files === 1 ? "" : "s"} +${run.additions} −${run.deletions}` : undefined,
     onOpen: run.chatId ? () => openChat(run.chatId!) : undefined,
     onStop: () => stopFanOutRun(run.id),
+    // Expanding the row shows what this sub-agent is doing, live.
+    children: run.steps.length > 0 ? <ToolStepList steps={run.steps} /> : undefined,
   }));
 }
 

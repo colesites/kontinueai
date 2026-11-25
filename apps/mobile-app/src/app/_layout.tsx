@@ -119,8 +119,8 @@ function AppShell() {
             <Stack.Screen name="tasks" />
             <Stack.Screen name="agents" />
             <Stack.Screen name="canvas" />
-            <Stack.Screen name="kode" />
-            <Stack.Screen name="kode/[id]" />
+            <Stack.Screen name="kode/index" />
+            <Stack.Screen name="kode/[deviceId]/[chatId]" />
             <Stack.Screen name="pricing" />
             <Stack.Screen
               name="live"

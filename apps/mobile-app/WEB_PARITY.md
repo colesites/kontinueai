@@ -16,8 +16,8 @@ This file is the regression checklist for future web changes.
 | Kontinue Live sheet     | global modal (`/live` entry) | Transparent native sheet over the current screen; secured realtime gateway, native PCM capture/playback, transcripts, mute/interrupt/end, Convex allowance and metering                                      |
 | `/agents`               | `/agents`           | Shared agent catalog, capabilities, suggested actions, agent-scoped chat                                                                                                      |
 | `/canvas`               | `/canvas`           | Pro/Max gate via `canAccessPlanFeature` (K-Image free for all), video also on referral-bonus credits, credits charged server-side only, uploaded multi-reference images (plan x model cap), model-aware ratios/durations/resolutions, async jobs, gallery, lightbox with creator, metadata, save, share, publish/delete |
-| `/kode`                 | `/kode`             | Coming-soon screen (asks `/api/kode/availability`), Pro gate via `canAccessPlanFeature`, starters, credits, project cards, build/plan creation and up to five text/code attachments |
-| `/kode/[projectId]`     | `/kode/[id]`        | Same gates, conversation, live WebView preview, source tabs/edit/save, refinement attachments, rename/star/delete and HTML export |
+| `/kode`                 | `/kode`             | Kode on your computer, one screen like ChatGPT Codex: the computer as a switchable chip with online state, its threads by project with run status, "Ask Kode" composer (project, model, safe mode). Notification permission is asked on the first send. Entry: sidebar More → Kode |
+| `/kode/[deviceId]/[chatId]` | `/kode/[deviceId]/[chatId]` | Live thread: saved messages and tool steps, streamed reply while open (`watchChat`), Allow/Deny and question cards, queued prompts with cancel, Stop, follow-ups; push deep links land here |
 | `/projects/[projectId]` | `/project/[id]`     | Project chats, status/counts, remove chats and delete project                                                                                                                 |
 | `/tasks`                | `/tasks`            | List, board (with delete) and month-grid calendar; create/edit/delete; priority, due time, recurrence incl. Yearly, web reminder presets + custom time, agent tasks and push opt-in |
 | `/settings`             | `/settings`         | `?tab=` deep links, account, web usage breakdown (external/basic/pro/frontier), memory, invite (code auto-created), data import history/detail, contact and sign-out |
@@ -42,7 +42,7 @@ that this native app mirrors.
 Do not duplicate SEO landing pages or the journal inside Expo. Native must keep
 product facts and entry points consistent by linking to the canonical marketing
 or hosted app pages for public legal, billing, security, and long-form content.
-User workflows (chat, imports, Live, Canvas, Kode, tasks, projects, connectors,
+User workflows (chat, imports, Live, Canvas, Kode remote control, tasks, projects, connectors,
 feedback, settings, and notifications) remain native and must follow the web app
 contract above.
 
@@ -56,7 +56,7 @@ so changing one changes both:
   images and search citations read from AI SDK parts.
 - `chat-image-options`, `chat-mentions`, `import-strategy`,
   `app-error-client` (AppError / readApiError),
-  `kode-availability`, `pricing-comparison`, `plan-access`, `plan-config`.
+  `pricing-comparison`, `plan-access`, `plan-config`, `kode-remote`.
 
 Mobile-only mirrors with parity tests: `src/lib/import-providers.ts`
 (`@repo/utils` can't resolve under Metro; `import-providers.test.ts` fails on
@@ -71,11 +71,10 @@ drift).
 - AI chat uses the same `/api/chat` route and request body as web.
 - Canvas uses `/api/canvas/generate-image`, `/api/canvas/generate-video`, and
   the shared Convex video job records.
-- Kode uses `/api/kode/build` and the shared `kodeWeb` Convex APIs.
 - Live voice uses `/api/realtime/token` plus `realtimeVoice` Convex metering.
+- Kode remote control uses the shared `kodeRemote` Convex APIs and `@repo/core/kode-remote` (online window, modes, message parsing, answers); the desktop app is the host.
 - Connector OAuth and Gmail sending use the shared `/api/connectors/*` routes;
   mobile starts OAuth through `/api/connectors/mobile-handoff`.
-- Kode availability: `/api/kode/availability` (falls back to web's host rule).
 - Generated files use `/api/files/upload` plus Convex file records.
 - Legal and billing pages may remain canonical hosted surfaces when duplicating
   them would create security, compliance, or content-drift risk.

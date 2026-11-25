@@ -28,6 +28,7 @@ mod agent_usage;
 mod editor;
 mod plugins;
 mod cli_agents;
+mod remote_host;
 
 #[cfg(target_os = "macos")]
 mod macos_window;
@@ -1420,8 +1421,9 @@ fn kode_save_attachment(root: String, filename: String, data: String) -> Result<
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(data.trim())
         .map_err(|error| format!("Could not read the attachment: {error}"))?;
-    if bytes.len() > 25 * 1024 * 1024 {
-        return Err("Attachments over 25 MB aren't saved to the project.".into());
+    // Same cap as the composer (ChatInput MAX_ATTACHMENT_BYTES).
+    if bytes.len() > 50 * 1024 * 1024 {
+        return Err("Attachments over 50 MB aren't saved to the project.".into());
     }
     let safe: String = std::path::Path::new(&filename)
         .file_name()
@@ -2256,6 +2258,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             menu::menu_set_accelerators,
+            remote_host::kode_keep_awake,
+            remote_host::kode_computer_name,
             kode_chat,
             kode_read_file,
             kode_list_dir,
@@ -2329,6 +2333,7 @@ pub fn run() {
             ,kontinue_set_base_url
             ,panel::panel_git_status
             ,panel::panel_pr_list
+            ,panel::panel_pr_view
             ,panel::panel_pr_merge
             ,panel::panel_pr_review
             ,panel::panel_pr_comments

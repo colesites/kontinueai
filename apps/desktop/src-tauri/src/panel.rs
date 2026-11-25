@@ -18,16 +18,23 @@ use tauri::ipc::Channel;
 
 /// Run `gh` in the project with the user's login PATH. Async so network calls
 /// don't block the window. Returns stdout, or a readable error.
+/// Longest a `gh` call may take. A stalled network used to hang the call
+/// forever, and the PR watcher (which waits for the previous check) stopped.
+const GH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 async fn gh(root: &str, args: &[&str]) -> Result<String, String> {
-    let output = tokio::process::Command::new(crate::cli_agents::program_path("gh"))
+    let run = tokio::process::Command::new(crate::cli_agents::program_path("gh"))
         .args(args)
         .current_dir(root)
         .env("PATH", crate::cli_agents::login_path())
         .env("GH_PROMPT_DISABLED", "1")
         .env("NO_COLOR", "1")
         .stdin(std::process::Stdio::null())
-        .output()
+        .kill_on_drop(true)
+        .output();
+    let output = tokio::time::timeout(GH_TIMEOUT, run)
         .await
+        .map_err(|_| "GitHub didn't answer in time. Check your connection; Kode tries again shortly.".to_string())?
         .map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
                 "GitHub CLI isn't installed. Install it (brew install gh), then run `gh auth login`.".to_string()
@@ -67,6 +74,27 @@ pub async fn panel_pr_list(root: String, state: Option<String>) -> Result<serde_
         return crate::git_hosts::list(&remote, state).await;
     }
     let out = gh(&root, &["pr", "list", "--state", state, "--limit", "50", "--json", PR_FIELDS]).await?;
+    serde_json::from_str(&out).map_err(|error| format!("Couldn't read gh output: {error}"))
+}
+
+/// One pull request by URL, wherever it sits in the repo's history (the PR
+/// watcher used to find it in the newest 50 and lost older ones).
+#[tauri::command]
+pub async fn panel_pr_view(root: String, url: String) -> Result<serde_json::Value, String> {
+    if let Some(remote) = other_host(&root) {
+        let all = crate::git_hosts::list(&remote, "all").await?;
+        let wanted = url.to_lowercase();
+        return all
+            .as_array()
+            .and_then(|items| {
+                items.iter().find(|item| {
+                    item.get("url").and_then(|u| u.as_str()).map(|u| u.to_lowercase()) == Some(wanted.clone())
+                })
+            })
+            .cloned()
+            .ok_or_else(|| "That pull request wasn't found.".to_string());
+    }
+    let out = gh(&root, &["pr", "view", &url, "--json", PR_FIELDS]).await?;
     serde_json::from_str(&out).map_err(|error| format!("Couldn't read gh output: {error}"))
 }
 

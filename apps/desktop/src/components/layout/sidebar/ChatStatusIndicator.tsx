@@ -12,7 +12,7 @@ import {
 import { ChatPrIcon, useChatPr } from "@/components/kode/PrStatusBar";
 import { useKodeAgentRuntime } from "@/lib/kode-agent-runtime";
 import type { KodeToolStep } from "@/lib/kode-agent";
-import { Loader2, MessageSquare, Pin } from "lucide-react";
+import { Loader2, MessageSquare } from "lucide-react";
 
 type OptionItemArg = { value: string; label: string; description?: string };
 
@@ -78,13 +78,7 @@ function PendingAnswer({ step }: { step: KodeToolStep }) {
 /**
  * Leading icon for a sidebar chat row that reflects that chat's agent state.
  */
-export function ChatStatusIndicator({
-  chatId,
-  isPinned,
-}: {
-  chatId: string;
-  isPinned: boolean;
-}) {
+export function ChatStatusIndicator({ chatId }: { chatId: string }) {
   const { statusByChat, pendingByChat } = useKodeAgentRuntime();
   const status = statusByChat[chatId] ?? "idle";
   const pr = useChatPr(chatId);
@@ -123,12 +117,6 @@ export function ChatStatusIndicator({
 
   // A chat tied to a pull request shows the PR's state as its icon.
   if (pr) return <ChatPrIcon chatId={chatId} />;
-
-  if (isPinned) {
-    return (
-      <Pin size={13} aria-label="Pinned" className="shrink-0 text-foreground/70" fill="currentColor" />
-    );
-  }
 
   return (
     <MessageSquare

@@ -551,6 +551,7 @@ export default function HomeView() {
 
             <div className="max-w-3xl mx-auto">
               <ChatInput
+                draftKey={activeChatId ? `home:${activeChatId}` : "home:new"}
                 loading={streaming}
                 seedText={composerSeed.text}
                 seedNonce={composerSeed.nonce}
@@ -607,6 +608,7 @@ export default function HomeView() {
             {/* Centered Chat Input Box using unified ChatInput */}
             <div className="w-full max-w-3xl mx-auto pt-2 text-left">
               <ChatInput
+                draftKey="home:new"
                 loading={streaming}
                 placeholder="Ask anything..."
                 hideAgentMode

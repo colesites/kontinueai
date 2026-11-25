@@ -11,6 +11,7 @@ import { useOrchestrationBridge } from "@/lib/kode-orchestration";
 import { useContinuitySync } from "@/lib/kode-continuity";
 import { useImportContextUpload } from "@/lib/kode-import-cloud";
 import { useWebhookThreads } from "@/lib/kode-webhooks";
+import { KodeRemoteHost } from "@/lib/kode-remote-host";
 import { usePrWatcher } from "@/lib/kode-pr-watcher";
 import { RunNotifications } from "./RunNotifications";
 import { ViewErrorBoundary } from "./ViewErrorBoundary";
@@ -76,6 +77,8 @@ const ViewLayout = ({ panelOpen, onPanelChange }: ViewLayoutProps) => {
         )}
       </ViewErrorBoundary>
       <RunNotifications />
+      {/* Your phone and the web app can run Kode here (Settings → Remote control). */}
+      <KodeRemoteHost />
       <GlobalShortcuts />
       <MenuBridge />
       <UpdateDialog />

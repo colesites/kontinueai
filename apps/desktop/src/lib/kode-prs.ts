@@ -78,6 +78,10 @@ export function sortByReadiness(prs: PullRequest[]): PullRequest[] {
 export const listPullRequests = (root: string, state: "open" | "all") =>
   invoke<PullRequest[]>("panel_pr_list", { root, state });
 
+/** One PR by URL (src-tauri panel_pr_view): found however old it is. */
+export const getPullRequest = (root: string, url: string) =>
+  invoke<PullRequest>("panel_pr_view", { root, url });
+
 export const mergePullRequest = (root: string, number: number, method: "squash" | "merge" | "rebase") =>
   invoke<void>("panel_pr_merge", { root, number, method });
 
@@ -183,19 +187,42 @@ function stepText(step: TurnStep): string {
   return [step.description ?? "", args, step.result ?? ""].join("\n");
 }
 
+/** The command a step ran (not its output: printed text can mention `git push`). */
+function stepCommand(step: TurnStep): string {
+  const args = step.args && typeof step.args === "object" ? (step.args as Record<string, unknown>) : {};
+  return typeof args.command === "string" ? args.command : (step.description ?? "");
+}
+
+/** "host/owner/repo" for a remote URL (https, ssh or scp-style). */
+export function repoOfRemote(remote: string): string | null {
+  const match =
+    /^(?:[a-z+]+:\/\/)?(?:[^@/]+@)?([^/:]+)[:/](.+?)(?:\.git)?\/?$/i.exec(remote.trim());
+  return match ? `${match[1]}/${match[2]}`.toLowerCase() : null;
+}
+
+/** "host/owner/repo" for a GitHub, GitLab or Bitbucket PR URL. */
+export function repoOfPrUrl(url: string): string | null {
+  const match = /^https:\/\/([^/]+)\/(.+?)\/(?:pull|-\/merge_requests|pull-requests)\/\d+/i.exec(url);
+  return match ? `${match[1]}/${match[2]}`.toLowerCase() : null;
+}
+
 /**
- * Link the PRs a finished turn touched to its chat, whichever agent ran it.
- * The URL can sit anywhere in a command's output (after `git push`'s own
- * lines), and saved steps are cut short, so this reads the turn's full steps.
- * A push to a branch that already has a PR prints no PR URL, so after any
- * push or `gh pr` command the branch's own PR is looked up too.
+ * Link the PRs a turn opened or pushed to, whichever agent ran it. Only a
+ * turn that published work (`git push`, `gh pr create`, …) links anything,
+ * and only PRs of this project's own repo: a chat that merely read, quoted
+ * or searched for a PR link isn't that PR's chat. The URL can sit anywhere
+ * in the command's output, and a push to a branch that already has a PR
+ * prints no URL, so the branch's own PR is looked up too.
  */
 export async function linkTurnPrs(chatId: string, chatTitle: string, root: string | null, steps: TurnStep[], reply = "") {
-  const texts = [reply, ...steps.map(stepText)];
-  recordPrLinks(chatId, chatTitle, texts);
-  if (!root || !steps.some((step) => SHIP_COMMAND.test(stepText(step)))) return;
+  const shipped = steps.filter((step) => SHIP_COMMAND.test(stepCommand(step)));
+  if (!root || shipped.length === 0) return;
   try {
-    const status = await invoke<{ branch: string | null }>("panel_git_status", { root });
+    const status = await invoke<{ branch: string | null; remoteUrl?: string | null }>("panel_git_status", { root });
+    const repo = status.remoteUrl ? repoOfRemote(status.remoteUrl) : null;
+    if (!repo) return;
+    const urls = [reply, ...shipped.map(stepText)].flatMap(findPrUrls).filter((url) => repoOfPrUrl(url) === repo);
+    recordPrLinks(chatId, chatTitle, urls);
     if (!status.branch) return;
     const prs = (await listPullRequests(root, "all")).filter((pr) => pr.headRefName === status.branch);
     const pr =
@@ -203,8 +230,22 @@ export async function linkTurnPrs(chatId: string, chatTitle: string, root: strin
       prs.find((candidate) => candidate.state === "MERGED" && Date.now() - Date.parse(candidate.updatedAt) < RECENT_MERGE_MS);
     if (pr) recordPrLinks(chatId, chatTitle, [pr.url]);
   } catch {
-    // No GitHub CLI or not signed in: the URL scan above is all there is.
+    // No git remote, no GitHub CLI or not signed in: nothing to link.
   }
+}
+
+/** "Not this chat's PR": forget the link (the PR bar's ×). */
+export function unlinkPr(url: string) {
+  const key = url.toLowerCase();
+  if (!links[key]) return;
+  const { [key]: _gone, ...rest } = links;
+  links = rest;
+  try {
+    localStorage.setItem(LINKS_KEY, JSON.stringify(links));
+  } catch {
+    // Storage blocked: the change lasts for this session.
+  }
+  for (const listener of listeners) listener();
 }
 
 export function usePrThreads(): Record<string, PrThread> {

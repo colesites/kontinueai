@@ -1,3 +1,4 @@
+import type { KodeRemotePending, KodeRemoteRunStatus, KodeRemoteStep } from "@repo/core/kode-remote";
 import { anyApi, type FunctionReference } from "convex/server";
 
 type PaginationOpts = {
@@ -537,3 +538,89 @@ export type KontinueChatUsage = {
 export const chatUsageApi = anyApi as unknown as {
   messages: { getMonthlyUsage: FunctionReference<"query", "public", Record<string, never>, KontinueChatUsage | null> };
 };
+
+// ── Kode remote control (convex/kodeRemote.ts) ─────────────────────────────
+
+export type RemoteCommand = {
+  id: string;
+  kind: "send" | "approve" | "answer" | "stop";
+  chatId: string;
+  projectKey: string | null;
+  newChat: boolean;
+  text?: string;
+  modelId?: string;
+  mode?: string;
+  stepId?: string;
+  approved?: boolean;
+  values?: string[];
+  createdAt: number;
+  expiresAt: number;
+};
+
+export type RemoteHostState = {
+  enabled: boolean;
+  commands: RemoteCommand[];
+  watchers: { chatId: string; until: number }[];
+} | null;
+
+export type RemoteRunSnapshot = {
+  status: KodeRemoteRunStatus;
+  text: string;
+  steps: KodeRemoteStep[];
+  pending: KodeRemotePending[];
+  modelId?: string;
+};
+
+type KodeRemoteApi = {
+  kodeRemote: {
+    registerDevice: FunctionReference<
+      "mutation",
+      "public",
+      {
+        deviceId: string;
+        name: string;
+        platform: string;
+        appVersion?: string;
+        enabled: boolean;
+        models: { id: string; name: string }[];
+        defaultModelId?: string;
+      },
+      null
+    >;
+    heartbeat: FunctionReference<"mutation", "public", { deviceId: string }, null>;
+    syncWorkspace: FunctionReference<
+      "mutation",
+      "public",
+      {
+        deviceId: string;
+        projects: { key: string; name: string }[];
+        chats: { chatId: string; projectKey: string | null }[];
+      },
+      null
+    >;
+    hostState: FunctionReference<"query", "public", { deviceId: string }, RemoteHostState>;
+    completeCommand: FunctionReference<"mutation", "public", { commandId: string; ok: boolean; error?: string }, boolean>;
+    publishRun: FunctionReference<
+      "mutation",
+      "public",
+      RemoteRunSnapshot & { deviceId: string; chatId: string; notify?: { title: string; body: string } },
+      null
+    >;
+    resetRuns: FunctionReference<"mutation", "public", { deviceId: string }, null>;
+    listDevices: FunctionReference<"query", "public", Record<string, never>, RemoteDevice[]>;
+    forgetDevice: FunctionReference<"mutation", "public", { deviceId: string }, null>;
+  };
+};
+
+export type RemoteDevice = {
+  deviceId: string;
+  name: string;
+  platform: string;
+  appVersion: string | null;
+  enabled: boolean;
+  lastSeenAt: number | null;
+  running: number;
+  awaiting: number;
+};
+
+export const remoteApi = anyApi as unknown as KodeRemoteApi;

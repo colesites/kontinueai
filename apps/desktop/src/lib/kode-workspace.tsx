@@ -111,6 +111,7 @@ export type SettingsNavTab =
   | "source-control"
   | "storage"
   | "webhooks"
+  | "remote"
   | "account"
   | "data";
 

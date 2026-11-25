@@ -65,6 +65,10 @@ export type AppSettings = {
   autoResumeLimited: boolean;
   /** KodeComposerBar: where new threads start ("worktree" = a new git worktree). */
   newThreadWorkspace: "local" | "worktree";
+  /** kode-remote-host: let your phone and the web app run Kode on this computer. */
+  remoteControl: boolean;
+  /** kode-remote-host: how this computer is named on your other devices ("" = default). */
+  remoteDeviceName: string;
   /** Prefix for branches Kode names (new worktrees, sub-agents). "" = none. */
   branchPrefix: string;
   /** ChangesTab: diff display. */
@@ -220,6 +224,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   inAppNotifications: true,
   autoResumeLimited: false,
   newThreadWorkspace: "local",
+  remoteControl: false,
+  remoteDeviceName: "",
   branchPrefix: "kode/",
   diffLayout: "stacked",
   diffHideWhitespace: false,

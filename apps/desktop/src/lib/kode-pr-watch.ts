@@ -293,7 +293,10 @@ export function prStanding(watch: PrWatch | undefined): PrStanding {
     tone,
     canMerge,
   });
-  if (!watch?.state) return of("checking", "Checking…", "muted");
+  if (!watch?.state) {
+    // Never fetched: say why instead of "Checking…" forever.
+    return watch?.lastError ? of("checking", "Couldn't check", "bad") : of("checking", "Checking…", "muted");
+  }
   if (watch.state === "MERGED") return of("merged", "Merged", "merged");
   if (watch.state === "CLOSED") return of("closed", "Closed", "muted");
   if (watch.isDraft) return of("draft", "Draft", "muted");

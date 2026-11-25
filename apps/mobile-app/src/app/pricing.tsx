@@ -38,8 +38,8 @@ const CREDIT_EXPLAINERS: [string, string][] = [
     "Paid model work, provider-backed web search, K-Image, and K-Video draw from the same monthly balance.",
   ],
   [
-    "Canvas and Kode",
-    "Opening either workspace costs nothing. AI generation in Canvas and AI runs in Kode consume credits.",
+    "Canvas",
+    "Opening Canvas costs nothing. AI generation inside it consumes credits.",
   ],
   [
     "Live and safeguards",
@@ -56,7 +56,6 @@ const RATES: [string, string][] = [
   ["K-Image", `${AI_USAGE_CREDIT_COSTS.imageGeneration} credits`],
   ["K-Video", `from ${AI_USAGE_CREDIT_COSTS.videoGenerationPerSecond}/second`],
   ["Kontinue Live", `${AI_USAGE_CREDIT_COSTS.liveVoicePerSecond}/second`],
-  ["Kode AI unit (up to 25K tokens)", `${AI_USAGE_CREDIT_COSTS.kodeCredit} credits`],
 ];
 
 function formatPrice(cents: number): string {

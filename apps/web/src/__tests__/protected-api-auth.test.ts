@@ -9,9 +9,6 @@ mock.module("@web/lib/object-storage", () => ({
 	deletePublicObject: deleteBlob,
 }));
 mock.module("server-only", () => ({}));
-mock.module("../features/kode/lib/availability", () => ({
-	isKodeComingSoon: () => true,
-}));
 
 afterAll(() => mock.restore());
 
@@ -23,16 +20,5 @@ describe("protected API authentication", () => {
 		);
 		expect(response.status).toBe(401);
 		expect(deleteBlob).not.toHaveBeenCalled();
-	});
-
-	test("PLAN-006: disabled production Kode builds return 503 before auth", async () => {
-		const { POST } = await import("../app/api/kode/build/route");
-		const response = await POST(
-			new Request("https://chat.kontinueai.com/api/kode/build", {
-				method: "POST",
-				headers: { host: "chat.kontinueai.com" },
-			}),
-		);
-		expect(response.status).toBe(503);
 	});
 });

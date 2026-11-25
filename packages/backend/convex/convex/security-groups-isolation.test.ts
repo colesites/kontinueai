@@ -11,7 +11,6 @@ const modules = {
 	"./push.ts": () => import("./push"),
 	"./connectors.ts": () => import("./connectors"),
 	"./feedback.ts": () => import("./feedback"),
-	"./kodeWeb.ts": () => import("./kodeWeb"),
 	"./kode.ts": () => import("./kode"),
 };
 const identity = (subject: string) => ({
@@ -196,38 +195,8 @@ describe("remaining owned resource groups", () => {
 		);
 	});
 
-	test("ISO-011: Kode projects and workspace data are owner-only", async () => {
-		const { asA, asB, kodeChatId, kodeMessageId } = await setup();
-		const projectId = await asA.mutation(api.kodeWeb.createProject, {
-			prompt: "Build a private app",
-		});
-		expect(await asB.query(api.kodeWeb.getWorkspace, { projectId })).toBeNull();
-		await expect(
-			asB.mutation(api.kodeWeb.startBuild, {
-				projectId,
-				prompt: "Steal this app",
-				mode: "build",
-			}),
-		).rejects.toThrow();
-		await expect(
-			asB.mutation(api.kodeWeb.updateFile, {
-				projectId,
-				path: "index.html",
-				content: "stolen",
-			}),
-		).rejects.toThrow();
-		await expect(
-			asB.mutation(api.kodeWeb.renameProject, { projectId, title: "Stolen" }),
-		).rejects.toThrow();
-		await expect(
-			asB.mutation(api.kodeWeb.toggleStar, { projectId }),
-		).rejects.toThrow();
-		await expect(
-			asB.mutation(api.kodeWeb.deleteProject, { projectId }),
-		).rejects.toThrow();
-		expect(
-			(await asA.query(api.kodeWeb.getWorkspace, { projectId }))?.project.title,
-		).not.toBe("Stolen");
+	test("ISO-011: Kode chats and messages are owner-only", async () => {
+		const { asB, kodeChatId, kodeMessageId } = await setup();
 		expect(
 			await asB.query(api.kode.getMessages, { chatId: kodeChatId }),
 		).toEqual([]);
@@ -245,25 +214,6 @@ describe("remaining owned resource groups", () => {
 		).rejects.toThrow();
 		await expect(
 			asB.mutation(api.kode.deleteChat, { chatId: kodeChatId }),
-		).rejects.toThrow();
-	});
-
-	test("PLAN-005 and PLAN-008: Kode access is revoked after leaving Pro", async () => {
-		const { t, asA } = await setup();
-		const projectId = await asA.mutation(api.kodeWeb.createProject, {
-			prompt: "Build before canceling",
-		});
-		await t.run(async (ctx) => {
-			const user = await ctx.db
-				.query("users")
-				.withIndex("by_clerk_id", (q) => q.eq("clerkUserId", "user_a"))
-				.unique();
-			if (user) await ctx.db.patch(user._id, { plan: "starter_plan" });
-		});
-		expect(await asA.query(api.kodeWeb.listProjects, {})).toEqual([]);
-		expect(await asA.query(api.kodeWeb.getWorkspace, { projectId })).toBeNull();
-		await expect(
-			asA.mutation(api.kodeWeb.deleteProject, { projectId }),
 		).rejects.toThrow();
 	});
 });

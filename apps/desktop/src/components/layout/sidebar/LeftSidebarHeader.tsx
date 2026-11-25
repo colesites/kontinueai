@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
-import { PanelLeft, Search, Home, Code2, Plus, Palette, ListTodo, Bot, Plug2 } from "lucide-react";
+import { PanelLeft, Search, Home, Code2, Plus, Palette, ListTodo, Bot, Plug2, MonitorSmartphone } from "lucide-react";
 import { useSidebar } from "@/components/ui/sidebar";
 import { useKodeWorkspace } from "@/lib/kode-workspace";
+import { useAppSettings } from "@/lib/app-settings";
 import { SearchModal } from "@/components/search/SearchModal";
 import { useIsFullscreen } from "@/hooks/use-is-fullscreen";
 import { tasksApi } from "@/lib/convex-api";
@@ -69,11 +70,24 @@ function TaskCount() {
   );
 }
 
+/** Remote control is on: this computer is reachable from your other devices. */
+function RemoteDot() {
+  return (
+    <span
+      title="Remote control is on"
+      aria-label="Remote control is on"
+      className="size-1.5 shrink-0 rounded-full"
+      style={{ backgroundColor: "var(--status-success, #10b981)" }}
+    />
+  );
+}
+
 export default function LeftSidebarHeader() {
   const { toggleSidebar } = useSidebar();
   const { activeTab, setActiveTab, newChat, activeChatId, openSettings } = useKodeWorkspace();
   const [searchOpen, setSearchOpen] = useState(false);
   const isFullscreen = useIsFullscreen();
+  const { remoteControl } = useAppSettings();
 
   const inKode = activeTab === "kode";
   const isNewActive = (activeTab === "home" || inKode) && activeChatId === null;
@@ -106,7 +120,15 @@ export default function LeftSidebarHeader() {
       <nav aria-label="Main" className="space-y-0.5 pt-0.5">
         <SidebarNavItem icon={Plus} label={inKode ? "New thread" : "New chat"} active={isNewActive} onClick={() => newChat()} />
 
-        {inKode ? null : (
+        {inKode ? (
+          // Run Kode here from your phone or the web (Settings → Remote control).
+          <SidebarNavItem
+            icon={MonitorSmartphone}
+            label="Remote control"
+            onClick={() => openSettings("remote")}
+            trailing={remoteControl ? <RemoteDot /> : null}
+          />
+        ) : (
           <>
             <SidebarNavItem icon={Palette} label="Canvas" active={activeTab === "canvas"} onClick={() => setActiveTab("canvas")} />
             <SidebarNavItem

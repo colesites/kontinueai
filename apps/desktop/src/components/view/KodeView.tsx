@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FolderTree, Globe, X } from "lucide-react";
 import { Topbar } from "@/components/layout/topbar";
 import PlanView from "@/components/view/PlanView";
@@ -15,6 +15,7 @@ import { useKeybinding } from "@/lib/kode-keybindings";
 import { ImportSessionModal } from "@/components/kode/KodeSessionImport";
 import { SnapshotDialog } from "@/components/kode/SnapshotDialog";
 import { getSettings } from "@/lib/app-settings";
+import { sendingSlot } from "@/components/view/plan/run-state";
 
 type DeskTab =
   | { id: "chat"; kind: "chat" }
@@ -56,6 +57,25 @@ export default function KodeView(_props: KodeViewProps) {
   const panelKey = `${activeChatId ?? `draft:${draftProjectId ?? "none"}`}|${activeId}`;
   const panelOpen = panelByKey[panelKey] ?? false;
   const onPanelChange = (open: boolean) => setPanelByKey((current) => ({ ...current, [panelKey]: open }));
+  // A new thread's first message turns the draft into a real chat mid-run:
+  // its panel stays as you left it instead of closing on the new key.
+  const chatKey = activeChatId ?? `draft:${draftProjectId ?? "none"}`;
+  const lastChatKey = useRef(chatKey);
+  useEffect(() => {
+    const before = lastChatKey.current;
+    lastChatKey.current = chatKey;
+    if (!before.startsWith("draft:") || !activeChatId || !sendingSlot.get()[activeChatId]) return;
+    setPanelByKey((current) => {
+      const moved = Object.entries(current).filter(([key]) => key.startsWith(`${before}|`));
+      if (moved.length === 0) return current;
+      const next = { ...current };
+      for (const [key, open] of moved) {
+        next[`${activeChatId}${key.slice(before.length)}`] = open;
+        delete next[key];
+      }
+      return next;
+    });
+  }, [chatKey, activeChatId]);
   useKeybinding("app.panel", () => setPanelByKey((current) => ({ ...current, [panelKey]: !(current[panelKey] ?? false) })));
   const extraTabs = tabs.filter((tab) => tab.kind !== "chat");
 

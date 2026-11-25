@@ -3,6 +3,7 @@ import {
   addAnnotation,
   annotationTitle,
   formatAnnotations,
+  setAnnotationScope,
   takeAnnotations,
 } from "./kode-annotations";
 
@@ -26,4 +27,13 @@ test("annotations format for the prompt and clear on take", () => {
   expect(text).toContain("Note: make it purple");
   expect(formatAnnotations([])).toBe("");
   expect(annotationTitle(taken[1])).toBe('button.cta "Sign up"');
+});
+
+test("a note stays with the thread it was made in", () => {
+  setAnnotationScope("kode:a");
+  addAnnotation({ kind: "text", source: "Reply", quote: "x", note: "for a" });
+  setAnnotationScope("kode:b");
+  expect(takeAnnotations()).toHaveLength(0);
+  expect(takeAnnotations("kode:a").map((note) => note.note)).toEqual(["for a"]);
+  expect(takeAnnotations("kode:a")).toHaveLength(0);
 });

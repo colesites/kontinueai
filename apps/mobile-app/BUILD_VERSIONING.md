@@ -49,6 +49,19 @@ number.
 
 ## Current release
 
+- User-visible version: `1.4.0`
+- Scope: Kode remote control (minor). Kode in the app is now remote control
+  for the Kode desktop app: your computers with online state, their projects
+  and threads, new threads, a live thread view with streamed replies, Allow /
+  Deny and question cards, Stop, follow-ups and push deep links
+  (`/kode/[deviceId]/[chatId]`). The old Kode web-app builder screens are
+  removed, and the pricing and settings text no longer mention it.
+- Previous recorded Android remote build number before this release: `17`.
+- Profile, build number and EAS build ID: not built yet. Record them here
+  when the build is submitted.
+
+### Previous releases
+
 - User-visible version: `1.3.3`
 - Scope: fixes on top of 1.3.2. Home logo no longer sits in a solid box on
   Android (boxShadow can only draw the view's box; the logo glow is iOS-only

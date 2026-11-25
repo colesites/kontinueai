@@ -11,4 +11,13 @@ crons.interval(
   {},
 );
 
+// Kode remote control: expire commands a computer never picked up and drop
+// finished ones (kodeRemote.ts).
+crons.interval(
+  "clean up kode remote commands",
+  { minutes: 5 },
+  internal.kodeRemote.cleanup,
+  {},
+);
+
 export default crons;
