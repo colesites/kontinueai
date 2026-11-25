@@ -54,11 +54,14 @@ number.
   for the Kode desktop app: your computers with online state, their projects
   and threads, new threads, a live thread view with streamed replies, Allow /
   Deny and question cards, Stop, follow-ups and push deep links
-  (`/kode/[deviceId]/[chatId]`). The old Kode web-app builder screens are
+  (`/kode/[deviceId]/[chatId]`). Needs the `kodeRemote` Convex functions on
+  the production deployment. The old Kode web-app builder screens are
   removed, and the pricing and settings text no longer mention it.
 - Previous recorded Android remote build number before this release: `17`.
-- Profile, build number and EAS build ID: not built yet. Record them here
-  when the build is submitted.
+- Profile: `production`.
+- Submitted Android production build number: `18` (EAS auto-increment).
+- EAS build ID: `9100cdc4-a56f-4084-87a5-8d772f404602` (submitted with
+  `--no-wait`; do not poll it from an AI task).
 
 ### Previous releases
 
